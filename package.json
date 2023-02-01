@@ -15,7 +15,7 @@
     "node": "^14.18.0 || >=16.0.0"
   },
   "devDependencies": {
-    "@intlify/vite-plugin-vue-i18n": "^6.0.3",
+    "@intlify/vite-plugin-vue-i18n": "^7.0.0",
     "@types/node": "^18.7.23",
     "@vitejs/plugin-vue": "^3.0.1",
     "electron": "^20.0.2",
