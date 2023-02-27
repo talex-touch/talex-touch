@@ -1,0 +1,1 @@
+import{_ as e,o as t,c as a}from"./app.aea63c35.js";const i=JSON.parse('{"title":"","description":"","frontmatter":{},"headers":[],"relativePath":"about/changelog.md","lastUpdated":1677338008000}'),o={name:"about/changelog.md"};function c(n,r,s,p,d,_){return t(),a("div")}const m=e(o,[["render",c]]);export{i as __pageData,m as default};
