@@ -59,7 +59,7 @@
     "typescript": "^5.0.2",
     "unocss": "^0.52.7",
     "unocss-preset-theme": "^0.7.0",
-    "unplugin-auto-import": "^0.15.3",
+    "unplugin-auto-import": "^0.16.4",
     "unplugin-vue-components": "^0.24.1",
     "vite": "^4.3.2",
     "vite-plugin-electron": "^0.11.2",
