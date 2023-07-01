@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@floating-ui/dom": "^1.4.2",
-    "@floating-ui/vue": "^0.2.1",
+    "@floating-ui/vue": "^1.0.1",
     "@iconify-json/ri": "^1.1.10",
     "@iconify-json/simple-icons": "^1.1.58",
     "@milkdown/core": "^7.2.3",
