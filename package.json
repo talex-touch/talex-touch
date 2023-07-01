@@ -10,7 +10,7 @@
     "node": "^14.18.0 || >=16.0.0"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^0.39.5",
+    "@antfu/eslint-config": "^0.39.6",
     "@commitlint/cli": "^17.6.6",
     "@commitlint/config-conventional": "^17.6.6",
     "@typescript-eslint/parser": "^5.60.1",
