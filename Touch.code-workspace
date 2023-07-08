@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../Plugins"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true,
+		"i18n-ally.localesPaths": [
+			"src/assets/languages"
+		],
+		"liveServer.settings.multiRootWorkspaceName": "talex-touch"
+	}
+}

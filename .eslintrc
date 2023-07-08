@@ -1,0 +1,6 @@
+{
+  "extends": "@antfu",
+  "rules": {
+    "@typescript-eslint/no-this-alias": false
+  }
+}
