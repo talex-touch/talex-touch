@@ -1,3 +1,7 @@
+# For some special reason, warehouse git history problems, before the recovery is no longer updated.
+
+# 由于一些特殊原因,仓库git历史问题,恢复之前不再更新。
+
 <div align="center">
 
   <img width="160" src="https://files.catbox.moe/2el8uf.png" alt="logo">
