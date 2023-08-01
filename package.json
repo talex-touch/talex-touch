@@ -13,7 +13,7 @@
     "@antfu/eslint-config": "^0.39.5",
     "@commitlint/cli": "^17.6.6",
     "@commitlint/config-conventional": "^17.6.6",
-    "@typescript-eslint/parser": "^5.60.1",
+    "@typescript-eslint/parser": "^6.2.1",
     "eslint": "^8.43.0",
     "husky": "^8.0.3",
     "typescript": "^5.1.3",
