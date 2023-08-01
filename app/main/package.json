@@ -27,7 +27,7 @@
     "@milkdown/transformer": "^7.2.3",
     "@talex-touch/utils": "workspace:^",
     "@unocss/transformer-attributify-jsx": "^0.52.7",
-    "@vueuse/core": "^10.2.0",
+    "@vueuse/core": "^10.3.0",
     "child_process": "^1.0.2",
     "chokidar": "^3.5.3",
     "compressing": "^1.9.0",
