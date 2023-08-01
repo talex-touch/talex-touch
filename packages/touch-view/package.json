@@ -70,7 +70,7 @@
     "jsonfile": "^6.1.0",
     "lottie-web": "^5.12.2",
     "mica-electron": "^1.4.5",
-    "node-addon-api": "^6.1.0",
+    "node-addon-api": "^7.0.0",
     "node-gyp": "^9.4.0",
     "pinia": "^2.1.4",
     "remixicon": "^2.5.0",
