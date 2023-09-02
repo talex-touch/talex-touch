@@ -126,4 +126,5 @@ talex-touch/
 .idea/
 app/ends/
 plugins/
-app/core/dist-electron
+.history/
+app/main/dist-electron
