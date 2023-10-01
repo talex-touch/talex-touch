@@ -8,7 +8,7 @@
   "license": "MIT",
   "dependencies": {
     "markdown-it": "^13.0.1",
-    "vitepress": "1.0.0-rc.10",
+    "vitepress": "1.0.0-rc.20",
     "vue": "^3.3.4"
   },
   "devDependencies": {
