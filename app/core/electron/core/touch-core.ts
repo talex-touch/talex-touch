@@ -29,7 +29,11 @@ import {
 } from "./eventbus/touch-event";
 import * as log4js from 'log4js'
 
+console.log('TALEX TOUCH STARTED')
+
 const rootPath = getRootPath(process.cwd())
+
+console.log('Application running under folder: ' + rootPath)
 
 const logs = path.join(rootPath, 'logs')
 checkDirWithCreate(logs)
