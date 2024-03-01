@@ -46,7 +46,7 @@
     "@floating-ui/dom": "^1.5.1",
     "@floating-ui/vue": "^1.0.2",
     "@intlify/unplugin-vue-i18n": "^0.13.0",
-    "@milkdown/core": "^7.3.0",
+    "@milkdown/core": "^7.3.5",
     "@milkdown/ctx": "^7.3.0",
     "@milkdown/preset-commonmark": "^7.3.0",
     "@milkdown/prose": "^7.3.0",
