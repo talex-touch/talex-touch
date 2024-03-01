@@ -52,7 +52,7 @@
     "@milkdown/prose": "^7.3.0",
     "@milkdown/theme-nord": "^7.3.0",
     "@milkdown/transformer": "^7.3.0",
-    "@milkdown/vue": "^7.3.0",
+    "@milkdown/vue": "^7.3.5",
     "@types/node": "^20.5.8",
     "@vitejs/plugin-vue-jsx": "^3.0.2",
     "axios": "^1.5.0",
