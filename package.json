@@ -17,7 +17,7 @@
     "eslint": "^8.48.0",
     "husky": "^8.0.3",
     "typescript": "^5.2.2",
-    "vite": "^4.4.9",
+    "vite": "^5.1.4",
     "vitest": "^0.34.3"
   },
   "scripts": {

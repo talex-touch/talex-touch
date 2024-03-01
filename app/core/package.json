@@ -75,7 +75,7 @@
     "unocss-preset-theme": "^0.9.1",
     "unplugin-auto-import": "^0.16.6",
     "unplugin-vue-components": "^0.25.2",
-    "vite": "^4.4.9",
+    "vite": "^5.1.4",
     "vite-plugin-electron": "^0.14.0",
     "vite-plugin-electron-renderer": "^0.14.5",
     "vite-plugin-vue-setup-extend": "^0.4.0",
