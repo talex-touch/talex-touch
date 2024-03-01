@@ -73,7 +73,7 @@
     "node-addon-api": "^7.0.0",
     "node-gyp": "^9.4.0",
     "pinia": "^2.1.6",
-    "remixicon": "^3.5.0",
+    "remixicon": "^4.2.0",
     "sass": "^1.66.1",
     "v-wave": "^1.5.1",
     "vite-plugin-commonjs-externals": "^0.1.3",
