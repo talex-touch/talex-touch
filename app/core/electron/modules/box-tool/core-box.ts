@@ -1,3 +1,4 @@
+import { clipboardManager } from './../clipboard';
 import { genTouchApp, TouchApp, TouchWindow } from "../../core/touch-core";
 import { BoxWindowOption } from "../../config/default";
 import { ChannelType } from "@talex-touch/utils/channel";
@@ -14,7 +15,7 @@ async function createNewBoxWindow(closeCallback: Function) {
   const window = new TouchWindow({ ...BoxWindowOption });
 
   setTimeout(() => {
-    console.log('[CoreBox] NewBox created, injecting developing tools ...')
+    console.log("[CoreBox] NewBox created, injecting developing tools ...");
 
     if (app.isPackaged || touchApp.version === TalexTouch.AppVersion.RELEASE) {
       const url = path.join(process.env.DIST!, "index.html");
@@ -81,7 +82,7 @@ export class CoreBoxManager {
     this.windows = [];
     this.lastWindow = null;
 
-    // 永远取最后一个当 popover window
+    // Always match the last window => popover window
     this.init().then(() => this.register());
   }
 
@@ -108,6 +109,9 @@ export class CoreBoxManager {
 
       if (this.#_show) this.trigger(false);
     });
+
+    // register clipboard listen in clipboard manager
+    clipboardManager.registerWindow(window);
   }
 
   get showCoreBox() {
@@ -206,6 +210,8 @@ export class CoreBoxManager {
       w.window.setPosition(-1000000, -1000000);
 
       setTimeout(() => {
+        this.shrink();
+
         w.window.hide();
       }, 500);
     }
