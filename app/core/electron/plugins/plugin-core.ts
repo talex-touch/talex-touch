@@ -369,12 +369,14 @@ class PluginManager implements IPluginManager {
 
         plugin = this.plugins.get(pluginName) as TouchPlugin;
 
-        _enabled && (await plugin.enable());
-
         genTouchChannel().send(ChannelType.MAIN, "plugin:reload", {
           source: "disk",
           plugin: (plugin as TouchPlugin).toJSONObject(),
         });
+
+        console.log("plugin reload event sent");
+
+        _enabled && (await plugin.enable());
       } else if (baseName === "README.md") {
         plugin.readme = fse.readFileSync(_path, "utf-8");
 

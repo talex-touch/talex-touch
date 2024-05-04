@@ -51,7 +51,7 @@ function handleListeners(viewData, webview) {
   });
 
   webview.addEventListener("did-fail-load", async (e) => {
-    console.log("Webview did-fail-load", e, props.plugin);
+    // console.log("Webview did-fail-load", e, props.plugin);
 
     await forDialogMention(
       props.plugin.name,
@@ -78,17 +78,17 @@ function handleListeners(viewData, webview) {
     webview.insertCSS(`${styles}`);
     await webview.executeJavaScript(`${js}`);
 
-    console.log("Webview did-finish-load", props.plugin);
+    // console.log("Webview did-finish-load", props.plugin);
 
     webview.send("@loaded", { plugin: props.plugin.name, id: webview.id, type: 'init' })
 
     watchEffect(async () => {
       while (props.lists.length) {
         const { data } = props.lists.pop();
-        console.log("--->", props.plugin, data);
+        // console.log("--->", props.plugin, data);
         const res = await webview.send("@plugin-process-message", JSON.stringify(data));
 
-        console.log("<---", props.plugin, res);
+        // console.log("<---", props.plugin, res);
 
         if (data.reply) {
           data.reply(res);
@@ -110,7 +110,7 @@ function init() {
   props.plugin.webViewInit = true;
 
   const webview = webviewDom.value;
-  console.log(props.plugin, webview);
+  console.log(props.plugin, webview, viewData);
 
   viewData.el = webview.parentElement;
 

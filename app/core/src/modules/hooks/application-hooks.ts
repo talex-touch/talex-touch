@@ -10,6 +10,7 @@ import { AppUpdate } from "~/modules/hooks/api/useUpdate";
 import AppUpdateView from "@comp/base/AppUpgradationView.vue";
 import { pluginManager } from "~/modules/channel/plugin-core/api";
 import { pluginAdopter } from "~/modules/hooks/adopters/plugin-adpoter";
+import { useRouter } from 'vue-router'
 
 export function usePlugins() {
   const plugins = ref();
@@ -20,6 +21,13 @@ export function usePlugins() {
   scope.run(() => {
     watchEffect(() => {
       plugins.value = [...pluginAdopter.plugins.values()];
+
+      if (
+        activePlugin?.value &&
+        !plugins.value.filter((item) => item.name === activePlugin.value).length
+      ) {
+        activePlugin.value = "";
+      }
     });
     // watch(pluginAdopter, val => {
     //   console.log("updated", pluginAdopter, val);
@@ -32,12 +40,24 @@ export function usePlugins() {
   return [plugins, scope];
 }
 
+const activePlugin = ref("");
+
 export function usePlugin() {
-  const activePlugin = ref("");
+ const router = useRouter();
 
   const stop = watch(
     () => activePlugin.value,
-    (val) => pluginManager.changeActivePlugin(val),
+    (val, oldVal) => {
+      pluginManager.changeActivePlugin(val);
+
+      if (router && oldVal?.length && !val.length) {
+        router.push("/home");
+
+        setTimeout(() => {
+          router.push("/plugin");
+        }, 10);
+      }
+    },
     { immediate: true }
   );
 
