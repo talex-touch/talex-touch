@@ -7,7 +7,7 @@ const props = defineProps<{
 }>()
 const emits = defineEmits<{
   (e: "search", val: string): void,
-  (e: "select", val: any): void,
+  (e: "select", val: any, ind: number): void,
 }>()
 
 enum EOrderWay {
@@ -25,6 +25,8 @@ watch(() => props.list, () => {
   _list.value = [...props.list]
 
   handleOrderWay()
+
+  emits('select', null, -1)
 }, { immediate: true })
 
 function handleOrderWay() {
@@ -74,6 +76,8 @@ function handleOrderChange() {
   orderWay.value = (orderWay.value + 1) % 4
 
   handleOrderWay()
+
+  emits('select', null, -1)
 }
 
 watch(() => search.value, val => {
