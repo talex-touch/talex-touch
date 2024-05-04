@@ -360,7 +360,9 @@ class PluginManager implements IPluginManager {
         baseName === "preload.js" ||
         baseName === "index.html"
       ) {
-        let _enabled = plugin.status === PluginStatus.ENABLED;
+        let _enabled =
+          plugin.status === PluginStatus.ENABLED ||
+          plugin.status === PluginStatus.ACTIVE;
 
         await plugin.disable();
         await this.unloadPlugin(pluginName);
@@ -374,7 +376,7 @@ class PluginManager implements IPluginManager {
           plugin: (plugin as TouchPlugin).toJSONObject(),
         });
 
-        console.log("plugin reload event sent");
+        console.log("plugin reload event sent", _enabled);
 
         _enabled && (await plugin.enable());
       } else if (baseName === "README.md") {

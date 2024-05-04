@@ -35,16 +35,18 @@ export function usePlugins() {
           .length &&
         lastActivePlugin.value
       ) {
-        activePlugin.value = lastActivePlugin.value;
-        lastActivePlugin.value = "";
-
-        const id = `touch-plugin-item-${activePlugin.value}`;
-
         setTimeout(() => {
-          const el = document.getElementById(id);
-          if (!el) return;
+          activePlugin.value = lastActivePlugin.value;
+          lastActivePlugin.value = "";
 
-          el["$fixPointer"]?.();
+          const id = `touch-plugin-item-${activePlugin.value}`;
+
+          setTimeout(() => {
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            el["$fixPointer"]?.();
+          }, 200);
         }, 200);
       }
     });
