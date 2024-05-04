@@ -61,7 +61,8 @@ function handleClick(item: any, ind: number) {
       </li>
     </ul>
     <div class="AppList-Info">
-      <span>{{ list.length }} applications in this device.</span>
+      <span v-if="search">{{ list.length }} searched on this device.</span>
+      <span v-else>{{ list.length }} applications on this device.</span>
     </div>
   </el-scrollbar>
 </template>
