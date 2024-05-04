@@ -136,7 +136,7 @@ function handleClick(item: any, ind: number) {
         </div>
       </li>
     </TransitionGroup>
-    <div class="AppList-Info">
+    <div class="AppList-Info fake-background">
       <span v-if="search">{{ _list.length }} searched on this device.</span>
       <span v-else>{{ _list.length }} applications on this device.</span>
       <span class="order">
@@ -179,7 +179,8 @@ function handleClick(item: any, ind: number) {
 
   bottom: 0;
 
-  background-color: var(--el-fill-color);
+  // background-color: var(--el-fill-color);
+  backdrop-filter: blur(18px) saturate(180%);
 }
 
 .AppList-Toolbox {
