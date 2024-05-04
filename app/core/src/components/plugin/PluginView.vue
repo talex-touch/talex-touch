@@ -41,7 +41,13 @@ const done = computed(
   () => (status.value === 3 || status.value === 4) && loadDone.value
 );
 
-const webviewDom = ref(null);
+const webviewDom = ref();
+
+onBeforeUnmount(() => {
+  const webView = webviewDom.value
+
+  webView.closeDevTools()
+});
 
 function handleListeners(viewData, webview) {
   const { styles, js } = viewData;
