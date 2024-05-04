@@ -84,10 +84,11 @@ function handleClick(item: any, ind: number) {
 .AppList-Toolbox {
   z-index: 100;
   position: sticky;
-  padding: .25rem 0;
+  padding: .25rem;
 
   top: 0;
 
+  border-radius: 8px;
   background-color: var(--el-fill-color);
 }
 
