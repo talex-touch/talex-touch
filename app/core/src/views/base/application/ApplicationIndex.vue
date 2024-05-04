@@ -2,7 +2,7 @@
 import AppList from './AppList.vue'
 import AppConfigure from './AppConfigure.vue'
 import ApplicationEmpty from './ApplicationEmpty.vue'
-import { apps, search, appAmo } from '~/views/box/search-box'
+import { apps, search, appAmo, execute } from '~/views/box/search-box'
 import { touchChannel } from "~/modules/channel/channel-core";
 
 const props = defineProps<{
@@ -35,6 +35,10 @@ function handleSelect(item: any, _index: number) {
   curSelect.value = item;
   index.value = _index;
 }
+
+function handleExecute(item: any) {
+  execute(item)
+}
 </script>
 
 <template>
@@ -44,7 +48,7 @@ function handleSelect(item: any, _index: number) {
     </div>
     <div class="ApplicationContent">
       <ApplicationEmpty v-if="!curSelect" />
-      <AppConfigure v-else :data="curSelect" />
+      <AppConfigure v-else @execute="handleExecute" :data="curSelect" />
     </div>
   </div>
 </template>

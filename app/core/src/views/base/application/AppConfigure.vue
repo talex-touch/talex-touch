@@ -1,19 +1,92 @@
 <script name="AppConfigure" setup lang="ts">
-import fs from 'fs'
 import FlatButton from "@comp/base/button/FlatButton.vue";
+import cprocess from "child_process";
+import fs from 'fs'
+import path from 'path'
+import { appAmo } from '~/views/box/search-box'
+import { forTouchTip } from '~/modules/mention/dialog-mention'
 
 const props = defineProps<{
   data: any,
 }>()
 
+const emits = defineEmits<{
+  (e: 'execute', val: any): void
+}>()
+
 const info = ref()
 
-!(async () => {
-  const res = await fs.statSync(props.data.desc)
+watchEffect(() => {
+  $ignore: [props.data]
 
-  info.value = res
-  console.log('stats', res)
-})()
+  info.value = null
+
+  !(async () => {
+    const res = await fs.statSync(props.data.desc)
+
+    info.value = res
+  })()
+})
+
+function formatSize(size: number) {
+  return (size / 1024 / 1024).toFixed(2) + ' MB'
+}
+
+function formatTime(time: number) {
+  return new Date(time).toLocaleString()
+}
+
+function handleLaunch() {
+  // Avoid renderer interrupt
+
+  setTimeout(() => {
+    emits('execute', props.data)
+  }, 500)
+}
+
+function handleOpenExplorer() {
+  // Avoid renderer interrupt
+
+  setTimeout(() => {
+    cprocess.execSync(`explorer.exe /select,${props.data.desc}`)
+  }, 500)
+}
+
+function handleDelete() {
+  const targetPath = path.join(props.data.desc, '..')
+
+  console.log('targetpath', targetPath)
+
+  fs.readdir(targetPath, (err, files) => {
+    if (err) {
+      console.log(err)
+      return
+    }
+
+    let flag = false
+
+    files.forEach((file) => {
+      if (flag) return
+
+      if (file.toLowerCase().includes('uninstall')) {
+        flag = true
+
+        try {
+          cprocess.execSync(path.join(targetPath, file))
+        } catch (e) {
+          // open this exe
+          cprocess.execSync(`explorer.exe /select,${path.join(targetPath, file)}`)
+        }
+      }
+    })
+
+    if (!flag) {
+      forTouchTip("Not Found", "Cannot find uninstall program.", [
+        { content: "Got it", type: "error", onClick: async () => true }
+      ])
+    }
+  })
+}
 </script>
 
 <template>
@@ -32,16 +105,16 @@ const info = ref()
         <div class="AppConfigure-Content-Inner">
           <t-group-block name="Application action" icon="auction">
             <t-block-slot title="Launch app" icon="external-link">
-              <FlatButton>Launch</FlatButton>
+              <FlatButton @click="handleLaunch">Launch</FlatButton>
             </t-block-slot>
             <t-block-slot title="Open in explorer" icon="folder-2">
-              <FlatButton>Open</FlatButton>
+              <FlatButton @click="handleOpenExplorer">Open</FlatButton>
             </t-block-slot>
             <t-block-slot icon="delete-bin-2">
               <template #label>
                 <h3>Uninstall app <span color-red>(danger)</span></h3>
               </template>
-              <FlatButton hover:bg-red>Uninstall</FlatButton>
+              <FlatButton @click="handleDelete" hover:bg-red>Uninstall</FlatButton>
             </t-block-slot>
             <t-block-switch guidance title="Application Help" description="Find help through search engine."
               icon="search-2" />
@@ -60,9 +133,8 @@ const info = ref()
                 {{ data.keyWords }}
               </template>
             </t-block-line>
+            <t-block-line title="Trigger" :description="appAmo[data.name] || '-'"></t-block-line>
           </t-group-block>
-
-          {{ info }}
 
           <t-group-block v-if="info" name="Application specification (External)" icon="apps">
             <t-block-line title="Version">
@@ -70,7 +142,7 @@ const info = ref()
                 1
               </template>
             </t-block-line>
-            <t-block-line title="Size" :description="info.size"></t-block-line>
+            <t-block-line title="Size" :description="formatSize(info.size)"></t-block-line>
             <t-block-line title="Dev" :description="info.dev"></t-block-line>
             <t-block-line title="Ino" :description="info.ino"></t-block-line>
             <t-block-line title="Mode" :description="info.mode"></t-block-line>
@@ -79,9 +151,9 @@ const info = ref()
             <t-block-line title="Gid" :description="info.gid"></t-block-line>
             <t-block-line title="RDev" :description="info.rdev"></t-block-line>
             <t-block-line title="BlkSize" :description="info.blksize"></t-block-line>
-            <t-block-line title="AtimeMs" :description="info.atimeMs"></t-block-line>
-            <t-block-line title="CtimeMs" :description="info.ctimeMs"></t-block-line>
-            <t-block-line title="BirthTimeMs" :description="info.birthtimeMs"></t-block-line>
+            <t-block-line title="AtimeMs" :description="formatTime(info.atimeMs)"></t-block-line>
+            <t-block-line title="CtimeMs" :description="formatTime(info.ctimeMs)"></t-block-line>
+            <t-block-line title="BirthTimeMs" :description="formatTime(info.birthtimeMs)"></t-block-line>
           </t-group-block>
         </div>
       </el-scrollbar>

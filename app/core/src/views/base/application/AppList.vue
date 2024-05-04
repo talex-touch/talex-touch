@@ -13,7 +13,6 @@ const search = ref("")
 
 watch(() => search.value, val => {
   emits('search', val)
-  console.log("emits search", val)
   // _list.value = props.list.filter(item => item.name.includes(val))
 })
 
