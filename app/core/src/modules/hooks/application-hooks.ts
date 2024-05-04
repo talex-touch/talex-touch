@@ -71,14 +71,6 @@ export function usePlugin() {
     () => activePlugin.value,
     (val, oldVal) => {
       pluginManager.changeActivePlugin(val);
-
-      if (router && oldVal?.length && !val.length) {
-        router.push("/home");
-
-        setTimeout(() => {
-          router.push("/plugin");
-        }, 10);
-      }
     },
     { immediate: true }
   );

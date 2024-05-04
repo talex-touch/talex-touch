@@ -102,7 +102,7 @@ function handleListeners(viewData, webview) {
       }
     });
 
-    console.log("Webview did-finish-load", props.plugin);
+    // console.log("Webview did-finish-load", props.plugin);
     loadDone.value = true;
   });
 }
@@ -116,7 +116,7 @@ function init() {
   props.plugin.webViewInit = true;
 
   const webview = webviewDom.value;
-  console.log(props.plugin, webview, viewData);
+  // console.log(props.plugin, webview, viewData);
 
   viewData.el = webview.parentElement;
 
