@@ -51,7 +51,6 @@ function handleClick(item: any, ind: number) {
       </div>
       <li class="fake-background" :class="{ active: index === ind }" @click="handleClick(item, ind)"
         v-for="(item, ind) in list">
-        <!-- 生成一个经典的图标 + 标题 介绍 的布局 -->
         <img :src="item.icon" alt="">
 
         <div class="Main">
@@ -61,19 +60,33 @@ function handleClick(item: any, ind: number) {
         </div>
       </li>
     </ul>
+    <div class="AppList-Info">
+      <span>{{ list.length }} applications in this device.</span>
+    </div>
   </el-scrollbar>
 </template>
 
 <style lang="scss">
+.AppList-Info {
+  span {
+    opacity: .75;
+    font-size: .8rem;
+  }
+  position: sticky;
+  padding: .25rem .5rem;
+
+  bottom: 0;
+
+  background-color: var(--el-fill-color);
+}
+
 .AppList-Toolbox {
   z-index: 100;
   position: sticky;
   padding: .25rem 0;
-  // padding-bottom: .5rem;
 
   top: 0;
 
-  backdrop-filter: blur(10px);
   background-color: var(--el-fill-color);
 }
 
