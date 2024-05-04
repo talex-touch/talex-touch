@@ -75,6 +75,8 @@ function highlightText(text: string, matched: Array<any>) {
 
 .BoxItem {
   &.selected::after {
+    z-index: -1;
+
     left: 0;
     top: 0%;
 
@@ -86,6 +88,7 @@ function highlightText(text: string, matched: Array<any>) {
     transition: 0.25s;
     box-shadow: 0 0 4px 0 var(--el-color-primary);
   }
+
   &::after {
     content: "";
     position: absolute;

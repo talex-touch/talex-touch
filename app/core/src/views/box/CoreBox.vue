@@ -29,7 +29,7 @@ function onKeyDown(event: KeyboardEvent) {
 
       searchVal.value = "";
       select.value = -1
-    }, 150);
+    }, 300);
 
     // touchChannel.sendSync("core-box:run", searchVal.value);
   } else if (event.key === "ArrowDown") {
