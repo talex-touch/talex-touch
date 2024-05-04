@@ -28,7 +28,7 @@ onMounted(() => {
   touchChannel.regChannel(
     "plugin:message-transport",
     async ({ data: _data, reply }) => {
-      console.log("[Plugin] Receive message from plugin", _data)
+      // console.log("[Plugin] Receive message from plugin", _data)
       const { data, plugin } = _data
       if (!plugins.value.filter(item => item.name === plugin)?.length) {
         delete pendingLists[plugin]

@@ -10,7 +10,7 @@
       <TouchMenuItem route="/setting" name="Setting" icon="i-ri-settings-6-line" />
       <p class="FlatNavBar-Title">PLUGINS</p>
       <p op-50 font-size-3 text-center v-if="!plugins.length">NO PLUGIN INSTALLED.</p>
-      <TouchMenuItem @active="changeActivePlugin($event, item)" :doActive="() => activePlugin === item.name"
+      <TouchMenuItem :id="`touch-plugin-item-${item.name}`" @active="changeActivePlugin($event, item)" :doActive="() => activePlugin === item.name"
         v-for="item in plugins" :key="item.name">
         {{ item.name }}
       </TouchMenuItem>
@@ -27,7 +27,7 @@ import { inject } from "vue";
 const activePlugin = inject("activePlugin");
 const _plugins = inject("plugins");
 const plugins = computed(() =>
-  [...(_plugins.value || []) ].filter((item: ITouchPlugin) => item.status > 2 && item.status < 5)
+  [...(_plugins.value || [])].filter((item: ITouchPlugin) => item.status > 2 && item.status < 5)
 );
 
 function changeActivePlugin(event: Event, item: ITouchPlugin) {
