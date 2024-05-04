@@ -1,33 +1,57 @@
 <script name="ApplicationIndex" setup lang="ts">
 import AppList from './AppList.vue'
+import AppConfigure from './AppConfigure.vue'
+import ApplicationEmpty from './ApplicationEmpty.vue'
+import { apps, search, appAmo } from '~/views/box/search-box'
 import { touchChannel } from "~/modules/channel/channel-core";
 
 const props = defineProps<{
   modelValue?: boolean,
 }>()
 
-const apps = ref();
+const index = ref(-1)
+const curSelect = ref()
+const appList = ref(apps.value);
 
-!(async () => {
-  apps.value = await touchChannel.sendSync("core-box-get:apps");
+function handleSearch(value: string) {
+  if (!value.length) {
+    appList.value = apps.value
+    return
+  }
+  appList.value = []
 
-  console.log("apps", apps.value)
-})()
+  search(value, (v: any) => {
+    const amo = appAmo[v.name] || 0;
+    v.amo = amo;
+
+    const arr = [...appList.value, v].toSorted((b: any, a: any) => a.amo - b.amo);
+
+    appList.value = arr;
+  });
+
+}
+
+function handleSelect(item: any, _index: number) {
+  curSelect.value = item;
+  index.value = _index;
+}
 </script>
 
 <template>
   <div class="ApplicationIndex">
     <div class="ApplicationList">
-      <AppList :list="apps" />
+      <AppList :index="index" @select="handleSelect" @search="handleSearch" :list="appList" />
     </div>
     <div class="ApplicationContent">
-      This is application.
+      <ApplicationEmpty v-if="!curSelect" />
+      <AppConfigure v-else :data="curSelect" />
     </div>
   </div>
 </template>
 
 <style lang="scss">
 .ApplicationIndex {
+
   position: relative;
   display: flex;
   height: 100%;
@@ -37,6 +61,8 @@ const apps = ref();
     width: 30%;
     height: 100%;
     border-right: 1px solid var(--el-border-color);
+
+    flex-shrink: 0;
   }
 
   .ApplicationContent {

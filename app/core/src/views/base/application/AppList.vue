@@ -1,14 +1,47 @@
 <script name="AppList" setup lang="ts">
 const props = defineProps<{
   list: any[],
+  index: number,
+}>()
+const emits = defineEmits<{
+  (e: "search", val: string): void,
+  (e: "select", val: any): void,
 }>()
 
-const _list = ref(props.list)
+// const _list = ref(props.list)
 const search = ref("")
 
 watch(() => search.value, val => {
-  _list.value = props.list.filter(item => item.name.includes(val))
+  emits('search', val)
+  console.log("emits search", val)
+  // _list.value = props.list.filter(item => item.name.includes(val))
 })
+
+function highlightText(text: string, matched: Array<any>) {
+  let result = "";
+
+  const [startIndex, endIndex] = matched;
+
+  // replace text index 2 html
+  for (let i = 0; i < text.length; i++) {
+    if (i >= startIndex && i <= endIndex) {
+      result += `<span class="matched">${text[i]}</span>`;
+    } else {
+      result += text[i];
+    }
+  }
+
+  return result;
+}
+
+function handleClick(item: any, ind: number) {
+  // Repeat click => cancel
+  if (props.index === ind) {
+    emits('select', null, -1)
+    return
+  }
+  emits('select', item, ind)
+}
 </script>
 
 <template>
@@ -17,12 +50,14 @@ watch(() => search.value, val => {
       <div class="AppList-Toolbox">
         <FlatInput v-model="search" placeholder="Type to search..." :fetch="search" />
       </div>
-      <li v-for="item in _list">
+      <li class="fake-background" :class="{ active: index === ind }" @click="handleClick(item, ind)"
+        v-for="(item, ind) in list">
         <!-- 生成一个经典的图标 + 标题 介绍 的布局 -->
         <img :src="item.icon" alt="">
 
         <div class="Main">
-          <p>{{ item.name }}</p>
+          <p v-if="item.matched" v-html="highlightText(item.name, item.matched)" />
+          <p v-else v-text="item.name" />
           <!-- <p class="desc">{{ item.desc }}</p> -->
         </div>
       </li>
@@ -32,20 +67,34 @@ watch(() => search.value, val => {
 
 <style lang="scss">
 .AppList-Toolbox {
+  z-index: 100;
   position: sticky;
-  padding-bottom: .5rem;
+  padding: .25rem 0;
+  // padding-bottom: .5rem;
 
   top: 0;
 
   backdrop-filter: blur(10px);
+  background-color: var(--el-fill-color);
 }
 
 .AppList li {
+  &.active {
+    --fake-color: var(--el-color-primary-light-5);
+    border: 1px solid var(--el-color-primary);
+  }
+
   padding: 0 .5rem;
+
+  top: .5rem;
 
   display: flex;
   align-items: center;
   gap: .5rem;
+
+  cursor: pointer;
+  transition: .25s;
+  border: 1px solid transparent;
 
   img {
     width: 2rem;
@@ -80,7 +129,7 @@ watch(() => search.value, val => {
     overflow: hidden;
 
     border-radius: 8px;
-    background-color: var(--el-fill-color);
+    --fake-color: var(--el-fill-color);
   }
 }
 </style>
