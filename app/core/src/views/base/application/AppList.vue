@@ -125,7 +125,7 @@ function handleClick(item: any, ind: number) {
           <i v-if="orderWay === 3" class="i-ri-sort-number-asc" />
         </span>
       </div>
-      <li class="fake-background" :class="{ active: index === ind }" @click="handleClick(item, ind)"
+      <li :index="ind" class="fake-background" :class="{ active: index === ind }" @click="handleClick(item, ind)"
         v-for="(item, ind) in _list">
         <img :src="item.icon" alt="">
 
