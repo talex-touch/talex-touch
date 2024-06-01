@@ -35,7 +35,7 @@
     "pnpm": "^8.15.4",
     "simple-git-hooks": "^2.9.0",
     "taze": "^0.13.3",
-    "typescript": "^5.3.3",
+    "typescript": "^5.4.5",
     "unocss": "^0.58.5",
     "unplugin-auto-import": "^0.17.5",
     "unplugin-vue-components": "^0.26.0",
