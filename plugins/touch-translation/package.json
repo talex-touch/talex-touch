@@ -26,7 +26,7 @@
     "@unocss/eslint-plugin": "^0.58.5",
     "@unocss/reset": "^0.58.5",
     "@vitejs/plugin-vue": "^5.0.4",
-    "@vue-macros/volar": "^0.18.11",
+    "@vue-macros/volar": "^0.21.1",
     "@vue/test-utils": "^2.4.4",
     "eslint": "^8.57.0",
     "eslint-plugin-format": "^0.1.0",
