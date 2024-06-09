@@ -28,7 +28,7 @@
     "@milkdown/transformer": "^7.3.6",
     "@rollup/plugin-commonjs": "^25.0.7",
     "@talex-touch/utils": "workspace:^",
-    "@unocss/transformer-attributify-jsx": "^0.58.9",
+    "@unocss/transformer-attributify-jsx": "^0.60.4",
     "@vueuse/core": "^10.9.0",
     "child_process": "^1.0.2",
     "chokidar": "^3.6.0",
