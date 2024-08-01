@@ -62,7 +62,7 @@
     "compressing": "^1.10.0",
     "crypto-js": "^4.2.0",
     "dayjs": "^1.11.10",
-    "element-plus": "^2.5.6",
+    "element-plus": "^2.7.8",
     "fs-extra": "^11.2.0",
     "graceful-fs": "^4.2.11",
     "gsap": "^3.12.5",
