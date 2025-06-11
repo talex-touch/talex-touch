@@ -35,9 +35,19 @@ export class TouchEventBus implements ITouchEventBus<TalexEvents> {
   map: Map<TalexEvents, Set<TouchEventHandlerWrapper>> = new Map();
 
   emit<T extends ITouchEvent<TalexEvents>>(event: TalexEvents, data: T): void {
-    const handlers = this.map.get(event) || new Set<TouchEventHandlerWrapper>();
+    const handlers = this.map.get(event);
+    if (!handlers)
+      return;
 
-    ;[...handlers].forEach((h) => h.handler(data));
+    for (const h of [...handlers]) {
+      h.handler(data);
+
+      if (h.type === EventType.CONSUME)
+        handlers.delete(h);
+    }
+
+    if (!handlers.size)
+      this.map.delete(event);
   }
 
   on(event: TalexEvents, handler: EventHandler): boolean | void {
@@ -213,7 +223,7 @@ export class WindowAllClosedEvent implements ITouchEvent<TalexEvents> {
      * `will-quit` event, and in this case the `window-all-closed` event would not be
      * emitted.
      */
-  name: TalexEvents = TalexEvents.WILL_QUIT;
+  name: TalexEvents = TalexEvents.WINDOW_ALL_CLOSED;
 
   constructor() {
   }
