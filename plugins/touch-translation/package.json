@@ -23,7 +23,7 @@
     "@iconify-json/carbon": "^1.2.8",
     "@types/node": "^20.17.50",
     "@unocss/eslint-config": "^0.58.9",
-    "@unocss/eslint-plugin": "^0.58.9",
+    "@unocss/eslint-plugin": "^66.3.3",
     "@unocss/reset": "^0.58.9",
     "@vitejs/plugin-vue": "^5.2.4",
     "@vue-macros/volar": "^0.18.18",
