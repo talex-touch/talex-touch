@@ -27,7 +27,7 @@
     "@milkdown/prose": "^7.11.1",
     "@milkdown/theme-nord": "^7.11.1",
     "@milkdown/transformer": "^7.11.1",
-    "@rollup/plugin-commonjs": "^25.0.8",
+    "@rollup/plugin-commonjs": "^28.0.6",
     "@talex-touch/utils": "workspace:^",
     "@unocss/transformer-attributify-jsx": "^0.58.9",
     "@vueuse/core": "^10.11.1",
