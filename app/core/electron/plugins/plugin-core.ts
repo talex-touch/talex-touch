@@ -416,7 +416,7 @@ class TouchPlugin implements ITouchPlugin {
             console.error(`[Plugin ${this.name}] Failed to push search results to CoreBox:`, error);
           });
 
-          console.log(`[Plugin ${this.name}] Successfully sent ${items.length} search results to CoreBox`);
+          console.debug(`[Plugin ${this.name}] Successfully sent ${items.length} search results to CoreBox`);
         } else {
           console.warn(`[Plugin ${this.name}] CoreBox window not available for pushing search results - window exists: ${!!coreBoxWindow}, destroyed: ${coreBoxWindow?.window.isDestroyed()}`);
         }
