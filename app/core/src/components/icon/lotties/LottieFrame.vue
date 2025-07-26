@@ -4,15 +4,8 @@
   </div>
 </template>
 
-<script>
-export default {
-  name: "LottieFrame"
-}
-</script>
-
-<script setup>
-import { onMounted, ref, watchEffect } from 'vue'
-import Lottie from 'lottie-web'
+<script name="LottieFrame" setup>
+const lottie = require('lottie-web')
 
 const props = defineProps({
   data: {
@@ -29,7 +22,7 @@ const dom = ref()
 onMounted(() => {
   const el = dom.value
 
-  const animation = Lottie.loadAnimation({
+  const animation = lottie.loadAnimation({
     container: el,
     renderer: 'svg',
     loop: props.loop,

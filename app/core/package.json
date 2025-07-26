@@ -49,6 +49,7 @@
     "iconv-lite": "^0.6.3",
     "js-md5": "^0.8.3",
     "log4js": "^6.9.1",
+    "lottie-web": "^5.13.0",
     "mousetrap": "^1.6.5",
     "original-fs": "^1.2.0",
     "pinia": "^3.0.3",
@@ -67,6 +68,7 @@
     "xterm-addon-fit": "^0.8.0"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.6",
     "@types/node": "^24.1.0",
     "@unocss/preset-attributify": "^66.3.3",
     "@unocss/preset-icons": "^66.3.3",
