@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: core-app
+appId: com.tagzxia.app.talex-touch
+productName: talex-touch
 directories:
   buildResources: build
 files:
@@ -12,12 +12,16 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: core-app
+  executableName: talex-touch
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
@@ -33,11 +37,11 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: tagzxia.com
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
   provider: generic
-  url: https://example.com/auto-updates
+  url: https://publish.talex-touch.tagzxia.com/auto-updates

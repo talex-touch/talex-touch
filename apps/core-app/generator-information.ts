@@ -1,5 +1,5 @@
 import fse from 'fs-extra'
-import pkg from './package.json'
+import pkg from '../../app/core/package.json'
 import path from 'path'
 
 console.log('[Talex-Touch] Generate Information ...')
