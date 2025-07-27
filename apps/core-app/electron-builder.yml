@@ -3,14 +3,17 @@ productName: talex-touch
 directories:
   buildResources: build
 files:
+  - out/**/*
+  - node_modules/**/*
+  - resources/**/*
+  - package.json
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-asarUnpack:
-  - resources/**
+
 win:
   executableName: talex-touch
 nsis:
@@ -30,8 +33,9 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
-dmg:
-  artifactName: ${name}-${version}.${ext}
+  target:
+    - target: zip
+      arch: [arm64, x64]
 linux:
   target:
     - AppImage
@@ -42,6 +46,7 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
+includeSubNodeModules: false
 publish:
   provider: generic
   url: https://publish.talex-touch.tagzxia.com/auto-updates

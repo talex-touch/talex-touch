@@ -1,6 +1,8 @@
 import fse from 'fs-extra'
-import pkg from '../../app/core/package.json'
+import pkg from './package.json'
 import path from 'path'
+
+import type { Plugin } from 'vite'
 
 console.log('[Talex-Touch] Generate Information ...')
 
@@ -41,7 +43,7 @@ let genSignature = () => {
 }
 
 
-export default function generatorInformation() {
+export default function generatorInformation(): Plugin {
   const virtualModuleId = 'talex-touch:information'
   const resolvedVirtualModuleId = '\0' + virtualModuleId
 
@@ -58,11 +60,12 @@ export default function generatorInformation() {
       if (id === virtualModuleId) {
         return resolvedVirtualModuleId
       }
+      return null
     },
     buildStart() {
       const informationPath = path.resolve(config.root, 'src/distinformation.json')
 
-      // 获取构建类型
+      // Get build type
       const buildType = process.env.BUILD_TYPE || 'release'
       const isSnapshot = buildType === 'snapshot'
       const isBeta = buildType === 'beta'

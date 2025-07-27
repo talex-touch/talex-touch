@@ -42,7 +42,13 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron"
-    ]
+      "@parcel/watcher",
+      "electron",
+      "esbuild"
+    ],
+    "overrides": {
+      "vite": "7.0.6",
+      "@types/node": "24.1.0"
+    }
   }
 }

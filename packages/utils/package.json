@@ -1,5 +1,5 @@
 {
-  "main": "./index.ts",
+  "main": "index.ts",
   "name": "@talex-touch/utils",
   "author": "TalexDreamSoul",
   "module": "./index.ts",

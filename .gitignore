@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
+.DS_Store*
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -133,3 +134,4 @@ t/
 app/core/signature.json
 app/core/src/information.json
 app/core/src/distinformation.json
+apps/core-app/signature.json
