@@ -43,8 +43,13 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "@parcel/watcher",
+      "@swc/core",
       "electron",
-      "esbuild"
+      "electron-clipboard-ex",
+      "esbuild",
+      "extract-file-icon",
+      "simple-git-hooks",
+      "vue-demi"
     ],
     "overrides": {
       "vite": "7.0.6",

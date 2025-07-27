@@ -72,5 +72,6 @@
   },
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "python.defaultInterpreterPath": "/Users/talexdreamsoul/.local/share/mise/installs/python/3.11.13/bin/python"
 }

@@ -119,6 +119,7 @@ export default function generatorInformation(): Plugin {
 
       return `
         const information = ${JSON.stringify(information)}
+        export const packageJson = ${JSON.stringify(pkg)}
 
         export default information
       `
