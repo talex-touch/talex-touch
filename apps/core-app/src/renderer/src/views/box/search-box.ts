@@ -1,5 +1,5 @@
 import { touchChannel } from "~/modules/channel/channel-core";
-import cprocess from "child_process";
+// import cprocess from "child_process";
 import { ref } from "vue";
 import type { IFeatureCommand, IPluginIcon } from '@talex-touch/utils/plugin';
 import { handleItemData } from './search-core';
@@ -94,20 +94,21 @@ export function execute(item: any, query: any = '') {
   if (type === 'app' || pluginType === 'app') {
     touchChannel.sendSync("core-box:hide");
 
-    cprocess.exec(action, (error) => {
-      if (error) {
-        console.error(`Failed to launch app: ${error.message}`);
+    // TODO: complete this part
+    // cprocess.exec(action, (error) => {
+    //   if (error) {
+    //     console.error(`Failed to launch app: ${error.message}`);
 
-        if (process.platform === 'darwin' && action.startsWith('open ')) {
-          const appPath = action.replace('open ', '').replace(/\\ /g, ' ');
-          cprocess.exec(`open -a "${appPath}"`, (altError) => {
-            if (altError) {
-              console.error(`Alternative launch failed: ${altError.message}`);
-            }
-          });
-        }
-      }
-    });
+    //     if (process.platform === 'darwin' && action.startsWith('open ')) {
+    //       const appPath = action.replace('open ', '').replace(/\\ /g, ' ');
+    //       cprocess.exec(`open -a "${appPath}"`, (altError) => {
+    //         if (altError) {
+    //           console.error(`Alternative launch failed: ${altError.message}`);
+    //         }
+    //       });
+    //     }
+    //   }
+    // });
   }
   else if (type === 'plugin') {
     if (pluginType === 'feature' || pluginType === 'cmd') {

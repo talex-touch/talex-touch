@@ -135,3 +135,4 @@ app/core/signature.json
 app/core/src/information.json
 app/core/src/distinformation.json
 apps/core-app/signature.json
+apps/core-app/src/renderer/src/distinformation.json

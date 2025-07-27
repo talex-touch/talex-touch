@@ -17,24 +17,29 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const basePath = path.join(__dirname, 'src')
+const rendererPath = path.join(basePath, 'renderer', 'src')
 
 export default defineConfig({
   main: {
 
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin({
+      exclude: ['@talex-touch/utils', 'pinyin-match']
+    })]
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin({
+      exclude: ['@talex-touch/utils', 'pinyin-match']
+    })]
   },
   renderer: {
     resolve: {
       alias: {
-        '@renderer': path.resolve(basePath, 'renderer/src'),
-        '@modules': path.join(basePath, 'modules'),
-        '@comp': path.join(basePath, 'components'),
-        '@styles': path.join(basePath, 'styles'),
-        '@assets': path.join(basePath, 'assets'),
-        '~': basePath
+        '@renderer': rendererPath,
+        '@modules': path.join(rendererPath, 'modules'),
+        '@comp': path.join(rendererPath, 'components'),
+        '@styles': path.join(rendererPath, 'styles'),
+        '@assets': path.join(rendererPath, 'assets'),
+        '~': rendererPath
       }
     },
     plugins: [

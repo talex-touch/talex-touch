@@ -224,7 +224,7 @@ export class TouchApp implements TalexTouch.TouchApp {
         devtools: this.version === TalexTouch.AppVersion.DEV,
       });
     } else {
-      const url = process.env["VITE_DEV_SERVER_URL"] as string;
+      const url = process.env["ELECTRON_RENDERER_URL"] as string;
 
       this.window.window.show();
       console.log("[TouchApp] Loading (mainWindow) webContents from: " + url);

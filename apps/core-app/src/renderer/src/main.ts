@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import App from '../../../apps/core-app/src/renderer/src/App.vue'
+import App from './App.vue'
 
 import {
     SharedElementRouteGuard,
