@@ -286,7 +286,9 @@ onUnmounted(() => {
   width: 50%;
   height: 50%;
 
+  gap: 4rem;
   align-items: center;
+  flex-direction: column;
   justify-content: center;
 
   transform: translate(-50%, -50%);

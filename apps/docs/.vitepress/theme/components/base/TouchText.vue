@@ -15,8 +15,8 @@
   position: relative;
   display: flex;
 
-  width: 100%;
-  height: 100%;
+  width: max-content;
+  height: max-content;
 
   align-items: center;
   justify-content: center;

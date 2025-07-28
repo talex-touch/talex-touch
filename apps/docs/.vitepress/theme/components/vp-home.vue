@@ -19,6 +19,7 @@ const submitWaitlist = () => {
     <TouchBanner>
       <template #center>
         <TouchText />
+        <p>A strong adaptation more platform all-tool program.</p>
       </template>
     </TouchBanner>
 
