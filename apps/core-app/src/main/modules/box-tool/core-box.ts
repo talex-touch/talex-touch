@@ -1,124 +1,122 @@
-import { clipboardManager } from '../clipboard';
-import { genTouchApp, TouchApp, TouchWindow } from "../../core/touch-core";
-import { BoxWindowOption } from "../../config/default";
-import { ChannelType, DataCode } from "@talex-touch/utils/channel";
-import { globalShortcut, screen, app } from "electron";
-import { getAppsAsync, appDataManager } from "./addon/app-addon";
-import { TalexTouch } from "../../types";
-import path from "path";
-import type { IPluginFeature } from '@talex-touch/utils/plugin';
-import { genPluginManager } from '../../plugins/plugin-core';
-import { getConfig } from '../../core/storage';
-import { StorageList, type AppSetting } from '@talex-touch/utils';
+import { clipboardManager } from '../clipboard'
+import { genTouchApp, TouchApp, TouchWindow } from '../../core/touch-core'
+import { BoxWindowOption } from '../../config/default'
+import { ChannelType, DataCode } from '@talex-touch/utils/channel'
+import { globalShortcut, screen, app } from 'electron'
+import { getAppsAsync, appDataManager } from './addon/app-addon'
+import { TalexTouch } from '../../types'
+import path from 'path'
+import type { IPluginFeature } from '@talex-touch/utils/plugin'
+import { genPluginManager } from '../../plugins/plugin-core'
+import { getConfig } from '../../core/storage'
+import { StorageList, type AppSetting } from '@talex-touch/utils'
 
-let touchApp: TouchApp;
-let coreBoxManagerInstance: CoreBoxManager | null = null;
+let touchApp: TouchApp
+let coreBoxManagerInstance: CoreBoxManager | null = null
 
 /**
  * Gets the current CoreBox window instance for direct communication
  * @returns The current CoreBox window or null if not available
  */
 export function getCoreBoxWindow(): TouchWindow | null {
-  return coreBoxManagerInstance?.nowWindow || null;
+  return coreBoxManagerInstance?.nowWindow || null
 }
 
 async function createNewBoxWindow(closeCallback: Function) {
-  const window = new TouchWindow({ ...BoxWindowOption });
+  const window = new TouchWindow({ ...BoxWindowOption })
 
   setTimeout(async () => {
-    console.log("[CoreBox] NewBox created, injecting developing tools ...");
+    console.log('[CoreBox] NewBox created, injecting developing tools ...')
 
     if (app.isPackaged || touchApp.version === TalexTouch.AppVersion.RELEASE) {
-      const url = path.join(process.env.DIST!, "index.html");
+      const url = path.join(process.env.DIST!, 'index.html')
 
       await window.loadFile(`${url}`, {
-        devtools: touchApp.version === TalexTouch.AppVersion.DEV,
-      });
+        devtools: touchApp.version === TalexTouch.AppVersion.DEV
+      })
     } else {
-      const url = process.env["VITE_DEV_SERVER_URL"] as string;
+      const url = process.env['ELECTRON_RENDERER_URL'] as string
 
-      await window.loadURL(url/* , { devtools: true } */);
+      await window.loadURL(url /* , { devtools: true } */)
 
       window.openDevTools({
         mode: 'detach'
       })
     }
 
-    window.window.hide();
-  }, 200);
+    window.window.hide()
+  }, 200)
 
-  window.window.webContents.addListener("dom-ready", () => {
+  window.window.webContents.addListener('dom-ready', () => {
     console.log(
-      "[CoreBox] BoxWindow " +
-      window.window.webContents.id +
-      " dom loaded, injecting ..."
-    );
+      '[CoreBox] BoxWindow ' + window.window.webContents.id + ' dom loaded, injecting ...'
+    )
 
     window.window.webContents.executeJavaScript(`
     document.body.classList.add('core-box');
     window.$coreBox = {
       enabled: true
     }
-  `);
+  `)
 
-    touchApp.channel.sendTo(window.window, ChannelType.MAIN, "core-box:trigger", {
+    touchApp.channel.sendTo(window.window, ChannelType.MAIN, 'core-box:trigger', {
       id: window.window.webContents.id,
-      show: false,
-    });
-  });
+      show: false
+    })
+  })
 
-  window.window.addListener("closed", () => {
-    closeCallback(window);
+  window.window.addListener('closed', () => {
+    closeCallback(window)
 
-    clipboardManager.unregisterWindow(window);
+    clipboardManager.unregisterWindow(window)
 
-    console.log("[CoreBox] BoxWindow closed!");
-  });
+    console.log('[CoreBox] BoxWindow closed!')
+  })
 
-  clipboardManager.registerWindow(window);
+  clipboardManager.registerWindow(window)
 
-  console.log("[CoreBox] NewBox created, WebContents loaded!");
+  console.log('[CoreBox] NewBox created, WebContents loaded!')
 
-  return window;
+  return window
 }
 
 export class CoreBoxManager {
-  #_show: boolean;
-  #_expand: number;
-  windows: Array<TouchWindow>;
-  resList: Array<any>;
+  #_show: boolean
+  #_expand: number
+  windows: Array<TouchWindow>
+  resList: Array<any>
 
-  lastWindow: Electron.Display | null;
+  lastWindow: Electron.Display | null
 
   constructor() {
-    this.#_show = false;
-    this.#_expand = 0;
-    this.resList = [];
-    this.windows = [];
-    this.lastWindow = null;
+    this.#_show = false
+    this.#_expand = 0
+    this.resList = []
+    this.windows = []
+    this.lastWindow = null
 
     // Set the global instance for external access
-    coreBoxManagerInstance = this;
+    coreBoxManagerInstance = this
 
     // Always match the last window => popover window
-    this.init().then(() => this.register());
+    this.init().then(() => this.register())
   }
 
   get getCurScreen() {
     try {
-      const cursorPoint = screen.getCursorScreenPoint();
-      const curScreen = screen.getDisplayNearestPoint(cursorPoint);
+      const cursorPoint = screen.getCursorScreenPoint()
+      const curScreen = screen.getDisplayNearestPoint(cursorPoint)
 
       if (!curScreen) {
-        console.warn("[CoreBox] No screen found for cursor point, using primary display");
-        return screen.getPrimaryDisplay();
+        console.warn('[CoreBox] No screen found for cursor point, using primary display')
+        return screen.getPrimaryDisplay()
       }
 
-      return curScreen;
+      return curScreen
     } catch (error) {
-      console.error("[CoreBox] Error getting current screen:", error);
+      console.error('[CoreBox] Error getting current screen:', error)
 
-      return screen.getPrimaryDisplay();
+      return screen.getPrimaryDisplay()
     }
   }
 
@@ -128,83 +126,87 @@ export class CoreBoxManager {
 
   async init() {
     const w = await createNewBoxWindow((window: TalexTouch.ITouchWindow) => {
-      this.windows = this.windows.filter((w) => w !== window);
-    });
+      this.windows = this.windows.filter((w) => w !== window)
+    })
 
-    this.initWindow(w);
+    this.initWindow(w)
 
-    this.windows.push(w);
+    this.windows.push(w)
   }
 
   initWindow(window: TouchWindow) {
-    window.window.addListener("blur", () => {
-      if (this.nowWindow !== window) return;
+    window.window.addListener('blur', () => {
+      if (this.nowWindow !== window) return
 
       const appSettingConfig = this.getAppSettingConfig()
 
-      if ( !appSettingConfig.tools.autoHide ) return
+      if (!appSettingConfig.tools.autoHide) return
 
-      if (this.#_show) this.trigger(false);
-    });
+      if (this.#_show) this.trigger(false)
+    })
 
     // register clipboard listen in clipboard manager
-    clipboardManager.registerWindow(window);
+    clipboardManager.registerWindow(window)
   }
 
   get showCoreBox() {
-    return this.#_show;
+    return this.#_show
   }
 
   get nowWindow() {
-    return this.windows[this.windows.length - 1];
+    return this.windows[this.windows.length - 1]
   }
 
   updateWindowPos(window: TouchWindow, screen: Electron.Display) {
     if (!screen || !screen.bounds) {
-      console.error("[CoreBox] Invalid screen object:", screen);
-      return;
+      console.error('[CoreBox] Invalid screen object:', screen)
+      return
     }
 
-    const { bounds } = screen;
+    const { bounds } = screen
 
-    if (typeof bounds.x !== 'number' || typeof bounds.y !== 'number' ||
-        typeof bounds.width !== 'number' || typeof bounds.height !== 'number') {
-      console.error("[CoreBox] Invalid bounds properties:", bounds);
-      return;
+    if (
+      typeof bounds.x !== 'number' ||
+      typeof bounds.y !== 'number' ||
+      typeof bounds.width !== 'number' ||
+      typeof bounds.height !== 'number'
+    ) {
+      console.error('[CoreBox] Invalid bounds properties:', bounds)
+      return
     }
 
-    const left = Math.round(bounds.x + bounds.width / 2 - 450);
-    const top = Math.round(bounds.y + bounds.height * 0.25);
+    const left = Math.round(bounds.x + bounds.width / 2 - 450)
+    const top = Math.round(bounds.y + bounds.height * 0.25)
 
     if (isNaN(left) || isNaN(top)) {
-      console.error("[CoreBox] Invalid position calculation:", { left, top, bounds });
-      return;
+      console.error('[CoreBox] Invalid position calculation:', { left, top, bounds })
+      return
     }
 
     try {
-      window.window.setPosition(left, top);
-      window.window.show();
+      window.window.setPosition(left, top)
+      window.window.show()
       setTimeout(() => {
-        window.window.focus();
-      }, 100);
+        window.window.focus()
+      }, 100)
     } catch (error) {
-      console.error("[CoreBox] Failed to set window position:", error);
+      console.error('[CoreBox] Failed to set window position:', error)
     }
   }
 
   register() {
-    globalShortcut.register("CommandOrControl+E", () => {
-      const curScreen = this.getCurScreen;
+    globalShortcut.register('CommandOrControl+E', () => {
+      const curScreen = this.getCurScreen
       if (this.lastWindow && curScreen && curScreen.id !== this.lastWindow.id) {
-        const currentWindow = this.nowWindow;
+        const currentWindow = this.nowWindow
         if (currentWindow) {
-          this.updateWindowPos(currentWindow, curScreen);
-          this.lastWindow = curScreen;
+          this.updateWindowPos(currentWindow, curScreen)
+          this.lastWindow = curScreen
         } else {
-          console.error("[CoreBox] No current window available");
+          console.error('[CoreBox] No current window available')
         }
-      } else this.trigger(!this.#_show);
-    });
+      } else this.trigger(!this.#_show)
+    })
 
     // globalShortcut.register("CommandOrControl+D", () => {
     //   const w = this.nowWindow;
@@ -212,185 +214,177 @@ export class CoreBoxManager {
 
     //   console.log("divide");
     // });
-    touchApp.channel.regChannel(
-      ChannelType.MAIN,
-      "file:extract-icon",
-      async ({ data, reply }) => {
-        try {
-          const { path } = data as { path: string };
-          const fileIcon = (await import("extract-file-icon")).default;
-          if (typeof fileIcon !== "function") {
-            return;
+    touchApp.channel.regChannel(ChannelType.MAIN, 'file:extract-icon', async ({ data, reply }) => {
+      try {
+        const { path } = data as { path: string }
+        const fileIcon = (await import('extract-file-icon')).default
+        if (typeof fileIcon !== 'function') {
+          return
+        }
+
+        const buffer = fileIcon(path, 32)
+        reply(DataCode.SUCCESS, {
+          buffer
+        })
+      } catch (e) {
+        console.log('Cannot find target file icon:', path)
+      }
+    })
+
+    touchApp.channel.regChannel(ChannelType.MAIN, 'core-box:hide', () => this.trigger(false))
+    touchApp.channel.regChannel(ChannelType.MAIN, 'core-box:expand', ({ data }: any) =>
+      data ? this.expand(data) : this.shrink()
+    )
+    touchApp.channel.regChannel(ChannelType.MAIN, 'core-box-get:apps', async ({ reply }) => {
+      try {
+        console.log('[CoreBox] Received request for apps data')
+
+        const apps = await getAppsAsync()
+        console.log(`[CoreBox] Sending ${apps.length} apps to frontend`)
+
+        const appsWithIcons = apps.filter((app) => app.icon)
+        const appsWithoutIcons = apps.filter((app) => !app.icon)
+        console.log(
+          `[CoreBox] Apps with icons: ${appsWithIcons.length}, without icons: ${appsWithoutIcons.length}`
+        )
+
+        reply(DataCode.SUCCESS, apps)
+      } catch (error) {
+        console.error('[CoreBox] Failed to get apps:', error)
+        reply(DataCode.ERROR, [])
+      }
+    })
+    touchApp.channel.regChannel(ChannelType.MAIN, 'core-box-get:features', () => {
+      const features: IPluginFeature[] = []
+      const pluginManager = genPluginManager()
+      const plugins = [...pluginManager.plugins.values()]
+
+      console.debug(`[CoreBox] Processing ${plugins.length} plugins for features`)
+
+      plugins.forEach((plugin, pluginIndex) => {
+        const pluginFeatures = [...plugin.features]
+        console.log(
+          `[CoreBox] Plugin ${pluginIndex} "${plugin.name}" has ${pluginFeatures.length} features`
+        )
+
+        pluginFeatures.forEach((feature, featureIndex) => {
+          const processedFeature = {
+            ...feature,
+            names: [feature.name],
+            keyWords: [],
+            pluginType: 'feature',
+            type: 'plugin',
+            value: plugin.name,
+            featureId: feature.id
           }
 
-          const buffer = fileIcon(path, 32);
-          reply(DataCode.SUCCESS, {
-            buffer
-          })
-        } catch (e) {
-          console.log("Cannot find target file icon:", path);
-        }
-      }
-    );
+          console.debug(
+            `[CoreBox] Adding feature ${featureIndex}: "${feature.name}" (desc: "${feature.desc}") from plugin "${plugin.name}"`
+          )
 
-    touchApp.channel.regChannel(
-      ChannelType.MAIN,
-      "core-box:hide",
-      () => this.trigger(false)
-    );
-    touchApp.channel.regChannel(
-      ChannelType.MAIN,
-      "core-box:expand",
-      ({ data }: any) => (data ? this.expand(data) : this.shrink())
-    );
-    touchApp.channel.regChannel(
-      ChannelType.MAIN,
-      "core-box-get:apps",
-      async ({ reply }) => {
-        try {
-          console.log("[CoreBox] Received request for apps data");
-
-          const apps = await getAppsAsync()
-          console.log(`[CoreBox] Sending ${apps.length} apps to frontend`);
-
-          const appsWithIcons = apps.filter(app => app.icon);
-          const appsWithoutIcons = apps.filter(app => !app.icon);
-          console.log(`[CoreBox] Apps with icons: ${appsWithIcons.length}, without icons: ${appsWithoutIcons.length}`);
-
-          reply(DataCode.SUCCESS, apps)
-        } catch (error) {
-          console.error("[CoreBox] Failed to get apps:", error)
-          reply(DataCode.ERROR, [])
-        }
-      }
-    );
-    touchApp.channel.regChannel(
-      ChannelType.MAIN,
-      "core-box-get:features",
-      () => {
-        const features: IPluginFeature[] = []
-        const pluginManager = genPluginManager();
-        const plugins = [...pluginManager.plugins.values()];
-
-        console.debug(`[CoreBox] Processing ${plugins.length} plugins for features`);
-
-        plugins.forEach((plugin, pluginIndex) => {
-          const pluginFeatures = [...plugin.features];
-          console.log(`[CoreBox] Plugin ${pluginIndex} "${plugin.name}" has ${pluginFeatures.length} features`);
-
-          pluginFeatures.forEach((feature, featureIndex) => {
-            const processedFeature = {
-              ...feature,
-              names: [feature.name],
-              keyWords: [],
-              pluginType: "feature",
-              type: "plugin",
-              value: plugin.name,
-              featureId: feature.id
-            };
-
-            console.debug(`[CoreBox] Adding feature ${featureIndex}: "${feature.name}" (desc: "${feature.desc}") from plugin "${plugin.name}"`);
-
-            // Check for potential duplicates
-            const existingFeature = features.find(f =>
+          // Check for potential duplicates
+          const existingFeature = features.find(
+            (f) =>
               f.name === processedFeature.name &&
               f.desc === processedFeature.desc &&
               f.id === processedFeature.featureId
-            );
+          )
 
-            if (existingFeature) {
-              console.warn(`[CoreBox] Potential duplicate feature detected: "${feature.name}" from "${plugin.name}"`);
-            }
+          if (existingFeature) {
+            console.warn(
+              `[CoreBox] Potential duplicate feature detected: "${feature.name}" from "${plugin.name}"`
+            )
+          }
 
-            features.push(processedFeature);
-          });
-        });
+          features.push(processedFeature)
+        })
+      })
 
-        console.log(`[CoreBox] Returning ${features.length} total features`);
-        return features;
-      }
-    );
-
-
+      console.log(`[CoreBox] Returning ${features.length} total features`)
+      return features
+    })
   }
 
   expand(length: number = 100) {
-    this.#_expand = length;
+    this.#_expand = length
 
-    const height = Math.min(length * 48 + 65, 550);
+    const height = Math.min(length * 48 + 65, 550)
 
-    this.nowWindow.window.setMinimumSize(900, height);
-    this.nowWindow.window.setSize(900, height, false);
+    this.nowWindow.window.setMinimumSize(900, height)
+    this.nowWindow.window.setSize(900, height, false)
 
-    console.debug("[CoreBox] Expanded.");
+    console.debug('[CoreBox] Expanded.')
   }
 
   shrink() {
-    this.#_expand = 0;
+    this.#_expand = 0
 
-    this.nowWindow.window.setMinimumSize(900, 60);
-    this.nowWindow.window.setSize(900, 60, false);
-    console.debug("[CoreBox] Shrunk.");
+    this.nowWindow.window.setMinimumSize(900, 60)
+    this.nowWindow.window.setSize(900, 60, false)
+    console.debug('[CoreBox] Shrunk.')
   }
 
   lastTrigger: number = -1
 
   trigger(show: boolean) {
-    if (Date.now() - this.lastTrigger < 200) return;
-    this.lastTrigger = Date.now();
+    if (Date.now() - this.lastTrigger < 200) return
+    this.lastTrigger = Date.now()
 
-    this.#_show = show;
+    this.#_show = show
 
-    const w = this.nowWindow;
+    const w = this.nowWindow
 
-    w.window.setAlwaysOnTop(show);
+    w.window.setAlwaysOnTop(show)
 
     if (show) {
-      appDataManager.onCoreBoxShow().catch(error => {
-        console.error("[CoreBox] Failed to refresh app data on show:", error);
-      });
+      appDataManager.onCoreBoxShow().catch((error) => {
+        console.error('[CoreBox] Failed to refresh app data on show:', error)
+      })
 
       if (!this.#_expand) {
-        w.window.setMinimumSize(900, 60);
-        w.window.setSize(900, 60, false);
-      } else this.expand(this.#_expand);
+        w.window.setMinimumSize(900, 60)
+        w.window.setSize(900, 60, false)
+      } else this.expand(this.#_expand)
 
-      touchApp.channel.sendTo(w.window, ChannelType.MAIN, "core-box:trigger", {
+      touchApp.channel.sendTo(w.window, ChannelType.MAIN, 'core-box:trigger', {
         id: w.window.webContents.id,
-        show: true,
-      });
+        show: true
+      })
 
-      const curScreen = (this.lastWindow = this.getCurScreen);
+      const curScreen = (this.lastWindow = this.getCurScreen)
 
       if (curScreen && w) {
-        this.updateWindowPos(w, curScreen);
+        this.updateWindowPos(w, curScreen)
       } else {
-        console.error("[CoreBox] Invalid screen or window for positioning:", { curScreen, window: w });
+        console.error('[CoreBox] Invalid screen or window for positioning:', {
+          curScreen,
+          window: w
+        })
       }
     } else {
-      w.window.setPosition(-1000000, -1000000);
+      w.window.setPosition(-1000000, -1000000)
 
       setTimeout(() => {
-        this.shrink();
+        this.shrink()
 
-        w.window.hide();
-      }, 100);
+        w.window.hide()
+      }, 100)
     }
 
-    touchApp.channel.sendTo(w.window, ChannelType.MAIN, "core-box:trigger", {
+    touchApp.channel.sendTo(w.window, ChannelType.MAIN, 'core-box:trigger', {
       id: w.window.webContents.id,
-      show,
-    });
+      show
+    })
   }
 }
 
 export default {
-  name: Symbol("CoreBox"),
-  filePath: "corebox",
+  name: Symbol('CoreBox'),
+  filePath: 'corebox',
   listeners: new Array<() => void>(),
   init() {
-    touchApp = genTouchApp();
-    /* const coreBoxManager =  */ new CoreBoxManager();
+    touchApp = genTouchApp()
+    /* const coreBoxManager =  */ new CoreBoxManager()
 
     // const touchChannel = genTouchChannel();
 
@@ -401,9 +395,9 @@ export default {
     //   })
     // )
 
-    console.log("[CoreBox] Core box initialized!");
+    console.log('[CoreBox] Core box initialized!')
   },
   destroy() {
-    this.listeners.forEach((listener) => listener());
-  },
-};
+    this.listeners.forEach((listener) => listener())
+  }
+}
