@@ -1,6 +1,6 @@
-import PinyinMatch from "pinyin-match";
+import PinyinMatch from 'pinyin-match'
 import { BoxMode, SearchItem, SearchOptions } from './search-box'
-import type { IFeatureCommand } from '@talex-touch/utils/plugin';
+import type { IFeatureCommand } from '@talex-touch/utils/plugin'
 
 /**
  * Checks if a keyword matches an app name using pinyin matching
@@ -9,10 +9,14 @@ import type { IFeatureCommand } from '@talex-touch/utils/plugin';
  * @returns Match result or false if no match
  */
 function check(keyword: string, appName: string) {
-  return PinyinMatch.match(appName, keyword);
+  return PinyinMatch.match(appName, keyword)
 }
 
-type ISearchMiddleware = (item: SearchItem, keyword: string, options: SearchOptions) => SearchItem | SearchItem[] | null
+type ISearchMiddleware = (
+  item: SearchItem,
+  keyword: string,
+  options: SearchOptions
+) => SearchItem | SearchItem[] | null
 
 const middlewares = new Array<ISearchMiddleware>()
 
@@ -144,7 +148,12 @@ middlewares.push((item: SearchItem, keyword: string, options: SearchOptions) => 
  * @param cmd - The feature command to validate
  * @returns The item if command matches, null otherwise
  */
-function validateCommand(item: SearchItem, keyword: string, options: SearchOptions, cmd: IFeatureCommand) {
+function validateCommand(
+  item: SearchItem,
+  keyword: string,
+  options: SearchOptions,
+  cmd: IFeatureCommand
+) {
   const { type, value } = cmd
 
   if (options.mode === BoxMode.FILE) {
@@ -168,8 +177,7 @@ function validateCommand(item: SearchItem, keyword: string, options: SearchOptio
     } else if (type === 'contain') {
       // For empty queries, show all features with contain commands
       // For non-empty queries, check if keyword contains the value or value is empty
-      if (!keyword.length || (value === "" || keyword.indexOf(value as string) !== -1))
-        return item
+      if (!keyword.length || value === '' || keyword.indexOf(value as string) !== -1) return item
     }
   }
 
@@ -192,7 +200,7 @@ middlewares.push((item: SearchItem, keyword: string, options: SearchOptions) => 
   const results: any[] = []
   let hasMatchingCommand = false
 
-  for (let cmd of commands) {
+  for (const cmd of commands) {
     const cmdObj: SearchItem = {
       id: item.id,
       name: item.name,
@@ -201,7 +209,7 @@ middlewares.push((item: SearchItem, keyword: string, options: SearchOptions) => 
       push: true,
       names: [...item.names],
       keyWords: [...item.keyWords],
-      pluginType: "cmd",
+      pluginType: 'cmd',
       type: item.type,
       value: item.value,
       originFeature: item
@@ -229,7 +237,7 @@ middlewares.push((item: SearchItem, keyword: string, options: SearchOptions) => 
  * @returns Processed item or null if no match
  */
 export function handleItemData(item: SearchItem, keyword: string, options: SearchOptions) {
-  for (let middleware of middlewares) {
+  for (const middleware of middlewares) {
     const res = middleware(item, keyword, options)
 
     if (res) {
@@ -237,5 +245,5 @@ export function handleItemData(item: SearchItem, keyword: string, options: Searc
     }
   }
 
-  return null;
+  return null
 }

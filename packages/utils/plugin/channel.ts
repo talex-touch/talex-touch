@@ -1,5 +1,6 @@
+// import { ipcRenderer } from 'electron';
 // const { ipcRenderer, IpcMainEvent } = require("electron");
-import { ipcRenderer, type IpcRendererEvent } from "electron";
+import { IpcRenderer, type IpcRendererEvent } from "electron";
 import {
   ChannelType,
   DataCode,
@@ -8,6 +9,14 @@ import {
   RawStandardChannelData,
   StandardChannelData,
 } from "../channel";
+
+let ipcRenderer: IpcRenderer
+
+if (typeof window === 'undefined') {
+  ipcRenderer = require('electron').ipcRenderer
+} else {
+  ipcRenderer = window.electron.ipcRenderer as unknown as IpcRenderer
+}
 
 class TouchChannel implements ITouchClientChannel {
   channelMap: Map<string, Function[]> = new Map();
@@ -150,7 +159,7 @@ class TouchChannel implements ITouchClientChannel {
     } as RawStandardChannelData;
 
     return new Promise((resolve) => {
-      
+
       ipcRenderer.send("@plugin-process-message", data);
 
       this.pendingMap.set(uniqueId, (res: any) => {

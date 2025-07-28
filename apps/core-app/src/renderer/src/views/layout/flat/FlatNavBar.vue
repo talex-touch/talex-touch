@@ -9,13 +9,13 @@
       <TouchMenuItem route="/styles" name="Style" icon="i-ri-paint-line" />
       <TouchMenuItem route="/setting" name="Setting" icon="i-ri-settings-6-line" />
       <p class="FlatNavBar-Title">PLUGINS</p>
-      <p op-50 font-size-3 text-center v-if="!plugins.length">NO PLUGIN INSTALLED.</p>
+      <p v-if="!plugins.length" op-50 font-size-3 text-center>NO PLUGIN INSTALLED.</p>
       <TouchMenuItem
-        :id="`touch-plugin-item-${item.name}`"
-        @active="changeActivePlugin($event, item)"
-        :doActive="() => activePlugin === item.name"
         v-for="item in plugins"
+        :id="`touch-plugin-item-${item.name}`"
         :key="item.name"
+        :do-active="() => activePlugin === item.name"
+        @active="changeActivePlugin($event, item)"
       >
         <span class="plugin-item-section">
           <PluginIcon :alt="item.name" :icon="item.icon" />
@@ -27,24 +27,22 @@
 </template>
 
 <script lang="ts" name="FlatNavBar" setup>
-import TouchMenu from "@comp/menu/TouchMenu.vue";
-import TouchMenuItem from "@comp/menu/TouchMenuItem.vue";
-import PluginIcon from "@comp/plugin/PluginIcon.vue";
-import { ITouchPlugin } from "@talex-touch/utils/plugin";
-import { inject } from "vue";
+import TouchMenu from '@comp/menu/TouchMenu.vue'
+import TouchMenuItem from '@comp/menu/TouchMenuItem.vue'
+import PluginIcon from '@comp/plugin/PluginIcon.vue'
+import { ITouchPlugin } from '@talex-touch/utils/plugin'
+import { inject } from 'vue'
 
-const activePlugin = inject("activePlugin");
-const _plugins = inject("plugins");
+const activePlugin = inject('activePlugin')
+const _plugins = inject('plugins')
 const plugins = computed(() =>
-  [...(_plugins.value || [])].filter(
-    (item: ITouchPlugin) => item.status > 2 && item.status < 5
-  )
-);
+  [...(_plugins.value || [])].filter((item: ITouchPlugin) => item.status > 2 && item.status < 5)
+)
 
 function changeActivePlugin(event: Event, item: ITouchPlugin) {
-  event.stopPropagation();
+  event.stopPropagation()
 
-  activePlugin.value = item.name;
+  activePlugin.value = item.name
 }
 </script>
 

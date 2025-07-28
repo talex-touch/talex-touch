@@ -1,4 +1,3 @@
-import { Window } from './../../../t/talex-touch/packages/utils/plugin/preload';
 /// <reference types="vite-plugin-electron/electron-env" />
 
 import { Logger } from "log4js"
