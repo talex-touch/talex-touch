@@ -1,14 +1,14 @@
 <script name="AppConfigure" setup lang="ts">
-import { touchChannel } from "~/modules/channel/channel-core";
-import FlatButton from "@comp/base/button/FlatButton.vue";
-import cprocess from "child_process";
-import fs from 'fs'
-import path from 'path'
+import { touchChannel } from '~/modules/channel/channel-core'
+import FlatButton from '@comp/base/button/FlatButton.vue'
+// import cprocess from "child_process";
+// import fs from 'fs'
+// import path from 'path'
 import { appAmo } from '~/views/box/search-box'
-import { forTouchTip } from '~/modules/mention/dialog-mention'
+// import { forTouchTip } from '~/modules/mention/dialog-mention'
 
 const props = defineProps<{
-  data: any,
+  data: any
 }>()
 
 const emits = defineEmits<{
@@ -18,26 +18,26 @@ const emits = defineEmits<{
 const info = ref()
 
 watchEffect(() => {
-  $ignore: [props.data]
+  // $ignore: [props.data]
 
   info.value = null
 
-  !(async () => {
-    const res = await fs.statSync(props.data.desc)
+  // setTimeout(async() => {
+  //   const res = await fs.statSync(props.data.desc)
 
-    info.value = res
-  })()
+  //   info.value = res
+  // })
 })
 
-function formatSize(size: number) {
+function formatSize(size: number): string {
   return (size / 1024 / 1024).toFixed(2) + ' MB'
 }
 
-function formatTime(time: number) {
+function formatTime(time: number): string {
   return new Date(time).toLocaleString()
 }
 
-function handleLaunch() {
+function handleLaunch(): void {
   // Avoid renderer interrupt
 
   setTimeout(() => {
@@ -45,51 +45,44 @@ function handleLaunch() {
   }, 500)
 }
 
-function handleOpenExplorer() {
+function handleOpenExplorer(): void {
   // Avoid renderer interrupt
 
   setTimeout(() => {
-    cprocess.execSync(`explorer.exe /select,${props.data.desc}`)
+    // cprocess.execSync(`explorer.exe /select,${props.data.desc}`)
   }, 500)
 }
 
-function handleDelete() {
-  const targetPath = path.join(props.data.desc, '..')
-
-  console.log('targetpath', targetPath)
-
-  fs.readdir(targetPath, (err, files) => {
-    if (err) {
-      console.log(err)
-      return
-    }
-
-    let flag = false
-
-    files.forEach((file) => {
-      if (flag) return
-
-      if (file.toLowerCase().includes('uninstall')) {
-        flag = true
-
-        try {
-          cprocess.execSync(path.join(targetPath, file))
-        } catch (e) {
-          // open this exe
-          cprocess.execSync(`explorer.exe /select,${path.join(targetPath, file)}`)
-        }
-      }
-    })
-
-    if (!flag) {
-      forTouchTip("Not Found", "Cannot find uninstall program.", [
-        { content: "Got it", type: "error", onClick: async () => true }
-      ])
-    }
-  })
+function handleDelete(): void {
+  // const targetPath = path.join(props.data.desc, '..')
+  // console.log('targetpath', targetPath)
+  // fs.readdir(targetPath, (err, files) => {
+  //   if (err) {
+  //     console.log(err)
+  //     return
+  //   }
+  //   let flag = false
+  //   files.forEach((file) => {
+  //     if (flag) return
+  //     if (file.toLowerCase().includes('uninstall')) {
+  //       flag = true
+  //       try {
+  //         cprocess.execSync(path.join(targetPath, file))
+  //       } catch (e) {
+  //         // open this exe
+  //         cprocess.execSync(`explorer.exe /select,${path.join(targetPath, file)}`)
+  //       }
+  //     }
+  //   })
+  //   if (!flag) {
+  //     forTouchTip("Not Found", "Cannot find uninstall program.", [
+  //       { content: "Got it", type: "error", onClick: async () => true }
+  //     ])
+  //   }
+  // })
 }
 
-function handleHelp() {
+function handleHelp(): void {
   // open google and search
   const url = `https://www.google.com/search?q=${props.data.name}`
 
@@ -101,7 +94,7 @@ function handleHelp() {
   <div class="AppConfigure">
     <div class="AppConfigure-Head">
       <div class="AppConfigure-Head-Left">
-        <img :src="data.icon" alt="Application Logo">
+        <img :src="data.icon" alt="Application Logo" />
       </div>
       <div class="AppConfigure-Head-Right">
         <div class="AppConfigure-Head-Right-Top">{{ data.name }}</div>
@@ -122,10 +115,15 @@ function handleHelp() {
               <template #label>
                 <h3>Uninstall app <span color-red>(danger)</span></h3>
               </template>
-              <FlatButton @click="handleDelete" hover:bg-red>Uninstall</FlatButton>
+              <FlatButton hover:bg-red @click="handleDelete">Uninstall</FlatButton>
             </t-block-slot>
-            <t-block-switch @click="handleHelp" guidance title="Application Help"
-              description="Find help through search engine." icon="search-2" />
+            <t-block-switch
+              guidance
+              title="Application Help"
+              description="Find help through search engine."
+              icon="search-2"
+              @click="handleHelp"
+            />
           </t-group-block>
 
           <t-group-block name="Application stats" icon="dashboard-horizontal">
@@ -146,9 +144,7 @@ function handleHelp() {
 
           <t-group-block v-if="info" name="Application specification (External)" icon="apps">
             <t-block-line title="Version">
-              <template #description>
-                1
-              </template>
+              <template #description> 1 </template>
             </t-block-line>
             <t-block-line title="Size" :description="formatSize(info.size)"></t-block-line>
             <t-block-line title="Dev" :description="info.dev"></t-block-line>
@@ -161,16 +157,17 @@ function handleHelp() {
             <t-block-line title="BlkSize" :description="info.blksize"></t-block-line>
             <t-block-line title="AtimeMs" :description="formatTime(info.atimeMs)"></t-block-line>
             <t-block-line title="CtimeMs" :description="formatTime(info.ctimeMs)"></t-block-line>
-            <t-block-line title="BirthTimeMs" :description="formatTime(info.birthtimeMs)"></t-block-line>
+            <t-block-line
+              title="BirthTimeMs"
+              :description="formatTime(info.birthtimeMs)"
+            ></t-block-line>
           </t-group-block>
         </div>
       </el-scrollbar>
     </div>
     <div class="AppConfigure-Ends">
       Sure to config and synchronize among devices?
-      <FlatButton>
-        Save
-      </FlatButton>
+      <FlatButton> Save </FlatButton>
     </div>
   </div>
 </template>
@@ -204,7 +201,7 @@ function handleHelp() {
     }
 
     &-Bottom {
-      opacity: .8;
+      opacity: 0.8;
       font-size: 0.8rem;
     }
 

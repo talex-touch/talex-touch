@@ -45,6 +45,18 @@ export default defineConfig({
         '~': rendererPath
       }
     },
+    define: {
+      __VUE_OPTIONS_API__: true,
+      __VUE_PROD_DEVTOOLS__: false
+    },
+    optimizeDeps: {
+      exclude: ['electron', 'fs', 'path', 'child_process', 'original-fs']
+    },
+    build: {
+      rollupOptions: {
+        external: ['electron', 'fs', 'path', 'child_process', 'original-fs']
+      }
+    },
     plugins: [
       // commonjs({
       //   ignore: ["simple-plist", "element-plus"],
