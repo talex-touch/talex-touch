@@ -29,20 +29,16 @@
   text-transform: uppercase;
   letter-spacing: 0.5vmin;
 
-  -webkit-text-stroke: 1px rgba(219, 219, 219, 0.5);
-  color: rgba(206, 206, 206, 0.3);
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.9);
 
   text-shadow:
       0 0 10px rgba(255, 255, 255, 0.3),
-      0 0 15px rgba(255, 255, 255, 0.2),
-      0 0 20px rgba(255, 255, 255, 0.15),
-      0 0 25px rgba(255, 255, 255, 0.1);
+      0 0 20px rgba(255, 255, 255, 0.2),
+      0 0 30px rgba(255, 255, 255, 0.15);
 
   transform: translateZ(0);
   transition: all 0.3s ease;
-
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(0.5px);
 
   position: relative;
   display: flex;
@@ -62,7 +58,7 @@
 
     transform: translate(-50%, -50%) scale(1, 1.5);
 
-    filter: blur(10px) brightness(200%);
+    filter: blur(15px) brightness(200%);
 
     background: linear-gradient(45deg, #021A73, #330501);
     -webkit-background-clip: text;
