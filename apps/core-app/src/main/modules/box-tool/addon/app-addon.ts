@@ -185,7 +185,7 @@ export default async (keyword: string) => {
   const currentApps = appDataManager.getAppsSync()
   const currentAppNames = currentApps?.map((app: any) => app.name) || []
 
-  let res = []
+  let res = new Array<any>()
   let index = 0;
 
   for (let appName of currentAppNames) {

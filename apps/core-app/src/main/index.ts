@@ -1,6 +1,6 @@
 import './polyfills'
 import { genTouchApp } from './core/touch-core'
-import { app, protocol } from 'electron'
+import { app } from 'electron'
 import StorageModule from './core/storage'
 import CommonChannel from './channel/common'
 import PluginModule from './plugins/plugin-core'
