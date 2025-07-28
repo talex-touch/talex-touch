@@ -31,6 +31,8 @@
     "core:build:snapshot": "pnpm -F @talex-touch/core-app run build:snapshot",
     "core:build:release": "pnpm -F @talex-touch/core-app run build:release",
     "core:build:docs": "pnpm -F @talex-touch/core-app run build:docs",
+    "docs:dev": "pnpm -F @talex-touch/docs run dev",
+    "docs:build": "pnpm -F @talex-touch/docs run build",
     "utils:test": " pnpm -F test run test",
     "utils:publish": "pnpm -F @talex-touch/utils run publish"
   },

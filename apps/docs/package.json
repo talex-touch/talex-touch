@@ -1,5 +1,5 @@
 {
-  "name": "docs",
+  "name": "@talex-touch/docs",
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",
