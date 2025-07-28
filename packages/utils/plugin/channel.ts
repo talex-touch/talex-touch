@@ -22,7 +22,7 @@ class TouchChannel implements ITouchClientChannel {
     ipcRenderer.on("@plugin-process-message", this.__handle_main.bind(this));
   }
 
-  __parse_raw_data(e: IpcRendererEvent, arg: any): RawStandardChannelData | null {
+  __parse_raw_data(e: IpcRendererEvent | undefined, arg: any): RawStandardChannelData | null {
     console.debug("Raw data: ", arg, e);
     if (arg) {
       const { name, header, code, data, sync } = arg;
@@ -48,7 +48,7 @@ class TouchChannel implements ITouchClientChannel {
     // throw new Error("Invalid message!");
   }
 
-  __handle_main(e: typeof IpcRendererEvent, _arg: any): any {
+  __handle_main(e: IpcRendererEvent, _arg: any): any {
     const arg = JSON.parse(_arg)
     const rawData = this.__parse_raw_data(e, arg);
     if ( !rawData ) return
@@ -99,6 +99,7 @@ class TouchChannel implements ITouchClientChannel {
           },
       name: rawData.name,
       header: {
+        event: rawData.header.event,
         status: "reply",
         type: rawData.header.type,
         _originData: rawData.header._originData,
@@ -172,8 +173,8 @@ class TouchChannel implements ITouchClientChannel {
       },
     } as RawStandardChannelData;
 
-    const res = this.__parse_raw_data(null, ipcRenderer.sendSync("@plugin-process-message", data))!
-    
+    const res = this.__parse_raw_data(void 0, ipcRenderer.sendSync("@plugin-process-message", data))!
+
     if ( res.header.status === 'reply' ) return res.data;
 
     return res;

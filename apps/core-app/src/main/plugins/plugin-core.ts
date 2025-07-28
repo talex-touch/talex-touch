@@ -15,7 +15,8 @@ import {
   WebContentsProperty,
   WindowProperties,
   WindowProperty,
-} from "@talex-touch/utils/plugin/sdk/window";
+  createStorageManager, createClipboardManager
+} from "@talex-touch/utils/plugin";
 import { TalexTouch } from "../types";
 import fse from "fs-extra";
 import path from "path";
@@ -24,13 +25,12 @@ import { genTouchChannel } from "../core/channel-core";
 import { ChannelType, DataCode } from "@talex-touch/utils/channel";
 import { genTouchApp, TouchWindow } from "../core/touch-core";
 import { getJs, getStyles } from "../utils/plugin-injection";
-import chokidar from "chokidar";
+import chokidar, { FSWatcher } from "chokidar";
 import { TalexEvents, touchEventBus } from "../core/eventbus/touch-event";
 import { BrowserWindow, dialog, shell, clipboard, app } from "electron";
 import axios from "axios";
 import type { ISearchItem } from "@talex-touch/utils";
 import { getCoreBoxWindow } from "../modules/box-tool/core-box";
-import { createStorageManager, createClipboardManager } from "@talex-touch/utils/plugin/sdk";
 import { PluginLogger } from '@talex-touch/utils/plugin/log/logger';
 import { loggerManager } from './plugin-logger-manager';
 import { loadPluginFeatureContext } from './plugin-feature';
@@ -198,7 +198,7 @@ class TouchPlugin implements ITouchPlugin {
 
     if (commands.length < 1) return false;
 
-    return this.features.push(feature) >= 0;
+    return this.features.push(new PluginFeature(this.pluginPath, feature)) >= 0;
   }
 
   delFeature(featureId: string): boolean {
@@ -510,7 +510,7 @@ class PluginManager implements IPluginManager {
   active: string = "";
 
   pluginPath: string;
-  watcher: chokidar.FSWatcher | null;
+  watcher: FSWatcher | null;
 
   constructor(pluginPath: string) {
     this.pluginPath = pluginPath;
@@ -520,7 +520,7 @@ class PluginManager implements IPluginManager {
   }
 
   getPluginList(): Array<Object> {
-    const list = [];
+    const list = new Array<Object>();
 
     for (const plugin of this.plugins.values())
       list.push((plugin as TouchPlugin).toJSONObject());

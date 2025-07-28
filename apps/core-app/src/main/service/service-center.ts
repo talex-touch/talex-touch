@@ -186,7 +186,7 @@ export default {
     )
 
     this['listeners'].push(
-      this['touchChannel'].regChannel(ChannelType.PLUGIN, 'service:unreg', ({ data, reply }) => {
+      this['touchChannel'].regChannel(ChannelType.PLUGIN, 'service:unreg', ({ data }) => {
         const { service } = data
 
         if (!serviceCenter.hasServiceBySymbolStr(service)) return false

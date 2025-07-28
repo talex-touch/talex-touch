@@ -84,7 +84,7 @@ export interface RawChannelHeaderData {
   status: "reply" | "request";
   type: ChannelType;
   _originData?: any;
-  event: Electron.IpcMainEvent | Electron.IpcRendererEvent;
+  event?: Electron.IpcMainEvent | Electron.IpcRendererEvent;
 }
 
 export interface RawChannelData {
