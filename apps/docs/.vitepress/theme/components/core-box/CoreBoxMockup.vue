@@ -1,5 +1,31 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import Logo from "../base/Logo.vue";
+import TypeIt from 'typeit'
+
+onMounted(() => {
+  new TypeIt('#input', {
+    strings: [
+      'Summarize what I wrote these days in WPS...',
+      'Translate this article into English.',
+      'Generate a summary of the article.',
+      'Memorize these files.',
+      'Open clipboard',
+      'Analyze and extract key insights from this document...',
+      'Convert this text to a professional report format.',
+      'Create a mind map from these notes.',
+      'Generate code snippets based on this description.',
+      'Perform sentiment analysis on this feedback.',
+      'Extract and organize references from this research paper.',
+      'Transform this data into an interactive visualization.'
+    ],
+    speed: 25,
+    deleteSpeed: 20,
+    nextStringDelay: 2000,
+    loop: true,
+    breakLines: false
+  }).go()
+})
 </script>
 
 <template>
@@ -8,7 +34,7 @@ import Logo from "../base/Logo.vue";
       <Logo />
     </div>
     <div class="CoreBoxMockup-Input">
-      <input placeholder="Type what you want to search by talex-touch." />
+      <input id="input" placeholder="Type what you want to search by talex-touch." />
     </div>
     <div class="CoreBoxMockup-Suffix">
       <i />
@@ -66,7 +92,7 @@ import Logo from "../base/Logo.vue";
 .CoreBoxMockup-Input {
   flex: 1;
   height: 100%;
-  input {
+  input, p {
     width: 100%;
     height: 100%;
 
