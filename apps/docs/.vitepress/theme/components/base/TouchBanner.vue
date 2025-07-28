@@ -267,6 +267,10 @@ onUnmounted(() => {
 
 <template>
   <div class="touch-banner">
+    <div class="touch-core-box">
+      <slot name="core-box" />
+    </div>
+
     <canvas ref="canvasRef" class="banner-canvas"></canvas>
 
     <div class="touch-center">
@@ -279,6 +283,25 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+.touch-core-box {
+  z-index: 10;
+  position: absolute;
+  display: flex;
+
+  top: 0%;
+  left: 50%;
+
+  width: 50%;
+  height: 50%;
+
+  gap: 4rem;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+
+  transform: translate(-50%, 0);
+}
+
 .touch-center {
   position: absolute;
   display: flex;
