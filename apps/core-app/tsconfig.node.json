@@ -23,17 +23,6 @@
     /* Type checking */
     // "types": ["node", "element-plus/global"],
     "allowSyntheticDefaultImports": true,
-    "paths": {
-      "~/*": ["./src/*"],
-      "~/assets/*": ["./src/assets/*"],
-      "~/components/*": ["./src/components/*"],
-      "~/views/*": ["./src/views/*"],
-      "~/store/*": ["./src/store/*"],
-      "~/plugins/*": ["./src/plugins/*"],
-      "~/utils/*": ["./src/utils/*"],
-      "~/types/*": ["./src/types/*"],
-      "~": ["./src/*"]
-    }
   },
   "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "generator-information.ts"]
 }

@@ -21,15 +21,18 @@ const rendererPath = path.join(basePath, 'renderer', 'src')
 
 export default defineConfig({
   main: {
-
-    plugins: [externalizeDepsPlugin({
-      exclude: ['@talex-touch/utils', 'pinyin-match']
-    })]
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@talex-touch/utils', 'pinyin-match']
+      })
+    ]
   },
   preload: {
-    plugins: [externalizeDepsPlugin({
-      exclude: ['@talex-touch/utils', 'pinyin-match']
-    })]
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@talex-touch/utils', 'pinyin-match']
+      })
+    ]
   },
   renderer: {
     resolve: {
@@ -43,76 +46,75 @@ export default defineConfig({
       }
     },
     plugins: [
-    // commonjs({
-    //   ignore: ["simple-plist", "element-plus"],
-    //   include: [/dayjs/, /lottie-web/, /node_modules\/dayjs/],
-    //   transformMixedEsModules: true,
-    // }),
-    generatorInformation(),
-    vue(),
-    // electron([
-    //   {
-    //     // Main-Process entry file of the Electron App.
-    //     entry: "electron/index.ts",
-    //     onstart({ startup }) {
-    //       startup([
-    //         ".",
-    //         "--no-sandbox",
-    //         "--sourcemap",
-    //         "--remote-debugging-port=9222",
-    //         "--disable-gpu-process-crash-limit",
-    //         "--disable-renderer-backgrounding",
-    //         "--disable-backgrounding-occluded-windows",
-    //       ]);
-    //     },
-    //     vite: {
-    //       build: {
-    //         outDir: "dist/electron",
-    //         rollupOptions: {
-    //           external: [
-    //             "fsevents",
-    //             "simple-plist",
-    //             "element-plus",
-    //             "extract-file-icon",
-    //             "electron-clipboard-ex"
-    //           ],
-    //         },
-    //       },
-    //     },
-    //   },
-    //   {
-    //     entry: "electron/preload.ts",
-    //     onstart(options) {
-    //       // Notify the Renderer-Process to reload the page when the Preload-Scripts build is complete,
-    //       // instead of restarting the entire Electron App.
-    //       options.reload();
-    //     },
-    //     vite: {
-    //       build: {
-    //         outDir: "dist/electron",
-    //         rollupOptions: {
-    //           output: {
-    //             // Disable Preload scripts code split
-    //             inlineDynamicImports: true,
-    //           },
-    //         },
-    //       },
-    //     },
-    //   },
-    // ]),
-    Unocss(),
-    vueJsx(),
-    AutoImport({
-      resolvers: [ElementPlusResolver()],
-      imports: ["vue"],
-    }),
-    Components({
-      resolvers: [ElementPlusResolver()],
-    }),
-    VueSetupExtend(),
-    VueI18nPlugin({
-
-    })
+      // commonjs({
+      //   ignore: ["simple-plist", "element-plus"],
+      //   include: [/dayjs/, /lottie-web/, /node_modules\/dayjs/],
+      //   transformMixedEsModules: true,
+      // }),
+      generatorInformation(),
+      vue(),
+      // electron([
+      //   {
+      //     // Main-Process entry file of the Electron App.
+      //     entry: "electron/index.ts",
+      //     onstart({ startup }) {
+      //       startup([
+      //         ".",
+      //         "--no-sandbox",
+      //         "--sourcemap",
+      //         "--remote-debugging-port=9222",
+      //         "--disable-gpu-process-crash-limit",
+      //         "--disable-renderer-backgrounding",
+      //         "--disable-backgrounding-occluded-windows",
+      //       ]);
+      //     },
+      //     vite: {
+      //       build: {
+      //         outDir: "dist/electron",
+      //         rollupOptions: {
+      //           external: [
+      //             "fsevents",
+      //             "simple-plist",
+      //             "element-plus",
+      //             "extract-file-icon",
+      //             "electron-clipboard-ex"
+      //           ],
+      //         },
+      //       },
+      //     },
+      //   },
+      //   {
+      //     entry: "electron/preload.ts",
+      //     onstart(options) {
+      //       // Notify the Renderer-Process to reload the page when the Preload-Scripts build is complete,
+      //       // instead of restarting the entire Electron App.
+      //       options.reload();
+      //     },
+      //     vite: {
+      //       build: {
+      //         outDir: "dist/electron",
+      //         rollupOptions: {
+      //           output: {
+      //             // Disable Preload scripts code split
+      //             inlineDynamicImports: true,
+      //           },
+      //         },
+      //       },
+      //     },
+      //   },
+      // ]),
+      Unocss(),
+      vueJsx(),
+      AutoImport({
+        resolvers: [ElementPlusResolver()],
+        imports: ['vue', 'vue-router'],
+        dts: true
+      }),
+      Components({
+        resolvers: [ElementPlusResolver()]
+      }),
+      VueSetupExtend(),
+      VueI18nPlugin({})
     ]
   }
 })
