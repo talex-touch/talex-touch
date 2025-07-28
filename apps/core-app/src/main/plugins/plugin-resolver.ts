@@ -90,7 +90,7 @@ export class PluginResolver {
       }
 
       let buffer = Buffer.alloc(32);
-      fs.read(fd, buffer, 0, buffer.length, 0, async (err, bytes) => {
+      fs.read(fd, buffer, 0, buffer.length, 0, async (err, _bytes) => {
         if (err) {
           event.msg = ResolverStatus.READ_FILE_ERROR;
           return callback({ event, type: "error" });

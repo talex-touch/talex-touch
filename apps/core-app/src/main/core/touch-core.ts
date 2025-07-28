@@ -236,14 +236,14 @@ export class TouchApp implements TalexTouch.TouchApp {
 
     this.channel.regChannel(ChannelType.MAIN, "app-ready", ({ header }) => {
       const { event } = header
-      // if () {
+      // if ()
       //   genPluginManager().plugins.forEach((plugin) => {
       //       plugin.webViewInit = false;
       //     });
       // }
 
       return {
-        id: (event.sender as Electron.WebContents).id,
+        id: (event?.sender as Electron.WebContents).id,
         version: this.version,
         path: {
           rootPath: this.rootPath,

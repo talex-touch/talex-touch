@@ -867,6 +867,7 @@ export default {
       if (!plugin) return false;
 
       plugin.disable();
+      return true;
     });
     touchChannel.regChannel(ChannelType.MAIN, "get-plugin", ({ data }) =>
       pluginManager!.plugins.get(data!.name)
