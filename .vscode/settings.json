@@ -53,9 +53,7 @@
   "debug.console.acceptSuggestionOnEnter": "on",
   "unocss.root": "apps/core-app",
   "editor.formatOnSave": false,
-  "i18n-ally.localesPaths": [
-    "apps/core-app/src/renderer/src/assets/languages"
-  ],
+  "i18n-ally.localesPaths": ["apps/core-app/src/renderer/src/assets/languages"],
   "vue3snippets.enable-compile-vue-file-on-did-save-code": false,
   "javascript.suggest.autoImports": true,
   "typescript.suggest.autoImports": true,
@@ -73,5 +71,10 @@
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
-  "python.defaultInterpreterPath": "/Users/talexdreamsoul/.local/share/mise/installs/python/3.11.13/bin/python"
+  "python.defaultInterpreterPath": "/Users/talexdreamsoul/.local/share/mise/installs/python/3.11.13/bin/python",
+  "workbench.colorCustomizations": {
+    "activityBar.foreground": "#eaf6fd",
+    "statusBarItem.remoteBackground": "#175191",
+    "statusBarItem.remoteForeground": "#eaf6fd",
+  }
 }
