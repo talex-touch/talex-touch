@@ -1,37 +1,36 @@
-import path from "node:path";
+import path from 'node:path'
 
-export const AppName = "TalexTouch";
+export const AppName = 'TalexTouch'
 
-export const APP_FOLDER_NAME = "talex-touch";
+export const APP_FOLDER_NAME = 'talex-touch'
 
-export const APP_SCHEMA = "talextouch";
+export const APP_SCHEMA = 'talextouch'
 
 export const MainWindowOption: Electron.BrowserWindowConstructorOptions = {
   title: AppName,
-  // frame: false,
   minWidth: 1280,
   minHeight: 780,
   height: 780,
   width: 1280,
-  // autoHideMenuBar: true,
+  autoHideMenuBar: true,
   show: false,
   transparent: true,
   titleBarStyle: 'hidden',
   titleBarOverlay: {
     color: 'rgba(0,0,0,0)',
     height: 35,
-    symbolColor: 'white',
+    symbolColor: 'white'
   },
   webPreferences: {
-    preload: path.join(__dirname, "preload.js"),
+    preload: path.join(__dirname, '..', 'preload', 'index.js'),
     webSecurity: false,
     nodeIntegration: true,
     nodeIntegrationInSubFrames: true,
     contextIsolation: false,
     sandbox: false,
-    webviewTag: true,
-  },
-};
+    webviewTag: true
+  }
+}
 
 export const BoxWindowOption: Electron.BrowserWindowConstructorOptions = {
   title: `${AppName} CoreBox`,
@@ -45,12 +44,12 @@ export const BoxWindowOption: Electron.BrowserWindowConstructorOptions = {
   show: false,
   transparent: true,
   webPreferences: {
-    preload: path.join(__dirname, "preload.js"),
+    preload: path.join(__dirname, '..', 'preload', 'index.js'),
     webSecurity: false,
     nodeIntegration: true,
     nodeIntegrationInSubFrames: true,
     contextIsolation: false,
     sandbox: false,
-    webviewTag: true,
-  },
-};
+    webviewTag: true
+  }
+}

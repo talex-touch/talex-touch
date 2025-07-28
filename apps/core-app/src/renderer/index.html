@@ -8,13 +8,16 @@
   <!-- Remixicon CDN -->
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.0.0/fonts/remixicon.css" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval';
-               script-src 'self' 'unsafe-inline' 'unsafe-eval';
-               connect-src 'self' 'unsafe-inline' 'unsafe-eval' wss: https:;
-               img-src 'self' 'unsafe-inline' 'unsafe-eval' wss: https: data: file: atom:;
-               font-src 'self' data: https://fonts.gstatic.com;
-               style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com;
-               " />
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src * blob: data:;
+    script-src * 'unsafe-inline' 'unsafe-eval' blob: data:;
+    connect-src * ws: wss: blob: data:;
+    img-src * data: blob:;
+    font-src * data: blob:;
+    style-src * 'unsafe-inline' blob: data:;
+    style-src-elem * 'unsafe-inline' blob: data:;
+  ">
+
 
   <title>TalexTouch</title>
 </head>
