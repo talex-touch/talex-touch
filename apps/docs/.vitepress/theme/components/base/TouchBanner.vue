@@ -323,8 +323,6 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100%;
-  min-width: 100%;
-  min-height: 100%;
   overflow: hidden;
   flex: 1;
 }
@@ -366,7 +364,7 @@ onUnmounted(() => {
   -webkit-mask: radial-gradient(
     circle at center,
     transparent 50%,
-    black 60%
+    black 55%
   );
   
   opacity: 1;

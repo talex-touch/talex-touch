@@ -84,9 +84,7 @@ import TouchRay from './TouchRay.vue'
 .touch-feature {
   position: relative;
   width: 100%;
-  height: 100%;
-  min-width: 100%;
-  min-height: 100%;
+  height: var(--vh, 100%);
   overflow: hidden;
   flex: 1;
   display: flex;
