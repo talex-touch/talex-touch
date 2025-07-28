@@ -33,7 +33,7 @@ import TouchRay from './TouchRay.vue'
           <div class="feature-card">
             <div class="card-icon">
               <svg viewBox="0 0 24 24" width="48" height="48">
-                <path fill="rgba(255, 255, 255, 0.8)" d="M12 2L4 7v10c0 5.55 3.84 9.739 9 11 5.16-1.261 9-5.45 9-11V7l-8-5zM12 20c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-12.5l4 3-4 3v-6z"/>
+                <path fill="rgba(255, 255, 255, 0.8)" d="M7 2v11h3v9l7-12h-4l4-8z"/>
               </svg>
             </div>
             <h3 class="card-title">Lightning Fast</h3>
@@ -42,7 +42,7 @@ import TouchRay from './TouchRay.vue'
           <div class="feature-card">
             <div class="card-icon">
               <svg viewBox="0 0 24 24" width="48" height="48">
-                <path fill="rgba(255, 255, 255, 0.8)" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 19.47c-3.87-.45-7-3.65-7-7.47v-1.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V12c0 2.21 1.79 4 4 4s4-1.79 4-4v-1.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V12c0 3.82-3.13 7.02-7 7.47z"/>
+                <path fill="rgba(255, 255, 255, 0.8)" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
               </svg>
             </div>
             <h3 class="card-title">Secure & Reliable</h3>
@@ -50,12 +50,28 @@ import TouchRay from './TouchRay.vue'
           </div>
           <div class="feature-card">
             <div class="card-icon">
-              <svg viewBox="0 0 24 24" width="48" height="48">
-                <path fill="rgba(255, 255, 255, 0.8)" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13.5v6l5.2 3.2.8-1.3-4.5-2.7V8.5z"/>
-              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 26 26"><!-- Icon from Garden SVG Icons by Zendesk - https://github.com/zendeskgarden/svg-icons/blob/main/LICENSE.md --><path fill="currentColor" d="m22.475 18.881l-8.891 4.925c-.525.259-.643.259-1.168 0l-8.89-4.925c-1.164-.644-.195-2.385.97-1.74L13 21.85l8.505-4.71c1.164-.645 2.133 1.096.97 1.74zm0-5l-8.891 4.925c-.525.259-.643.259-1.168 0l-8.89-4.925c-1.164-.644-.195-2.385.97-1.74L13 16.85l8.505-4.71c1.164-.645 2.133 1.096.97 1.74zM3.515 8.89a1 1 0 0 1-.002-1.749l9-5.015a1 1 0 0 1 .974 0l9 5.015a1 1 0 0 1-.003 1.749l-9.007 4.985a1 1 0 0 1-.97 0z"/></svg>
             </div>
             <h3 class="card-title">Cross-Platform</h3>
             <p class="card-description">Work seamlessly across all your devices with perfect synchronization.</p>
+          </div>
+          <div class="feature-card">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" width="48" height="48">
+                <path fill="rgba(255, 255, 255, 0.8)" d="M19 7h-3V6a4 4 0 0 0-8 0v1H5a1 1 0 0 0-1 1v11a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V8a1 1 0 0 0-1-1zM10 6a2 2 0 0 1 4 0v1h-4zm9 12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9h2v1a1 1 0 0 0 2 0V9h6v1a1 1 0 0 0 2 0V9h2z"/>
+              </svg>
+            </div>
+            <h3 class="card-title">Extensible</h3>
+            <p class="card-description">Easily extend functionality with plugins and custom modules to fit your specific needs.</p>
+          </div>
+          <div class="feature-card">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" width="48" height="48">
+                <path fill="rgba(255, 255, 255, 0.8)" d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm0-2V4a8 8 0 1 1 0 16zm-5.5-8.5l3.5 3.5 7-7-1.5-1.5-5.5 5.5-2-2L6.5 11.5z"/>
+              </svg>
+            </div>
+            <h3 class="card-title">Customizable</h3>
+            <p class="card-description">Fully customizable interface and workflows to match your personal preferences and work style.</p>
           </div>
         </div>
       </div>
@@ -158,7 +174,7 @@ import TouchRay from './TouchRay.vue'
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 2rem;
   max-width: 1200px;
   margin: 0 auto;

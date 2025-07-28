@@ -277,7 +277,6 @@ onUnmounted(() => {
       <slot name="center"/>
     </div>
 
-    <!-- 使用 mask + background-image 的圆形遮罩 -->
     <div class="mask-overlay"></div>
   </div>
 </template>
