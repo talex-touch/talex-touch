@@ -272,6 +272,9 @@ onUnmounted(() => {
     <div class="touch-center">
       <slot name="center"/>
     </div>
+
+    <!-- 使用 mask + background-image 的圆形遮罩 -->
+    <div class="mask-overlay"></div>
   </div>
 </template>
 
@@ -311,5 +314,41 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   display: block;
+}
+</style>
+
+<style scoped lang="scss">
+.mask-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  
+  /* 使用渐变作为背景 */
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 0, 0, 0.1) 0%,
+    rgba(0, 0, 0, 0.8) 60%,
+    rgba(0, 0, 0, 0.9) 100%
+  );
+  
+  /* 使用 mask 创建圆形镂空效果 */
+  mask: radial-gradient(
+    circle at center,
+    transparent 50%,  /* 中间圆形镂空区域 */
+    black 60%       /* 渐变边缘 */
+  );
+  
+  /* 兼容性前缀 */
+  -webkit-mask: radial-gradient(
+    circle at center,
+    transparent 50%,
+    black 60%
+  );
+  
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
 }
 </style>

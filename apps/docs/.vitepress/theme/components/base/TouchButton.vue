@@ -76,7 +76,7 @@ withDefaults(defineProps<Props>(), {
   background-size: 300% 300%;
   animation: gradientShift 3s ease infinite;
   filter: blur(5px);
-  opacity: 0.1;
+  opacity: 0.2;
 }
 
 /* 按钮内容区域 */
