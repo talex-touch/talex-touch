@@ -9,7 +9,7 @@ import {
   crashReporter,
 } from "electron";
 import fse from "fs-extra";
-import { platform, release } from "os";
+import { release } from "os";
 import path from "path";
 import { APP_FOLDER_NAME, MainWindowOption } from "../config/default";
 // import { genPluginManager } from "../plugins/plugin-core";

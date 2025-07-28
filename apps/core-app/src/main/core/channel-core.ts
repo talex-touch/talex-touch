@@ -114,6 +114,7 @@ class TouchChannel implements ITouchChannel {
       name: rawData.name,
       plugin: rawData.header["plugin"] || void 0,
       header: {
+        event: rawData.header.event,
         status: "reply",
         type: rawData.header.type,
         _originData: rawData.header._originData,
@@ -126,13 +127,15 @@ class TouchChannel implements ITouchChannel {
     eventName: string,
     callback: Function
   ): () => void {
-    const map = this.channelMap.get(type);
+    const map = this.channelMap.get(type)!;
 
     const listeners = map.get(eventName) || [];
 
-    if (!listeners.includes(callback)) {
-      listeners.push(callback);
-    } else return undefined;
+    if (listeners.includes(callback)) {
+      return () => void 0
+    }
+
+    listeners.push(callback);
 
     map.set(eventName, listeners);
 
