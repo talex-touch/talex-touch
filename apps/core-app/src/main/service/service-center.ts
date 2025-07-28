@@ -19,7 +19,7 @@ class ServiceCenter implements IServiceCenter {
   }
 
   /**
-   * Unsafe method, please use regService instead 
+   * Unsafe method, please use regService instead
    */
   regServiceBySymbolStr(symbol: string, handler: IServiceHandler): void {
     this.serviceMap.set(symbol, handler)
@@ -28,14 +28,14 @@ class ServiceCenter implements IServiceCenter {
   regService(service: IService, handler: IServiceHandler): boolean {
     // if (this.hasService(service)) return false;
 
-    this.serviceMap.set(service.id.description, handler)
+    this.serviceMap.set(service.id.description!, handler)
     return true
   }
 
   unRegService(service: IService): boolean {
     if (!this.hasService(service)) return false;
 
-    this.serviceMap.delete(service.id.description)
+    this.serviceMap.delete(service.id.description!)
     return true
   }
 
@@ -67,7 +67,7 @@ class ServiceCenter implements IServiceCenter {
   }
 
   hasService(service: IService): boolean {
-    return this.serviceMap.has(service.id.description)
+    return this.serviceMap.has(service.id.description!)
   }
 
   hasServiceBySymbolStr(symbol: string): boolean {
@@ -79,7 +79,7 @@ class ServiceCenter implements IServiceCenter {
   }
 
   async save() {
-    const promises = []
+    const promises = new Array<Function>()
     this.serviceMap.forEach((handler, service) => promises.push(() => {
 
       fse.writeJSONSync(this.getPerPath(service), JSON.stringify({
@@ -96,7 +96,7 @@ let serviceCenter: ServiceCenter
 
 export function genServiceCenter(rootPath?: string): IServiceCenter {
   if (!serviceCenter) {
-    serviceCenter = new ServiceCenter(rootPath)
+    serviceCenter = new ServiceCenter(rootPath!)
   }
 
   return serviceCenter
@@ -107,9 +107,10 @@ export default {
   filePath: "services",
   listeners: new Array<Function>,
   init() {
-    const touchChannel = this.touchChannel
+    const touchChannel = this['touchChannel']
 
-    touchEventBus.on(TalexEvents.APP_SECONDARY_LAUNCH, (event: AppSecondaryLaunch) => {
+    touchEventBus.on(TalexEvents.APP_SECONDARY_LAUNCH, (event: any) => {
+      // AppSecondaryLaunch
       const { argv } = event
 
       const arr = argv.slice(1)
@@ -152,12 +153,12 @@ export default {
       })
     })
 
-    const perPath = this.modulePath
+    const perPath = this['modulePath']
 
     genServiceCenter(perPath)
 
-    this.listeners.push(
-      this.touchChannel.regChannel(ChannelType.PLUGIN, 'service:reg', ({ data, plugin }) => {
+    this['listeners'].push(
+      this['touchChannel'].regChannel(ChannelType.PLUGIN, 'service:reg', ({ data, plugin }) => {
         const { service } = data
 
         if (serviceCenter.hasServiceBySymbolStr(service)) return false
@@ -168,7 +169,7 @@ export default {
           pluginScope: plugin,
           handle(event, _data) {
             console.log('[Service] Plugin ' + plugin + ' handle service: ' + service, event, _data)
-            const data = { 
+            const data = {
               ..._data,
               service: event.service.name
             }
@@ -184,8 +185,8 @@ export default {
       })
     )
 
-    this.listeners.push(
-      this.touchChannel.regChannel(ChannelType.PLUGIN, 'service:unreg', ({ data, reply }) => {
+    this['listeners'].push(
+      this['touchChannel'].regChannel(ChannelType.PLUGIN, 'service:unreg', ({ data, reply }) => {
         const { service } = data
 
         if (!serviceCenter.hasServiceBySymbolStr(service)) return false
@@ -196,7 +197,7 @@ export default {
     )
   },
   destroy() {
-    this.listeners.forEach(listener => listener())
+    this['listeners'].forEach(listener => listener())
 
     serviceCenter.save()
   },

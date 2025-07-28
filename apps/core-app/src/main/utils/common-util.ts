@@ -4,8 +4,10 @@ import fse from 'fs-extra'
 export enum Platform {
     MAC_OS,
     WINDOWS,
-    LINUX
+    LINUX,
+    UNKNOWN
 }
+
 // export enum PlatformVersion {
 //     WINDOWS_7,
 //     WINDOWS_8,
@@ -61,6 +63,8 @@ export function getPlatform() {
         case 'linux':
             return Platform.LINUX
     }
+
+    return Platform.UNKNOWN
 }
 export async function sleep(time: number) {
     return new Promise(resolve => setTimeout(() => resolve(time), time))

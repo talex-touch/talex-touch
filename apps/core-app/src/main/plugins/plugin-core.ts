@@ -26,7 +26,7 @@ import { genTouchApp, TouchWindow } from "../core/touch-core";
 import { getJs, getStyles } from "../utils/plugin-injection";
 import chokidar from "chokidar";
 import { TalexEvents, touchEventBus } from "../core/eventbus/touch-event";
-import { BrowserWindow, dialog, shell, clipboard, net, app } from "electron";
+import { BrowserWindow, dialog, shell, clipboard, app } from "electron";
 import axios from "axios";
 import type { ISearchItem } from "@talex-touch/utils";
 import { getCoreBoxWindow } from "../modules/box-tool/core-box";

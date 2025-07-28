@@ -1,4 +1,3 @@
-import { IPluginBaseInfo } from '@talex-touch/utils/plugin';
 import path from "path";
 import fs from "fs";
 import fse from "fs-extra";
@@ -17,7 +16,7 @@ export enum ResolverStatus {
 
 export class PluginResolver {
   filePath: string;
-  fd: number;
+  fd: number = -1;
 
   constructor(filePath) {
     this.filePath = filePath;
