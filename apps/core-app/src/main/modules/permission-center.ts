@@ -7,8 +7,11 @@ class PermissionCenter implements IPermissionCenter {
     const index = this.getPerIndex(pluginScope, permission)
 
     if (index !== -1) throw new Error("Permission already exists")
+    if (!this.perMap.has(pluginScope)) {
+      this.perMap.set(pluginScope, [])
+    }
 
-    const perArr = this.getPerFile(pluginScope)
+    const perArr = this.perMap.get(pluginScope)!
 
     perArr.push(permission)
   }
@@ -17,6 +20,8 @@ class PermissionCenter implements IPermissionCenter {
     const index = this.getPerIndex(pluginScope, permission)
 
     if (index === -1) throw new Error("Permission not exists")
+
+    const perArr = this.getPerFile(pluginScope)
 
     perArr.splice(index, 1)
 
@@ -28,7 +33,7 @@ class PermissionCenter implements IPermissionCenter {
   }
 
   getPermission(pluginScope: string, permission: symbol): Permission {
-    return this.getPerFile(pluginScope).find(per => per.id === permission)
+    return this.getPerFile(pluginScope).find(per => per.id === permission)!
   }
 
   rootPath: string
@@ -46,7 +51,7 @@ class PermissionCenter implements IPermissionCenter {
   getPerFile(pluginScope: string): Array<Permission> {
     if (!this.perMap.has(pluginScope))
       this.perMap.set(pluginScope, JSON.parse(fse.readJSONSync(this.getPerPath(pluginScope))))
-    return this.perMap.get(pluginScope)
+    return this.perMap.get(pluginScope)!
   }
 
   getPerPath(pluginScope: string) {
@@ -54,9 +59,11 @@ class PermissionCenter implements IPermissionCenter {
   }
 
   async save() {
-    const promises = []
+    const promises = new Array<Function>()
     this.perMap.forEach((perArr, pluginScope) => promises.push(() => {
-
+      if (!fse.existsSync(this.rootPath)) {
+        fse.mkdirSync(this.rootPath, { recursive: true })
+      }
       fse.writeJSONSync(this.getPerPath(pluginScope), JSON.stringify(perArr))
     }))
 
