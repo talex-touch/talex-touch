@@ -4,7 +4,7 @@ import { exec } from 'child_process';
 import plist from 'simple-plist';
 
 const getIconFile = (appFileInput: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const plistPath = path.join(appFileInput, 'Contents', 'Info.plist');
 
     if (!fs.existsSync(plistPath)) {

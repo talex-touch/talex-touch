@@ -285,7 +285,8 @@ export class CoreBoxManager {
               keyWords: [],
               pluginType: "feature",
               type: "plugin",
-              value: plugin.name
+              value: plugin.name,
+              featureId: feature.id
             };
 
             console.debug(`[CoreBox] Adding feature ${featureIndex}: "${feature.name}" (desc: "${feature.desc}") from plugin "${plugin.name}"`);
@@ -294,7 +295,7 @@ export class CoreBoxManager {
             const existingFeature = features.find(f =>
               f.name === processedFeature.name &&
               f.desc === processedFeature.desc &&
-              f.value === plugin.name
+              f.id === processedFeature.featureId
             );
 
             if (existingFeature) {
