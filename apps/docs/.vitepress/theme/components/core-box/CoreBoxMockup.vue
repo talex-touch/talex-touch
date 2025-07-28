@@ -100,7 +100,12 @@ onMounted(() => {
     border: none;
     background-color: transparent;
 
+    color: #fff !important;
     font-size: 22px;
+
+    &::placeholder {
+      color: #888888 !important;
+    }
   }
 }
 </style>

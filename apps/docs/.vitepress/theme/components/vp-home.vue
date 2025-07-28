@@ -24,7 +24,7 @@ onMounted(() => {
 
       <template #center>
         <TouchText />
-        <p>A strong adaptation more platform all-tool program.</p>
+        <p style="color: #eee">A strong adaptation more platform all-tool program.</p>
 
         <div style="margin-bottom: -4rem">
           <TouchButton>
@@ -48,6 +48,8 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   min-height: 100%;
+
+  color: white;
 }
 
 .touch-text {

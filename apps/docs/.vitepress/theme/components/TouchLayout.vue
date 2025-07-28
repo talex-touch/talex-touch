@@ -20,7 +20,7 @@ const { Layout } = DefaultTheme
 .beta-tag {
   margin: 0 0.5rem;
   padding: 4px 8px;
-  color: #F29C39;
+  color: #F29C39 !important;
 
   font-weight: bold;
   border-radius: 12px;

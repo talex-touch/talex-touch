@@ -53,8 +53,12 @@ html, body {
   background-color: #0000;
   // background-color: var(--vp-nav-bg-color) !important;
 
-  a.title {
+  a.title, a.link, span, .VPSocialLinks a {
     color: #fff;
+  }
+
+  .VPNavBarMenuLink.active {
+    color: var(--vp-c-brand);
   }
 }
 

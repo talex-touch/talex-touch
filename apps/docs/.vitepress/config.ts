@@ -54,7 +54,6 @@ export default defineConfig({
       next: "Next Section",
     },
   },
-  appearance: 'dark',
   /**
    * 自定义 markdown 解析器
    *
