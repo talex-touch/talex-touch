@@ -47,7 +47,7 @@ export class PluginResolver {
     });
     const fileStream = fs.createWriteStream(targetFile, { flags: "a" });
 
-    readStream.on("data", (chunk) => {
+    readStream.on("data", (_chunk) => {
       console.log(
         "[PluginResolver] Installing plugin: " +
           manifest.name +

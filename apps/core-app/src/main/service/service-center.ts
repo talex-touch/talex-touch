@@ -3,7 +3,7 @@ import path from "path";
 import { TalexTouch } from "../types";
 import type { IService, IServiceCenter, IServiceEvent, IServiceHandler } from "@talex-touch/utils/service";
 import { ChannelType } from '@talex-touch/utils/channel';
-import { TalexEvents, touchEventBus, AppSecondaryLaunch } from "../core/eventbus/touch-event";
+import { TalexEvents, touchEventBus } from "../core/eventbus/touch-event";
 import { suffix2Service } from '@talex-touch/utils/service/protocol'
 import { dialog } from "electron";
 import './protocol-handler'
