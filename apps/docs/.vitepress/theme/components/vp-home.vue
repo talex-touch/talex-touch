@@ -3,7 +3,7 @@ import { onMounted } from 'vue';
 import TouchBanner from './base/TouchBanner.vue';
 import TouchText from './base/TouchText.vue';
 import TouchFeatures from './base/TouchFeatures.vue';
-
+import TouchButton from './base/TouchButton.vue'
 
 onMounted(() => {
   const pageHeight = document.documentElement.clientHeight;
@@ -18,6 +18,12 @@ onMounted(() => {
       <template #center>
         <TouchText />
         <p>A strong adaptation more platform all-tool program.</p>
+
+        <div style="margin-bottom: -4rem">
+          <TouchButton>
+            Download <span style="font-weight: bold;">BETA</span> version
+          </TouchButton>
+        </div>
       </template>
     </TouchBanner>
 
