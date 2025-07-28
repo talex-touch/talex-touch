@@ -1,71 +1,134 @@
 <script setup lang="ts">
-import TouchButton from './base/TouchButton.vue'
+import TouchAurora from "./base/TouchAurora.vue";
+import TouchButton from "./base/TouchButton.vue";
 </script>
 
 <template>
-  <!-- 先锋测试版面 -->
   <div class="pioneer-testing-section">
     <div class="section-content">
       <div class="beta-tag">
-        <span class="beta-text">BETA</span>
+        <span class="beta-text">Pioneer Plan</span>
       </div>
-      
+
       <h2 class="section-title">Pioneer Testing Program</h2>
-      <p class="section-subtitle">Be among the first to experience our latest features and innovations</p>
-      
+      <p class="section-subtitle">
+        Be among the first to experience our latest features and innovations
+      </p>
+
       <div class="introduction">
-        <p>Join our exclusive Pioneer Testing Program to get early access to cutting-edge features and help shape the future of Polyglot Toolbox. Your feedback is invaluable in making our product even better.</p>
+        <p>
+          Join our exclusive Pioneer Testing Program to get early access to
+          cutting-edge features and help shape the future of Polyglot Toolbox.
+          Your feedback is invaluable in making our product even better.
+        </p>
       </div>
-      
+
       <div class="features-grid">
         <div class="feature-card">
           <div class="card-icon">
             <svg viewBox="0 0 24 24" width="48" height="48">
-              <path fill="rgba(255, 255, 255, 0.8)" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-3.5l6-4.5-6-4.5z"/>
+              <path
+                fill="rgba(255, 255, 255, 0.8)"
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-3.5l6-4.5-6-4.5z"
+              />
             </svg>
           </div>
           <h3 class="card-title">Early Access</h3>
-          <p class="card-description">Get exclusive access to new features before they're released to the public.</p>
+          <p class="card-description">
+            Get exclusive access to new features before they're released to the
+            public.
+          </p>
         </div>
         <div class="feature-card">
           <div class="card-icon">
             <svg viewBox="0 0 24 24" width="48" height="48">
-              <path fill="rgba(255, 255, 255, 0.8)" d="M7 2v11h3v9l7-12h-4l4-8z"/>
+              <path
+                fill="rgba(255, 255, 255, 0.8)"
+                d="M7 2v11h3v9l7-12h-4l4-8z"
+              />
             </svg>
           </div>
           <h3 class="card-title">Direct Influence</h3>
-          <p class="card-description">Your feedback directly shapes the development of upcoming features.</p>
+          <p class="card-description">
+            Your feedback directly shapes the development of upcoming features.
+          </p>
         </div>
         <div class="feature-card">
           <div class="card-icon">
             <svg viewBox="0 0 24 24" width="48" height="48">
-              <path fill="rgba(255, 255, 255, 0.8)" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+              <path
+                fill="rgba(255, 255, 255, 0.8)"
+                d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"
+              />
             </svg>
           </div>
           <h3 class="card-title">Special Recognition</h3>
-          <p class="card-description">Receive special recognition in our release notes and community forums.</p>
+          <p class="card-description">
+            Receive special recognition in our release notes and community
+            forums.
+          </p>
         </div>
         <div class="feature-card">
           <div class="card-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 26 26"><!-- Icon from Garden SVG Icons by Zendesk - https://github.com/zendeskgarden/svg-icons/blob/main/LICENSE.md --><path fill="currentColor" d="m22.475 18.881l-8.891 4.925c-.525.259-.643.259-1.168 0l-8.89-4.925c-1.164-.644-.195-2.385.97-1.74L13 21.85l8.505-4.71c1.164-.645 2.133 1.096.97 1.74zm0-5l-8.891 4.925c-.525.259-.643.259-1.168 0l-8.89-4.925c-1.164-.644-.195-2.385.97-1.74L13 16.85l8.505-4.71c1.164-.645 2.133 1.096.97 1.74zM3.515 8.89a1 1 0 0 1-.002-1.749l9-5.015a1 1 0 0 1 .974 0l9 5.015a1 1 0 0 1-.003 1.749l-9.007 4.985a1 1 0 0 1-.97 0z"/></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="48"
+              height="48"
+              viewBox="0 0 26 26"
+            >
+              <!-- Icon from Garden SVG Icons by Zendesk - https://github.com/zendeskgarden/svg-icons/blob/main/LICENSE.md -->
+              <path
+                fill="currentColor"
+                d="m22.475 18.881l-8.891 4.925c-.525.259-.643.259-1.168 0l-8.89-4.925c-1.164-.644-.195-2.385.97-1.74L13 21.85l8.505-4.71c1.164-.645 2.133 1.096.97 1.74zm0-5l-8.891 4.925c-.525.259-.643.259-1.168 0l-8.89-4.925c-1.164-.644-.195-2.385.97-1.74L13 16.85l8.505-4.71c1.164-.645 2.133 1.096.97 1.74zM3.515 8.89a1 1 0 0 1-.002-1.749l9-5.015a1 1 0 0 1 .974 0l9 5.015a1 1 0 0 1-.003 1.749l-9.007 4.985a1 1 0 0 1-.97 0z"
+              />
+            </svg>
           </div>
           <h3 class="card-title">Priority Support</h3>
-          <p class="card-description">Get priority access to our development team for bug reports and questions.</p>
+          <p class="card-description">
+            Get priority access to our development team for bug reports and
+            questions.
+          </p>
         </div>
       </div>
-      
+
       <div class="cta-section">
-        <TouchButton>
-          Join Pioneer Program
-        </TouchButton>
+        <TouchButton> Join Pioneer Program </TouchButton>
+      </div>
+
+      <div class="pioneer-aurora-container">
+        <TouchAurora
+          :color-stops="['#0E51B3', '#171D22', '#530E05']"
+          :amplitude="1.0"
+          :blend="0.5"
+          :speed="1.0"
+          :intensity="1.0"
+        />
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.pioneer-aurora-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+
+  transform: scale(-1)
+}
+
 .pioneer-testing-section {
-  padding: 4rem 1rem;
+  display: flex;
+
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+
+  padding: 2rem 1rem;
+  height: var(--vh, 100%);
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -197,7 +260,7 @@ import TouchButton from './base/TouchButton.vue'
   .section-title {
     font-size: 1.5rem;
   }
-  
+
   .section-subtitle {
     font-size: 1rem;
   }
