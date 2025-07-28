@@ -6,6 +6,11 @@
   background-color: #000;
 }
 
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
 .dark {
   --vp-c-bg-alt: #242424; // 深色模式侧边栏
 }
@@ -226,7 +231,7 @@
 }
 
 .VPNavScreen {
-  height: 100vh;
+  height: 100%;
 }
 
 .VPContent.is-home {
