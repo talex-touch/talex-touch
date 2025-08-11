@@ -27,7 +27,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@floating-ui/dom": "^1.7.2",
+    "@floating-ui/dom": "^1.7.3",
     "@floating-ui/vue": "^1.1.7",
     "@iconify-json/ri": "^1.2.5",
     "@iconify-json/simple-icons": "^1.2.44",
