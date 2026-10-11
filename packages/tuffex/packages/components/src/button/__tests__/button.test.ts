@@ -285,4 +285,97 @@ describe('txButton', () => {
 
     expect(wrapper.attributes('type')).toBe('submit')
   })
+
+  it('renders background progress fill and numeric readout, clamping progress to 0-100', async () => {
+    const wrapper = mount(Button, {
+      props: {
+        variant: 'primary',
+        progress: 42.4,
+      },
+      slots: {
+        default: 'Uploading',
+      },
+    })
+
+    expect(wrapper.classes()).toContain('has-progress')
+    expect(wrapper.attributes('disabled')).toBeDefined()
+    expect(wrapper.attributes('aria-busy')).toBe('true')
+    expect(wrapper.attributes('style')).toContain('--tx-button-progress-scale: 0.424')
+    expect(wrapper.find('.tx-button__progress-fill').exists()).toBe(true)
+    expect(wrapper.find('.tx-button__progress-value').text()).toContain('42%')
+
+    await wrapper.trigger('click')
+    expect(wrapper.emitted('click')).toBeFalsy()
+
+    await wrapper.setProps({ progress: 140 })
+    expect(wrapper.attributes('style')).toContain('--tx-button-progress-scale: 1')
+    expect(wrapper.find('.tx-button__progress-value').text()).toContain('100%')
+    expect(wrapper.attributes('disabled')).toBeUndefined()
+
+    await wrapper.setProps({ progress: -12 })
+    expect(wrapper.attributes('style')).toContain('--tx-button-progress-scale: 0')
+    expect(wrapper.find('.tx-button__progress-value').text()).toContain('0%')
+  })
+
+  it('supports custom formatProgress and hiding the progress readout via showProgress=false', async () => {
+    const wrapper = mount(Button, {
+      props: {
+        progress: 64,
+        formatProgress: p => `${p}/100`,
+      },
+      slots: {
+        default: 'Syncing',
+      },
+    })
+
+    expect(wrapper.find('.tx-button__progress-value').text()).toContain('64/100')
+
+    await wrapper.setProps({ showProgress: false })
+    expect(wrapper.find('.tx-button__progress-value').exists()).toBe(false)
+    expect(wrapper.find('.tx-button__progress-fill').exists()).toBe(true)
+  })
+
+  it('transitions continuously from progress to success, warning, and error states with status glyphs', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mount(Button, {
+        props: {
+          variant: 'primary',
+          progress: 78,
+        },
+        slots: {
+          default: 'Deploying',
+        },
+      })
+
+      expect(wrapper.find('.tx-button__progress-value').exists()).toBe(true)
+
+      await wrapper.setProps({ status: 'success' })
+      expect(wrapper.classes()).toEqual(expect.arrayContaining([
+        'has-status',
+        'is-status-success',
+        'is-morphing',
+      ]))
+      expect(wrapper.attributes('style')).toContain('--tx-button-progress-scale: 1')
+      expect(wrapper.find('.tx-button__progress-value').exists()).toBe(false)
+      expect(wrapper.find('.tx-button__status-glyph.is-success').exists()).toBe(true)
+      expect(wrapper.attributes('disabled')).toBeUndefined()
+
+      vi.advanceTimersByTime(450)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.classes()).not.toContain('is-morphing')
+
+      await wrapper.setProps({ status: 'warning' })
+      expect(wrapper.classes()).toContain('is-status-warning')
+      expect(wrapper.classes()).toContain('is-morphing')
+      expect(wrapper.find('.tx-button__status-glyph.is-warning').exists()).toBe(true)
+
+      await wrapper.setProps({ status: 'error' })
+      expect(wrapper.classes()).toContain('is-status-error')
+      expect(wrapper.find('.tx-button__status-glyph.is-error').exists()).toBe(true)
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
 })

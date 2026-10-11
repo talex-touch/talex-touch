@@ -2,11 +2,10 @@
 import type { ObjectDirective, VNode } from 'vue'
 import type { ButtonEmits, ButtonProps } from './types'
 import { resolveButtonSize } from './size'
-import { computed, nextTick, ref, useAttrs, useSlots, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue'
 import { useFlip } from '../../../../utils/animation/flip'
 import { useVibrate, type VibrateType } from '../../../../utils/vibrate'
 import Spinner from '../../spinner'
-
 defineOptions({
   name: 'TxButton',
 })
@@ -21,6 +20,10 @@ const props = withDefaults(defineProps<ButtonProps>(), {
   circle: false,
   loading: false,
   loadingVariant: 'spinner',
+  progress: undefined,
+  showProgress: true,
+  formatProgress: undefined,
+  status: '',
   disabled: false,
   border: true,
   icon: undefined,
@@ -77,9 +80,78 @@ const { flip: flipSize } = useFlip(buttonRef, {
   },
 })
 
+const MORPH_MS = 420
+const morphing = ref(false)
+let morphTimer: ReturnType<typeof setTimeout> | undefined
+
+const hasProgress = computed(() => {
+  return typeof props.progress === 'number' && Number.isFinite(props.progress)
+})
+
+const clampedProgress = computed(() => {
+  if (!hasProgress.value)
+    return 0
+  return Math.min(100, Math.max(0, props.progress as number))
+})
+
+const resolvedStatus = computed<'' | 'success' | 'warning' | 'error'>(() => {
+  if (props.status === 'success' || props.status === 'warning' || props.status === 'error')
+    return props.status
+  return ''
+})
+
+const hasStatus = computed(() => resolvedStatus.value !== '')
+
+const progressRatio = computed(() => {
+  if (hasStatus.value)
+    return 1
+  if (!hasProgress.value)
+    return 0
+  return clampedProgress.value / 100
+})
+
+const showProgressLayer = computed(() => {
+  return hasProgress.value || hasStatus.value
+})
+
+const showProgressValue = computed(() => {
+  return hasProgress.value && props.showProgress && !hasStatus.value
+})
+
+const formattedProgress = computed(() => {
+  const rounded = Math.round(clampedProgress.value)
+  if (props.formatProgress)
+    return props.formatProgress(clampedProgress.value)
+  return `${rounded}%`
+})
+
+const isBusy = computed(() => {
+  return props.loading || (hasProgress.value && !hasStatus.value && clampedProgress.value < 100)
+})
+
+const isInteractiveDisabled = computed(() => {
+  return props.disabled || isBusy.value
+})
+
+function triggerMorphWindow() {
+  if (typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    morphing.value = false
+    return
+  }
+  morphing.value = true
+  if (morphTimer !== undefined)
+    clearTimeout(morphTimer)
+  morphTimer = setTimeout(() => {
+    morphTimer = undefined
+    morphing.value = false
+  }, MORPH_MS)
+}
+
 watch(
-  () => props.loading,
-  () => {
+  [() => props.loading, hasProgress, resolvedStatus],
+  ([nextLoading, nextProgress, nextStatus], [prevLoading, prevProgress, prevStatus]) => {
+    if (nextStatus !== prevStatus || nextProgress !== prevProgress || nextLoading !== prevLoading)
+      triggerMorphWindow()
     if (!autoWidthEnabled.value)
       return
     void flipSize(async () => {
@@ -89,6 +161,10 @@ watch(
   { flush: 'sync' },
 )
 
+onBeforeUnmount(() => {
+  if (morphTimer !== undefined)
+    clearTimeout(morphTimer)
+})
 const normalizedVariant = computed(() => {
   if (props.variant)
     return props.variant
@@ -120,6 +196,14 @@ const spinnerSize = computed(() => {
   return 16
 })
 
+const buttonStyle = computed(() => {
+  if (!showProgressLayer.value)
+    return undefined
+  return {
+    '--tx-button-progress-scale': `${progressRatio.value}`,
+  }
+})
+
 const innerStyle = computed(() => {
   return {
     '--tx-button-spinner-size': `${spinnerSize.value}px`,
@@ -134,7 +218,7 @@ const resolvedLoadingVariant = computed(() => {
 })
 
 const showLoadingBar = computed(() => {
-  return props.loading && props.block && resolvedLoadingVariant.value === 'bar'
+  return props.loading && props.block && resolvedLoadingVariant.value === 'bar' && !showProgressLayer.value
 })
 
 function hasDefaultContent(): boolean {
@@ -168,10 +252,14 @@ const classList = computed(() => {
     `variant-${normalizedVariant.value}`,
     toneClass.value,
     `tx-size-${normalizedSize.value}`,
+    resolvedStatus.value && `is-status-${resolvedStatus.value}`,
     {
       'block': props.block,
       'loading': props.loading,
       'loading-bar': showLoadingBar.value,
+      'has-progress': hasProgress.value,
+      'has-status': hasStatus.value,
+      'is-morphing': morphing.value,
       'disabled': props.disabled,
       'plain': props.plain,
       'dashed': props.dashed,
@@ -214,9 +302,8 @@ function onShakeEnd(event: AnimationEvent) {
 }
 
 function handleClick(event: MouseEvent) {
-  if (props.disabled || props.loading)
+  if (isInteractiveDisabled.value)
     return
-
   if (props.vibrate) {
     let vibrateType = props.vibrateType
     if (!vibrateType) {
@@ -257,36 +344,64 @@ if (props.autofocus) {
     v-wave
     class="tx-button fake-background isolate transition-cubic"
     :class="classList"
+    :style="buttonStyle"
     :type="nativeType"
-    :disabled="disabled || loading"
+    :disabled="isInteractiveDisabled"
+    :aria-busy="isBusy || undefined"
     @click="handleClick"
     @animationend="onShakeEnd"
   >
     <span v-if="showLoadingBar" class="tx-button__loading-layer" aria-hidden="true" />
+    <span v-if="showProgressLayer" class="tx-button__progress-track" aria-hidden="true">
+      <span class="tx-button__progress-fill" />
+    </span>
     <span ref="innerRef" class="tx-button__inner" :style="innerStyle">
       <template v-if="!showLoadingBar">
         <template v-if="isIconOnly">
           <Spinner
-            v-if="loading"
+            v-if="loading && !hasStatus && !hasProgress"
             class="tx-button__spinner is-overlay"
-
-            :visible="loading"
+            :visible="loading && !hasStatus && !hasProgress"
             :size="spinnerSize"
           />
         </template>
         <template v-else>
-          <span v-if="loading" class="tx-button__spinner-slot is-visible">
+          <span v-if="loading && !hasStatus" class="tx-button__spinner-slot is-visible">
             <Spinner
               class="tx-button__spinner"
-              :visible="loading"
+              :visible="loading && !hasStatus"
               :size="spinnerSize"
             />
           </span>
         </template>
       </template>
 
-      <i v-if="icon" class="tx-button__icon" :class="icon" />
+      <span v-if="hasStatus" class="tx-button__status-slot is-visible" aria-hidden="true">
+        <svg class="tx-button__status-svg" viewBox="0 0 24 24" :width="spinnerSize" :height="spinnerSize">
+          <path
+            v-if="resolvedStatus === 'success'"
+            class="tx-button__status-glyph is-success"
+            d="M4 12.5l5 5L20 6.5"
+            pathLength="1"
+          />
+          <g v-else-if="resolvedStatus === 'warning'" class="tx-button__status-glyph is-warning">
+            <path d="M12 3.5L21 19.5H3L12 3.5Z" pathLength="1" />
+            <path class="tx-button__status-detail" d="M12 9.5v4.5" pathLength="1" />
+            <circle class="tx-button__status-dot" cx="12" cy="16.8" r="1" />
+          </g>
+          <g v-else-if="resolvedStatus === 'error'" class="tx-button__status-glyph is-error">
+            <path d="M18 6L6 18" pathLength="1" />
+            <path class="tx-button__status-second" d="M6 6l12 12" pathLength="1" />
+          </g>
+        </svg>
+      </span>
+
+      <i v-if="icon && (!hasStatus || !isIconOnly)" class="tx-button__icon" :class="icon" />
       <slot />
+
+      <span v-if="showProgressValue" class="tx-button__progress-value">
+        {{ formattedProgress }}
+      </span>
     </span>
   </button>
 </template>
