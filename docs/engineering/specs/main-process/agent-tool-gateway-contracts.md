@@ -204,6 +204,10 @@ on. `mcp-servers` (Tuff as a client) is the neighbouring domain and is *not* thi
 - **The port is the user's.** A stable, persisted default; a port that cannot be
   bound is reported in state rather than silently swapped for an ephemeral one,
   which would break a client config pasted elsewhere.
+- **Rebinding waits for shutdown, then re-checks single-flight state.** Await
+  pending listener shutdown before checking `starting` and `handle`; callers
+  released by the same shutdown must share the new listener rather than race
+  a second bind and persist `enabled: false`. Shutdown failures remain errors.
 - **The credential is masked wherever it is rendered**, snippet included, and the
   reveal is a gesture for one token: rotating re-arms the mask.
 - **A read that failed is not an "off" switch.** The settings section renders a
