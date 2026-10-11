@@ -413,6 +413,19 @@ describe('settingMcpHost local MCP server section', () => {
     expect(section.attributes('aria-labelledby')).toBe(heading.attributes('id'))
     expect(heading.text()).toBe('settings.skillsMcp.host.label')
   })
+
+  it('marks the section as a Beta feature in its heading', async () => {
+    const wrapper = await mountSection(LISTENING)
+
+    // The Beta chip sits next to the heading in the header, not buried in the card body.
+    const header = wrapper.find('.SettingMcpHost-Head')
+    const heading = header.find('.SettingMcpHost-Title')
+
+    // Rendered as a SettingChip in the title row — the visible Beta annotation.
+    expect(heading.find('.SettingChip').text()).toBe('settings.platformTags.beta')
+    // And it is genuinely present on the header, not a stub echo in a row.
+    expect(header.text()).toContain('settings.platformTags.beta')
+  })
 })
 
 describe('settingMcpHost: test hygiene', () => {
