@@ -2,7 +2,7 @@
 // `/admin` used to fall through to the catch-all 404. Forward it to the page the
 // header menu's admin entry and AdminNav's fallback already open.
 definePageMeta({
-  redirect: '/admin/updates',
+  redirect: '/admin/analytics',
 })
 
 defineI18nRoute(false)

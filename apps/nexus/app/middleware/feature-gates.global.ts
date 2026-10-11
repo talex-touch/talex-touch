@@ -18,6 +18,6 @@ export default defineNuxtRouteMiddleware((to) => {
     // The risk console is a panel of the administrator console, so it falls
     // back to that console's first section. `/admin/emergency` is a standalone
     // recovery page with no shell and no session, so it falls back to the root.
-    return navigateTo(to.path.startsWith('/admin/emergency') ? '/' : '/admin/updates')
+    return navigateTo(to.path.startsWith('/admin/emergency') ? '/' : '/admin/analytics')
   }
 })
