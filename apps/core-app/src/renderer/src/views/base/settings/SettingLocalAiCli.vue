@@ -171,11 +171,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <TuffGroupBlock
-    v-if="visible"
-    :name="t('settingLocalAiCli.groupTitle')"
-    :description="t('settingLocalAiCli.groupDesc')"
-  >
+  <TuffGroupBlock v-if="visible" :name="t('settingLocalAiCli.groupTitle')">
     <div class="SettingLocalAiCli-Beta">
       <span>{{ t('settingLocalAiCli.betaLabel') }}</span>
       <TxButton
