@@ -218,7 +218,15 @@ function getSourceIssues(packages) {
 }
 
 function execPnpmSync(args, options) {
-  return execFileSync('corepack', ['pnpm', ...args], options)
+  try {
+    return execFileSync('pnpm', args, options)
+  }
+  catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return execFileSync('corepack', ['pnpm', ...args], options)
+    }
+    throw error
+  }
 }
 
 function runPack(packageInfo, tempRoot) {

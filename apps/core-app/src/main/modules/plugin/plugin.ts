@@ -1857,7 +1857,11 @@ export class TouchPlugin implements ITouchPlugin {
   private createSystemActionCapability(
     activation: PluginActivationIdentity
   ): PluginSystemActionCapabilities | null {
-    if (!privileges.isPrivilegedPluginFor('systemActions', this.name, this.sdkapi)) return null
+    if (
+      !privileges.isPrivilegedPluginFor('systemActionsBasic', this.name, this.sdkapi) &&
+      !privileges.isPrivilegedPluginFor('systemActionsAdvanced', this.name, this.sdkapi)
+    )
+      return null
     const factory = TouchPlugin.capability('systemAction')
     if (!factory) {
       throw Object.assign(new Error('PLUGIN_SYSTEM_ACTION_CAPABILITY_UNAVAILABLE'), {
