@@ -11,7 +11,6 @@ import {
 } from './plugin-host-capabilities'
 import { hasControlCharacter } from './plugin-host-text-validation'
 import { isPrivilegedPluginFor } from '../../../../shared/privileged-plugins'
-import { pluginModule } from '../plugin-module'
 
 export type PluginImageToolsFormat = 'png' | 'webp' | 'jpeg' | 'ico'
 export interface PluginImageToolsSaveRequest {
@@ -554,8 +553,7 @@ export function createPluginImageToolsCapabilities(
   ] as const)
     if (typeof o[k] !== 'function' || utilTypes.isProxy(o[k])) bad()
   const expected = active(o.activation)
-  const sdkapi = pluginModule.pluginManager?.plugins.get(expected.name)?.sdkapi
-  if (!isPrivilegedPluginFor('imageTools', expected.name, sdkapi)) bad()
+  if (!isPrivilegedPluginFor('imageTools', expected.name)) bad()
   const fs = Object.freeze({ ...fsDefault, ...(o.filesystem ?? {}) })
   for (const k of ['lstat', 'realpath', 'open', 'rename', 'unlink'] as const)
     if (typeof fs[k] !== 'function' || utilTypes.isProxy(fs[k])) bad()

@@ -11,7 +11,6 @@ import {
 } from './plugin-host-capabilities'
 import { hasControlCharacter } from './plugin-host-text-validation'
 import { isPrivilegedPluginFor } from '../../../../shared/privileged-plugins'
-import { pluginModule } from '../plugin-module'
 
 export type PluginVscodeProjectKind = 'folder' | 'workspace' | 'file'
 export type PluginVscodeProjectsReason =
@@ -362,8 +361,7 @@ export function createPluginVscodeProjectsCapabilities(
     if (typeof options[key] !== 'function' || utilTypes.isProxy(options[key])) invalid()
   }
   const expected = snapshotActivation(options.activation)
-  const sdkapi = pluginModule.pluginManager?.plugins.get(expected.name)?.sdkapi
-  if (!isPrivilegedPluginFor('vscodeProjects', expected.name, sdkapi)) invalid()
+  if (!isPrivilegedPluginFor('vscodeProjects', expected.name)) invalid()
   const list = serviceMethod<TrustedPluginVscodeProjectsService['list']>(options.service, 'list')
   const open = serviceMethod<TrustedPluginVscodeProjectsService['open']>(options.service, 'open')
   const invalidate = serviceMethod<TrustedPluginVscodeProjectsService['invalidate']>(

@@ -11,7 +11,6 @@ import {
   isPrivilegedPluginFor,
   SYSTEM_ACTION_PLUGIN_NAMES
 } from '../../../../shared/privileged-plugins'
-import { pluginModule } from '../plugin-module'
 
 export const PLUGIN_SYSTEM_ACTION_IDS = Object.freeze([
   'restart',
@@ -681,8 +680,7 @@ export function createPluginSystemActionCapabilities(
     callbackFields: Object.freeze([]),
     validateRequest(value) {
       const request = validateRequest(value)
-      const sdkapi = pluginModule.pluginManager?.plugins.get(expectedActivation.name)?.sdkapi
-      if (!isActionAllowedForPlugin(expectedActivation.name, request.actionId, sdkapi)) invalid()
+      if (!isActionAllowedForPlugin(expectedActivation.name, request.actionId)) invalid()
       return request
     },
     validateResult,

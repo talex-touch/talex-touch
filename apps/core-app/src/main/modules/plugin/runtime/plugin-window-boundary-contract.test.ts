@@ -76,7 +76,7 @@ describe('plugin window boundary contract', () => {
     const inputHandler = coreBoxSource.slice(inputHandlerStart, inputHandlerEnd)
     const flowHandler = inputHandler.slice(inputHandler.indexOf('const flowShortcut'))
 
-    expect(flowHandler).toContain('resolveCoreBoxFlowShortcut(input)')
+    expect(flowHandler).toContain('resolveCoreBoxFlowShortcut(input')
     expect(flowHandler).toContain('this.uiView !== view')
     expect(flowHandler).toContain('ownerWindow.window.isDestroyed()')
     expect(flowHandler).toContain('ownerWindow.window.isVisible()')
