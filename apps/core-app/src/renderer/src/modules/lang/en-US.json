@@ -4110,7 +4110,7 @@
       "createTitle": "Add MCP server",
       "editTitle": "Edit {name}",
       "storedSecretsNote": "{count} saved values ({names}). They are not shown here; saving with this field empty deletes them.",
-      "hostDesc": "Other AI clients on this machine can call Tuff's tools over a local address, and every call still asks you first.",
+      "hostDesc": "Other AI clients on this machine can call Tuff's tools over a local address. This is an opt-in Beta capability and is off by default; every call still asks you first.",
       "readOnlyNote": "An agent's own configuration declares this server. Tuff only reads it and never changes that file; the switch affects Tuff alone."
     },
     "skillsPage": {
