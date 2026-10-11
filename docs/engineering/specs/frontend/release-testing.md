@@ -859,6 +859,7 @@ DOWNLOAD_START_TIMEOUT = 30_000 // renderer timeout for update:download only
 - **Page-initiated checks never open the modal.** The update page's check/retry and channel switch call `checkApplicationUpgrade(true, { presentDialog: false })`.
   - The "发现新版本" dialog awaits the user. While it is open the page cannot refresh its cached release, so its own download button stays disabled.
   - The non-forced callers (`useLayoutController`, `useAppLifecycle`) keep the default.
+- **Channel switching is not version ordering.** Saving a channel triggers the page's forced check against that channel. Main compares complete versions with the shared comparator for both fresh and cached candidates: `2.4.14` upgrades `2.4.14-beta.58`, but an older base version, the same version, or a same-base prerelease below an installed stable build must never become an upgrade just because the selected channel changed. An accepted candidate starts the existing automatic-download lifecycle when `autoDownload` is on; off leaves it `available`. Channel priority must not override semantic version ordering. This does not bypass manifest/signature checks or the `rollbackCompatible` normal-quit install gate, and fixing source code does not hot-patch an already-installed signed app.
 - **Download start.** `update:download` uses `DOWNLOAD_START_TIMEOUT`. Main resolves the manifest (up to 8s) before the attempt reaches `downloading`, so the 4s channel default reported a failure for a download that then started. The button stays loading until the lifecycle leaves `available`.
 - **Auto-download grace.** With `autoDownload` on, an `available` attempt shows "正在准备下载" with no action for `AUTO_DOWNLOAD_GRACE_MS`, counted from when the page saw it, and only then offers 下载更新. This keeps the page from starting a manual download that races the automatic one.
 - **Visibility.**
@@ -908,6 +909,8 @@ DOWNLOAD_START_TIMEOUT = 30_000 // renderer timeout for update:download only
 - `update-attempt-repository.test.ts`: `listTerminalAttempts` excludes `idle`, non-terminal and target-less rows (real SQLite + migrations).
 - `UpdateService.test.ts`:
   - the cached/persisted hit starts auto-download, including the restart-in-frequency-window path;
+  - switching `2.4.14-beta.58` to Release finds `v2.4.14` and enters `downloading` automatically, while disabling automatic download leaves the same candidate `available`;
+  - switching channels never downgrades an installed newer base version or stable build to an older/same-base preview; a genuinely newer preview remains eligible when Beta is selected;
   - `autoDownload` false does not start it;
   - an active or `ready` attempt does not start it;
   - the `get-history` handler success and failure;
