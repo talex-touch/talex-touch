@@ -3,7 +3,7 @@
   "name": "touch-quickops",
   "version": "0.1.0",
   "author": "TalexTouch Team",
-  "sdkapi": 260428,
+  "sdkapi": 261011,
   "category": "utilities",
   "icon": {
     "type": "emoji",
@@ -97,8 +97,6 @@
             "系统工具",
             "quickops settings",
             "quickops preferences",
-            "settings",
-            "preferences",
             "QuickOps 设置",
             "QuickOps 配置",
             "QuickOps 偏好",

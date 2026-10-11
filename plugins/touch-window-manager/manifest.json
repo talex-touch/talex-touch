@@ -3,7 +3,7 @@
   "name": "touch-window-manager",
   "version": "1.0.0",
   "author": "TalexTouch Team",
-  "sdkapi": 260428,
+  "sdkapi": 261011,
   "category": "utilities",
   "icon": {
     "type": "file",
@@ -33,6 +33,20 @@
       "defaultState": "ask",
       "requiresUserConsent": true,
       "pushesToRootResults": true
+    },
+    {
+      "id": "touch-window-manager.window-presets",
+      "displayName": "窗口预设",
+      "featureId": "window-presets",
+      "kind": "system-action",
+      "owner": "official-plugin",
+      "mode": "push",
+      "priority": "fast",
+      "defaultOrder": 93,
+      "permissionScopes": ["root-results"],
+      "defaultState": "ask",
+      "requiresUserConsent": true,
+      "pushesToRootResults": true
     }
   ],
   "features": [
@@ -57,6 +71,30 @@
         {
           "type": "over",
           "value": ["window", "app", "应用", "窗口管理"]
+        }
+      ]
+    },
+    {
+      "id": "window-presets",
+      "name": "窗口预设",
+      "desc": "一键布局窗口组合",
+      "icon": {
+        "type": "file",
+        "value": "assets/logo.svg"
+      },
+      "keywords": ["window", "preset", "layout", "分屏", "布局", "窗口预设"],
+      "push": true,
+      "priority": 7,
+      "acceptedInputTypes": ["text"],
+      "platform": {
+        "win32": true,
+        "darwin": false,
+        "linux": false
+      },
+      "commands": [
+        {
+          "type": "over",
+          "value": ["window", "preset", "layout", "分屏", "布局"]
         }
       ]
     }

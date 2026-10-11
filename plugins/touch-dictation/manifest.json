@@ -3,7 +3,7 @@
   "name": "touch-dictation",
   "version": "1.0.0",
   "author": "TalexTouch Team",
-  "sdkapi": 260428,
+  "sdkapi": 261011,
   "category": "utilities",
   "icon": {
     "type": "file",
