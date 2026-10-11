@@ -225,9 +225,9 @@ describe('shell conversation list skeleton geometry', () => {
     }
   })
 
-  it('leaves the rail out: the rail hides the whole list, skeleton included', () => {
+  it('keeps the list visible in rail mode with centered alignment for compact rows', () => {
     const rail = rules.find(({ selector }) => selector === '.is-rail .ShellConversationList')
-    expect(rail?.declarations.get('display')).toBe('none')
+    expect(rail?.declarations.get('align-items')).toBe('center')
   })
 })
 

@@ -4,8 +4,10 @@ import type {
   LocalAiCliSessionSummary
 } from '@talex-touch/utils/transport/events/local-ai-cli'
 import type { ProjectRecord } from '@talex-touch/utils/transport/sdk/domains/project'
+import { TxPopover } from '@talex-touch/tuffex/popover'
 import { TxSkeleton } from '@talex-touch/tuffex/skeleton'
 import { useTuffTransport } from '@talex-touch/utils/transport'
+import { useShellSidebar } from '~/modules/layout/useShellSidebar'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -39,6 +41,7 @@ const folders = useProjectFolders({
   activeProjectId: () => projectStore.activeProjectId,
   projects: () => projectStore.projects
 })
+const { collapsed } = useShellSidebar()
 const archivedOpen = ref(false)
 const renamingProjectId = ref<string | null>(null)
 const discoveringProjectId = ref<string | null>(null)
@@ -158,6 +161,103 @@ async function forgetSession(sessionRef: string): Promise<void> {
     toast.error(message)
   }
 }
+interface RailConversationRow {
+  key: string
+  kind: 'conversation' | 'session'
+  id?: string
+  title: string
+  projectName?: string
+  updatedAt: number
+  session?: LocalAiCliSessionSummary
+}
+
+const railRows = computed<RailConversationRow[]>(() => {
+  const list: RailConversationRow[] = []
+
+  for (const group of groups.value.active) {
+    for (const row of group.rows) {
+      if (row.kind === 'conversation') {
+        list.push({
+          key: row.key,
+          kind: 'conversation',
+          id: row.conversation.id,
+          title: row.conversation.title || t('shell.history.untitled'),
+          projectName: group.project?.name,
+          updatedAt: row.updatedAt
+        })
+      } else {
+        list.push({
+          key: row.key,
+          kind: 'session',
+          title: row.session.title || row.session.provider || t('shell.projects.untitledSession'),
+          projectName: group.project?.name,
+          updatedAt: row.updatedAt,
+          session: row.session
+        })
+      }
+    }
+  }
+
+  for (const row of groups.value.home.rows) {
+    if (row.kind === 'conversation') {
+      list.push({
+        key: row.key,
+        kind: 'conversation',
+        id: row.conversation.id,
+        title: row.conversation.title || t('shell.history.untitled'),
+        updatedAt: row.updatedAt
+      })
+    } else {
+      list.push({
+        key: row.key,
+        kind: 'session',
+        title: row.session.title || row.session.provider || t('shell.projects.untitledSession'),
+        updatedAt: row.updatedAt,
+        session: row.session
+      })
+    }
+  }
+
+  return list.sort((a, b) => b.updatedAt - a.updatedAt)
+})
+
+function shortTitle(title: string): string {
+  if (!title) return '对话'
+  const trimmed = title.trim()
+  if (!trimmed) return '对话'
+
+  const emojiMatch = /^\p{Extended_Pictographic}/u.exec(trimmed)
+  if (emojiMatch) return emojiMatch[0]
+
+  const isCjk = /[\u4e00-\u9fa5\u3040-\u30ff\u3400-\u4dbf]/.test(trimmed)
+  if (isCjk) {
+    return trimmed.slice(0, 2)
+  }
+
+  return trimmed.slice(0, 3)
+}
+
+function formatRowTime(timestamp?: number): string {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  if (isToday) {
+    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  }
+  return date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })
+}
+
+function onRailRowClick(row: RailConversationRow): void {
+  if (row.kind === 'conversation' && row.id) {
+    openConversation(row.id)
+  } else if (row.kind === 'session' && row.session) {
+    void continueSession(row.session)
+  }
+}
 </script>
 
 <template>
@@ -173,19 +273,79 @@ async function forgetSession(sessionRef: string): Promise<void> {
       class="ShellConversationList-Section ShellConversationList-Skeleton"
       aria-hidden="true"
     >
-      <div class="ShellConversationList-SectionHeader">
-        <TxSkeleton :width="56" :height="9" :radius="3" />
-      </div>
-      <div
-        v-for="width in SKELETON_NAME_WIDTHS"
-        :key="width"
-        class="ShellConversationList-SkeletonRow"
-      >
-        <TxSkeleton width="var(--shell-row-icon)" height="var(--shell-row-icon)" :radius="4" />
-        <div class="ShellConversationList-SkeletonName">
-          <TxSkeleton :width="width" :height="10" :radius="3" />
+      <template v-if="collapsed">
+        <TxSkeleton v-for="i in 3" :key="i" :width="38" :height="32" :radius="6" />
+      </template>
+      <template v-else>
+        <div class="ShellConversationList-SectionHeader">
+          <TxSkeleton :width="56" :height="9" :radius="3" />
         </div>
-      </div>
+        <div
+          v-for="width in SKELETON_NAME_WIDTHS"
+          :key="width"
+          class="ShellConversationList-SkeletonRow"
+        >
+          <TxSkeleton width="var(--shell-row-icon)" height="var(--shell-row-icon)" :radius="4" />
+          <div class="ShellConversationList-SkeletonName">
+            <TxSkeleton :width="width" :height="10" :radius="3" />
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Rail mode: compact buttons with hover popover -->
+    <div v-else-if="collapsed" class="ShellConversationList-RailList">
+      <TxPopover
+        v-for="row in railRows"
+        :key="row.key"
+        trigger="hover"
+        placement="right"
+        :offset="10"
+        :open-delay="100"
+        :close-delay="80"
+        panel-background="pure"
+        panel-shadow="soft"
+      >
+        <template #reference>
+          <button
+            class="ShellConversationList-RailItem"
+            :class="{ active: row.kind === 'conversation' && row.id === activeId }"
+            type="button"
+            :aria-label="row.title"
+            @click="onRailRowClick(row)"
+          >
+            <span class="ShellConversationList-RailShortTitle">{{ shortTitle(row.title) }}</span>
+          </button>
+        </template>
+
+        <div class="ShellConversationList-RailPopover">
+          <div class="ShellConversationList-RailPopoverHeader">
+            <span class="ShellConversationList-RailPopoverTitle">{{ row.title }}</span>
+            <button
+              v-if="row.kind === 'conversation' && row.id"
+              class="ShellConversationList-RailPopoverDelete"
+              type="button"
+              :title="t('shell.history.delete')"
+              :aria-label="t('shell.history.delete')"
+              @click.stop="removeConversation(row.id)"
+            >
+              <span class="i-ri-delete-bin-6-line" />
+            </button>
+          </div>
+          <div
+            v-if="row.projectName || formatRowTime(row.updatedAt)"
+            class="ShellConversationList-RailPopoverMeta"
+          >
+            <span v-if="row.projectName" class="ShellConversationList-RailPopoverProject">
+              <i class="i-ri-folder-2-line" />
+              {{ row.projectName }}
+            </span>
+            <span v-if="formatRowTime(row.updatedAt)" class="ShellConversationList-RailPopoverTime">
+              {{ formatRowTime(row.updatedAt) }}
+            </span>
+          </div>
+        </div>
+      </TxPopover>
     </div>
 
     <template v-else>
@@ -318,9 +478,34 @@ async function forgetSession(sessionRef: string): Promise<void> {
   padding-top: 6px;
   box-sizing: border-box;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 2px;
+    transition: background-color 0.2s ease;
+  }
+
+  &:hover {
+    scrollbar-color: var(--shell-border-strong) transparent;
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--shell-border-strong);
+    }
+  }
   .is-rail & {
-    display: none;
+    gap: 4px;
+    align-items: center;
+    padding-top: 2px;
   }
 }
 
@@ -493,5 +678,128 @@ async function forgetSession(sessionRef: string): Promise<void> {
 
 .ShellConversationList-ArchivedBody {
   margin-top: 2px;
+}
+
+.ShellConversationList-RailList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+}
+
+.ShellConversationList-RailItem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 32px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--shell-radius-md);
+  background: transparent;
+  color: var(--shell-text-regular);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+  -webkit-app-region: no-drag;
+
+  &:hover:not(.active) {
+    background: var(--shell-surface-2);
+  }
+
+  &.active {
+    border-color: transparent;
+    background: var(--shell-primary-soft);
+    color: var(--shell-primary);
+  }
+}
+
+.ShellConversationList-RailShortTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
+.ShellConversationList-RailPopover {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 260px;
+  min-width: 160px;
+  padding: 8px 10px;
+}
+
+.ShellConversationList-RailPopoverHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ShellConversationList-RailPopoverTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--shell-fs-body);
+  font-weight: 500;
+  color: var(--shell-text-regular);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ShellConversationList-RailPopoverDelete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--shell-radius-sm);
+  background: transparent;
+  color: var(--shell-text-muted);
+  font-size: var(--shell-fs-md);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+
+  &:hover {
+    color: var(--shell-danger, #ef4444);
+    background: var(--shell-surface-2);
+  }
+}
+
+.ShellConversationList-RailPopoverMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--shell-fs-caption);
+  color: var(--shell-text-muted);
+}
+
+.ShellConversationList-RailPopoverProject {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ShellConversationList-RailPopoverTime {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 </style>
