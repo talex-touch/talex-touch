@@ -39,7 +39,7 @@ const PRESETS = [
     keywords: ['topmost', 'cleanup', '置顶', '清理'],
   },
 ]
-const PRESET_IDS = new Set(PRESETS.map((p) => p.id))
+const PRESET_IDS = new Set(PRESETS.map(p => p.id))
 function normalizeText(value) {
   return String(value ?? '').trim()
 }
@@ -169,9 +169,9 @@ const pluginLifecycle = {
     if (featureId === 'window-presets') {
       const keyword = normalizeText(getQueryText(query)).toLowerCase()
       const matched = PRESETS.filter(
-        (p) => !keyword || [p.id, p.title, p.subtitle, ...p.keywords].join(' ').toLowerCase().includes(keyword)
+        p => !keyword || [p.id, p.title, p.subtitle, ...p.keywords].join(' ').toLowerCase().includes(keyword),
       )
-      const items = matched.map((p) =>
+      const items = matched.map(p =>
         new TuffItemBuilder(`window-preset-${p.id}`)
           .setSource('plugin', SOURCE_ID, PLUGIN_NAME)
           .setTitle(p.title)
@@ -179,9 +179,9 @@ const pluginLifecycle = {
           .setIcon(PRESET_ICON)
           .setMeta({ pluginName: PLUGIN_NAME, featureId, defaultAction: 'run-preset', presetId: p.id })
           .setActions([
-            { id: 'run-preset', label: '应用预设', icon: PRESET_ICON, payload: { presetId: p.id } }
+            { id: 'run-preset', label: '应用预设', icon: PRESET_ICON, payload: { presetId: p.id } },
           ])
-          .build()
+          .build(),
       )
       await publishItems(items)
       return true
@@ -304,7 +304,8 @@ const pluginLifecycle = {
 
     if (item?.meta?.defaultAction === 'run-preset') {
       const presetId = item.meta?.presetId
-      if (!PRESET_IDS.has(presetId)) return blocked('invalid-action', '无效窗口预设')
+      if (!PRESET_IDS.has(presetId))
+        return blocked('invalid-action', '无效窗口预设')
       if (!plugin.windowPresets || typeof plugin.windowPresets.runAction !== 'function') {
         return blocked('window-preset-capability-unavailable', '窗口预设能力不可用')
       }
