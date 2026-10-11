@@ -1815,8 +1815,7 @@ export class TouchPlugin implements ITouchPlugin {
   private createBatchRenameFilesystemCapability(
     activation: PluginActivationIdentity
   ): PluginBatchRenameFilesystemCapability | null {
-    if (!privileges.isPrivilegedPluginFor('batchRenameFilesystem', this.name, this.sdkapi))
-      return null
+    if (!privileges.isPrivilegedPluginFor('batchRenameFilesystem', this.name, this.sdkapi)) return null
     return createPluginBatchRenameFilesystemCapability({
       activation,
       platform: process.platform,
@@ -1857,11 +1856,7 @@ export class TouchPlugin implements ITouchPlugin {
   private createSystemActionCapability(
     activation: PluginActivationIdentity
   ): PluginSystemActionCapabilities | null {
-    if (
-      !privileges.isPrivilegedPluginFor('systemActionsBasic', this.name, this.sdkapi) &&
-      !privileges.isPrivilegedPluginFor('systemActionsAdvanced', this.name, this.sdkapi)
-    )
-      return null
+    if (!privileges.isPrivilegedPluginFor('systemActionsBasic', this.name, this.sdkapi) && !privileges.isPrivilegedPluginFor('systemActionsAdvanced', this.name, this.sdkapi)) return null
     const factory = TouchPlugin.capability('systemAction')
     if (!factory) {
       throw Object.assign(new Error('PLUGIN_SYSTEM_ACTION_CAPABILITY_UNAVAILABLE'), {
@@ -1913,8 +1908,7 @@ export class TouchPlugin implements ITouchPlugin {
   private createIntelligenceContextCapability(
     activation: PluginActivationIdentity
   ): PluginIntelligenceContextCapabilities | null {
-    if (!privileges.isPrivilegedPluginFor('intelligenceContext', this.name, this.sdkapi))
-      return null
+    if (!privileges.isPrivilegedPluginFor('intelligenceContext', this.name, this.sdkapi)) return null
     const factory = TouchPlugin.capability('intelligenceContext')
     if (!factory) {
       throw Object.assign(new Error('PLUGIN_INTELLIGENCE_CONTEXT_CAPABILITY_UNAVAILABLE'), {
