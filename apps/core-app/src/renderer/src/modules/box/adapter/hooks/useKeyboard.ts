@@ -26,6 +26,14 @@ import { publishWidgetHostKeyEvent } from '~/modules/plugin/widget-host-key-brid
 import { appSetting } from '~/modules/storage/app-storage'
 import { devLog } from '~/utils/dev-log'
 import { createRendererLogger } from '~/utils/renderer-log'
+import {
+  COREBOX_DETACH_DEFAULT_ACCELERATOR,
+  COREBOX_DETACH_SHORTCUT_ID,
+  COREBOX_TRANSFER_DEFAULT_ACCELERATOR,
+  COREBOX_TRANSFER_SHORTCUT_ID,
+  resolveCoreBoxFlowShortcutFromBindings
+} from '../../../../../../shared/corebox-shortcut'
+import { shortconApi } from '~/modules/channel/main/shortcon'
 
 interface SectionRange {
   start: number
@@ -524,6 +532,30 @@ export function useKeyboard(
     (error) => coreBoxKeyboardLog.warn('Failed to read initial MetaOverlay visibility', error)
   )
 
+  let detachBinding: string | null = COREBOX_DETACH_DEFAULT_ACCELERATOR
+  let transferBinding: string | null = COREBOX_TRANSFER_DEFAULT_ACCELERATOR
+
+  const syncFlowBindings = (): void => {
+    void shortconApi
+      .getBinding(COREBOX_DETACH_SHORTCUT_ID)
+      .then((binding) => {
+        if (binding?.configured !== null && binding?.configured !== undefined) {
+          detachBinding = binding.effective
+        }
+      })
+      .catch(() => {})
+    void shortconApi
+      .getBinding(COREBOX_TRANSFER_SHORTCUT_ID)
+      .then((binding) => {
+        if (binding?.configured !== null && binding?.configured !== undefined) {
+          transferBinding = binding.effective
+        }
+      })
+      .catch(() => {})
+  }
+  syncFlowBindings()
+  const disposeShortconBinding = shortconApi.onChanged(syncFlowBindings)
+
   function getFooterInset(): number {
     const footer = document.querySelector('.CoreBoxFooter-Sticky') as HTMLElement | null
     if (!footer) return 0
@@ -922,16 +954,23 @@ export function useKeyboard(
         }
       }
       event.preventDefault()
-    } else if (event.key === 'd' || event.key === 'D') {
-      /**
-       * Command/Ctrl+D: Detach current item to DivisionBox
-       *
-       * This allows users to "pop out" the currently focused item into
-       * an independent DivisionBox window for persistent access.
-       *
-       * With Shift: Opens the ⌘K card on its Flow page to transfer data to another plugin
-       */
-      if ((event.metaKey || event.ctrlKey) && !event.altKey) {
+    } else {
+      const flowShortcut = resolveCoreBoxFlowShortcutFromBindings(
+        {
+          key: event.key,
+          meta: event.metaKey,
+          control: event.ctrlKey,
+          alt: event.altKey,
+          shift: event.shiftKey,
+          isAutoRepeat: event.repeat
+        },
+        {
+          detach: detachBinding,
+          transfer: transferBinding
+        }
+      )
+
+      if (flowShortcut) {
         if (event.repeat) {
           event.preventDefault()
           return
@@ -940,19 +979,17 @@ export function useKeyboard(
         const activeFeature = resolveActiveFeatureItem(activeActivations.value)
         const currentItem = activeFeature ?? res.value[boxOptions.focus]
 
-        if (event.shiftKey) {
+        if (flowShortcut === 'transfer') {
           if (!currentItem) {
             event.preventDefault()
             return
           }
-          // Command+Shift+D: Flow transfer to another plugin
           window.dispatchEvent(
             new CustomEvent('corebox:flow-item', {
               detail: { item: currentItem, query: searchVal.value }
             })
           )
         } else {
-          // Command+D: Detach to DivisionBox
           if (!activeFeature) {
             event.preventDefault()
             return
@@ -966,7 +1003,8 @@ export function useKeyboard(
         event.preventDefault()
         return
       }
-    } else if (event.key === 'Escape') {
+    }
+    if (event.key === 'Escape') {
       /**
        * ESC key strict sequential handling (UPDATED):
        * 1. Close MetaOverlay if visible
@@ -1078,6 +1116,7 @@ export function useKeyboard(
   onBeforeUnmount(() => {
     disposed = true
     disposeMetaPanelState()
+    disposeShortconBinding()
     document.removeEventListener('keydown', onKeyDown, true)
     document.removeEventListener('keyup', onKeyUp, true)
     window.removeEventListener('blur', forgetEnterPress)

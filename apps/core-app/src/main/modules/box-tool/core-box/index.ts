@@ -19,9 +19,13 @@ import { BaseModule } from '../../abstract-base-module'
 import { shortcutModule } from '../../global-shortcon'
 import { getMainConfig, onboardingGate } from '../../storage'
 import {
+  COREBOX_DETACH_DEFAULT_ACCELERATOR,
+  COREBOX_DETACH_SHORTCUT_ID,
   COREBOX_TOGGLE_DEFAULT_ACCELERATOR,
   COREBOX_TOGGLE_LEGACY_DEFAULT_ACCELERATORS,
-  COREBOX_TOGGLE_SHORTCUT_ID
+  COREBOX_TOGGLE_SHORTCUT_ID,
+  COREBOX_TRANSFER_DEFAULT_ACCELERATOR,
+  COREBOX_TRANSFER_SHORTCUT_ID
 } from '../../../../shared/corebox-shortcut'
 import SearchEngineCore from '../search-engine/search-core'
 import { searchLogger } from '../search-engine/search-logger'
@@ -156,12 +160,30 @@ export class CoreBoxModule extends BaseModule {
         }
       }
     )
+    shortcutModule.registerWindowShortcut(
+      COREBOX_DETACH_SHORTCUT_ID,
+      COREBOX_DETACH_DEFAULT_ACCELERATOR,
+      {
+        enabled: true,
+        owner: COREBOX_SHORTCUT_OWNER
+      }
+    )
+    shortcutModule.registerWindowShortcut(
+      COREBOX_TRANSFER_SHORTCUT_ID,
+      COREBOX_TRANSFER_DEFAULT_ACCELERATOR,
+      {
+        enabled: true,
+        owner: COREBOX_SHORTCUT_OWNER
+      }
+    )
 
     coreBoxLog.success('Core-box module initialized')
   }
 
   async onDestroy(): Promise<void> {
     shortcutModule.unregisterMainShortcut(COREBOX_TOGGLE_SHORTCUT_ID)
+    shortcutModule.unregisterWindowShortcut(COREBOX_DETACH_SHORTCUT_ID)
+    shortcutModule.unregisterWindowShortcut(COREBOX_TRANSFER_SHORTCUT_ID)
 
     if (this.beforeModulesUnloadListener) {
       touchEventBus.off(TalexEvents.BEFORE_MODULES_UNLOAD, this.beforeModulesUnloadListener)

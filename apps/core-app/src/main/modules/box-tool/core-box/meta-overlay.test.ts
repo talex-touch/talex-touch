@@ -59,6 +59,7 @@ const mocks = vi.hoisted(() => ({
   setHeight: vi.fn((height: number, _target?: unknown) => {
     mocks.windowHeight = height
   }),
+  setPluginViewMetaBlur: vi.fn(),
   // Whether an animated resize is still in flight; a resize without the animation lands at once.
   isResizing: vi.fn((): boolean => false),
   // Each WebContentsView the manager builds registers its own renderer here, so the readiness
@@ -110,6 +111,7 @@ vi.mock('./window', () => ({
     },
     getSettledHeight: mocks.getSettledHeight,
     setHeight: mocks.setHeight,
+    setPluginViewMetaBlur: mocks.setPluginViewMetaBlur,
     isResizing: mocks.isResizing
   }
 }))
@@ -1014,8 +1016,8 @@ describe('MetaOverlayManager pages of the card', () => {
       { visible: true, grown: false, blur: true },
       { visible: true, grown: false, blur: false }
     ])
+    expect(mocks.setPluginViewMetaBlur).toHaveBeenLastCalledWith(false)
   })
-
   it('opens blurred on a card that opens on its Flow page, and says so before growing', () => {
     let publishedWhenGrowing: unknown[] = []
     mocks.setHeight.mockImplementationOnce((height: number) => {

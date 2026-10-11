@@ -14,6 +14,11 @@ import { useAliveWebContents } from '../../../hooks/use-electron-guard'
 import { createLogger } from '../../../utils/logger'
 import { pluginModule } from '../../plugin/plugin-module'
 import { usePluginInjections } from '../../plugin/runtime/plugin-injections'
+import {
+  COREBOX_DETACH_SHORTCUT_ID,
+  COREBOX_TRANSFER_SHORTCUT_ID
+} from '../../../../shared/corebox-shortcut'
+import { shortcutModule } from '../../global-shortcon'
 import { buildPluginViewWebPreferences } from '../../plugin/runtime/plugin-view-host'
 import { resolvePluginViewSecurityProfile } from '../../plugin/runtime/plugin-view-security-profile'
 import {
@@ -73,6 +78,7 @@ export class PluginViewController {
   private detachingUIView = false
   private inputAllowed = false
   private clipboardAllowedTypes = 0
+  private metaOverlayBlurred = false
 
   constructor(private readonly options: PluginViewControllerOptions) {}
 
@@ -82,6 +88,11 @@ export class PluginViewController {
 
   public hasView(): boolean {
     return this.uiView !== null
+  }
+
+  public setMetaOverlayBlur(blurred: boolean): void {
+    this.metaOverlayBlurred = blurred
+    this.applyMetaOverlayBlurToView(this.uiView, blurred)
   }
 
   public enableInputMonitoring(): void {
@@ -209,6 +220,7 @@ export class PluginViewController {
         const uiWebContents = this.getAliveUIViewWebContents()
         if (uiWebContents) {
           this.options.applyThemeToView(this.uiView)
+          this.applyMetaOverlayBlurToView(this.uiView, this.metaOverlayBlurred)
           uiWebContents.focus()
 
           if (query) {
@@ -310,7 +322,10 @@ export class PluginViewController {
         return
       }
 
-      const flowShortcut = resolveCoreBoxFlowShortcut(input)
+      const flowShortcut = resolveCoreBoxFlowShortcut(input, {
+        detach: shortcutModule.getWindowShortcutAccelerator(COREBOX_DETACH_SHORTCUT_ID),
+        transfer: shortcutModule.getWindowShortcutAccelerator(COREBOX_TRANSFER_SHORTCUT_ID)
+      })
       if (flowShortcut) {
         const ownerWindow = this.options.getCurrentWindow()
         if (
@@ -326,6 +341,36 @@ export class PluginViewController {
         const triggerEvent =
           flowShortcut === 'detach' ? FlowEvents.triggerDetach : FlowEvents.triggerTransfer
         transport.broadcastToWindow(ownerWindow.window.id, triggerEvent, undefined)
+        return
+      }
+
+      if (
+        !input.isAutoRepeat &&
+        (input.meta || input.control) &&
+        !input.alt &&
+        !input.shift &&
+        input.key.toLowerCase() === 'k'
+      ) {
+        const ownerWindow = this.options.getCurrentWindow()
+        if (
+          this.uiView !== view ||
+          !ownerWindow ||
+          ownerWindow.window.isDestroyed() ||
+          !ownerWindow.window.isVisible() ||
+          ownerWindow.window.webContents.isDestroyed()
+        ) {
+          return
+        }
+        event.preventDefault()
+        forwardKeyEventToWebContents(ownerWindow.window.webContents, {
+          key: 'k',
+          code: 'KeyK',
+          metaKey: Boolean(input.meta),
+          ctrlKey: Boolean(input.control),
+          altKey: false,
+          shiftKey: false,
+          repeat: false
+        })
         return
       }
 
@@ -345,6 +390,7 @@ export class PluginViewController {
 
     this.uiView.webContents.addListener('dom-ready', () => {
       this.options.applyThemeToView(view)
+      this.applyMetaOverlayBlurToView(view, this.metaOverlayBlurred)
 
       if (plugin) {
         const liveWebContents = getLiveViewWebContents(view)
@@ -459,6 +505,7 @@ export class PluginViewController {
         }
       }
 
+      this.applyMetaOverlayBlurToView(view, false)
       const webContents = getLiveViewWebContents(view)
       const currentWindow = this.options.getCurrentWindow()
       if (currentWindow && !currentWindow.window.isDestroyed()) {
@@ -542,6 +589,7 @@ export class PluginViewController {
     }
 
     this.detachingUIView = true
+    this.applyMetaOverlayBlurToView(this.uiView, false)
     try {
       currentWindow.window.contentView.removeChildView(this.uiView)
     } catch (error) {
@@ -611,6 +659,7 @@ export class PluginViewController {
     const webContents = getLiveViewWebContents(extracted.view)
     if (webContents) {
       this.options.applyThemeToView(extracted.view)
+      this.applyMetaOverlayBlurToView(extracted.view, this.metaOverlayBlurred)
       webContents.focus()
     }
 
@@ -679,6 +728,30 @@ export class PluginViewController {
 
   private getAliveUIViewWebContents() {
     return useAliveWebContents(this.uiView)
+  }
+
+  private applyMetaOverlayBlurToView(view: WebContentsView | null, blurred: boolean): void {
+    const webContents = getLiveViewWebContents(view)
+    if (!webContents) {
+      return
+    }
+    const script = `
+      (() => {
+        const root = document.documentElement;
+        if (!root) { return; }
+        const blurred = ${blurred ? 'true' : 'false'};
+        if (blurred && !document.getElementById('__tuff_meta_overlay_blur_style__')) {
+          const style = document.createElement('style');
+          style.id = '__tuff_meta_overlay_blur_style__';
+          style.textContent = 'html.tuff-meta-overlay-blur > body { filter: blur(8px); transition: filter 0.16s cubic-bezier(0.22, 1, 0.36, 1); pointer-events: none; user-select: none; } @media (prefers-reduced-motion: reduce) { html.tuff-meta-overlay-blur > body { transition: none; } }';
+          (document.head || root).appendChild(style);
+        }
+        root.classList.toggle('tuff-meta-overlay-blur', blurred);
+      })();
+    `
+    void webContents.executeJavaScript(script).catch((error) => {
+      pluginViewLog.warn('Failed to update UI view meta overlay blur', { error })
+    })
   }
 
   private broadcastPluginMessage(pluginName: string, eventName: string, data?: unknown): void {

@@ -1,5 +1,9 @@
 import type { WebContents } from 'electron'
 
+import {
+  resolveCoreBoxFlowShortcutFromBindings,
+  type CoreBoxFlowShortcutBindings
+} from '../../../../shared/corebox-shortcut'
 export interface CoreBoxKeyEvent {
   key: string
   code: string
@@ -46,15 +50,10 @@ export function isBlockedCoreBoxFunctionKey(key: string): boolean {
 }
 
 export function resolveCoreBoxFlowShortcut(
-  input: CoreBoxFlowShortcutInput
+  input: CoreBoxFlowShortcutInput,
+  bindings?: CoreBoxFlowShortcutBindings
 ): CoreBoxFlowShortcutAction | null {
-  if (input.isAutoRepeat || input.key.toLowerCase() !== 'd') {
-    return null
-  }
-  if ((!input.meta && !input.control) || input.alt) {
-    return null
-  }
-  return input.shift ? 'transfer' : 'detach'
+  return resolveCoreBoxFlowShortcutFromBindings(input, bindings)
 }
 
 export function buildCoreBoxKeyModifiers(event: CoreBoxKeyEvent): CoreBoxKeyModifier[] {

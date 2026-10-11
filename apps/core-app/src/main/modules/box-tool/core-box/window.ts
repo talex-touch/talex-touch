@@ -267,6 +267,10 @@ export class WindowManager {
     return this.pluginViewController.getAttachedPlugin()
   }
 
+  public setPluginViewMetaBlur(blurred: boolean): void {
+    this.pluginViewController.setMetaOverlayBlur(blurred)
+  }
+
   /**
    * Enable input monitoring for attached UI view
    */
