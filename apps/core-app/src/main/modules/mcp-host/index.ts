@@ -257,8 +257,8 @@ export class McpHostModule extends BaseModule<TalexEvents> {
   }
 
   private async startListener(): Promise<McpHostServerHandle | null> {
+    while (this.stopping) await this.stopping
     if (this.starting) return await this.starting
-    if (this.stopping) await this.stopping
     if (this.handle) return this.handle
 
     this.starting = (async (): Promise<McpHostServerHandle | null> => {
