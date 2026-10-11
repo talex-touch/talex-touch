@@ -220,7 +220,10 @@ onMounted(() => {
   -->
   <section class="SettingMcpHost" :aria-labelledby="headingId" data-testid="mcp-host">
     <header class="SettingMcpHost-Head">
-      <h2 :id="headingId">{{ t('settings.skillsMcp.host.label') }}</h2>
+      <div class="SettingMcpHost-Title">
+        <h2 :id="headingId">{{ t('settings.skillsMcp.host.label') }}</h2>
+        <SettingChip tone="info">{{ t('settings.platformTags.beta') }}</SettingChip>
+      </div>
       <p>{{ t('settings.mcpPage.hostDesc') }}</p>
     </header>
 
@@ -383,20 +386,26 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--shell-space-1);
+}
 
-  h2 {
-    margin: 0;
-    color: var(--shell-text-primary);
-    font-size: var(--shell-fs-lg);
-    font-weight: 600;
-  }
+.SettingMcpHost-Title {
+  display: flex;
+  align-items: center;
+  gap: var(--shell-space-2);
+}
 
-  p {
-    margin: 0;
-    color: var(--shell-text-secondary);
-    font-size: var(--shell-fs-sm);
-    line-height: 1.5;
-  }
+.SettingMcpHost-Title h2 {
+  margin: 0;
+  color: var(--shell-text-primary);
+  font-size: var(--shell-fs-lg);
+  font-weight: 600;
+}
+
+.SettingMcpHost-Head p {
+  margin: 0;
+  color: var(--shell-text-secondary);
+  font-size: var(--shell-fs-sm);
+  line-height: 1.5;
 }
 
 /*

@@ -4110,7 +4110,7 @@
       "createTitle": "添加 MCP 服务器",
       "editTitle": "编辑「{name}」",
       "storedSecretsNote": "已保存 {count} 个值（{names}）。这里不显示原值；保存时留空会删除它们。",
-      "hostDesc": "本机的其他 AI 客户端可以通过本地地址调用 Tuff 的工具，每次调用仍要你确认。",
+      "hostDesc": "本机的其他 AI 客户端可以通过本地地址调用 Tuff 的工具。这是 Beta 可选能力，默认关闭；每次调用仍要你确认。",
       "readOnlyNote": "这台服务器由代理自己的配置声明。Tuff 只读取，不会修改那个文件；开关只影响 Tuff。"
     },
     "skillsPage": {
