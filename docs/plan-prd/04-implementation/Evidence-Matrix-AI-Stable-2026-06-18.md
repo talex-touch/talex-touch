@@ -8,6 +8,7 @@
 - Stable 只承诺 CoreBox 文本 + 显式 OCR。
 - CoreBox AI Ask 是 2.5.0 Stable 入口；OmniPanel Writing Tools 作为 MVP/Beta 继续采集 evidence，但不阻塞 Stable。
 - Workflow / Review Queue / Skills / Automation 保持 Beta。
+- Tuff 本机 MCP Server / Agent Gateway 保持 Beta 可选定位，默认关闭，不属于本矩阵的 Stable blocker。
 - Assistant、语音、多模态生成、Computer Use、CDP 浏览器控制保持 Experimental 或后续能力。
 
 ## 2. Step 0 需求口径

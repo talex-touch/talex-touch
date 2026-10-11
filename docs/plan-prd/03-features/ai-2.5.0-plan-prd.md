@@ -36,6 +36,7 @@
 - Workflow `Use Model` 与 Review Queue：packaged evidence 已覆盖 Use Model 输出、pending/failed 队列态、cost/trace 与失败恢复；更完整的 copied/clipboard-replaced 管理体验继续按 Beta 迭代。
 - Workflow Template Center：剪贴板整理、会议纪要/摘要、文本批处理、代码解释/Review、日报/周报。
 - Tuff Intents / Action Manifest、Skills Pack、Background Automations、AI 高级 Chat / DeepAgent 联动。
+- Tuff 本机 MCP Server / Agent Gateway：作为 Beta 可选能力随应用提供，默认关闭，不纳入 2.5.0 Stable 核心承诺；其真实打包版与跨平台证据独立跟踪。
 - `audio.tts` 已作为翻译结果朗读 Beta 能力接入 typed `ttsSpeak`，不作为 Stable 承诺。真实 runtime 目前由 OpenAI-compatible / SiliconFlow provider 提供；Nexus server 对该 non-chat shape 仍 fail-closed，故 default Nexus provider 不得广告或绑定 `audio.tts`，待真实 Nexus TTS runtime 落地后再恢复。
 
 ## 4. Experimental / 2.5.x 后续
