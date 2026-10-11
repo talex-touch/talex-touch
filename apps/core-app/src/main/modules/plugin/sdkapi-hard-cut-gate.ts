@@ -80,7 +80,11 @@ export function getPluginSdkHardCutGate(
 
 function parseDeclaredSdkapi(declaredSdkapi: unknown): SdkApiVersion | undefined {
   if (typeof declaredSdkapi === 'number') {
-    return isValidSdkVersion(declaredSdkapi) ? declaredSdkapi : undefined
+    const normalized =
+      declaredSdkapi >= 20000000 && declaredSdkapi <= 20991231
+        ? declaredSdkapi % 1000000
+        : declaredSdkapi
+    return isValidSdkVersion(normalized) ? normalized : undefined
   }
   if (typeof declaredSdkapi === 'string') {
     return parseSdkVersion(declaredSdkapi)

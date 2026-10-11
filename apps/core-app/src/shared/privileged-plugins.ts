@@ -70,6 +70,8 @@ export const SYSTEM_ACTION_PLUGIN_NAMES: readonly string[] = Object.freeze([
   ...PRIVILEGED_PLUGIN_CAPABILITIES.systemActionsAdvanced
 ])
 
+export const HOST_CAPABILITY_OPEN_MIN_SDK = 261011
+
 /**
  * Whether a plugin name may hold a capability.
  *
@@ -79,10 +81,14 @@ export const SYSTEM_ACTION_PLUGIN_NAMES: readonly string[] = Object.freeze([
  */
 export function isPrivilegedPluginFor(
   capability: PrivilegedPluginCapability,
-  pluginName: string | undefined
+  pluginName: string | undefined,
+  sdkapi?: number
 ): boolean {
   if (!pluginName) {
     return false
+  }
+  if (typeof sdkapi === 'number' && sdkapi >= HOST_CAPABILITY_OPEN_MIN_SDK) {
+    return true
   }
   return (PRIVILEGED_PLUGIN_CAPABILITIES[capability] as readonly string[]).includes(pluginName)
 }

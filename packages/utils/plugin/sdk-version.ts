@@ -67,6 +67,10 @@ export enum SdkApi {
    * 2026-10-01: initialization-time SDK calls, one-shot query preservation, and browser discovery fixes.
    */
   V261001 = 261001,
+  /**
+   * 2026-10-11: unified host capability permissions, externalized plugin architecture baseline.
+   */
+  V261011 = 261011,
 }
 
 /**
@@ -74,6 +78,7 @@ export enum SdkApi {
  * This list is the canonical allowlist for plugin-declared sdkapi markers.
  */
 export const SUPPORTED_SDK_VERSIONS: readonly SdkApiVersion[] = [
+  SdkApi.V261011,
   SdkApi.V261001,
   SdkApi.V260817,
   SdkApi.V260713,
@@ -92,7 +97,7 @@ export const SUPPORTED_SDK_VERSIONS: readonly SdkApiVersion[] = [
  * Current SDK API version.
  * Updated when a new supported plugin SDK marker is introduced.
  */
-export const CURRENT_SDK_VERSION: SdkApiVersion = SdkApi.V261001
+export const CURRENT_SDK_VERSION: SdkApiVersion = SdkApi.V261011
 
 /**
  * Minimum SDK version required for permission enforcement.
@@ -224,7 +229,11 @@ export function isSupportedSdkVersion(version: SdkApiVersion): boolean {
 }
 
 function parseSdkApiInput(raw: unknown): SdkApiVersion | undefined {
-  const num = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseSdkVersion(raw) : undefined
+  let val = raw
+  if (typeof val === 'number' && val >= 20000000 && val <= 20991231) {
+    val = val % 1000000
+  }
+  const num = typeof val === 'number' ? val : typeof val === 'string' ? parseSdkVersion(val) : undefined
 
   if (num === undefined || !isValidSdkVersion(num)) {
     return undefined
@@ -268,7 +277,10 @@ export function formatSdkVersion(version: SdkApiVersion): string {
 export function parseSdkVersion(str: string): SdkApiVersion | undefined {
   // Remove dots if present
   const cleaned = str.replace(/\./g, '')
-  const num = Number.parseInt(cleaned, 10)
+  let num = Number.parseInt(cleaned, 10)
+  if (num >= 20000000 && num <= 20991231) {
+    num = num % 1000000
+  }
 
   if (isValidSdkVersion(num)) {
     return num

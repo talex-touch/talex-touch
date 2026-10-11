@@ -18,6 +18,11 @@ describe('privileged plugin capabilities', () => {
     expect(isPrivilegedPluginFor('browserOpen', 'touch-window-manager')).toBe(false)
   })
 
+  it('admits any valid plugin name when sdkapi >= HOST_CAPABILITY_OPEN_MIN_SDK (261011)', () => {
+    expect(isPrivilegedPluginFor('browserOpen', 'custom-external-plugin', 261011)).toBe(true)
+    expect(isPrivilegedPluginFor('browserOpen', 'custom-external-plugin', 261001)).toBe(false)
+  })
+
   // The failure mode worth guarding: a capability that admits a plugin it was never granted to.
   // A registry keyed by capability makes that a data question, so it can be asserted as one.
   it('does not leak a holder across capabilities', () => {
