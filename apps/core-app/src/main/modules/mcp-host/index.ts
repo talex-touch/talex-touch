@@ -73,6 +73,7 @@ export class McpHostModule extends BaseModule<TalexEvents> {
   private disposers: Array<() => void> = []
   private handle: McpHostServerHandle | null = null
   private starting: Promise<McpHostServerHandle | null> | null = null
+  private stopping: Promise<void> | null = null
   private settings: McpHostSettings = { ...DEFAULT_MCP_HOST_SETTINGS }
   /** Set once the persisted document has actually been read. */
   private loaded = false
@@ -230,13 +231,35 @@ export class McpHostModule extends BaseModule<TalexEvents> {
   }
 
   private async stopListener(): Promise<void> {
-    this.handle?.close()
+    const starting = this.starting
+    if (starting) {
+      try {
+        await starting
+      } catch {
+        // A failed start has no listener to close.
+      }
+    }
+
+    const pendingStop = this.stopping
+    if (pendingStop) await pendingStop
+
+    const handle = this.handle
     this.handle = null
+    if (!handle) return
+
+    const closing = handle.close()
+    this.stopping = closing
+    try {
+      await closing
+    } finally {
+      if (this.stopping === closing) this.stopping = null
+    }
   }
 
   private async startListener(): Promise<McpHostServerHandle | null> {
-    if (this.handle) return this.handle
     if (this.starting) return await this.starting
+    if (this.stopping) await this.stopping
+    if (this.handle) return this.handle
 
     this.starting = (async (): Promise<McpHostServerHandle | null> => {
       try {
