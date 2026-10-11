@@ -264,6 +264,7 @@ export default {
         updatedAt: 'Updated at',
         latestRun: 'Latest run',
         readiness: 'Readiness',
+        trend: 'Trend',
       },
       fields: {
         adapter: 'Adapter',

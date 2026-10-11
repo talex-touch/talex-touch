@@ -216,6 +216,7 @@ export function useProviderRegistryAdmin() {
   const providerCreateError = ref<string | null>(null)
   const sceneCreateError = ref<string | null>(null)
   const fetchingProviderModels = ref<string | null>(null)
+  const fetchingFormModels = ref(false)
   const providerServiceCategoryId = ref<ProviderServiceCategory>('ai')
   const initialProviderTemplate = providerRegistryTemplates.find(template => template.id === 'openai-compatible-ai')
     ?? providerRegistryTemplates[0]!
@@ -772,6 +773,35 @@ export function useProviderRegistryAdmin() {
       fetchingProviderModels.value = null
     }
   }
+  async function fetchFormModels() {
+    fetchingFormModels.value = true
+    providerCreateError.value = null
+    try {
+      const vendor = providerForm.vendor
+      const type = vendor === 'deepseek' ? 'deepseek' : (vendor === 'openai' ? 'openai' : 'custom')
+      const result = await providerService.fetchModelsProbe({
+        type,
+        baseUrl: providerForm.endpoint?.trim() || undefined,
+        apiKey: providerForm.apiKey?.trim() || undefined,
+      })
+      const models = Array.from(new Set(
+        (result.models ?? [])
+          .map(model => model.trim())
+          .filter(Boolean),
+      ))
+      providerForm.modelsText = models.join('\n')
+      if (!providerForm.defaultModel && models[0])
+        providerForm.defaultModel = models[0]
+      toast.success(t('dashboard.providerRegistry.providers.modelsFetched', { count: models.length }, `Fetched ${models.length} model(s).`))
+    }
+    catch (err) {
+      providerCreateError.value = failure(err, 'dashboard.providerRegistry.errors.fetchModelsFailed', 'Failed to fetch provider models.')
+    }
+    finally {
+      fetchingFormModels.value = false
+    }
+  }
+
 
   async function saveProviderEdit(provider: ProviderRegistryRecord): Promise<boolean> {
     const panel = getProviderEditPanel(provider)
@@ -1075,6 +1105,8 @@ export function useProviderRegistryAdmin() {
     enabledProviders,
     fallbackOptions,
     fetchProviderModels,
+    fetchFormModels,
+    fetchingFormModels,
     fetchingProviderModels,
     formatJson,
     formatRunJson,

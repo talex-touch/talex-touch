@@ -148,12 +148,26 @@ function quotaLimit(value: unknown): string {
         </section>
 
         <section class="RegistryForm-Group">
-          <h3 class="RegistryForm-GroupTitle">
-            {{ t('dashboard.providerRegistry.providers.modelsTitle', 'Models') }}
-          </h3>
-          <p class="RegistryForm-Hint">
-            {{ t('dashboard.providerRegistry.providers.modelsHint', 'Configure the model IDs this AI channel can dispatch. The fetch action uses the stored secure credential server-side.') }}
-          </p>
+          <div class="RegistryForm-GroupHead">
+            <div>
+              <h3 class="RegistryForm-GroupTitle">
+                {{ t('dashboard.providerRegistry.providers.modelsTitle', 'Models') }}
+              </h3>
+              <p class="RegistryForm-Hint">
+                {{ t('dashboard.providerRegistry.providers.modelsHint', 'Configure the model IDs this AI channel can dispatch. The fetch action uses the stored secure credential server-side.') }}
+              </p>
+            </div>
+            <TxButton
+              variant="secondary"
+              size="sm"
+              icon="i-carbon-download"
+              :loading="Boolean(admin.fetchingFormModels?.value)"
+              :disabled="Boolean(admin.fetchingFormModels?.value) || !admin.providerForm.endpoint"
+              @click="admin.fetchFormModels?.()"
+            >
+              {{ t('dashboard.providerRegistry.providers.fetchModels', 'Fetch models') }}
+            </TxButton>
+          </div>
           <div class="RegistryForm-Grid is-models">
             <AdminFormField :label="t('dashboard.providerRegistry.fields.models', 'Models')" :for="fieldId('models')">
               <TuffInput

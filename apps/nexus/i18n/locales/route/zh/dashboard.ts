@@ -261,6 +261,7 @@ export default {
         updatedAt: '更新时间',
         latestRun: '最近运行',
         readiness: '就绪',
+        trend: '调用趋势',
       },
       fields: {
         adapter: '适配器',
