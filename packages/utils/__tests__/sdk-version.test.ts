@@ -7,6 +7,20 @@ import {
 } from '../plugin'
 
 describe('sdk version markers', () => {
+  it('accepts the 261011 marker (and 20261011) with permission enforcement', () => {
+    expect(isSupportedSdkVersion(SdkApi.V261011)).toBe(true)
+    expect(resolveSdkApiVersion(261011)).toBe(SdkApi.V261011)
+    expect(resolveSdkApiVersion(20261011)).toBe(SdkApi.V261011)
+    expect(resolveSdkApiVersion('20261011')).toBe(SdkApi.V261011)
+    expect(checkSdkCompatibility(261011, 'touch-current-plugin')).toEqual({
+      compatible: true,
+      enforcePermissions: true,
+    })
+    expect(checkSdkCompatibility(20261011, 'touch-current-plugin')).toEqual({
+      compatible: true,
+      enforcePermissions: true,
+    })
+  })
   it('accepts the 261001 marker with permission enforcement', () => {
     expect(isSupportedSdkVersion(SdkApi.V261001)).toBe(true)
     expect(resolveSdkApiVersion(261001)).toBe(SdkApi.V261001)

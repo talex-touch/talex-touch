@@ -1575,11 +1575,19 @@ importers:
 
   plugins/touch-ai-sessions: {}
 
+  plugins/touch-batch-rename: {}
+
+  plugins/touch-browser-bookmarks: {}
+
   plugins/touch-browser-data: {}
 
   plugins/touch-browser-open: {}
 
+  plugins/touch-dev-toolbox: {}
+
   plugins/touch-dev-utils: {}
+
+  plugins/touch-dictation: {}
 
   plugins/touch-emoji-symbols: {}
 
@@ -1641,9 +1649,15 @@ importers:
 
   plugins/touch-orca: {}
 
+  plugins/touch-quick-actions: {}
+
   plugins/touch-quickops: {}
 
+  plugins/touch-snipaste: {}
+
   plugins/touch-snippets: {}
+
+  plugins/touch-system-actions: {}
 
   plugins/touch-text-tools: {}
 
@@ -1730,6 +1744,10 @@ importers:
         version: 3.3.7(typescript@5.9.3)
 
   plugins/touch-vscode-projects: {}
+
+  plugins/touch-window-manager: {}
+
+  plugins/touch-window-presets: {}
 
   plugins/touch-workspace-scripts: {}
 

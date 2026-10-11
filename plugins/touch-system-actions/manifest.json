@@ -3,7 +3,7 @@
   "name": "touch-system-actions",
   "version": "1.0.1",
   "author": "TalexTouch Team",
-  "sdkapi": 260428,
+  "sdkapi": 261011,
   "category": "utilities",
   "icon": {
     "type": "file",
@@ -33,6 +33,20 @@
       "defaultState": "ask",
       "requiresUserConsent": true,
       "pushesToRootResults": true
+    },
+    {
+      "id": "touch-system-actions.quick-actions",
+      "displayName": "系统快捷动作",
+      "featureId": "quick-actions",
+      "kind": "system-action",
+      "owner": "official-plugin",
+      "mode": "push",
+      "priority": "fast",
+      "defaultOrder": 91,
+      "permissionScopes": ["root-results"],
+      "defaultState": "ask",
+      "requiresUserConsent": true,
+      "pushesToRootResults": true
     }
   ],
   "features": [
@@ -57,6 +71,30 @@
         {
           "type": "over",
           "value": ["system", "sys", "系统", "系统操作"]
+        }
+      ]
+    },
+    {
+      "id": "quick-actions",
+      "name": "系统快捷动作",
+      "desc": "高频安全动作与设置入口",
+      "icon": {
+        "type": "file",
+        "value": "assets/logo.svg"
+      },
+      "keywords": ["quick", "actions", "快捷", "系统", "锁屏", "静音", "settings"],
+      "push": true,
+      "priority": 7,
+      "acceptedInputTypes": ["text"],
+      "platform": {
+        "win32": true,
+        "darwin": true,
+        "linux": false
+      },
+      "commands": [
+        {
+          "type": "contain",
+          "value": ["quick", "actions", "quick actions", "快捷", "系统快捷", "系统动作"]
         }
       ]
     }

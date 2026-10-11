@@ -59,6 +59,8 @@ const mocks = vi.hoisted(() => {
       callOrder.push(`unregister:${id}`)
       return true
     }),
+    registerWindowShortcut: vi.fn(() => true),
+    unregisterWindowShortcut: vi.fn(() => true),
     searchLoggerDestroy: vi.fn(() => {
       callOrder.push('search-logger-destroy')
     }),
@@ -125,7 +127,9 @@ vi.mock('../../abstract-base-module', () => ({
 vi.mock('../../global-shortcon', () => ({
   shortcutModule: {
     registerMainShortcut: mocks.registerMainShortcut,
-    unregisterMainShortcut: mocks.unregisterMainShortcut
+    unregisterMainShortcut: mocks.unregisterMainShortcut,
+    registerWindowShortcut: mocks.registerWindowShortcut,
+    unregisterWindowShortcut: mocks.unregisterWindowShortcut
   }
 }))
 

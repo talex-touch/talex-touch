@@ -10,6 +10,7 @@ import {
   type PluginHostCapabilityDefinition
 } from './plugin-host-capabilities'
 import { hasControlCharacter } from './plugin-host-text-validation'
+import { isPrivilegedPluginFor } from '../../../../shared/privileged-plugins'
 
 export type PluginVscodeProjectKind = 'folder' | 'workspace' | 'file'
 export type PluginVscodeProjectsReason =
@@ -360,7 +361,7 @@ export function createPluginVscodeProjectsCapabilities(
     if (typeof options[key] !== 'function' || utilTypes.isProxy(options[key])) invalid()
   }
   const expected = snapshotActivation(options.activation)
-  if (expected.name !== 'touch-vscode-projects') invalid()
+  if (!isPrivilegedPluginFor('vscodeProjects', expected.name)) invalid()
   const list = serviceMethod<TrustedPluginVscodeProjectsService['list']>(options.service, 'list')
   const open = serviceMethod<TrustedPluginVscodeProjectsService['open']>(options.service, 'open')
   const invalidate = serviceMethod<TrustedPluginVscodeProjectsService['invalidate']>(

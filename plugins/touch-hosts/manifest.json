@@ -3,7 +3,7 @@
   "name": "touch-hosts",
   "version": "0.1.0",
   "author": "TalexTouch Team",
-  "sdkapi": 260817,
+  "sdkapi": 261011,
   "category": "utilities",
   "icon": {
     "type": "file",

@@ -3,7 +3,7 @@
   "name": "touch-ai-sessions",
   "version": "1.0.0",
   "author": "TalexTouch Team",
-  "sdkapi": 260817,
+  "sdkapi": 261011,
   "category": "utilities",
   "icon": { "type": "file", "value": "assets/logo.svg" },
   "description": "安全检索本地 AI 会话元数据并复制脱敏引用",

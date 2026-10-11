@@ -24,6 +24,7 @@ export {
 export type { TxIconButtonProps }
 export type { ButtonSize as TxButtonSize }
 export type TxButtonProps = ButtonProps
+export type TxButtonStatus = NonNullable<ButtonProps['status']>
 export type TxButtonEmits = ButtonEmits
 export type TxButtonInstance = InstanceType<typeof component>
 export type TxSplitButtonProps = SplitButtonProps

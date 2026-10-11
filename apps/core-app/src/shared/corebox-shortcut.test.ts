@@ -60,9 +60,15 @@ describe('The key that opens CoreBox', () => {
       'CommandOrControl+E'
     ])
     expect(Object.keys(coreBoxShortcut).sort()).toEqual([
+      'COREBOX_DETACH_DEFAULT_ACCELERATOR',
+      'COREBOX_DETACH_SHORTCUT_ID',
       'COREBOX_TOGGLE_DEFAULT_ACCELERATOR',
       'COREBOX_TOGGLE_LEGACY_DEFAULT_ACCELERATORS',
-      'COREBOX_TOGGLE_SHORTCUT_ID'
+      'COREBOX_TOGGLE_SHORTCUT_ID',
+      'COREBOX_TRANSFER_DEFAULT_ACCELERATOR',
+      'COREBOX_TRANSFER_SHORTCUT_ID',
+      'matchesCoreBoxShortcutAccelerator',
+      'resolveCoreBoxFlowShortcutFromBindings'
     ])
   })
 

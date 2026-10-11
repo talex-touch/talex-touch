@@ -508,6 +508,8 @@
     },
     "shortcutLabels": {
       "core_box_toggle": "Open command palette",
+      "core_box_detach": "Detach to window",
+      "core_box_transfer": "Transfer to plugin",
       "core_omniPanel_toggle": "Open OmniPanel",
       "core_omniPanel_mouseLongPress": "OmniPanel mouse trigger",
       "local_ai_cli_quick_open": "Open local AI agent",

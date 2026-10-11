@@ -3,7 +3,7 @@
   "name": "json-formatter",
   "version": "1.0.9-beta.4",
   "author": "TalexTouch Team",
-  "sdkapi": 260713,
+  "sdkapi": 261011,
   "category": "utilities",
   "icon": {
     "type": "file",

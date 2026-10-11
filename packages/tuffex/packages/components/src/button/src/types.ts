@@ -20,6 +20,14 @@ export interface ButtonProps {
   loading?: boolean
   /** 加载样式变体 */
   loadingVariant?: 'spinner' | 'bar'
+  /** 按钮进度值（0–100）；传入有效数字时渲染背景进度条与数字读数 */
+  progress?: number
+  /** 是否显示进度百分比读数 */
+  showProgress?: boolean
+  /** 自定义进度读数格式化函数 */
+  formatProgress?: (percentage: number) => string
+  /** 结果反馈状态；与正常态、进度态连贯过渡 */
+  status?: '' | 'success' | 'warning' | 'error'
   /** 是否禁用状态 */
   disabled?: boolean
   /** 是否显示边框 */

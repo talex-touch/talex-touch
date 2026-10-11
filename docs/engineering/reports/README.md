@@ -1,6 +1,6 @@
 # Engineering Reports Hygiene
 
-> 更新时间：2026-06-25
+> 更新时间：2026-10-11
 > 定位：工程报告、审计输出与 evidence 产物的提交边界。
 
 ## 提交边界
@@ -39,6 +39,7 @@
 - [`release-gate-and-worktree-closeout-2026-09-13.md`](./release-gate-and-worktree-closeout-2026-09-13.md)：工作树收口与 `quality:release` 在 clean committed HEAD 上的分阶段复跑证据。
 - [`cloudflare-ai-gateway-nexus-scene-routing-2026-09-25.md`](./cloudflare-ai-gateway-nexus-scene-routing-2026-09-25.md)：CF AI Gateway 接入 Nexus 的计费口径、硬限制、上游覆盖与本仓不变量冲突点调研结论（未落地，含待实测清单）。
 - [`nexus-cn-access-2026-10-10.md`](./nexus-cn-access-2026-10-10.md)：中国大陆访问 Nexus 的链路实测与方案对比（优选 IP、EdgeOne、自建中转、国内反代），**检测中**（含待实测清单），附同批待定项：构建方式已定为继续用 Pages 构建，边缘缓存、Sentry、维护定时任务、共享 D1 读额度与 Smart Placement 执行位置待定。
+- [`lightweight-voice-cloning-2026-10-11.md`](./lightweight-voice-cloning-2026-10-11.md)：轻量声音克隆与科幻系统声线调研，含 Qwen、Nano、ZipVoice 本地串行实测、电子处理参数、磁盘占用与试听验证；用户听感尚未确认。
 
 ## 活报告
 
