@@ -220,7 +220,7 @@ const pluginLifecycle = {
   async onInit() {},
 
   async onFeatureTriggered(featureId, query) {
-    if (featureId !== FEATURE_ID)
+    if (featureId !== FEATURE_ID && featureId !== 'quick-actions')
       return false
 
     const actions = availableActions()

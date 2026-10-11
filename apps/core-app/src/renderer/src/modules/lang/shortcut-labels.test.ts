@@ -13,6 +13,8 @@ import zhCN from './zh-CN.json'
  */
 const BUILT_IN_SHORTCUT_IDS = [
   'core.box.toggle',
+  'core.box.detach',
+  'core.box.transfer',
   'core.omniPanel.toggle',
   'core.omniPanel.mouseLongPress',
   'local-ai-cli.quick-open',

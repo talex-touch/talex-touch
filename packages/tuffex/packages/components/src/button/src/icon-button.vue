@@ -77,7 +77,7 @@ function handleMouseleave() {
   </button>
 </template>
 
-<style scoped>
+<style>
 .tx-icon-button {
   --tx-icon-button-size: 40px;
   --tx-icon-button-radius: 10px;

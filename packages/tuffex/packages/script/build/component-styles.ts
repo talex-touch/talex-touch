@@ -212,7 +212,9 @@ async function writeComponentStyle(componentName: string, parts: ComponentStyleP
   // the rest stranded mid-file; hoisting a single declaration keeps the one
   // that counts and drops the copies.
   const CHARSET_RE = /@charset\s+"[^"]*";\s*/gi
-  const ownParts = parts.own.map(part => part.replace(CHARSET_RE, '').trim()).filter(part => part.length > 0)
+  const ownParts = [...new Set(
+    parts.own.map(part => part.replace(CHARSET_RE, '').trim()).filter(part => part.length > 0),
+  )]
   const needsCharset = parts.own.some(part => CHARSET_RE.test(part))
   CHARSET_RE.lastIndex = 0
 

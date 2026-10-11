@@ -1703,7 +1703,11 @@ function createPluginModuleInternal(
     input: PluginApiUninstallRequest
   ): Promise<PluginApiUninstallResponse> => {
     const request = normalizePluginUninstallRequest(input)
-    if (PRIVILEGED_PLUGIN_NAMES.includes(request.plugin.name)) {
+    const installedSdkapi = pluginModule.pluginManager?.plugins.get(request.plugin.name)?.sdkapi
+    if (
+      PRIVILEGED_PLUGIN_NAMES.includes(request.plugin.name) &&
+      (installedSdkapi === undefined || installedSdkapi < 261011)
+    ) {
       throw new Error('PRIVILEGED_PLUGIN_UNINSTALL_DENIED')
     }
     return pluginDataDispositionCoordinator!.uninstall(request)

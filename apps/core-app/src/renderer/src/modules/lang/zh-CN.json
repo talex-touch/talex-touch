@@ -508,6 +508,8 @@
     },
     "shortcutLabels": {
       "core_box_toggle": "唤起命令面板",
+      "core_box_detach": "分离到独立窗口",
+      "core_box_transfer": "流转到插件",
       "core_omniPanel_toggle": "唤起 OmniPanel",
       "core_omniPanel_mouseLongPress": "OmniPanel 鼠标触发",
       "local_ai_cli_quick_open": "打开本机 AI 代理",

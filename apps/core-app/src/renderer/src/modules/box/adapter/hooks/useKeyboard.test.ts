@@ -495,7 +495,8 @@ describe('useKeyboard MetaOverlay visibility cache', () => {
 
     await dispatchGridKeyAndFlush('Escape')
 
-    expect(transportMock.send).toHaveBeenCalledExactlyOnceWith(MetaOverlayEvents.ui.isVisible)
+    expect(transportMock.send).toHaveBeenCalledWith(MetaOverlayEvents.ui.isVisible)
+    expect(transportMock.send).not.toHaveBeenCalledWith(MetaOverlayEvents.ui.hide)
     expect(activeGridKeyboardHarness.clearClipboard).toHaveBeenCalledWith({ remember: true })
     expect(query.value).toBe('keep this query')
   })

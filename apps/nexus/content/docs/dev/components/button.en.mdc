@@ -90,6 +90,32 @@ code: |
 ---
 ::
 
+### Progress and Status
+Setting `progress` (0–100) renders a background fill and numeric readout; setting `status` to `'success'`, `'warning'`, or `'error'` smoothly settles the fill into the semantic tone and draws the status glyph.
+:::TuffDemoWrapper{demo="ButtonProgressDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { ref } from 'vue'
+
+  const progress = ref<number | undefined>(undefined)
+  const status = ref<'' | 'success' | 'warning' | 'error'>('')
+
+  function startUpload() {
+    status.value = ''
+    progress.value = 18
+    // Update progress as the job advances, then set status = 'success'
+  }
+  </script>
+
+  <template>
+    <TxButton variant="primary" :progress="progress" :status="status" @click="startUpload">
+      {{ status === 'success' ? 'Published' : progress !== undefined ? 'Uploading' : 'Publish update' }}
+    </TxButton>
+  </template>
+---
+:::
+
 ### Sizes
 `size` has three tiers, `sm`, `md`, and `lg`, at 26, 32, and 38px tall.
 ::TuffDemoWrapper{demo="ButtonSizesDemo" code-lang="vue"}
@@ -215,6 +241,7 @@ code: |
 
 - Keep one primary button per view or card; use `ghost` or `secondary` for lower-priority actions.
 - Set `loading` for async actions and clear it on both success and failure, so the button never sticks disabled.
+- Prefer `progress` and `status` for measurable async tasks so progress and outcome resolve inside the same button without jarring external alerts.
 - Use `nativeType="submit"` only inside forms; the default `button` never submits by accident.
 - Use `TxIconButton` with a `label` for icon-only actions; reserve `pressed` for persistent toggles.
 - Name the copied target in `TxCopyButton`'s `copyLabel`; handle `error` for critical values, and set `failedLabel` outside English.
@@ -276,6 +303,24 @@ rows:
       enums: [spinner, bar]
     default: "'spinner'"
     description: 'Loading style; bar renders as a sweep layer only with block.'
+  - parameter: progress
+    type: number
+    default: '-'
+    description: 'Progress percentage (0–100); renders a background fill and numeric readout, blocking clicks while under 100 without status.'
+  - parameter: show-progress
+    type: boolean
+    default: 'true'
+    description: 'Whether to display the numeric readout while progress is set and status is empty.'
+  - parameter: format-progress
+    type: '(percentage: number) => string'
+    default: '-'
+    description: 'Custom formatter for the numeric progress readout.'
+  - parameter: status
+    type:
+      kind: enum
+      enums: ['', success, warning, error]
+    default: "''"
+    description: 'Outcome status; settles the background fill into a semantic tone and draws the matching glyph.'
   - parameter: disabled
     type: boolean
     default: 'false'
@@ -437,11 +482,11 @@ code: |
 ## Overview
 
 - `variant` wins over `type`; with neither set, the button is `secondary`.
-- `disabled` and `loading` both disable the native `<button>` and suppress `click`; a loading `TxSplitButton` disables both sides.
-- Non-block, non-circle buttons animate width with a FLIP transition when `loading` toggles; `block` with `circle` keeps the regular label layout.
+- `disabled`, `loading`, and an unfinished `progress` (`< 100` with no `status`) all disable the native `<button>` and suppress `click`; a loading `TxSplitButton` disables both sides.
+- Non-block, non-circle buttons animate width with a FLIP transition when `loading`, `progress`, or `status` changes, and ease colour only inside the state-change window (`.is-morphing`); `block` with `circle` keeps the regular label layout.
 - An icon-only `TxButton` takes its name from attrs such as `aria-label`; `TxIconButton` maps `label` to `aria-label` and a boolean `pressed` to `aria-pressed`.
 - `TxCopyButton` uses the Clipboard API and falls back to `execCommand`; it ignores clicks while copying and eases colour only on a state change.
-- Under reduced motion, the `vibrate` shake is skipped and `TxCopyButton` lands each state as its final frame.
+- Under reduced motion, the `vibrate` shake is skipped and both `TxButton` status and `TxCopyButton` land each state as its final frame.
 
 ## Technologies
 

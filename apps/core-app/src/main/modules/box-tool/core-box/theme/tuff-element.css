@@ -162,3 +162,16 @@ html.dark {
   --tuff-mask-color: rgba(0, 0, 0, 0.8);
   --tuff-mask-color-extra-light: rgba(0, 0, 0, 0.3);
 }
+
+html.tuff-meta-overlay-blur > body {
+  filter: blur(8px);
+  transition: filter 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.tuff-meta-overlay-blur > body {
+    transition: none;
+  }
+}

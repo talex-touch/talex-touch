@@ -260,6 +260,7 @@ export class ShortcutModule extends BaseModule {
 
   private storage?: ShortcutStorage
   private shortcutStatusMap = new Map<string, ShortcutStatus>()
+  private windowShortcutRegistry = new Map<string, { owner?: string; defaultAccelerator: string }>()
   private isEnabled: boolean = !GLOBAL_SHORTCUT_REGISTRATION_DISABLED
   private disposeBeforeQuitListener: (() => void) | null = null
   private disposePluginStatusListener: (() => void) | null = null
@@ -467,6 +468,56 @@ export class ShortcutModule extends BaseModule {
 
     this.reregisterAllShortcuts()
     return true
+  }
+
+  registerWindowShortcut(
+    id: string,
+    defaultAccelerator: string,
+    options?: { enabled?: boolean; owner?: string }
+  ): boolean {
+    if (this.windowShortcutRegistry.has(id)) {
+      return false
+    }
+
+    this.windowShortcutRegistry.set(id, {
+      owner: options?.owner,
+      defaultAccelerator
+    })
+
+    const existingShortcut = this.storage!.getShortcutById(id)
+    if (!existingShortcut) {
+      this.storage!.addShortcut({
+        id,
+        accelerator: defaultAccelerator,
+        type: ShortcutType.MAIN,
+        meta: {
+          creationTime: Date.now(),
+          modificationTime: Date.now(),
+          author: SYSTEM_SHORTCUT_AUTHOR,
+          enabled: options?.enabled ?? true
+        }
+      })
+    }
+
+    this.reregisterAllShortcuts()
+    return true
+  }
+
+  unregisterWindowShortcut(id: string): boolean {
+    const removed = this.windowShortcutRegistry.delete(id)
+    if (!removed) return false
+    if (this.storage) {
+      this.reregisterAllShortcuts()
+    }
+    return true
+  }
+
+  getWindowShortcutAccelerator(id: string): string | null {
+    const shortcut = this.storage?.getShortcutById(id)
+    if (!shortcut || shortcut.meta?.enabled === false) {
+      return null
+    }
+    return this.normalizeAccelerator(shortcut.accelerator)
   }
 
   /**
@@ -1031,7 +1082,11 @@ export class ShortcutModule extends BaseModule {
           continue
         }
 
-        if (shortcut.type === ShortcutType.MAIN && !mainCallbackRegistry.has(shortcut.id)) {
+        if (
+          shortcut.type === ShortcutType.MAIN &&
+          !mainCallbackRegistry.has(shortcut.id) &&
+          !this.windowShortcutRegistry.has(shortcut.id)
+        ) {
           statusMap.set(shortcut.id, { state: 'unavailable', reason: 'runtime-missing' })
           continue
         }
@@ -1082,6 +1137,9 @@ export class ShortcutModule extends BaseModule {
     for (const shortcut of allShortcuts) {
       const status = statusMap.get(shortcut.id)
       if (!status || status.state !== 'active') {
+        continue
+      }
+      if (this.windowShortcutRegistry.has(shortcut.id)) {
         continue
       }
 
@@ -1328,7 +1386,8 @@ export class ShortcutModule extends BaseModule {
    */
   private orderByOwnership(shortcuts: Shortcut[]): Shortcut[] {
     const isUserChosen = (shortcut: Shortcut): boolean => {
-      const registration = mainCallbackRegistry.get(shortcut.id)
+      const registration =
+        mainCallbackRegistry.get(shortcut.id) ?? this.windowShortcutRegistry.get(shortcut.id)
       if (!registration) return false
       if (!registration.defaultAccelerator) return true
       return shortcut.accelerator !== this.normalizeAccelerator(registration.defaultAccelerator)
@@ -1606,6 +1665,7 @@ export class ShortcutModule extends BaseModule {
     globalShortcut.unregisterAll()
     mainCallbackRegistry.clear()
     mainTriggerRegistry.clear()
+    this.windowShortcutRegistry.clear()
     this.shortcutStatusMap = new Map()
     this.bindingsSignature = ''
   }

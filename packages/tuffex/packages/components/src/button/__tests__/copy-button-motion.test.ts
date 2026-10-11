@@ -14,11 +14,8 @@ interface Rule {
   media: string | null
 }
 
-function rules(): Rule[] {
-  const source = readFileSync(SFC, 'utf8')
-  const css = [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
-    .map(match => sass.compileString(match[1] ?? '', { url: pathToFileURL(SFC), syntax: 'scss' }).css)
-    .join('\n')
+function parseCssRules(rawCss: string): Rule[] {
+  const css = rawCss
     // Sass keeps /* */ comments, and a non-ASCII one adds an @charset line;
     // either in a prelude would read as part of the next selector.
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -57,6 +54,14 @@ function rules(): Rule[] {
   return out
 }
 
+function rules(): Rule[] {
+  const source = readFileSync(SFC, 'utf8')
+  const css = [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
+    .map(match => sass.compileString(match[1] ?? '', { url: pathToFileURL(SFC), syntax: 'scss' }).css)
+    .join('\n')
+  return parseCssRules(css)
+}
+
 describe('txCopyButton motion contract', () => {
   const all = rules()
   const transitions = all.filter(r => r.declarations.has('transition') || r.declarations.has('transition-property'))
@@ -83,5 +88,35 @@ describe('txCopyButton motion contract', () => {
     const root = all.find(r => r.selectors.includes('.tx-copy-button') && r.media === null)!
     expect(root.declarations.get('border')).toBe('0')
     expect(root.declarations.get('box-shadow')).toContain('inset 0 0 0 1px')
+  })
+})
+
+const BUTTON_SCSS = resolve(dirname(fileURLToPath(import.meta.url)), '../src/style/index.scss')
+
+describe('txButton progress & status motion contract', () => {
+  const all = parseCssRules(sass.compile(BUTTON_SCSS).css)
+
+  it('declares progress fill and status glyph transitions only inside prefers-reduced-motion: no-preference', () => {
+    const progressAndStatusMotion = all.filter(r =>
+      r.selectors.some(s =>
+        s.includes('.tx-button__progress-fill')
+        || s.includes('.tx-button.is-morphing')
+        || s.includes('.tx-button__status-glyph')
+        || s.includes('.tx-button__status-dot'),
+      ) && (r.declarations.has('transition') || r.declarations.has('animation')),
+    )
+    expect(progressAndStatusMotion.length).toBeGreaterThan(0)
+    for (const rule of progressAndStatusMotion)
+      expect(rule.media, rule.selectors.join(', ')).toBe(NO_PREFERENCE)
+  })
+
+  it('gates root button colour transitions behind .is-morphing, never on :hover', () => {
+    const rootColourTransitions = all.filter(r =>
+      r.selectors.some(s => s.startsWith('.tx-button') && !s.includes('__'))
+      && /\b(?:color|background-color|border-color)\b/.test(r.declarations.get('transition') ?? ''),
+    )
+    expect(rootColourTransitions.length).toBeGreaterThan(0)
+    for (const rule of rootColourTransitions)
+      expect(rule.selectors.every(s => s.includes('.is-morphing')), rule.selectors.join(', ')).toBe(true)
   })
 })

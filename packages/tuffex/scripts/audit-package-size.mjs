@@ -231,7 +231,13 @@ const LIMITS = {
   // these components. Both sheets contain only their own selectors and keyframes;
   // FlowLight's surface wrappers reach its sheet through style-deps, not inlining.
   // Actuals plus minimal headroom; per-file and root/full-style import gates stay fixed.
-  fullCssBytes: 745 * 1024,
+  // 745 -> 748 on 2026-10-11: TxButton progress-bar and status state support (background
+  // progress track/fill, numeric readout, drawn status glyphs, and `.is-morphing` colour
+  // transitions) grows `button/style.css` after un-scoping `TxIconButton` (-0.5 KiB of
+  // `data-v` attributes). Measured 746.8 KiB. Checked for inlining: `button/style.css`
+  // carries only `.tx-button*`, `.tx-split-button*`, `.tx-icon-button*` and
+  // `.tx-copy-button*` rules; `text-morph` stays in its own sheet through style-deps.
+  fullCssBytes: 748 * 1024,
   // The per-component stylesheets, added up. This is the set a consumer
   // actually installs and the on-demand plugin picks from, so it is the number
   // worth watching: it fell from 2290.6 KiB to 634.7 when dependency styles
@@ -297,7 +303,9 @@ const LIMITS = {
   // 710 -> 715.5 on 2026-10-10: the same two sheets as the fullCssBytes note.
   // CI measured 714.5 KiB across 188 sheets (186 before); their dependency closure
   // still imports each primitive stylesheet once. Actuals plus minimal headroom.
-  onDemandCssBytes: 715.5 * 1024,
+  // 715.5 -> 718.5 on 2026-10-11: the same TxButton progress-bar and status rules as the
+  // `fullCssBytes` note above, measured at 717.4 KiB across the same 188 sheets.
+  onDemandCssBytes: 718.5 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus

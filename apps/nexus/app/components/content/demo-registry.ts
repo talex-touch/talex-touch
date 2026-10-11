@@ -54,6 +54,7 @@ export const demoLoaders: Record<string, DemoLoader> = {
   ButtonHapticsDemo: () => import('./demos/ButtonHapticsDemo.vue'),
   ButtonLoadingDemo: () => import('./demos/ButtonLoadingDemo.vue'),
   ButtonPrimaryGhostDemo: () => import('./demos/ButtonPrimaryGhostDemo.vue'),
+  ButtonProgressDemo: () => import('./demos/ButtonProgressDemo.vue'),
   ButtonShapesDemo: () => import('./demos/ButtonShapesDemo.vue'),
   ButtonSizesDemo: () => import('./demos/ButtonSizesDemo.vue'),
   ButtonSplitDemo: () => import('./demos/ButtonSplitDemo.vue'),

@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => {
       }))
     }))
   }
+  const getAppVersionSafe = vi.fn(() => '1.0.0')
   type MockLifecycleRecord = Record<string, unknown> & {
     attemptId: string
     revision: number
@@ -146,6 +147,7 @@ const mocks = vi.hoisted(() => {
   }
 
   return {
+    getAppVersionSafe,
     lifecycleDb,
     lifecycleRepository,
     handlers,
@@ -249,7 +251,7 @@ vi.mock('../../utils/logger', () => ({
 }))
 
 vi.mock('../../utils/version-util', () => ({
-  getAppVersionSafe: vi.fn(() => '1.0.0')
+  getAppVersionSafe: mocks.getAppVersionSafe
 }))
 
 vi.mock('../analytics/message-store', () => ({
@@ -418,6 +420,35 @@ async function settle(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve))
 }
 
+/** Sets the mocked application version read by `getAppVersionSafe`. */
+function setAppVersion(version: string): void {
+  mocks.getAppVersionSafe.mockReturnValue(version)
+}
+
+/**
+ * Switches the effective preview channel for the current service instance by
+ * persisting it through the `updateSettings` transport so the channel
+ * normalization in the service is exercised end-to-end.
+ */
+async function useUpdateChannel(channel: AppPreviewChannel): Promise<void> {
+  await invoke(UpdateEvents.updateSettings, {
+    settings: { updateChannel: channel }
+  })
+}
+
+/** Runs a force check through the transport and resolves with the check result. */
+async function forceCheck(): Promise<UpdateCheckResult> {
+  const response = (await invoke(UpdateEvents.check, { force: true })) as {
+    data?: UpdateCheckResult
+  }
+  const data = response.data
+  return {
+    hasUpdate: Boolean(data?.hasUpdate),
+    release: data?.release,
+    source: data?.source ?? 'Unknown'
+  }
+}
+
 describe('UpdateServiceModule facade', () => {
   beforeEach(() => {
     Object.defineProperty(process, 'resourcesPath', {
@@ -430,6 +461,7 @@ describe('UpdateServiceModule facade', () => {
     mocks.startupListeners.clear()
     mocks.fs.existsSync.mockImplementation(() => false)
     mocks.request.mockReset()
+    mocks.getAppVersionSafe.mockReturnValue('1.0.0')
     mocks.repository.getLatestRecord.mockResolvedValue(null)
     mocks.repository.getRecordByTag.mockResolvedValue(null)
     mocks.lifecycleRepository.listTerminalAttempts.mockResolvedValue([])
@@ -1016,6 +1048,164 @@ describe('UpdateServiceModule facade', () => {
         expect(mocks.logger.warn).toHaveBeenCalledWith('Failed to load update history', {
           error: expect.any(Error)
         })
+      } finally {
+        await service.onDestroy()
+      }
+    })
+  })
+
+  describe('cross-channel candidate resolution on a force check', () => {
+    it('promotes a release-channel build when the app is on a preview tag and auto-downloads', async () => {
+      setAppVersion('2.4.14-beta.58')
+      mocks.request.mockResolvedValue({
+        status: 200,
+        data: [release('v2.4.14')],
+        headers: {}
+      })
+      mocks.updateSystem.downloadUpdate.mockResolvedValue({
+        taskId: 'auto-download-task',
+        rollbackFromVersion: '2.4.14-beta.58',
+        rollbackCompatible: false
+      } as never)
+      const service = await createService()
+
+      try {
+        await useGitHubSource()
+        await useUpdateChannel(AppPreviewChannel.RELEASE)
+
+        const result = await forceCheck()
+        expect(result).toMatchObject({
+          hasUpdate: true,
+          release: { tag_name: 'v2.4.14' },
+          source: 'GitHub Releases'
+        })
+
+        await vi.waitFor(() =>
+          expect(mocks.lifecycleRepository.getActive()).resolves.toMatchObject({
+            phase: 'downloading',
+            releaseTag: 'v2.4.14',
+            taskId: 'auto-download-task',
+            currentVersion: '2.4.14-beta.58'
+          })
+        )
+        expect(mocks.updateSystem.downloadUpdate).toHaveBeenCalledOnce()
+        expect(mocks.updateSystem.downloadUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ tag_name: 'v2.4.14' })
+        )
+      } finally {
+        await service.onDestroy()
+      }
+    })
+
+    it('rejects a downgrade from a newer preview build to an older release on a force check', async () => {
+      setAppVersion('2.5.0-beta.1')
+      mocks.request.mockResolvedValue({
+        status: 200,
+        data: [release('v2.4.14')],
+        headers: {}
+      })
+      const service = await createService()
+
+      try {
+        await useGitHubSource()
+        await useUpdateChannel(AppPreviewChannel.RELEASE)
+
+        const result = await forceCheck()
+        expect(result).toMatchObject({ hasUpdate: false, source: 'GitHub Releases' })
+
+        // A downgrade candidate closes its check lifecycle as idle and never starts a download.
+        await expect(mocks.lifecycleRepository.getActive()).resolves.toBeNull()
+        expect(mocks.updateSystem.downloadUpdate).not.toHaveBeenCalled()
+      } finally {
+        await service.onDestroy()
+      }
+    })
+
+    it('rejects lower beta builds as downgrades when the app is on a release build', async () => {
+      setAppVersion('2.4.14')
+      mocks.request.mockResolvedValue({
+        status: 200,
+        data: [release('v2.4.13-beta.9')],
+        headers: {}
+      })
+      const service = await createService()
+
+      try {
+        await useGitHubSource()
+        await useUpdateChannel(AppPreviewChannel.BETA)
+
+        const result = await forceCheck()
+        expect(result).toMatchObject({ hasUpdate: false, source: 'GitHub Releases' })
+
+        await expect(mocks.lifecycleRepository.getActive()).resolves.toBeNull()
+        expect(mocks.updateSystem.downloadUpdate).not.toHaveBeenCalled()
+      } finally {
+        await service.onDestroy()
+      }
+    })
+
+    it.each([{ latest: 'v2.4.14-beta.58', rest: [] }])(
+      'rejects beta downgrades when older than the current release build (latest: $latest)',
+      async ({ latest, rest }) => {
+        setAppVersion('2.4.14')
+        const releases = [latest, ...rest].map((tag) => release(tag))
+        mocks.request.mockResolvedValue({
+          status: 200,
+          data: releases,
+          headers: {}
+        })
+        const service = await createService()
+
+        try {
+          await useGitHubSource()
+          await useUpdateChannel(AppPreviewChannel.BETA)
+
+          const result = await forceCheck()
+          expect(result).toMatchObject({ hasUpdate: false, source: 'GitHub Releases' })
+          expect(mocks.updateSystem.downloadUpdate).not.toHaveBeenCalled()
+        } finally {
+          await service.onDestroy()
+        }
+      }
+    )
+
+    it('upgrades to a newer beta build when the app is on a release build', async () => {
+      setAppVersion('2.4.14')
+      mocks.request.mockResolvedValue({
+        status: 200,
+        data: [release('v2.4.15-beta.1')],
+        headers: {}
+      })
+      mocks.updateSystem.downloadUpdate.mockResolvedValue({
+        taskId: 'beta-download-task',
+        rollbackFromVersion: '2.4.14',
+        rollbackCompatible: false
+      } as never)
+      const service = await createService()
+
+      try {
+        await useGitHubSource()
+        await useUpdateChannel(AppPreviewChannel.BETA)
+
+        const result = await forceCheck()
+        expect(result).toMatchObject({
+          hasUpdate: true,
+          release: { tag_name: 'v2.4.15-beta.1' },
+          source: 'GitHub Releases'
+        })
+
+        await vi.waitFor(() =>
+          expect(mocks.lifecycleRepository.getActive()).resolves.toMatchObject({
+            phase: 'downloading',
+            releaseTag: 'v2.4.15-beta.1',
+            taskId: 'beta-download-task',
+            currentVersion: '2.4.14'
+          })
+        )
+        expect(mocks.updateSystem.downloadUpdate).toHaveBeenCalledOnce()
+        expect(mocks.updateSystem.downloadUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ tag_name: 'v2.4.15-beta.1' })
+        )
       } finally {
         await service.onDestroy()
       }

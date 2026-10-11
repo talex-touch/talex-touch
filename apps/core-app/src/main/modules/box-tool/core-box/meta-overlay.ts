@@ -667,6 +667,7 @@ export class MetaOverlayManager {
     if (!parentWindow || !runtime) return
 
     this.publishedPanelState = next
+    windowManager.setPluginViewMetaBlur?.(next.blur)
     const tx = getTuffTransportMain(runtime.channel, resolveKeyManager(runtime.channel))
     try {
       tx.broadcastToWindow(parentWindow.id, CoreBoxEvents.metaOverlay.panelState, next)
@@ -682,6 +683,10 @@ export class MetaOverlayManager {
    */
   public getVisible(): boolean {
     return this.isVisible
+  }
+
+  public getPage(): MetaPanelPage {
+    return this.page
   }
 
   /**

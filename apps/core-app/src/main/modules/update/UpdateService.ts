@@ -123,11 +123,6 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
   /** Prevents retained quit listeners from touching the database after module teardown. */
   private destroyed = false
   private readonly messageStore = getAnalyticsMessageStore()
-  private readonly channelPriority: Record<AppPreviewChannel, number> = {
-    [AppPreviewChannel.RELEASE]: 0,
-    [AppPreviewChannel.BETA]: 1,
-    [AppPreviewChannel.SNAPSHOT]: 1
-  }
 
   constructor() {
     super(Symbol.for('UpdateService'))
@@ -905,8 +900,7 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
 
       if (
         current.phase === 'available' &&
-        (!current.releaseTag ||
-          this.compareSemverVersions(release.tag_name, current.releaseTag) === 1)
+        (!current.releaseTag || compareUpdateVersions(release.tag_name, current.releaseTag) === 1)
       ) {
         updateLog.info(
           `Superseding stale available update attempt ${current.attemptId} (tag: ${current.releaseTag}) with newer release ${release.tag_name}`
@@ -1476,9 +1470,7 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
             return persistedDecision
           }
         }
-        const newVersion = this.parseVersion(result.release.tag_name)
-
-        if (this.isUpdateNeeded(newVersion)) {
+        if (compareUpdateVersions(result.release.tag_name, this.currentVersion) === 1) {
           if (!force && this.settings.ignoredVersions.includes(result.release.tag_name)) {
             const ignoredResult = {
               hasUpdate: false,
@@ -1900,54 +1892,10 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
   }
 
   /**
-   * Parse version string to version object
-   * @param versionStr - Version string
-   * @returns Parsed version object
-   */
-  private parseVersion(versionStr: string): {
-    channel: AppPreviewChannel
-    major: number
-    minor: number
-    patch: number
-    raw: string
-  } {
-    return parseComparableUpdateVersion(versionStr)
-  }
-
-  /**
    * Normalize channel text to the enum.
    */
   private parseChannelLabel(label?: string): AppPreviewChannel {
     return resolveUpdateChannelLabel(label)
-  }
-
-  private getChannelPriority(channel: AppPreviewChannel): number {
-    return this.channelPriority[channel] ?? 0
-  }
-
-  /**
-   * Check if update is needed
-   * @param newVersion - New version to compare
-   * @returns True if update is needed
-   */
-  private isUpdateNeeded(newVersion: {
-    channel: AppPreviewChannel
-    major: number
-    minor: number
-    patch: number
-    raw: string
-  }): boolean {
-    const currentVersion = this.parseVersion(this.currentVersion)
-
-    // Compare versions (prioritize: channel > semantic version)
-    if (currentVersion.channel !== newVersion.channel) {
-      return (
-        this.getChannelPriority(newVersion.channel) >
-        this.getChannelPriority(currentVersion.channel)
-      )
-    }
-
-    return this.compareSemverVersions(newVersion.raw, currentVersion.raw) === 1
   }
 
   private isUpdateCandidate(version: string): boolean {
@@ -1955,12 +1903,12 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
     if (!trimmed) {
       return false
     }
-    const parsed = this.parseVersion(trimmed)
+    const parsed = parseComparableUpdateVersion(trimmed)
     const targetChannel = this.getEffectiveChannel()
     if (parsed.channel !== targetChannel) {
       return false
     }
-    return this.isUpdateNeeded(parsed)
+    return compareUpdateVersions(parsed.raw, this.currentVersion) === 1
   }
 
   /**
@@ -1991,10 +1939,6 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
       return currentChannel
     }
     return normalizedPreferred
-  }
-
-  private compareSemverVersions(a: string | undefined, b: string | undefined): -1 | 0 | 1 {
-    return compareUpdateVersions(a, b)
   }
 
   private getEffectiveChannel(): AppPreviewChannel {
