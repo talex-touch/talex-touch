@@ -1255,6 +1255,16 @@ function resolveErrorTitle(code: string | undefined): string {
   return t('home.error.generic')
 }
 
+function resolveErrorReportCode(error: { code?: string } | undefined): string {
+  const code = error?.code?.trim()
+  return code || 'UNKNOWN_ERROR'
+}
+
+function resolveErrorReportDetail(error: { detail?: string } | undefined): string {
+  const detail = error?.detail?.trim()
+  return detail || t('home.error.noDetail')
+}
+
 /**
  * A turn the usage limit refused, read as the user's own limit rather than a fault: its own title,
  * the reset time in local words instead of main's English sentence, and the way to the limits in
@@ -2207,6 +2217,12 @@ onBeforeUnmount(disposeCommands)
                           <p class="HomePage-ErrorDetail">
                             {{ resolveUsageLimitFailure(message.error)?.detail }}
                           </p>
+                          <p class="HomePage-ErrorReport" data-testid="home-usage-limit-report">
+                            <span
+                              >{{ t('home.error.codeLabel') }}:
+                              {{ resolveErrorReportCode(message.error) }}</span
+                            >
+                          </p>
                         </div>
                         <button
                           class="HomePage-RetryBtn"
@@ -2228,8 +2244,12 @@ onBeforeUnmount(disposeCommands)
                           <p class="HomePage-ErrorTitle">
                             {{ resolveErrorTitle(message.error?.code) }}
                           </p>
-                          <p v-if="message.error?.detail" class="HomePage-ErrorDetail">
-                            {{ message.error.detail }}
+                          <p class="HomePage-ErrorReport" data-testid="home-error-report">
+                            <span
+                              >{{ t('home.error.codeLabel') }}:
+                              {{ resolveErrorReportCode(message.error) }}</span
+                            >
+                            <span>{{ resolveErrorReportDetail(message.error) }}</span>
                           </p>
                         </div>
                         <button
@@ -3179,6 +3199,22 @@ onBeforeUnmount(disposeCommands)
   font-size: var(--shell-fs-sm);
   line-height: 1.5;
   word-break: break-word;
+}
+
+.HomePage-ErrorReport {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0 0;
+  color: var(--shell-text-secondary);
+  font-size: var(--shell-fs-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  > span:first-child {
+    color: var(--shell-text-muted);
+    font-family: var(--shell-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: var(--shell-fs-sm);
+  }
 }
 
 .HomePage-RetryBtn {

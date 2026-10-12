@@ -22,6 +22,8 @@ import { createPinia, disposePinia } from 'pinia'
 import { h, nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import enUS from '~/modules/lang/en-US.json'
+import zhCN from '~/modules/lang/zh-CN.json'
 interface HostTransport {
   send: (event: unknown, payload: unknown) => Promise<unknown>
   on: (event: unknown, listener: (payload: unknown) => void) => () => void
@@ -179,6 +181,46 @@ function state(
     revision: 1,
     updatedAt: 1
   }
+}
+
+function failedState(
+  id: string,
+  error?: { code: string; detail: string }
+): ConversationWorkspaceState {
+  const base = state(id)
+  return {
+    ...base,
+    messages: [
+      ...base.messages,
+      {
+        id: `${id}-assistant`,
+        role: 'assistant',
+        content: '',
+        status: 'failed',
+        ...(error ? { error } : {}),
+        seq: 1,
+        createdAt: 2
+      }
+    ]
+  }
+}
+
+function catalogText(catalog: unknown, key: string): string {
+  let value: unknown = catalog
+  for (const segment of key.split('.')) {
+    if (!value || typeof value !== 'object') return key
+    value = (value as Record<string, unknown>)[segment]
+  }
+  return typeof value === 'string' ? value : key
+}
+
+function translate(key: string, values?: unknown): string {
+  const template = catalogText(enUS, key)
+  if (!values || typeof values !== 'object') return template
+  return template.replace(/\{(\w+)\}/g, (_match, name: string) => {
+    const value = (values as Record<string, unknown>)[name]
+    return value === undefined ? `{${name}}` : String(value)
+  })
 }
 
 /** Hand-written Main boundary: holds durable transcripts and deferred receipts, not Vue state. */
@@ -430,7 +472,63 @@ function expectTarget(view: VueWrapper, target: string, text: string, attachment
   expect(view.get('.HomePage-ComposerTray').text()).toBe(attachment)
 }
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: translate }) }))
+
+describe('HomePage failed conversation report', () => {
+  it('shows the generic title, stable code and detail, while retrying the failed turn', async () => {
+    const id = 'failed-report'
+    const detail = 'The routed provider timed out before producing a response.'
+    const { view } = await page(
+      [failedState(id, { code: 'PROVIDER_TIMEOUT', detail })],
+      `/home/c/${id}`
+    )
+
+    const report = view.get('[data-testid="home-error-report"]')
+    const card = view.get('.HomePage-Error')
+    expect(card.attributes('role')).toBe('alert')
+    expect(card.get('.HomePage-ErrorTitle').text()).toBe(catalogText(enUS, 'home.error.generic'))
+    expect(report.text()).toContain('PROVIDER_TIMEOUT')
+    expect(report.text()).toContain(detail)
+
+    const retry = card.get('button')
+    await retry.trigger('click')
+    await flushPromises()
+    expect(main.pending).toHaveLength(1)
+    expect(main.pending[0]!.request).toMatchObject({
+      conversationId: id,
+      text: `${id} saved question`,
+      retryOfMessageId: `${id}-assistant`
+    })
+  })
+
+  it('falls back to UNKNOWN_ERROR and the localized no-detail copy when detail is missing', async () => {
+    const id = 'missing-error-detail'
+    const { view } = await page([failedState(id)], `/home/c/${id}`)
+    const localizedNoDetail = catalogText(enUS, 'home.error.noDetail')
+
+    // Both shipped catalogs must carry real copy for this fallback, not an untranslated key.
+    expect(localizedNoDetail).not.toBe('home.error.noDetail')
+    expect(catalogText(zhCN, 'home.error.noDetail')).not.toBe('home.error.noDetail')
+
+    const report = view.get('[data-testid="home-error-report"]')
+    expect(report.text()).toContain('UNKNOWN_ERROR')
+    expect(report.text()).toContain(localizedNoDetail)
+  })
+
+  it('renders malicious detail as text without creating HTML nodes', async () => {
+    const id = 'unsafe-error-detail'
+    const detail = '<img src=x onerror="alert(1)"><script>alert(2)</script>& still text'
+    const { view } = await page(
+      [failedState(id, { code: 'MODEL_FAILED', detail })],
+      `/home/c/${id}`
+    )
+    const report = view.get('[data-testid="home-error-report"]')
+
+    expect(report.text()).toContain(detail)
+    expect(report.find('img').exists()).toBe(false)
+    expect(report.find('script').exists()).toBe(false)
+  })
+})
 
 describe('HomePage submit owns the view in which it was pressed', () => {
   it.each([
