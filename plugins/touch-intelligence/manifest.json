@@ -45,8 +45,20 @@
   "features": [
     {
       "id": "intelligence-ask",
-      "name": "智能问答",
-      "desc": "使用 ai/@ai 前缀在 CoreBox 里调用 AI 回答，支持图片 OCR",
+      "name": {
+        "default": "智能问答",
+        "locales": {
+          "zh-CN": "智能问答",
+          "en-US": "Ask AI"
+        }
+      },
+      "desc": {
+        "default": "使用 ai/@ai 前缀在 CoreBox 里调用 AI 回答，支持图片 OCR",
+        "locales": {
+          "zh-CN": "使用 ai/@ai 前缀在 CoreBox 里调用 AI 回答，支持图片 OCR",
+          "en-US": "Ask AI in CoreBox with the ai or @ai prefix; supports image OCR"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -77,8 +89,20 @@
     },
     {
       "id": "intelligence-rewrite",
-      "name": "AI 改写",
-      "desc": "无历史地改写当前文本，只返回改写结果",
+      "name": {
+        "default": "AI 改写",
+        "locales": {
+          "zh-CN": "AI 改写",
+          "en-US": "AI Rewrite"
+        }
+      },
+      "desc": {
+        "default": "无历史地改写当前文本，只返回改写结果",
+        "locales": {
+          "zh-CN": "无历史地改写当前文本，只返回改写结果",
+          "en-US": "Rewrite the current text without history and return only the result"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -104,8 +128,20 @@
     },
     {
       "id": "intelligence-summarize",
-      "name": "AI 摘要",
-      "desc": "无历史地提炼当前文本，只返回简洁摘要",
+      "name": {
+        "default": "AI 摘要",
+        "locales": {
+          "zh-CN": "AI 摘要",
+          "en-US": "AI Summary"
+        }
+      },
+      "desc": {
+        "default": "无历史地提炼当前文本，只返回简洁摘要",
+        "locales": {
+          "zh-CN": "无历史地提炼当前文本，只返回简洁摘要",
+          "en-US": "Summarize the current text without history and return only a short summary"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -131,8 +167,20 @@
     },
     {
       "id": "intelligence-explain",
-      "name": "AI 解释",
-      "desc": "无历史地解释当前文本，只返回解释结果",
+      "name": {
+        "default": "AI 解释",
+        "locales": {
+          "zh-CN": "AI 解释",
+          "en-US": "AI Explain"
+        }
+      },
+      "desc": {
+        "default": "无历史地解释当前文本，只返回解释结果",
+        "locales": {
+          "zh-CN": "无历史地解释当前文本，只返回解释结果",
+          "en-US": "Explain the current text without history and return only the explanation"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -158,8 +206,20 @@
     },
     {
       "id": "intelligence-command-registry",
-      "name": "AI 命令管理",
-      "desc": "查看、重新加载并打开本地自定义 AI 命令配置",
+      "name": {
+        "default": "AI 命令管理",
+        "locales": {
+          "zh-CN": "AI 命令管理",
+          "en-US": "AI Commands"
+        }
+      },
+      "desc": {
+        "default": "查看、重新加载并打开本地自定义 AI 命令配置",
+        "locales": {
+          "zh-CN": "查看、重新加载并打开本地自定义 AI 命令配置",
+          "en-US": "View, reload and open your local custom AI command config"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

@@ -57,8 +57,20 @@
   "features": [
     {
       "id": "clipboard-history",
-      "name": "剪贴板历史记录",
-      "desc": "查看和管理剪贴板历史记录",
+      "name": {
+        "default": "剪贴板历史记录",
+        "locales": {
+          "zh-CN": "剪贴板历史记录",
+          "en-US": "Clipboard History"
+        }
+      },
+      "desc": {
+        "default": "查看和管理剪贴板历史记录",
+        "locales": {
+          "zh-CN": "查看和管理剪贴板历史记录",
+          "en-US": "View and manage your clipboard history"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

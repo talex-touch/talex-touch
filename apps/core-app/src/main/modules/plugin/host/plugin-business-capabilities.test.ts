@@ -1,3 +1,4 @@
+import type { LocalizedTextValue } from '@talex-touch/utils/i18n'
 import type { NetworkRequestOptions, NetworkResponse } from '@talex-touch/utils/network'
 import type { IPluginFeature } from '@talex-touch/utils/plugin'
 import type { PluginActivationIdentity, PluginSecurityContext } from '@talex-touch/utils/transport'
@@ -9,6 +10,7 @@ import type {
 } from './plugin-business-capabilities'
 import fs from 'node:fs'
 import path from 'node:path'
+import { resolveLocalizedText } from '@talex-touch/utils/i18n'
 import { issuePluginSecurityContext } from '@talex-touch/utils/transport/security/plugin-identity'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -1339,8 +1341,23 @@ describe('plugin business capability adapters', () => {
         path.resolve(process.cwd(), '../../plugins/touch-intelligence/manifest.json'),
         'utf8'
       )
-    ) as { features: IPluginFeature[] }
-    vi.mocked(fixture.plugin.listBusinessFeatures).mockReturnValue(manifest.features)
+    ) as {
+      features: Array<
+        Omit<IPluginFeature, 'name' | 'desc'> & {
+          name: LocalizedTextValue
+          desc: LocalizedTextValue
+        }
+      >
+    }
+    // The loader resolves localized manifest text (plugin-loaders.ts resolveManifestFeature)
+    // before features reach the plugin, so the runtime list only ever carries strings.
+    vi.mocked(fixture.plugin.listBusinessFeatures).mockReturnValue(
+      manifest.features.map((feature) => ({
+        ...feature,
+        name: resolveLocalizedText(feature.name, 'en-US'),
+        desc: resolveLocalizedText(feature.desc, 'en-US')
+      }))
+    )
 
     const result = await registry.dispatch('feature.registry.list', null)
 

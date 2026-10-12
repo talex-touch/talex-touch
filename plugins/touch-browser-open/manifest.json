@@ -55,8 +55,20 @@
   "features": [
     {
       "id": "browser-open",
-      "name": "浏览器打开",
-      "desc": "快速用默认或指定浏览器打开 URL",
+      "name": {
+        "default": "浏览器打开",
+        "locales": {
+          "zh-CN": "浏览器打开",
+          "en-US": "Open in Browser"
+        }
+      },
+      "desc": {
+        "default": "快速用默认或指定浏览器打开 URL",
+        "locales": {
+          "zh-CN": "快速用默认或指定浏览器打开 URL",
+          "en-US": "Open a URL in your default or a chosen browser"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -79,8 +91,20 @@
     },
     {
       "id": "web-search",
-      "name": "网页搜索",
-      "desc": "使用默认搜索引擎搜索输入内容",
+      "name": {
+        "default": "网页搜索",
+        "locales": {
+          "zh-CN": "网页搜索",
+          "en-US": "Web Search"
+        }
+      },
+      "desc": {
+        "default": "使用默认搜索引擎搜索输入内容",
+        "locales": {
+          "zh-CN": "使用默认搜索引擎搜索输入内容",
+          "en-US": "Search what you typed with your default engine"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -103,8 +127,20 @@
     },
     {
       "id": "browser-open-settings",
-      "name": "浏览器打开设置",
-      "desc": "管理搜索引擎、热搜快捷入口与默认引擎",
+      "name": {
+        "default": "浏览器打开设置",
+        "locales": {
+          "zh-CN": "浏览器打开设置",
+          "en-US": "Open in Browser Settings"
+        }
+      },
+      "desc": {
+        "default": "管理搜索引擎、热搜快捷入口与默认引擎",
+        "locales": {
+          "zh-CN": "管理搜索引擎、热搜快捷入口与默认引擎",
+          "en-US": "Manage search engines, trending shortcuts and the default engine"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

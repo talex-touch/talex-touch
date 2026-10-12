@@ -53,8 +53,20 @@
   "features": [
     {
       "id": "dictate",
-      "name": "语音听写",
-      "desc": "说话即输入，自动清理口水词并润色",
+      "name": {
+        "default": "语音听写",
+        "locales": {
+          "zh-CN": "语音听写",
+          "en-US": "Dictation"
+        }
+      },
+      "desc": {
+        "default": "说话即输入，自动清理口水词并润色",
+        "locales": {
+          "zh-CN": "说话即输入，自动清理口水词并润色",
+          "en-US": "Speak to type; filler words are removed and the text is polished"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -77,8 +89,20 @@
     },
     {
       "id": "speak",
-      "name": "朗读文本",
-      "desc": "用 AI 语音朗读剪贴板中的文字",
+      "name": {
+        "default": "朗读文本",
+        "locales": {
+          "zh-CN": "朗读文本",
+          "en-US": "Read Aloud"
+        }
+      },
+      "desc": {
+        "default": "用 AI 语音朗读剪贴板中的文字",
+        "locales": {
+          "zh-CN": "用 AI 语音朗读剪贴板中的文字",
+          "en-US": "Read the text in your clipboard aloud with an AI voice"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

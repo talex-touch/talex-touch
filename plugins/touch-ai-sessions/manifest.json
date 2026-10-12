@@ -38,7 +38,13 @@
     {
       "id": "ai-sessions",
       "name": "AI Sessions",
-      "desc": "搜索允许的 AI 会话元数据并复制脱敏引用",
+      "desc": {
+        "default": "搜索允许的 AI 会话元数据并复制脱敏引用",
+        "locales": {
+          "zh-CN": "搜索允许的 AI 会话元数据并复制脱敏引用",
+          "en-US": "Search allowed AI session metadata and copy redacted references"
+        }
+      },
       "icon": { "type": "file", "value": "assets/logo.svg" },
       "keywords": ["ai", "session", "conversation", "chat", "会话", "对话", "历史"],
       "push": true,

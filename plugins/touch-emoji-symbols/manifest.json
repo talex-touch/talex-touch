@@ -38,8 +38,20 @@
   "features": [
     {
       "id": "emoji-symbols",
-      "name": "Emoji 与符号",
-      "desc": "搜索并复制常用 emoji、标点、货币与数学符号",
+      "name": {
+        "default": "Emoji 与符号",
+        "locales": {
+          "zh-CN": "Emoji 与符号",
+          "en-US": "Emoji & Symbols"
+        }
+      },
+      "desc": {
+        "default": "搜索并复制常用 emoji、标点、货币与数学符号",
+        "locales": {
+          "zh-CN": "搜索并复制常用 emoji、标点、货币与数学符号",
+          "en-US": "Search and copy common emoji, punctuation, currency and math symbols"
+        }
+      },
       "icon": {
         "type": "emoji",
         "value": "🙂"

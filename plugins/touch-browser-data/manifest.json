@@ -87,8 +87,20 @@
   "features": [
     {
       "id": "browser-data",
-      "name": "浏览器数据",
-      "desc": "只读搜索本机浏览器书签与最近历史；历史仅从临时 SQLite 副本读取受限窗口",
+      "name": {
+        "default": "浏览器数据",
+        "locales": {
+          "zh-CN": "浏览器数据",
+          "en-US": "Browser Data"
+        }
+      },
+      "desc": {
+        "default": "只读搜索本机浏览器书签与最近历史；历史仅从临时 SQLite 副本读取受限窗口",
+        "locales": {
+          "zh-CN": "只读搜索本机浏览器书签与最近历史；历史仅从临时 SQLite 副本读取受限窗口",
+          "en-US": "Search local browser bookmarks and recent history, read-only; history is read from a temporary SQLite copy within a limited window"
+        }
+      },
       "icon": {
         "type": "emoji",
         "value": "🌐"

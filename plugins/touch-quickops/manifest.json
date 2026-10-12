@@ -43,7 +43,13 @@
     {
       "id": "quickops",
       "name": "Tuff QuickOps",
-      "desc": "本地系统快捷工具能力、运行状态与审计摘要入口",
+      "desc": {
+        "default": "本地系统快捷工具能力、运行状态与审计摘要入口",
+        "locales": {
+          "zh-CN": "本地系统快捷工具能力、运行状态与审计摘要入口",
+          "en-US": "Local system quick tools, runtime status and audit summary"
+        }
+      },
       "icon": {
         "type": "emoji",
         "value": "⚡"

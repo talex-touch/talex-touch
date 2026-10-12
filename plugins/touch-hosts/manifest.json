@@ -40,8 +40,20 @@
   "features": [
     {
       "id": "hosts",
-      "name": "Hosts 配置",
-      "desc": "预览并确认更新受限 Hosts 条目",
+      "name": {
+        "default": "Hosts 配置",
+        "locales": {
+          "zh-CN": "Hosts 配置",
+          "en-US": "Hosts"
+        }
+      },
+      "desc": {
+        "default": "预览并确认更新受限 Hosts 条目",
+        "locales": {
+          "zh-CN": "预览并确认更新受限 Hosts 条目",
+          "en-US": "Preview and confirm limited changes to hosts entries"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

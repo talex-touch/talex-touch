@@ -52,8 +52,20 @@
   "features": [
     {
       "id": "window-app",
-      "name": "窗口管理",
-      "desc": "管理桌面应用窗口（Windows/macOS）",
+      "name": {
+        "default": "窗口管理",
+        "locales": {
+          "zh-CN": "窗口管理",
+          "en-US": "Window Manager"
+        }
+      },
+      "desc": {
+        "default": "管理桌面应用窗口（Windows/macOS）",
+        "locales": {
+          "zh-CN": "管理桌面应用窗口（Windows/macOS）",
+          "en-US": "Manage desktop app windows (Windows/macOS)"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -76,8 +88,20 @@
     },
     {
       "id": "window-presets",
-      "name": "窗口预设",
-      "desc": "一键布局窗口组合",
+      "name": {
+        "default": "窗口预设",
+        "locales": {
+          "zh-CN": "窗口预设",
+          "en-US": "Window Presets"
+        }
+      },
+      "desc": {
+        "default": "一键布局窗口组合",
+        "locales": {
+          "zh-CN": "一键布局窗口组合",
+          "en-US": "Arrange a set of windows in one step"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

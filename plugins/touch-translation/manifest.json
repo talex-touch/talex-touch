@@ -60,8 +60,20 @@
   "features": [
     {
       "id": "touch-translate",
-      "name": "翻译",
-      "desc": "翻译选中的文本或剪贴板内容",
+      "name": {
+        "default": "翻译",
+        "locales": {
+          "zh-CN": "翻译",
+          "en-US": "Translate"
+        }
+      },
+      "desc": {
+        "default": "翻译选中的文本或剪贴板内容",
+        "locales": {
+          "zh-CN": "翻译选中的文本或剪贴板内容",
+          "en-US": "Translate the selected text or the clipboard"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -91,8 +103,20 @@
     },
     {
       "id": "multi-source-translate",
-      "name": "多源翻译",
-      "desc": "同时使用多个翻译源进行翻译",
+      "name": {
+        "default": "多源翻译",
+        "locales": {
+          "zh-CN": "多源翻译",
+          "en-US": "Multi-Source Translate"
+        }
+      },
+      "desc": {
+        "default": "同时使用多个翻译源进行翻译",
+        "locales": {
+          "zh-CN": "同时使用多个翻译源进行翻译",
+          "en-US": "Translate with several services at once"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -121,8 +145,20 @@
     },
     {
       "id": "screenshot-translate",
-      "name": "截图翻译",
-      "desc": "截取屏幕区域进行 OCR 识别并翻译",
+      "name": {
+        "default": "截图翻译",
+        "locales": {
+          "zh-CN": "截图翻译",
+          "en-US": "Screenshot Translate"
+        }
+      },
+      "desc": {
+        "default": "截取屏幕区域进行 OCR 识别并翻译",
+        "locales": {
+          "zh-CN": "截取屏幕区域进行 OCR 识别并翻译",
+          "en-US": "Capture part of the screen, recognize its text and translate it"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

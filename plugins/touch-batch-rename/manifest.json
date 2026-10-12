@@ -40,8 +40,20 @@
   "features": [
     {
       "id": "batch-rename",
-      "name": "批量重命名",
-      "desc": "批量重命名文件",
+      "name": {
+        "default": "批量重命名",
+        "locales": {
+          "zh-CN": "批量重命名",
+          "en-US": "Batch Rename"
+        }
+      },
+      "desc": {
+        "default": "批量重命名文件",
+        "locales": {
+          "zh-CN": "批量重命名文件",
+          "en-US": "Rename multiple files at once"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

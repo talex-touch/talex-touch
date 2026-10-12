@@ -38,8 +38,20 @@
   "features": [
     {
       "id": "text-tools-convert",
-      "name": "文本工具",
-      "desc": "Base64 / URL / JSON / Hash / 大小写",
+      "name": {
+        "default": "文本工具",
+        "locales": {
+          "zh-CN": "文本工具",
+          "en-US": "Text Tools"
+        }
+      },
+      "desc": {
+        "default": "Base64 / URL / JSON / Hash / 大小写",
+        "locales": {
+          "zh-CN": "Base64 / URL / JSON / Hash / 大小写",
+          "en-US": "Base64 / URL / JSON / Hash / Case"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
