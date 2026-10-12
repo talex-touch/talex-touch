@@ -238,6 +238,10 @@ async function getAppInfoUnstable(appPath: string): Promise<ScannedAppInfo | nul
   const name = fileName
 
   const bundleId = getValueFromPlist(plistContent, 'CFBundleIdentifier') || ''
+  const version =
+    getValueFromPlist(plistContent, 'CFBundleShortVersionString') ||
+    getValueFromPlist(plistContent, 'CFBundleVersion') ||
+    undefined
   // Scans only read the cache. Missing icons hydrate after indexing completes.
   const icon = (await iconService.getCachedAppIcon(appPath, bundleId)) ?? ''
 
@@ -252,6 +256,7 @@ async function getAppInfoUnstable(appPath: string): Promise<ScannedAppInfo | nul
     path: appPath,
     icon,
     bundleId,
+    ...(version ? { version } : {}),
     uniqueId: bundleId || appPath,
     stableId: appPath,
     launchKind: 'path',

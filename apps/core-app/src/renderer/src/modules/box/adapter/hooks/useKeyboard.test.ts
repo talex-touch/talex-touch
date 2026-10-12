@@ -879,6 +879,21 @@ describe('useKeyboard ⌘K request', () => {
 
     expect(lastShowRequest().anchor).toBe('corner')
   })
+
+  it('asks for nothing in a DivisionBox, which has no ⌘K card of its own', () => {
+    activeActionKeyHarness = mountActionKeyHarness([ACTION_APP_ITEM])
+    transportMock.send.mockClear()
+    document.body.classList.add('division-box')
+
+    try {
+      const event = pressActionKey('KeyK')
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(transportMock.send).not.toHaveBeenCalled()
+    } finally {
+      document.body.classList.remove('division-box')
+    }
+  })
 })
 
 describe('buildCoreBoxMetaShowRequest Flow page', () => {

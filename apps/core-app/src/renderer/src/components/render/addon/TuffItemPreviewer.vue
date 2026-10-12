@@ -246,6 +246,13 @@ function handleSourceIconError(event: Event): void {
     event.currentTarget.hidden = true
   }
 }
+
+const itemCreatedAt = computed(() => {
+  const meta = props.item?.meta as
+    | { app?: { createdAt?: string }; file?: { created_at?: string } }
+    | undefined
+  return meta?.app?.createdAt || meta?.file?.created_at || '-'
+})
 </script>
 
 <template>
@@ -351,7 +358,7 @@ function handleSourceIconError(event: Event): void {
               {{ t('fileInfo.path') }}
             </div>
             <div class="w-[65%] break-all">
-              {{ item?.meta?.file?.path }}
+              {{ item?.meta?.file?.path || item?.meta?.app?.path }}
             </div>
           </div>
           <div
@@ -378,13 +385,32 @@ function handleSourceIconError(event: Event): void {
             </div>
           </div>
           <div
+            v-if="item?.meta?.app?.bundleId"
+            class="flex justify-between gap-2 border-b border-gray-200 dark:border-gray-700 py-1"
+          >
+            <div class="w-[80px] text-right">Bundle ID</div>
+            <div class="w-[65%] truncate font-mono text-[11px]">
+              {{ item.meta.app.bundleId }}
+            </div>
+          </div>
+          <div
+            v-if="item?.meta?.app?.version"
+            class="flex justify-between gap-2 border-b border-gray-200 dark:border-gray-700 py-1"
+          >
+            <div class="w-[80px] text-right">Version</div>
+            <div class="w-[65%] truncate font-mono text-[11px]">
+              {{ item.meta.app.version }}
+            </div>
+          </div>
+          <div
+            v-if="item?.meta?.file?.mime_type"
             class="flex justify-between gap-2 border-b border-gray-200 dark:border-gray-700 py-1"
           >
             <div class="w-[80px] text-right">
               {{ t('fileInfo.contentType') }}
             </div>
             <div class="w-[65%]">
-              {{ item?.meta?.file?.mime_type }}
+              {{ item.meta.file.mime_type }}
             </div>
           </div>
           <div
@@ -402,7 +428,7 @@ function handleSourceIconError(event: Event): void {
               {{ t('fileInfo.createdAt') }}
             </div>
             <div class="w-[65%]">
-              {{ item?.meta?.file?.created_at || '-' }}
+              {{ itemCreatedAt }}
             </div>
           </div>
           <div

@@ -42,14 +42,19 @@ export function buildSearchIndexItem(
     }
   }
 
+  const isDirectory = Boolean(file.isDir || file.type === 'directory')
   const tags = new Set<string>()
-  if (extension) {
-    tags.add(extension.replace(/^\./, ''))
+  if (isDirectory) {
+    tags.add('folder')
+    keywords.push({ value: 'folder', priority: 1.05 })
+  } else {
+    if (extension) {
+      tags.add(extension.replace(/^\./, ''))
+    }
+    for (const tag of getTypeTagsForExtension(extension)) {
+      tags.add(tag)
+    }
   }
-  for (const tag of getTypeTagsForExtension(extension)) {
-    tags.add(tag)
-  }
-
   return {
     itemId: file.path,
     providerId,

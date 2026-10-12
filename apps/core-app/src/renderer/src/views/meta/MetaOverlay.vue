@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { TuffItem } from '@talex-touch/utils'
 import type {
+  MetaAction,
   MetaActionExecuteRequest,
   MetaFlowSelection,
   MetaPageChangeRequest,
   MetaPanelPage,
   MetaShowRequest
 } from '@talex-touch/utils/transport/events/types/meta-overlay'
+import type { ResolvedApplication } from '@talex-touch/utils/transport/events/types'
 import type {
   MetaActionLabel,
   MetaActionModel,
@@ -14,6 +16,7 @@ import type {
 } from '~/modules/box/meta-actions/meta-action-model'
 import type { MetaFlowTargetRow } from '~/modules/box/meta-actions/meta-flow-page'
 import { useTuffTransport } from '@talex-touch/utils/transport'
+import { AppEvents } from '@talex-touch/utils/transport/events'
 import { MetaOverlayEvents } from '@talex-touch/utils/transport/events/meta-overlay'
 import { TxKbd } from '@talex-touch/tuffex/kbd'
 import { TxSpinner } from '@talex-touch/tuffex/spinner'
@@ -89,8 +92,9 @@ const composing = ref(false)
 // on the way back to main (channel-transport-contracts).
 const item = shallowRef<TuffItem | null>(null)
 const request = shallowRef<MetaShowRequest | null>(null)
+const openWithActions = shallowRef<MetaAction[]>([])
+let openWithRequestVersion = 0
 const executingActionId = ref<string | null>(null)
-
 /** The card's pages, the one on screen last. Every open starts over with one. */
 const pageStack = ref<MetaPanelPage[]>(['actions'])
 const page = computed(() => pageStack.value.at(-1) ?? 'actions')
@@ -116,7 +120,17 @@ const confirmRef = ref<InstanceType<typeof MetaFlowConfirm> | null>(null)
 const { shouldAnimate } = useMotionGate()
 
 const model = computed<MetaActionModel>(() =>
-  request.value ? buildMetaActionModel(request.value, { platform }) : EMPTY_MODEL
+  request.value
+    ? buildMetaActionModel(
+        openWithActions.value.length > 0
+          ? {
+              ...request.value,
+              itemActions: [...(request.value.itemActions ?? []), ...openWithActions.value]
+            }
+          : request.value,
+        { platform }
+      )
+    : EMPTY_MODEL
 )
 
 function resolveLabel(label: MetaActionLabel): string {
@@ -332,6 +346,8 @@ function resetPages(): void {
   pageStack.value = ['actions']
   direction.value = 'forward'
   flowEntryHeight.value = 0
+  openWithRequestVersion += 1
+  openWithActions.value = []
   flow.reset()
 }
 
@@ -347,9 +363,56 @@ const unregShow = transport.on(MetaOverlayEvents.ui.show, (data: MetaShowRequest
     pageStack.value = ['flow']
     flowEntryHeight.value = data.desiredPanelHeight ?? 0
     flow.open(data.item, data.flowTargets)
-  } else if (model.value.rows.some((row) => row.id === COREBOX_FLOW_TRANSFER_ACTION_ID)) {
-    // The 流转 row is there: have its targets ready by the time it is picked.
-    flow.prefetch(data.item)
+  } else {
+    if (model.value.rows.some((row) => row.id === COREBOX_FLOW_TRANSFER_ACTION_ID)) {
+      // The 流转 row is there: have its targets ready by the time it is picked.
+      flow.prefetch(data.item)
+    }
+    const filePath = data.item?.kind === 'file' ? data.item.meta?.file?.path : undefined
+    const lowerPath = filePath?.toLowerCase() ?? ''
+    if (
+      filePath &&
+      !data.item?.meta?.file?.isDir &&
+      !lowerPath.endsWith('.app') &&
+      !lowerPath.endsWith('.bundle')
+    ) {
+      const version = ++openWithRequestVersion
+      void transport
+        .send(AppEvents.fileIndex.defaultApplication, { path: filePath })
+        .then((res) => {
+          if (version !== openWithRequestVersion || !visible.value || request.value !== data) return
+          const candidates: ResolvedApplication[] = Array.isArray(res?.candidates)
+            ? res.candidates
+            : res?.application
+              ? [res.application]
+              : []
+          if (!res?.success || candidates.length === 0) return
+          openWithActions.value = candidates.map((candidate) => {
+            const translated = t('fileInfo.openWith', { app: candidate.displayName })
+            const title = translated.includes(candidate.displayName)
+              ? translated
+              : `${translated}: ${candidate.displayName}`
+            return {
+              id: `open-with:${candidate.identifier}`,
+              render: {
+                basic: {
+                  title,
+                  subtitle:
+                    candidate.identifier !== candidate.displayName
+                      ? candidate.identifier
+                      : undefined,
+                  ...(candidate.icon
+                    ? { icon: { type: 'url' as const, value: candidate.icon, colorful: true } }
+                    : {})
+                }
+              },
+              handler: 'item',
+              priority: 45
+            }
+          })
+        })
+        .catch(() => {})
+    }
   }
   visible.value = true
   reportedPage = reportKey(pageReport.value)

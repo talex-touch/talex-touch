@@ -70,7 +70,7 @@ export type MetaActionGlyph =
   | 'delete'
   | 'share'
   | 'plugin'
-
+  | 'info'
 /** Host actions draw a fixed glyph; a plugin's own action may bring its own icon. */
 export type MetaActionIcon = { glyph: MetaActionGlyph } | { icon: ITuffIcon }
 
@@ -171,6 +171,44 @@ const BUILTIN_SPECS: Readonly<Record<string, HostActionSpec>> = {
     label: revealLabel,
     glyph: ({ platform }) => (platform === 'darwin' ? 'finder' : 'folder-open'),
     chord: { code: 'KeyO' }
+  },
+  'quick-look': {
+    slot: 'open',
+    rank: 35,
+    label: key('corebox.actions.quickLook'),
+    glyph: glyph('preview')
+  },
+  'show-package-contents': {
+    slot: 'open',
+    rank: 36,
+    label: key('corebox.actions.showPackageContents'),
+    glyph: glyph('folder-open')
+  },
+  'get-info': {
+    slot: 'open',
+    rank: 37,
+    label: key('corebox.actions.getInfo'),
+    glyph: glyph('info'),
+    chord: { code: 'KeyI' }
+  },
+  'open-terminal': {
+    slot: 'open',
+    rank: 38,
+    label: key('corebox.actions.openInTerminal'),
+    glyph: glyph('terminal'),
+    chord: { code: 'KeyT' }
+  },
+  'copy-file': {
+    slot: 'open',
+    rank: 45,
+    label: key('corebox.actions.copyFile'),
+    glyph: glyph('copy')
+  },
+  'system-share': {
+    slot: 'open',
+    rank: 48,
+    label: key('corebox.actions.systemShare'),
+    glyph: glyph('share')
   },
   'copy-title': {
     slot: 'open',
@@ -441,8 +479,21 @@ export function generateBuiltinActions(item: TuffItem): MetaAction[] {
   const actions: MetaAction[] = [
     { ...builtin(COREBOX_PRIMARY_ACTION_ID, 'Primary action', 'primary'), priority: 1000 }
   ]
-  if ((item.kind === 'app' || item.kind === 'file') && isRevealablePath(resolveRevealPath(item))) {
+  const filePath = resolveRevealPath(item)
+  const isRevealable = isRevealablePath(filePath)
+
+  if ((item.kind === 'app' || item.kind === 'file') && isRevealable) {
     actions.push(builtin('reveal-in-finder', 'Reveal in file manager', 'open'))
+  }
+  if (item.kind === 'file' && isRevealable) {
+    actions.push(builtin('quick-look', 'Quick Look', 'open'))
+    actions.push(builtin('get-info', 'Get Info', 'open'))
+    actions.push(builtin('open-terminal', 'Open in terminal', 'open'))
+    actions.push(builtin('copy-file', 'Copy file', 'open'))
+    actions.push(builtin('system-share', 'Share', 'open'))
+    if (filePath.endsWith('.app') || filePath.endsWith('.bundle')) {
+      actions.push(builtin('show-package-contents', 'Show package contents', 'open'))
+    }
   }
   // An app's launch key is bound on the applications page, which lists every indexed entry — so
   // this row is offered for any app that has a path, including a Store app whose
@@ -553,7 +604,7 @@ function itemActionLabel(
   fromPlugin: boolean
 ): MetaActionLabel {
   if (!fromPlugin) {
-    const spec = PROVIDER_ACTION_SPECS[action.id]
+    const spec = PROVIDER_ACTION_SPECS[action.id] ?? BUILTIN_SPECS[action.id]
     if (spec) return spec.label(context)
   }
   const declared = text(raw?.label) || text(raw?.title) || text(action.render.basic.title)
@@ -645,12 +696,15 @@ export function buildMetaActionModel(
 
   for (const action of itemActions) {
     const raw = findRaw(action.id)
-    const spec = fromPlugin ? undefined : PROVIDER_ACTION_SPECS[action.id]
+    const isOpenWith = action.id.startsWith('open-with:')
+    const spec = fromPlugin
+      ? undefined
+      : (PROVIDER_ACTION_SPECS[action.id] ?? BUILTIN_SPECS[action.id])
     const type = raw?.type
     const slot = spec?.slot ?? 'open'
     const group = text(raw?.group ?? action.render.group)
     const sectionKey = group ? `group:${slot}:${group}` : slot
-    const ownIcon = fromPlugin ? (raw?.icon ?? action.render.basic.icon) : undefined
+    const ownIcon = fromPlugin || isOpenWith ? (raw?.icon ?? action.render.basic.icon) : undefined
     push(
       {
         id: action.id,
@@ -660,15 +714,19 @@ export function buildMetaActionModel(
         subtitle: text(raw?.description ?? action.render.basic.subtitle) || undefined,
         icon: ownIcon
           ? { icon: ownIcon }
-          : { glyph: spec?.glyph(context) ?? ((type && TYPE_GLYPHS[type]) || 'play') },
+          : {
+              glyph:
+                spec?.glyph(context) ??
+                (isOpenWith ? 'external' : (type && TYPE_GLYPHS[type]) || 'play')
+            },
         chord:
           resolveHostChord(spec, context.platform) ??
           resolveDeclaredChord(raw?.shortcut ?? action.render.shortcut),
-        runsFromList: true,
+        runsFromList: !isOpenWith,
         disabled: action.render.disabled === true,
         danger: action.render.danger === true
       },
-      spec?.rank ?? 50,
+      spec?.rank ?? (isOpenWith ? 32 : 50),
       group ? { text: group } : null,
       sectionKey
     )

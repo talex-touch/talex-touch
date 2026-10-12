@@ -157,28 +157,115 @@ export function useActionPanel(options: UseActionPanelOptions = {}) {
       if (handled) return
     }
 
+    if (actionId.startsWith('open-with:')) {
+      const applicationId = actionId.slice('open-with:'.length).trim()
+      const path = targetItem.meta?.file?.path
+      if (path && applicationId) {
+        const res = await transport
+          .send(AppEvents.fileIndex.openWith, { path, applicationId })
+          .catch(() => ({ success: false }))
+        if (!res?.success) {
+          showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+        }
+      }
+      return
+    }
+
     switch (actionId) {
       case 'toggle-pin':
         await togglePin(targetItem)
         break
-      case 'copy-title':
-        if (targetItem.render?.basic?.title) {
+      case 'copy-title': {
+        const filePath = targetItem.kind === 'file' ? targetItem.meta?.file?.path : undefined
+        const basename = filePath
+          ? filePath
+              .replace(/[\\/]+$/, '')
+              .split(/[\\/]/)
+              .pop()
+          : undefined
+        const value = basename || targetItem.render?.basic?.title
+        if (value) {
           await transport.send(ClipboardEvents.write, {
             type: 'text',
-            value: targetItem.render.basic.title
+            value
           })
           showCoreBoxFooterFeedback(t('corebox.copied', '已复制'))
         }
         break
+      }
       case 'reveal-in-finder': {
         const path = targetItem.meta?.app?.path || targetItem.meta?.file?.path
         // Select it, never open it: opening a directory would launch an .app or open a folder.
-        if (path) await appSdk.showInFolder(path, { reveal: true })
+        if (path) {
+          try {
+            await appSdk.showInFolder(path, { reveal: true })
+          } catch {
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+          }
+        }
+        break
+      }
+      case 'quick-look': {
+        const path = targetItem.meta?.file?.path || targetItem.meta?.app?.path
+        if (path) {
+          const res = await transport.send(AppEvents.fileIndex.quickLook, { path })
+          if (!res?.success)
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+        }
+        break
+      }
+      case 'show-package-contents': {
+        const path = targetItem.meta?.app?.path || targetItem.meta?.file?.path
+        if (path) {
+          const res = await transport.send(AppEvents.fileIndex.showPackageContents, { path })
+          if (!res?.success)
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+        }
+        break
+      }
+      case 'get-info': {
+        const path = targetItem.meta?.file?.path || targetItem.meta?.app?.path
+        if (path) {
+          const res = await transport.send(AppEvents.fileIndex.getInfo, { path })
+          if (!res?.success)
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+        }
+        break
+      }
+      case 'open-terminal': {
+        const path = targetItem.meta?.file?.path || targetItem.meta?.app?.path
+        if (path) {
+          const res = await transport.send(AppEvents.fileIndex.openInTerminal, { path })
+          if (!res?.success)
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+        }
+        break
+      }
+      case 'system-share': {
+        const path = targetItem.meta?.file?.path || targetItem.meta?.app?.path
+        if (path) {
+          const res = await transport.send(AppEvents.fileIndex.systemShare, { path })
+          if (!res?.success)
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+        }
+        break
+      }
+      case 'copy-file': {
+        const path = targetItem.meta?.file?.path || targetItem.meta?.app?.path
+        if (path) {
+          try {
+            await transport.send(ClipboardEvents.write, {
+              files: [path]
+            })
+            showCoreBoxFooterFeedback(t('corebox.copied', '已复制'))
+          } catch {
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+          }
+        }
         break
       }
       case COREBOX_FLOW_TRANSFER_ACTION_ID:
         // The ⌘K card opens its Flow page itself; the action reaches CoreBox only once a target is
-        // picked there, carrying it. Without one there is nothing to send.
         if (flow) await dispatchFlow?.(targetItem, flow)
         else actionPanelLog.debug('Transfer action without a Flow target', { actionId })
         break
