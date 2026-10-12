@@ -46,6 +46,21 @@ import type { ITuffIcon } from '../../types/icon'
 
 import type { RecommendationEvidence, RecommendationSource } from '../recommendation'
 
+/** Search context from the exact indexed content chunk, never HTML. */
+export interface TuffDeepMatch {
+  kind?: 'semantic' | 'content' | 'code'
+  snippet?: string
+  /** One-based physical PDF page. */
+  pageNumber?: number
+  /** One-based source line. */
+  lineNumber?: number
+  matchTerm?: string
+  /** Finite normalized relevance in [0, 1]. */
+  score?: number
+  /** UTF-16 offsets into snippet; exclusive end, [start, end). */
+  highlightRanges?: Array<{ start: number; end: number }>
+}
+
 export interface TuffItem {
   /**
    * 唯一标识符
@@ -1025,20 +1040,7 @@ export interface TuffMeta {
   /**
    * 深度内容/语义命中上下文（来自正文或端侧向量检索）
    */
-  deepMatch?: {
-    /** 命中类型：语义匹配、正文匹配或代码符号匹配 */
-    kind?: 'semantic' | 'content' | 'code'
-    /** 命中的正文摘要/片段文本 */
-    snippet?: string
-    /** 命中的页码（如 PDF 第 4 页，1-based） */
-    pageNumber?: number
-    /** 命中的行号（如代码文件第 42 行，1-based） */
-    lineNumber?: number
-    /** 命中的关键词或短语（用于在文本中高亮） */
-    matchTerm?: string
-    /** 语义相似度得分 (0~1) */
-    score?: number
-  }
+  deepMatch?: TuffDeepMatch
 
   /**
    * 网络信息

@@ -165,9 +165,9 @@ export interface FileIndexOpenWithRequest {
    * for this file and never an arbitrary application the caller supplies.
    */
   applicationId: string;
-  /** Optional line number to navigate to in supported editors (e.g. VS Code, Cursor). */
+  /** Positive, safe, one-based integer; unsupported editor jumps fail without a plain-open fallback. */
   lineNumber?: number;
-  /** Optional page number to navigate to in supported PDF viewers. */
+  /** Positive, safe, one-based physical PDF page. Takes precedence over lineNumber; unsupported viewers fail. */
   pageNumber?: number;
 }
 

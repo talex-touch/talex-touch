@@ -5,6 +5,10 @@ export interface FileParserContext {
   extension: string
   size: number
   maxBytes?: number
+  /** Maximum combined UTF-8 bytes of returned content and chunk text (default: 8 MiB). */
+  maxOutputBytes?: number
+  /** Maximum number of returned chunks (default: 4096). */
+  maxChunks?: number
   metadata?: Record<string, any>
   signal?: AbortSignal
 }
@@ -34,6 +38,7 @@ export interface FileParserResult {
   status: FileParserStatus
   content?: string
   chunks?: FileParserChunk[]
+  tags?: string[]
   metadata?: Record<string, any>
   warnings?: string[]
   processedBytes?: number

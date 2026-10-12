@@ -251,7 +251,9 @@ export default defineConfig({
           'extract-file-icon',
           // fsevents wraps a native addon. Bundling its CommonJS loader converts that addon into
           // an ESM namespace and leaves `flags.SinceNow` undefined at watcher registration.
-          'fsevents'
+          'fsevents',
+          // PDF.js resolves its ESM fake-worker next to the package at runtime.
+          'pdfjs-dist'
         ],
         exclude: [
           'chalk', // Chalk 5 为 ESM-only，主进程 CJS 必须内联以保留 default export
