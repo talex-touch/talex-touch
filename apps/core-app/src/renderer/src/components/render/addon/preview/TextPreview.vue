@@ -1,12 +1,13 @@
 <script setup lang="ts" name="TextPreview">
 import type { TuffItem } from '@talex-touch/utils'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { isElectronRenderer } from '@talex-touch/utils/env'
 import { networkClient } from '@talex-touch/utils/network'
 import { useTuffTransport } from '@talex-touch/utils/transport'
 import { AppEvents } from '@talex-touch/utils/transport/events'
 import { createRendererLogger } from '~/utils/renderer-log'
+import { splitHighlightedText } from './text-highlight'
 
 const props = defineProps<{
   item: TuffItem
@@ -47,75 +48,39 @@ const fileSizeDescription = computed(() => {
   }
 })
 
-/** Escape HTML special characters */
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-/** Highlight all occurrences of `query` in `text` (case-insensitive) */
-function highlightText(text: string, query: string): string {
-  if (!query || !query.trim()) return escapeHtml(text)
-
-  const escaped = escapeHtml(text)
-  const escapedQuery = escapeHtml(query.trim())
-  const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-  return escaped.replace(regex, '<mark class="search-highlight">$1</mark>')
-}
-
 const activeSearchQuery = computed(() => {
-  return props.searchQuery?.trim() || props.item.meta?.deepMatch?.matchTerm?.trim() || ''
+  return props.item.meta?.deepMatch?.matchTerm?.trim() || props.searchQuery?.trim() || ''
 })
 
-const targetLineNumber = computed(() => props.item.meta?.deepMatch?.lineNumber)
-
-const highlightedContent = computed(() => {
-  if (!textContent.value) return ''
-
-  const query = activeSearchQuery.value
-  const targetLine = targetLineNumber.value
-
-  return textContent.value
-    .split('\n')
-    .map((line, idx) => {
-      const lineNum = idx + 1
-      const isTarget = targetLine != null && lineNum === targetLine
-      const highlighted = query ? highlightText(line, query) : escapeHtml(line)
-      const lineClass = isTarget ? ' class="target-line bg-amber-400/20 block rounded px-1"' : ''
-      return `<span data-line="${lineNum}"${lineClass}>${highlighted}</span>`
-    })
-    .join('\n')
+const targetLineNumber = computed(() => {
+  const line = props.item.meta?.deepMatch?.lineNumber
+  return line != null && Number.isSafeInteger(line) && line > 0 ? line : undefined
 })
 
-const hasHighlights = computed(() => {
-  return (
-    !!activeSearchQuery.value ||
-    targetLineNumber.value != null ||
-    highlightedContent.value.includes('search-highlight')
-  )
+const highlightedLines = computed(() => {
+  const lines = textContent.value.split('\n')
+  return lines.map((line, index) => ({
+    number: index + 1,
+    segments: splitHighlightedText(line, activeSearchQuery.value),
+    newline: index < lines.length - 1 ? '\n' : ''
+  }))
 })
 
-function scrollToFirstMatch() {
-  nextTick(() => {
-    if (targetLineNumber.value != null) {
-      const targetEl = contentRef.value?.querySelector(`[data-line="${targetLineNumber.value}"]`)
-      if (targetEl) {
-        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        return
-      }
-    }
-    const mark = contentRef.value?.querySelector('.search-highlight')
-    if (mark) {
-      mark.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
+function scrollToFirstMatch(): void {
+  if (loading.value || error.value) return
+  const target = targetLineNumber.value
+  const targetEl =
+    target == null ? null : contentRef.value?.querySelector(`[data-line="${target}"]`)
+  const match = targetEl || contentRef.value?.querySelector('.search-highlight')
+  match?.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    block: 'center'
   })
 }
 
-watch(hasHighlights, (v) => {
-  if (v) scrollToFirstMatch()
+// Watch values, not a boolean: line 2 -> 50 and completion of an async read both move the target.
+watch([targetLineNumber, activeSearchQuery, textContent, loading, error], scrollToFirstMatch, {
+  flush: 'post'
 })
 
 async function loadContent() {
@@ -129,6 +94,8 @@ async function loadContent() {
     return
   }
 
+  error.value = ''
+  textContent.value = ''
   loading.value = true
   try {
     const resourceUrl = props.resourceUrl
@@ -146,9 +113,7 @@ async function loadContent() {
   } catch (err) {
     const message = err instanceof Error ? err.message : ''
     const code =
-      typeof err === 'object' && err !== null && 'code' in err
-        ? String((err as { code?: string }).code || '')
-        : ''
+      typeof err === 'object' && err !== null && 'code' in err ? String(err.code || '') : ''
     const isTimeoutError =
       code === 'ETIMEDOUT' ||
       /ETIMEDOUT/i.test(message) ||
@@ -185,15 +150,11 @@ onMounted(loadContent)
         {{ error }}
       </div>
     </div>
-    <!-- eslint-disable vue/no-v-html -->
     <pre
-      v-else-if="activeSearchQuery || targetLineNumber != null"
+      v-else
       ref="contentRef"
       class="highlighted-content"
-      v-html="highlightedContent"
-    />
-    <!-- eslint-enable vue/no-v-html -->
-    <pre v-else>{{ textContent }}</pre>
+    ><template v-for="line in highlightedLines" :key="line.number"><span :data-line="line.number" :class="{ 'target-line': line.number === targetLineNumber }"><template v-for="(segment, index) in line.segments" :key="index"><mark v-if="segment.highlighted" class="search-highlight">{{ segment.text }}</mark><template v-else>{{ segment.text }}</template></template>{{ line.newline }}</span></template></pre>
   </div>
 </template>
 
@@ -216,11 +177,16 @@ onMounted(loadContent)
   }
 
   .highlighted-content {
-    :deep(.search-highlight) {
-      background-color: var(--tx-color-warning-light-5);
+    .search-highlight {
+      background-color: var(--tx-color-primary-light-8);
       color: var(--tx-text-color-primary);
       border-radius: 2px;
-      padding: 0 1px;
+    }
+
+    .target-line {
+      background-color: var(--tx-color-primary-light-9);
+      border-radius: 2px;
+      box-decoration-break: clone;
     }
   }
 

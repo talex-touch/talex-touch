@@ -21,6 +21,7 @@ import {
   TextPreview,
   VideoPreview
 } from './preview'
+import { splitHighlightedText } from './preview/text-highlight'
 
 const props = defineProps<{
   item: TuffItem
@@ -241,6 +242,17 @@ function handleOpenWith(application: ResolvedApplication): void {
   emit('openWith', application.identifier)
 }
 
+function handleDefaultOpen(): void {
+  if (defaultApplication.value) {
+    emit('openWith', defaultApplication.value.identifier)
+  } else if (deepMatchPositionLabel.value) {
+    // No trustworthy application identifier: surface a failed jump, not a misleading plain open.
+    emit('openWith', '')
+  } else {
+    emit('openItem')
+  }
+}
+
 function handleSourceIconError(event: Event): void {
   if (event.currentTarget instanceof HTMLImageElement) {
     event.currentTarget.hidden = true
@@ -271,41 +283,30 @@ const deepMatchKindLabel = computed(() => {
 })
 
 const deepMatchPositionLabel = computed(() => {
-  if (deepMatch.value?.pageNumber != null) {
-    return t('fileInfo.deepMatchPage', { page: deepMatch.value.pageNumber })
+  const page = deepMatch.value?.pageNumber
+  const line = deepMatch.value?.lineNumber
+  if (page != null && Number.isSafeInteger(page) && page > 0) {
+    return t('fileInfo.deepMatchPage', { page })
   }
-  if (deepMatch.value?.lineNumber != null) {
-    return t('fileInfo.deepMatchLine', { line: deepMatch.value.lineNumber })
+  if (line != null && Number.isSafeInteger(line) && line > 0) {
+    return t('fileInfo.deepMatchLine', { line })
   }
   return ''
 })
 
 const deepMatchScoreLabel = computed(() => {
-  if (deepMatch.value?.score == null) return ''
-  return t('fileInfo.deepMatchScore', { score: Math.round(deepMatch.value.score * 100) })
+  const score = deepMatch.value?.score
+  if (score == null || !Number.isFinite(score) || score < 0 || score > 1) return ''
+  return t('fileInfo.deepMatchScore', { score: Math.round(score * 100) })
 })
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-const highlightedSnippet = computed(() => {
-  const snippet = deepMatch.value?.snippet
-  if (!snippet) return ''
-  const term = deepMatch.value?.matchTerm || props.searchQuery?.trim()
-  if (!term) return escapeHtml(snippet)
-  const escaped = escapeHtml(snippet)
-  const escapedTerm = escapeHtml(term)
-  const regex = new RegExp(`(${escapedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-  return escaped.replace(
-    regex,
-    '<mark class="bg-amber-400/30 text-amber-900 dark:text-amber-200 rounded px-0.5 font-medium">$1</mark>'
+const snippetSegments = computed(() =>
+  splitHighlightedText(
+    deepMatch.value?.snippet || '',
+    deepMatch.value?.matchTerm || props.searchQuery?.trim(),
+    deepMatch.value?.highlightRanges
   )
-})
+)
 </script>
 
 <template>
@@ -318,7 +319,7 @@ const highlightedSnippet = computed(() => {
             type="button"
             :title="openWithLabel"
             :aria-label="openWithLabel"
-            @click.stop="emit('openItem')"
+            @click.stop="handleDefaultOpen"
           >
             <img
               v-if="defaultApplication?.icon"
@@ -399,40 +400,36 @@ const highlightedSnippet = computed(() => {
           <TxTextTransformer :text="imageDimensions" mode="fade" :duration-ms="200" :blur-px="4" />
         </span>
       </div>
-      <div
-        v-if="deepMatch?.snippet"
-        class="m-3 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 dark:border-amber-400/15 dark:bg-amber-400/5 text-xs"
-      >
+      <div v-if="deepMatch?.snippet" class="deep-match m-3 p-3 rounded-lg text-xs">
         <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-300">
+          <div class="deep-match-heading flex items-center gap-1.5 font-medium">
             <i class="i-ri-sparkling-fill" aria-hidden="true" />
             <span>{{ t('fileInfo.deepMatchTitle') }}</span>
             <span
               v-if="deepMatchKindLabel"
-              class="px-1.5 py-0.2 rounded text-[10px] bg-amber-500/15 text-amber-800 dark:text-amber-200 font-normal"
+              class="deep-match-badge px-1.5 py-0.2 rounded text-[10px] font-normal"
             >
               {{ deepMatchKindLabel }}
             </span>
             <span
               v-if="deepMatchPositionLabel"
-              class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/15 text-sky-800 dark:text-sky-200 font-mono"
+              class="deep-match-badge px-1.5 py-0.2 rounded text-[10px] font-mono"
             >
               {{ deepMatchPositionLabel }}
             </span>
           </div>
-          <span
-            v-if="deepMatchScoreLabel"
-            class="text-[11px] font-mono text-amber-600/80 dark:text-amber-400/80"
-          >
+          <span v-if="deepMatchScoreLabel" class="deep-match-score text-[11px] font-mono">
             {{ deepMatchScoreLabel }}
           </span>
         </div>
-        <!-- eslint-disable vue/no-v-html -->
         <div
-          class="text-[11px] leading-relaxed text-gray-700 dark:text-gray-300 font-mono select-text break-words whitespace-pre-wrap max-h-32 overflow-y-auto"
-          v-html="highlightedSnippet"
-        />
-        <!-- eslint-enable vue/no-v-html -->
+          class="deep-match-snippet font-mono select-text break-words whitespace-pre-wrap max-h-32 overflow-y-auto"
+        >
+          <template v-for="(segment, index) in snippetSegments" :key="index"
+            ><mark v-if="segment.highlighted" class="search-highlight">{{ segment.text }}</mark
+            ><template v-else>{{ segment.text }}</template></template
+          >
+        </div>
       </div>
       <div class="p-4 border-t border-gray-200 dark:border-gray-700">
         <h3 class="text-sm font-semibold mb-4">
@@ -580,6 +577,36 @@ const highlightedSnippet = computed(() => {
     .dimension-badge {
       transition: none;
     }
+  }
+
+  .deep-match {
+    border: 1px solid var(--tx-border-color-light);
+    background-color: var(--tx-fill-color-light);
+    color: var(--tx-text-color-regular);
+  }
+
+  .deep-match-heading {
+    color: var(--tx-text-color-primary);
+  }
+
+  .deep-match-badge {
+    background-color: var(--tx-color-primary-light-9);
+    color: var(--tx-color-primary);
+  }
+
+  .deep-match-score {
+    color: var(--tx-text-color-secondary);
+  }
+
+  .deep-match-snippet {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .search-highlight {
+    background-color: var(--tx-color-primary-light-8);
+    color: var(--tx-text-color-primary);
+    border-radius: 2px;
   }
 
   /**

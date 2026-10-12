@@ -1840,7 +1840,9 @@
       "noProvider": "No AI provider is available yet — configure one in Settings · AI and try again",
       "agentToolsSync": "Could not reach the tool gateway — agent tools stay off",
       "empty": "The model returned nothing",
-      "generic": "This reply failed"
+      "generic": "This reply failed",
+      "codeLabel": "Error code",
+      "noDetail": "No further details were provided. Retry, then share this code if the failure continues."
     },
     "opening": {
       "prompt": "You are Tuff, a personal assistant on the user's computer. The user has just opened a new conversation and hasn't said anything yet. The next message is a summary of their local activity compiled by Tuff — not something the user wrote. Speak first: in one sentence, say what you can help with — finding and reading files, sorting through material, writing and translating, analyzing data, working alongside local agents in their projects — then mention one or two concrete things from the summary and ask which they want to move forward first. Rules: at most 3 sentences; conversational, like a colleague who knows them; mention only names that appear in the summary, never invent any; no lists, no Markdown, don't wrap the reply in quotes; if the summary has nothing specific, just briefly say what you can do.",
@@ -3738,7 +3740,8 @@
     "deepMatchSemantic": "Semantic Match",
     "deepMatchContent": "Content Match",
     "deepMatchCode": "Code Match",
-    "deepMatchScore": "Relevance {score}%"
+    "deepMatchScore": "Relevance {score}%",
+    "deepMatchNavigationUnsupported": "This app cannot jump to the matching position. Choose a supported editor for lines or Skim for PDF pages."
   },
   "download": {
     "migration": {

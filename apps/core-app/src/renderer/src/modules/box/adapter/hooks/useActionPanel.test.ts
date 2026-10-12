@@ -593,33 +593,24 @@ describe('useActionPanel MetaOverlay item action bridge', () => {
     expect(footerFeedback.value).toBeNull()
   })
 
-  it('relays open-with action with lineNumber and pageNumber from deepMatch', async () => {
-    state.send.mockResolvedValueOnce({ success: true })
+  it('shows unsupported navigation in the footer instead of hiding a refused deep-link action', async () => {
+    state.send.mockResolvedValueOnce({
+      success: false,
+      errorCode: 'FILE_INDEX_OPEN_WITH_NAVIGATION_UNSUPPORTED'
+    })
     useActionPanel()
-
-    const item = {
-      ...createItem(),
-      meta: {
-        file: { path: '/Workspace/app.ts' },
-        deepMatch: {
-          kind: 'code',
-          lineNumber: 42,
-          pageNumber: undefined
-        }
-      }
-    } as unknown as TuffItem
-
+    const item = createItem({
+      meta: { file: { path: '/Workspace/app.ts' }, deepMatch: { kind: 'code', lineNumber: 42 } }
+    })
     getListener(CoreBoxEvents.metaOverlay.itemAction)({
-      actionId: 'open-with:com.microsoft.VSCode',
+      actionId: 'open-with:unknown.editor',
       item
     })
-    await settle()
-
-    expect(state.send).toHaveBeenCalledExactlyOnceWith(AppEvents.fileIndex.openWith, {
-      path: '/Workspace/app.ts',
-      applicationId: 'com.microsoft.VSCode',
-      lineNumber: 42,
-      pageNumber: undefined
+    await flushAsyncAction()
+    expect(footerFeedback.value).toMatchObject({
+      tone: 'error',
+      message: 'fileInfo.deepMatchNavigationUnsupported'
     })
+    expect(state.send.mock.calls.map(([event]) => event)).not.toContain(CoreBoxEvents.ui.hide)
   })
 })

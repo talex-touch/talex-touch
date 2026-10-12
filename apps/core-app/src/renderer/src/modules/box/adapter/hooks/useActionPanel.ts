@@ -26,13 +26,14 @@ const actionPanelLog = createRendererLogger('CoreBoxActionPanel')
 
 /** A stable code the failure carries, such as a permission denial's; never its message. */
 function resolveErrorCode(error: unknown): string | undefined {
-  const code = (error as { code?: unknown } | null | undefined)?.code
-  return typeof code === 'string' ? code : undefined
+  if (!error || typeof error !== 'object' || !('code' in error)) return undefined
+  return typeof error.code === 'string' ? error.code : undefined
 }
 
 function getActionPayloadString(payload: unknown, key: string): string {
   if (!payload || typeof payload !== 'object') return ''
-  const value = (payload as Record<string, unknown>)[key]
+  const record = payload as Record<string, unknown>
+  const value = record[key]
   return typeof value === 'string' ? value : ''
 }
 
@@ -170,10 +171,16 @@ export function useActionPanel(options: UseActionPanelOptions = {}) {
             lineNumber,
             pageNumber
           })
-          .catch(() => ({ success: false }))
+          .catch((error) => ({ success: false, errorCode: resolveErrorCode(error) }))
         if (!res?.success) {
-          showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+          const message =
+            res?.errorCode === 'FILE_INDEX_OPEN_WITH_NAVIGATION_UNSUPPORTED'
+              ? t('fileInfo.deepMatchNavigationUnsupported')
+              : t('corebox.actions.failed', '操作失败')
+          showCoreBoxFooterFeedback(message, 'error')
         }
+      } else {
+        showCoreBoxFooterFeedback(t('fileInfo.deepMatchNavigationUnsupported'), 'error')
       }
       return
     }

@@ -1840,7 +1840,9 @@
       "noProvider": "还没有可用的 AI 提供商，去「设置 · AI」配置一个再试",
       "agentToolsSync": "无法连接工具网关，智能体工具保持关闭",
       "empty": "模型没有返回任何内容",
-      "generic": "这轮回复失败了"
+      "generic": "这轮回复失败了",
+      "codeLabel": "错误代码",
+      "noDetail": "没有更多错误细节，请重试；如果持续失败，请提供此错误代码。"
     },
     "opening": {
       "prompt": "你是塔芙（Tuff），用户电脑上的个人助理。用户刚打开一段新对话，还没开口。下一条消息是 Tuff 整理的本机摘要，不是用户写的话。请你先开口：用一句话说说你能帮忙做什么——找文件和读文件、整理资料、写作与翻译、分析数据、在项目里配合本机代理干活——再点出摘要里一两件具体的事，问用户想先推进哪一件。要求：不超过 3 句；口语化，像熟悉的同事；只提摘要里真实出现的名字，绝不编造；不列清单，不用 Markdown，不给整段话加引号；摘要里没有具体内容时，只简短介绍你能做什么。",
@@ -3738,7 +3740,8 @@
     "deepMatchSemantic": "语义匹配",
     "deepMatchContent": "正文匹配",
     "deepMatchCode": "代码匹配",
-    "deepMatchScore": "相关度 {score}%"
+    "deepMatchScore": "相关度 {score}%",
+    "deepMatchNavigationUnsupported": "此应用不支持跳转到命中位置。行号请使用支持的编辑器，PDF 页码请使用 Skim。"
   },
   "download": {
     "migration": {

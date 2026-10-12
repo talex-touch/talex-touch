@@ -56,7 +56,10 @@ import { useSearch } from '../../modules/box/adapter/hooks/useSearch'
 import { useResultExposure } from '../../modules/box/adapter/hooks/useResultExposure'
 import { useSelectionBlock } from '../../modules/box/adapter/hooks/useSelectionBlock'
 import { useVisibility } from '../../modules/box/adapter/hooks/useVisibility'
-import { useCoreBoxFooterFeedback } from '../../modules/box/meta-actions/footer-feedback'
+import {
+  useCoreBoxFooterFeedback,
+  showCoreBoxFooterFeedback
+} from '../../modules/box/meta-actions/footer-feedback'
 import { useMetaPanelState } from '../../modules/box/meta-actions/meta-panel-fill'
 import { useCoreBoxTheme } from './theme'
 import BoxInput from './BoxInput.vue'
@@ -881,10 +884,32 @@ async function handlePreviewOpenWith(applicationId: string): Promise<void> {
   const filePath = addonItem.value?.meta?.file?.path
   if (!filePath) return
 
+  if (!applicationId) {
+    showCoreBoxFooterFeedback(t('fileInfo.deepMatchNavigationUnsupported'), 'error')
+    return
+  }
   try {
-    await transport.send(AppEvents.fileIndex.openWith, { path: filePath, applicationId })
+    const match = addonItem.value?.meta?.deepMatch
+    const result = await transport.send(AppEvents.fileIndex.openWith, {
+      path: filePath,
+      applicationId,
+      lineNumber: match?.lineNumber,
+      pageNumber: match?.pageNumber
+    })
+    if (!result.success) {
+      showCoreBoxFooterFeedback(
+        t(
+          result.errorCode === 'FILE_INDEX_OPEN_WITH_NAVIGATION_UNSUPPORTED'
+            ? 'fileInfo.deepMatchNavigationUnsupported'
+            : 'corebox.actions.failed'
+        ),
+        'error'
+      )
+      return
+    }
   } catch (error) {
-    devLog('[CoreBox] Failed to open the file with the chosen application:', error)
+    devLog('[CoreBox] Preview open-with failed')
+    showCoreBoxFooterFeedback(t('corebox.actions.failed'), 'error')
     return
   }
 
