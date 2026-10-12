@@ -1,7 +1,17 @@
 # 变更日志
 
-> 更新时间：2026-10-08
+> 更新时间：2026-10-11
 > 定位：只保留当前阶段的高信号变更索引。早期流水记录已从文档树移除，可从 Git 历史追溯。
+
+## 2026-10-11
+
+### search: 验证 PDF 分段与本地语义召回，防止晚到向量复活
+
+- PDF.js 按真实页解码，代码按真实行分段；正文分段随文件持久化，召回用分段 hash 返回页码/行号、摘要与 UTF-16 高亮。浏览器公共 barrel 只导出 parser 类型，避免加载 Node 解析器。
+- 固定版本 EmbeddingGemma 2 本地 runtime 校验 helper/model hash 与向量空间；SDK 保留 quota/audit，本地推理失败不转云。向量发布的共享库路径使用原子 batch，split 路径在事务内复核正文/mtime/size，防止关闭正文后的晚到结果恢复向量。
+- 真实四页压缩 PDF → 实际 mapper/repository → 本地 768 维模型 → split 库 → 关闭重开 → `semanticRecall` 已断言第 4 页 hash 与宠物条款；关闭正文后的 public policy 经 repository 清掉正文/chunks/向量且保留目录元数据。真实查看器 Skim 读回页码 4/4，Zed 独立窗口状态栏为 50:1；均只操作临时样本。
+- 对话失败卡片显示错误代码、详细原因和重试，缺详情时明确显示 `UNKNOWN_ERROR`；已在真实 HomePage Vue 组件的浏览器隔离状态样本中验证，原因文本使用正文尺寸。未复现用户正式会话的上游失败原因。
+- packaged helper、正式安装版配置、Windows/Linux 原生运行与媒体多模态不由这些隔离证据证明。没有提交或推送，也没有启动第二个 Tuff Electron 或修改正式 profile。
 
 ## 2026-10-08
 

@@ -55,13 +55,13 @@
 
 ### 🔴 已证实缺陷（代码级验证过）
 
-- [ ] **B1 — 语义搜索写侧已接通，真实 Provider 验收未完成** 🟠（复核 2026-09-29）
-  - 位置：`addon/files/services/file-provider-search-result-service.ts:320-327`（主路径 `semanticScore: 0` 仍写死）、`addon/files/embedding-service.ts:264`（`if (rows.length === 0) return []` 每次早退）
+- [x] **B1 — 本地 Provider 页级写入与召回已验收** ✅（2026-10-11 隔离真实模型与数据库；packaged helper 单独验收）
+  - 位置：`addon/files/services/file-provider-search-result-service.ts:450-493`（hash 对应 chunk 生成真实 deepMatch 与 semanticScore）、`addon/files/embedding-service.ts:242-306`（chunk 生成、模型空间校验、版本 fence、单写者事务写入）。
   - 已交付（读侧，`cbbd6ba7a`）：`FileProvider.semanticRecall` + search-core `scheduleDeferredSemanticRecall`（`search-core.ts:875-912`，调用点 `:1413-1420`），首帧后异步召回并写入真实 `semanticScore`。这部分确实存在且可用。
   - **已接通（写侧，`09-29-bounded-fd-fzf-file-indexing` 工作树）**：`FileProviderEmbeddingIndexService.indexCommittedEntries` 在主进程 flush 后调用 `EmbeddingService.indexFiles`，能够访问 tuffIntelligence SDK；正文索引关闭时不调用，开启后只处理实际提取到正文的文件。
     - `contentIndexingEnabled` 默认 `false`。用户确认开启后，已有 metadata 通过 durable `file_index_progress` 分页补齐；关闭会清除 `files.content`、文件 embeddings、progress 和 FTS content，保留 metadata。
     - 2026-09-29 隔离 Electron 实测：开启后已有 `.txt` metadata 在不重扫目录的情况下达到 `content_length=97 / status=completed / FTS 正文命中=1`；关闭后 `content/embeddings/progress/FTS 正文命中` 均为 0，metadata 与标题 FTS 仍在。
-  - **仍缺验收**：隔离 profile 未配置可用 embedding Provider，因此本轮只能证明主进程写入口、默认关闭门禁与清理生命周期，不能证明真实模型调用后 `embeddings` 新增且 `embedding_status=completed`。B1 在拿到配置 Provider 的真实写入与 semanticRecall 命中证据前不勾选。
+  - **本轮端到端证据（2026-10-11 补证）**：从真实四页 FlateDecode PDF 经 `fileParserRegistry` 解码，再由 mapper/repository 将正文与页级 chunks 写入独立 SQLite 文件。真实 `LocalProvider` 调用固定版本 EmbeddingGemma 2，生成每页 768 维向量；`EmbeddingService` 经 split 单写者批事务落库，primary 向量表为空，文件状态为 `completed`。关闭并重开 search 库后，`semanticSearch` 断言胜出 hash 等于真实第 4 页 hash；`FileProviderSearchResultService.semanticRecall` 断言返回第 4 页和完整宠物条款。关闭正文开关的 public policy 经真实 repository 清掉正文、chunks 与向量，文件目录和无关图标元数据保留。真实模型 smoke 1/1 通过；未启动第二 Electron，未写正式 profile。SDK quota/audit 与禁止本地失败回云另由回归覆盖；正式 packaged helper 未验收。
   - **历史取证保留**（2026-09-18，本机 4 个真实库）：当时 `embeddings` 表 0 行；`files` 合计 155,716 行，`embedding_status` 仅有 `none`/`pending`。该数据是修复前基线，不再表述当前工作树的写侧为零调用。
   - **约束 carve-out**：渲染端 `search.update` 合并为 append-only（`mergeRenderedItems`）且 `useSearch.ts`/`CoreBox.vue` 为受保护用户改动，故延迟 pass **无法重排已渲染项**，仅能召回追加。"重排已渲染项"另记入下方 backlog。
 
@@ -243,7 +243,7 @@
 
 | 子任务                                         | 覆盖                                                                                                      | 状态                                                              |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `07-13-fix-ranking-dead-features`              | B1 + B2                                                                                                   | ⚠️ B2 done；B1 只完成读侧——写侧（embeddings 生产写入者）仍缺失，生产中语义召回恒为空操作，见上方 B1 |
+| `07-13-fix-ranking-dead-features`              | B1 + B2                                                                                                   | ✅ B2 已修；B1 写侧接通且隔离真实 EmbeddingGemma 2 页级写入/重开/召回已验收；packaged helper 发布验收另列 |
 | `07-16-fix-usage-statistics-double-counting`   | B3                                                                                                        | ✅ done（单写者 + 保守迁移，4 tests + smoke）                     |
 | `07-16-unify-file-filtering-service`           | B4                                                                                                        | ✅ done（统一策略 + 索引/发布双门，83 tests + typecheck + smoke） |
 | `07-28-migrate-search-index-split-write-paths` | R9 remaining provider/file/embedding write migration; default-on topology, readiness-order, isolated-profile evidence, and `=0` rollback gate | planning

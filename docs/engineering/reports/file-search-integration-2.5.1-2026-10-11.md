@@ -20,7 +20,19 @@
 | everyfiles | 批量目录枚举；后续评估名字索引 | 立即替换现有搜索与监听 | 跨平台结构清楚，但匹配语义不等价 |
 | fsearch | 模糊召回思路；显式源码正文检索候选 | 默认常驻、全盘扫描、自动正文索引 | macOS 专属，默认策略与 Tuff 冲突 |
 
-本轮未修改产品代码或配置，未安装守护进程，未启动全盘扫描。正式目录仅保存本报告，不导入本地索引、日志、临时 profile 或构建产物。
+本轮调研阶段未安装守护进程、未启动全盘扫描；随后落地的 2.5.1 正文分段与受控本地语义链路见 §2.5.1 DigUp 语义穿透落地边界。正式目录不导入本地索引、日志、临时 profile 或构建产物。
+
+## 2.5.1 DigUp 语义穿透落地边界（2026-10-11）
+
+本轮把 DigUp 的可复用部分落到 Tuff 的现有单写者边界：PDF.js 按真实页解码，代码按行分段；分段正文以受控 `content_chunks` 元数据跟随文件正文持久化，EmbeddingGemma 2 的每个向量携带分段 hash，召回后由同一分段生成页码/行号、摘要和 UTF-16 高亮范围。关闭正文索引时，正文、分段、向量和正文进度一起清理；普通文件名搜索不读取这些正文元数据。
+
+DigUp 的模型事实已按上游源码固定：`google/embeddinggemma-2`，`ggml-org/embeddinggemma-2-GGUF` revision `bfcd298762cc34d0357ece5ebdd31791a3a374d8`，文本 Q8_0 文件 309,855,456 bytes，向量 768 维；Tuff 只接受显式配置的 helper 路径、helper SHA-256 和模型目录，禁止普通搜索路径隐式下载模型或递归扫描用户目录。PDF 外部精确页码打开只承诺 Skim deep link；Preview 的搜索框不会被 Tuff 当作已验证的自动跳页能力。
+
+仍不宣称全量多模态完成：图片、音频、视频的 EmbeddingGemma 编码器、扫描 PDF OCR、媒体时间点跳转和生产打包 helper 尚未纳入本轮验收。真实本地模型已在 `/tmp` 隔离目录完成 helper、固定权重 checksum、worker identity 和 768 维向量 smoke；正式发布路径仍需把签名 helper 与 hash 注入 packaged runtime 后再做发布验收。
+
+补证结果：真实四页 PDF → mapper/repository → 固定版 EmbeddingGemma 2 → split 单写者事务 → SQLite 关闭重开 → `semanticRecall`，已断言第 4 页 hash 与完整条款一致；关闭正文后的实际清理保留目录元数据。新增永久回归验证共享库模式的第二条向量插入失败会整体回滚，以及 cleanup 在 preflight 与 worker 批事务之间提交时，晚到向量不会复活。
+
+原生定位已实跑：官方 Skim 1.7.17 以临时只读挂载方式打开 `skim:///…#page=4`，AppleScript 读回页码 4/4 与宠物条款，目标窗口截图一致；Zed 用 bundle CLI 打开独立 100 行样本，光标与状态栏为 50:1。验证后关闭自建窗口、退出临时 Skim 并卸载卷，未永久安装查看器、未修改默认关联。HomePage 真实 Vue 组件在浏览器隔离状态样本中显示错误代码、原因与重试；空详情显示 `UNKNOWN_ERROR`。这项 UI 验证不代表接通正式 Electron transport。
 
 ## 2. 上游能力与边界
 
