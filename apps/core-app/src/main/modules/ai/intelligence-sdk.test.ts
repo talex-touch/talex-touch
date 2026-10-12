@@ -26,7 +26,9 @@ import { intelligenceCapabilityRegistry } from './intelligence-capability-regist
 import { markOuterGovernedInvocation } from './intelligence-invoke-governance'
 import { intelligenceQuotaManager } from './intelligence-quota-manager'
 import { strategyManager } from './intelligence-strategy-manager'
+import { getLocalEmbeddingRuntime } from './local-embedding-runtime'
 import {
+  getIntelligenceProviderManager,
   setIntelligenceAutonomousRuntimeAdapter,
   setIntelligenceProviderManager,
   TuffIntelligenceSDK
@@ -4610,5 +4612,82 @@ describe('tuffIntelligenceSDK invoke', () => {
         }
       })
     )
+  })
+})
+
+describe('TuffIntelligenceSDK explicit offline embedding governance', () => {
+  it('surfaces local runtime failure without uploading the text through a configured cloud fallback', async () => {
+    intelligenceCapabilityRegistry.register({
+      id: 'embedding.generate',
+      type: IntelligenceCapabilityType.EMBEDDING,
+      name: 'Embedding',
+      description: 'Offline failure boundary',
+      supportedProviders: [IntelligenceProviderType.CUSTOM]
+    })
+    const provider = createProvider(
+      {
+        id: 'cloud-fallback',
+        type: IntelligenceProviderType.CUSTOM,
+        name: 'Cloud fallback',
+        enabled: true,
+        priority: 1,
+        models: [{ id: 'remote-embedding' }],
+        capabilities: ['embedding.generate']
+      },
+      vi.fn()
+    )
+    const upload = vi.fn(async () => {
+      throw new Error('PRIVATE_TEXT_UPLOADED')
+    })
+    provider.embedding = upload
+    const previousManager = getIntelligenceProviderManager()
+    setIntelligenceProviderManager(new FakeProviderManager([provider]))
+    const localFailure = new Error('LOCAL_EMBEDDING_HELPER_UNAVAILABLE')
+    vi.spyOn(getLocalEmbeddingRuntime(), 'generate').mockRejectedValue(localFailure)
+    const sdk = new TuffIntelligenceSDK({
+      enableAudit: false,
+      enableQuota: false,
+      enableCache: false
+    })
+    try {
+      await expect(
+        sdk.embedding.generate(
+          { text: 'Private tenant animals policy' },
+          { metadata: { localEmbeddingRuntime: 'llama.cpp' } }
+        )
+      ).rejects.toBe(localFailure)
+      expect(upload).not.toHaveBeenCalled()
+    } finally {
+      setIntelligenceProviderManager(previousManager)
+    }
+  })
+
+  it('refuses a quota-exhausted caller before launching offline model inference', async () => {
+    intelligenceCapabilityRegistry.register({
+      id: 'embedding.generate',
+      type: IntelligenceCapabilityType.EMBEDDING,
+      name: 'Embedding',
+      description: 'Offline quota boundary',
+      supportedProviders: [IntelligenceProviderType.LOCAL]
+    })
+    const inference = vi
+      .spyOn(getLocalEmbeddingRuntime(), 'generate')
+      .mockRejectedValue(new Error('MODEL_LAUNCHED_AFTER_REFUSAL'))
+    const sdk = new TuffIntelligenceSDK({
+      enableAudit: false,
+      enableQuota: true,
+      enableCache: false
+    })
+    vi.spyOn(intelligenceQuotaManager, 'checkQuota').mockResolvedValue({
+      allowed: false,
+      reason: 'Tenant indexing quota exhausted'
+    })
+    await expect(
+      sdk.embedding.generate(
+        { text: 'Private tenant animals policy' },
+        { metadata: { localEmbeddingRuntime: 'llama.cpp', caller: 'offline-indexing-refused' } }
+      )
+    ).rejects.toThrow(/Quota exceeded: Tenant indexing quota exhausted/)
+    expect(inference).not.toHaveBeenCalled()
   })
 })

@@ -101,6 +101,8 @@ import {
   withReasoningPlan
 } from './reasoning-effort-runtime'
 import { IntelligenceProvider } from './runtime/base-provider'
+import { getLocalEmbeddingRuntime } from './local-embedding-runtime'
+import { LOCAL_EMBEDDING_MODEL_KEY } from './local-embedding-model'
 import { HOME_CONVERSATION_CALLER } from './usage-ledger/constants'
 import {
   isUsageLimitError,
@@ -771,6 +773,68 @@ export class TuffIntelligenceSDK {
         )
         if (!quotaCheck.allowed) {
           throw new Error(`[Intelligence] Quota exceeded: ${quotaCheck.reason}`)
+        }
+      }
+
+      // Host-owned local content embeddings use the same admission, cache and audit
+      // boundary as providers, but never fall back to a remote provider on failure.
+      if (
+        capabilityId === 'embedding.generate' &&
+        runtimeOptions.metadata?.localEmbeddingRuntime === 'llama.cpp'
+      ) {
+        if (!payloadRecord || typeof payloadRecord.text !== 'string')
+          throw new Error('LOCAL_EMBEDDING_TEXT_REQUIRED')
+        const startTime = Date.now()
+        const providerId = 'local-embeddinggemma-2'
+        try {
+          const generated = await awaitIntelligenceBoundary(
+            getLocalEmbeddingRuntime().generate(payloadRecord.text, signal),
+            signal
+          )
+          throwIfIntelligenceCancelled(signal)
+          if (generated.modelKey !== LOCAL_EMBEDDING_MODEL_KEY)
+            throw new Error('LOCAL_EMBEDDING_MODEL_MISMATCH')
+          const result: IntelligenceInvokeResult<number[]> = {
+            result: generated.vector,
+            model: generated.modelKey,
+            provider: IntelligenceProviderType.LOCAL,
+            traceId: intelligenceAuditLogger.generateTraceId(),
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0 },
+            latency: Date.now() - startTime
+          }
+          if (cacheKey !== null) this.setToCache(cacheKey, result)
+          if (!outerGoverned)
+            await this.writeSuccessAudit({
+              result,
+              startTime,
+              capabilityId,
+              providerId,
+              caller,
+              userId: runtimeOptions.metadata?.userId,
+              metadata: runtimeOptions.metadata,
+              promptTemplate,
+              promptVariables,
+              usageAdmission
+            })
+          // The capability discriminator above fixes the result to an embedding vector.
+          const typedResult = result as IntelligenceInvokeResult<T>
+          return typedResult
+        } catch (error) {
+          throwIfIntelligenceCancelled(signal)
+          if (!outerGoverned)
+            await this.writeFailureAudit({
+              error: providerFailureForBoundary(error, Boolean(signal)),
+              startTime,
+              capabilityId,
+              providerId,
+              caller,
+              userId: runtimeOptions.metadata?.userId,
+              metadata: runtimeOptions.metadata,
+              promptTemplate,
+              promptVariables,
+              usageAdmission
+            })
+          throw error
         }
       }
 
