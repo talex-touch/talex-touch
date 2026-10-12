@@ -697,7 +697,8 @@ describe('/api/dashboard/provider-registry', () => {
       ownerScope: 'system',
       endpoint: 'https://api.openai.com/v1',
       metadata: { adapterKey: 'openai-compatible', models: ['gpt-4.1-mini'], defaultModel: 'gpt-4.1-mini' },
-      capabilities: [],
+      // An empty list takes the adapter's whole catalog, vision.ocr included.
+      capabilities: [{ capability: 'text.chat' }],
     })
     const created = await createProviderHandler(makeEvent())
 

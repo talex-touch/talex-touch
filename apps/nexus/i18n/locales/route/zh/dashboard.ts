@@ -102,6 +102,7 @@ export default {
         searchPlaceholder: '搜索服务渠道、厂商、能力',
         filterPlaceholder: '筛选状态',
         statusSwitchLabel: '切换 {provider} 状态',
+        trendCalls: '次调用',
         editTitle: '编辑服务渠道',
         empty: '暂无服务渠道',
         emptySearch: '当前搜索下没有服务渠道',

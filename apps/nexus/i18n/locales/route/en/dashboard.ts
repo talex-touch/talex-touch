@@ -105,6 +105,7 @@ export default {
         searchPlaceholder: 'Search provider, vendor, capability',
         filterPlaceholder: 'Filter status',
         statusSwitchLabel: 'Toggle {provider} status',
+        trendCalls: 'calls',
         editTitle: 'Edit provider',
         empty: 'No providers registered yet.',
         emptySearch: 'No providers match the current search.',

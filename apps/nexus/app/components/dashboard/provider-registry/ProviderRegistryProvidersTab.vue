@@ -241,7 +241,7 @@ defineExpose({
           </span>
         </template>
         <template #cell-trend="{ row }">
-          <div class="RegistrySparkline" :title="`${row.displayName} · ${providerSparkline(row.id).count} ${t('dashboard.providerRegistry.tabs.usage', 'calls')}`">
+          <div class="RegistrySparkline" :title="`${row.displayName} · ${providerSparkline(row.id).count} ${t('dashboard.providerRegistry.providers.trendCalls', 'calls')}`">
             <svg viewBox="0 0 72 20" class="RegistrySparkline-Svg" aria-hidden="true">
               <path :d="providerSparkline(row.id).areaPath" class="RegistrySparkline-Area" />
               <path :d="providerSparkline(row.id).path" class="RegistrySparkline-Line" />
