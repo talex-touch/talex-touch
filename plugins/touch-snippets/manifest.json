@@ -1,7 +1,7 @@
 {
   "id": "com.tuffex.snippets",
   "name": "touch-snippets",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "TalexTouch Team",
   "sdkapi": 261011,
   "category": "utilities",
@@ -69,8 +69,20 @@
   "features": [
     {
       "id": "snippets-search",
-      "name": "片段库",
-      "desc": "搜索并复制文本、代码与提示词片段",
+      "name": {
+        "default": "片段库",
+        "locales": {
+          "zh-CN": "片段库",
+          "en-US": "Snippets"
+        }
+      },
+      "desc": {
+        "default": "搜索并复制文本、代码与提示词片段",
+        "locales": {
+          "zh-CN": "搜索并复制文本、代码与提示词片段",
+          "en-US": "Search and copy text, code and prompt snippets"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -93,8 +105,20 @@
     },
     {
       "id": "snippets-save",
-      "name": "保存片段",
-      "desc": "将输入或剪贴板内容保存为片段",
+      "name": {
+        "default": "保存片段",
+        "locales": {
+          "zh-CN": "保存片段",
+          "en-US": "Save Snippet"
+        }
+      },
+      "desc": {
+        "default": "将输入或剪贴板内容保存为片段",
+        "locales": {
+          "zh-CN": "将输入或剪贴板内容保存为片段",
+          "en-US": "Save what you typed or the clipboard as a snippet"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -117,8 +141,20 @@
     },
     {
       "id": "snippets-manage",
-      "name": "片段库管理",
-      "desc": "查看片段数量并打开配置目录",
+      "name": {
+        "default": "片段库管理",
+        "locales": {
+          "zh-CN": "片段库管理",
+          "en-US": "Manage Snippets"
+        }
+      },
+      "desc": {
+        "default": "查看片段数量并打开配置目录",
+        "locales": {
+          "zh-CN": "查看片段数量并打开配置目录",
+          "en-US": "See how many snippets you have and open the config folder"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

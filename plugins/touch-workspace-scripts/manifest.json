@@ -39,8 +39,20 @@
   "features": [
     {
       "id": "workspace-scripts",
-      "name": "工作区脚本",
-      "desc": "读取并执行工作区脚本",
+      "name": {
+        "default": "工作区脚本",
+        "locales": {
+          "zh-CN": "工作区脚本",
+          "en-US": "Workspace Scripts"
+        }
+      },
+      "desc": {
+        "default": "读取并执行工作区脚本",
+        "locales": {
+          "zh-CN": "读取并执行工作区脚本",
+          "en-US": "Read and run workspace scripts"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

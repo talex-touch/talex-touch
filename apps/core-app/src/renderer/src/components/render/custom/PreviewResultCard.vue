@@ -117,7 +117,7 @@ const accentStyle = computed(() => {
         <span v-for="badge in badges" :key="badge" class="pill">{{ badge }}</span>
       </div>
       <div v-if="chips.length" class="chip-row">
-        <div v-for="chip in chips" :key="chip.label" class="chip">
+        <div v-for="(chip, index) in chips" :key="index" class="chip">
           <span class="chip-label">{{ chip.label }}</span>
           <span class="chip-value">{{ chip.value }}</span>
         </div>

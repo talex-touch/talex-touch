@@ -38,8 +38,20 @@
   "features": [
     {
       "id": "dev-utils",
-      "name": "程序员工具",
-      "desc": "纯本地开发工具集合",
+      "name": {
+        "default": "程序员工具",
+        "locales": {
+          "zh-CN": "程序员工具",
+          "en-US": "Dev Utilities"
+        }
+      },
+      "desc": {
+        "default": "纯本地开发工具集合",
+        "locales": {
+          "zh-CN": "纯本地开发工具集合",
+          "en-US": "Developer tools that run entirely on your device"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

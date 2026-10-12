@@ -68,10 +68,11 @@ const filteredEmptyTitle = computed(() => {
 // provider column about 368px. Latency, the health detail, the quota and the
 // update time live in the drawer.
 const columns = computed<DataTableColumn<ProviderRegistryRecord>[]>(() => [
-  { key: 'provider', title: t('dashboard.providerRegistry.table.provider', 'Provider') },
-  { key: 'status', title: t('dashboard.providerRegistry.fields.status', 'Status'), width: 88 },
-  { key: 'capabilities', title: t('dashboard.providerRegistry.tabs.capabilities', 'Capabilities'), width: 260 },
-  { key: 'health', title: t('dashboard.providerRegistry.table.health', 'Health'), width: 124 },
+  { key: 'provider', title: t('dashboard.providerRegistry.table.provider', 'Provider'), width: 200 },
+  { key: 'status', title: t('dashboard.providerRegistry.fields.status', 'Status'), width: 76 },
+  { key: 'trend', title: t('dashboard.providerRegistry.table.trend', 'Trend'), width: 110 },
+  { key: 'capabilities', title: t('dashboard.providerRegistry.tabs.capabilities', 'Capabilities'), minWidth: 260 },
+  { key: 'health', title: t('dashboard.providerRegistry.table.health', 'Health'), width: 172 },
   { key: 'actions', title: t('dashboard.providerRegistry.table.actions', 'Actions'), width: 136, align: 'right' },
 ])
 
@@ -92,6 +93,63 @@ function hiddenCapabilityCount(provider: ProviderRegistryRecord): number {
 function healthStatus(provider: ProviderRegistryRecord) {
   return admin.getProviderObservability(provider.id).status
 }
+function providerSparkline(providerId: string) {
+  const entries = (admin.usageEntries?.value ?? []).filter(entry => entry.providerId === providerId)
+  const count = entries.length
+  if (count === 0) {
+    return {
+      path: 'M 2 15 L 70 15',
+      areaPath: 'M 2 15 L 70 15 L 70 18 L 2 18 Z',
+      count: 0,
+    }
+  }
+  const buckets = [0, 0, 0, 0, 0, 0, 0]
+  const now = Date.now()
+  const windowMs = 24 * 3600 * 1000
+  for (const entry of entries) {
+    const age = now - new Date(entry.createdAt).getTime()
+    const bucket = Math.max(0, Math.min(6, 6 - Math.floor((age / windowMs) * 7)))
+    buckets[bucket] = (buckets[bucket] ?? 0) + (entry.quantity || 1)
+  }
+  const max = Math.max(...buckets, 1)
+  const coords = buckets.map((val, idx) => {
+    const x = 2 + (idx / (buckets.length - 1)) * 68
+    const y = 16 - (val / max) * 12
+    return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) }
+  })
+  const path = coords.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '')
+  const first = coords[0]!
+  const last = coords[coords.length - 1]!
+  const areaPath = `${path} L ${last.x} 18 L ${first.x} 18 Z`
+  return { path, areaPath, count }
+}
+
+function providerHealthProbes(providerId: string): Array<{
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'empty'
+  height: number
+  title: string
+}> {
+  const allChecks = (admin.healthEntries?.value ?? [])
+    .filter(entry => entry.providerId === providerId)
+    .sort((a, b) => new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime())
+  const recent = allChecks.slice(-8)
+  const maxLatency = Math.max(...recent.map(c => c.latencyMs || 0), 400)
+  const padCount = Math.max(0, 8 - recent.length)
+  const bars: Array<{ status: 'healthy' | 'degraded' | 'unhealthy' | 'empty', height: number, title: string }> = []
+  for (let i = 0; i < padCount; i++) {
+    bars.push({ status: 'empty', height: 4, title: t('dashboard.providerRegistry.health.empty', 'No probe') })
+  }
+  for (const check of recent) {
+    const height = Math.min(16, Math.max(5, Math.round(((check.latencyMs || 60) / maxLatency) * 16)))
+    bars.push({
+      status: check.status,
+      height,
+      title: `${check.latencyMs}ms · ${healthStatusLabel(check.status, t)}`,
+    })
+  }
+  return bars
+}
+
 
 const detailProvider = ref<ProviderRegistryRecord | null>(null)
 const detailOpen = ref(false)
@@ -182,6 +240,15 @@ defineExpose({
             />
           </span>
         </template>
+        <template #cell-trend="{ row }">
+          <div class="RegistrySparkline" :title="`${row.displayName} · ${providerSparkline(row.id).count} ${t('dashboard.providerRegistry.providers.trendCalls', 'calls')}`">
+            <svg viewBox="0 0 72 20" class="RegistrySparkline-Svg" aria-hidden="true">
+              <path :d="providerSparkline(row.id).areaPath" class="RegistrySparkline-Area" />
+              <path :d="providerSparkline(row.id).path" class="RegistrySparkline-Line" />
+            </svg>
+            <span class="RegistrySparkline-Count">{{ providerSparkline(row.id).count }}</span>
+          </div>
+        </template>
         <template #cell-capabilities="{ row }">
           <span class="RegistryChips" :title="row.capabilities.map((item: ProviderCapabilityRecord) => item.capability).join(', ')">
             <span v-for="capability in visibleCapabilities(row)" :key="capability.id" class="RegistryChip">{{ capability.capability }}</span>
@@ -190,7 +257,17 @@ defineExpose({
           </span>
         </template>
         <template #cell-health="{ row }">
-          <span class="RegistryLine">
+          <span class="RegistryHealthCell">
+            <div class="RegistryProbeBars" :title="t('dashboard.providerRegistry.table.health', 'Health probes')">
+              <span
+                v-for="(bar, index) in providerHealthProbes(row.id)"
+                :key="index"
+                class="RegistryProbeBar"
+                :class="`is-${bar.status}`"
+                :style="{ height: `${bar.height}px` }"
+                :title="bar.title"
+              />
+            </div>
             <TxStatusBadge :text="healthStatusLabel(healthStatus(row), t)" :status="healthStatusTone(healthStatus(row))" size="sm" />
           </span>
         </template>
@@ -276,6 +353,78 @@ defineExpose({
 .RegistryLine.is-control {
   overflow: visible;
 }
+.RegistrySparkline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 1lh;
+}
+
+.RegistrySparkline-Svg {
+  width: 58px;
+  height: 18px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.RegistrySparkline-Area {
+  fill: var(--tx-color-primary, #3b82f6);
+  opacity: 0.12;
+}
+
+.RegistrySparkline-Line {
+  fill: none;
+  stroke: var(--tx-color-primary, #3b82f6);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.RegistrySparkline-Count {
+  font-size: 11px;
+  font-family: var(--tx-font-family-mono, monospace);
+  color: var(--tx-text-color-secondary);
+}
+
+.RegistryHealthCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 1lh;
+  min-width: 0;
+}
+
+.RegistryProbeBars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.RegistryProbeBar {
+  width: 3.5px;
+  border-radius: 999px;
+  background: var(--tx-fill-color-darker, rgba(255, 255, 255, 0.15));
+  transition: height 0.2s ease, background-color 0.2s ease;
+}
+
+.RegistryProbeBar.is-healthy {
+  background: var(--tx-color-success, #10b981);
+}
+
+.RegistryProbeBar.is-degraded {
+  background: var(--tx-color-warning, #f59e0b);
+}
+
+.RegistryProbeBar.is-unhealthy {
+  background: var(--tx-color-danger, #ef4444);
+}
+
+.RegistryProbeBar.is-empty {
+  background: var(--tx-fill-color-darker, rgba(255, 255, 255, 0.1));
+}
+
 
 .RegistryChips {
   display: flex;

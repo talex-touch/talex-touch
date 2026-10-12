@@ -39,7 +39,13 @@
     {
       "id": "snipaste-quick",
       "name": "Snipaste",
-      "desc": "截图 / 贴图 / 取色",
+      "desc": {
+        "default": "截图 / 贴图 / 取色",
+        "locales": {
+          "zh-CN": "截图 / 贴图 / 取色",
+          "en-US": "Screenshot / Pin to screen / Pick color"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

@@ -641,14 +641,40 @@ export function useSearch(
     keepItemId: string | null = null
   ): TuffItem[] {
     const renderedIndexById = new Map<string, number>()
+    const appPaths = new Set<string>()
+    const normalizePathKey = (p?: string | null) =>
+      p ? p.trim().replace(/\\/g, '/').toLowerCase() : ''
+
     current.forEach((item, index) => {
       renderedIndexById.set(item.id, index)
+      if (item.kind === 'app' && item.meta?.app?.path) {
+        appPaths.add(normalizePathKey(item.meta.app.path))
+      }
     })
 
     const merged = [...current]
     const arrivals: TuffItem[] = []
     const arrivalIndexById = new Map<string, number>()
     for (const item of incoming) {
+      const appPath = item.kind === 'app' ? item.meta?.app?.path : null
+      if (appPath) appPaths.add(normalizePathKey(appPath))
+      if (item.kind === 'file') {
+        const filePath = normalizePathKey(item.meta?.file?.path || item.id)
+        if (filePath.endsWith('.app') && appPaths.has(filePath)) {
+          continue
+        }
+      }
+      if (item.kind === 'app' && appPath) {
+        const existingFileIndex = merged.findIndex(
+          (existing) =>
+            existing.kind === 'file' &&
+            normalizePathKey(existing.meta?.file?.path || existing.id) === normalizePathKey(appPath)
+        )
+        if (existingFileIndex >= 0) {
+          merged[existingFileIndex] = item
+          continue
+        }
+      }
       const renderedIndex = renderedIndexById.get(item.id)
       if (renderedIndex !== undefined) {
         merged[renderedIndex] = item

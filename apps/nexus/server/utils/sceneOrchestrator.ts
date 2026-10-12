@@ -2201,7 +2201,7 @@ export async function resolveSceneProviderCandidates(
   },
 ): Promise<SceneProviderResolution> {
   let scene = await getSceneRegistryEntry(event, options.sceneId)
-  if (!scene && options.sceneId.startsWith('nexus.intelligence.')) {
+  if (!scene && (options.sceneId.startsWith('nexus.intelligence.') || options.sceneId.startsWith('corebox.'))) {
     await ensureDefaultProviderSceneSeedForMiss(event)
     scene = await getSceneRegistryEntry(event, options.sceneId)
   }
@@ -2263,11 +2263,14 @@ export async function runSceneOrchestrator(
     throw createRunError(400, 'SCENE_NOT_FOUND', 'sceneId is required.')
   }
 
-  const scene = await getSceneRegistryEntry(event, safeSceneId)
+  let scene = await getSceneRegistryEntry(event, safeSceneId)
+  if (!scene && (safeSceneId.startsWith('nexus.intelligence.') || safeSceneId.startsWith('corebox.'))) {
+    await ensureDefaultProviderSceneSeedForMiss(event)
+    scene = await getSceneRegistryEntry(event, safeSceneId)
+  }
   if (!scene) {
     throw createRunError(404, 'SCENE_NOT_FOUND', 'Scene registry entry not found.')
   }
-
   addTrace(trace, 'scene.load', 'success', 'Loaded scene registry entry.', {
     sceneId: scene.id,
     status: scene.status,

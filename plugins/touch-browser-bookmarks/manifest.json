@@ -40,8 +40,20 @@
   "features": [
     {
       "id": "browser-bookmarks",
-      "name": "手动快速链接",
-      "desc": "手动收藏、置顶链接、最近使用与快速打开；不读取浏览器书签或历史",
+      "name": {
+        "default": "手动快速链接",
+        "locales": {
+          "zh-CN": "手动快速链接",
+          "en-US": "Quick Links"
+        }
+      },
+      "desc": {
+        "default": "手动收藏、置顶链接、最近使用与快速打开；不读取浏览器书签或历史",
+        "locales": {
+          "zh-CN": "手动收藏、置顶链接、最近使用与快速打开；不读取浏览器书签或历史",
+          "en-US": "Save, pin and quickly open links, with recent ones at hand; does not read browser bookmarks or history"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

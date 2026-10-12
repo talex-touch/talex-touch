@@ -312,6 +312,11 @@ function calculateMatchScore(item: TuffItem, searchKey?: string): number {
 
   if (!normalizedKey) return 0
 
+  // A preview card answers the query instead of matching it, and its title is usually the query
+  // itself. Scoring that as an exact title match would lift the card over apps and files the user
+  // may be typing, so it ranks by its kind bias alone.
+  if (item.kind === 'preview') return 0
+
   const title = item.render.basic?.title
   const titleLower = title?.toLowerCase() || ''
   const titleLength = titleLower.length

@@ -5,9 +5,34 @@ import type {
   PreviewCardPayload,
 } from "../types";
 import type { TuffQuery } from "../../tuff";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 const EXPRESSION_REGEX = /^[\d+\-*/().%\s]+$/u;
+const DATE_EXPRESSION_REGEX = /^((?:19|20|21)\d{2})([-/])(\d{1,2})\2(\d{1,2})$/u;
+const DATE_RANGE_EXPRESSION_REGEX = /^(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})$/u;
+
+function isCalendarDate(text: string): boolean {
+  const match = DATE_EXPRESSION_REGEX.exec(text);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[3]);
+  const day = Number(match[4]);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth;
+}
+
+/**
+ * `2026-12-25` and `2026/12/25` are also a valid subtraction and division, and the expression
+ * abilities run before the time ability. Text that forms a real calendar date in a plausible
+ * year, or a range of two such dates in the form the time ability reads, is left to it.
+ */
+export function isDateLikeExpression(text: string): boolean {
+  const normalized = text.trim();
+  if (isCalendarDate(normalized)) return true;
+  const range = DATE_RANGE_EXPRESSION_REGEX.exec(normalized);
+  return Boolean(range && isCalendarDate(range[1]!) && isCalendarDate(range[2]!));
+}
 
 type Token =
   | { type: "number"; value: number }
@@ -239,6 +264,7 @@ export class BasicExpressionAbility extends BasePreviewAbility {
     )
       return false;
     if (!/[+\-*/%]/.test(normalized)) return false;
+    if (isDateLikeExpression(normalized)) return false;
     return EXPRESSION_REGEX.test(normalized);
   }
 
@@ -259,14 +285,17 @@ export class BasicExpressionAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: expression,
-      subtitle: "快速算式",
-      primaryLabel: "结果",
+      subtitle: i18nMsg("previewCard.basic.subtitle"),
+      primaryLabel: i18nMsg("previewCard.common.result"),
       primaryValue: formatNumber(evaluated),
       sections: [
         {
           rows: [
-            { label: "表达式", value: expression },
-            { label: "算式（安全）", value: sanitized },
+            {
+              label: i18nMsg("previewCard.common.expression"),
+              value: expression,
+            },
+            { label: i18nMsg("previewCard.basic.sanitized"), value: sanitized },
           ],
         },
       ],

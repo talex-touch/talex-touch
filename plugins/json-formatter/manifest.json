@@ -27,8 +27,20 @@
   "features": [
     {
       "id": "json-formatter-format",
-      "name": "JSON格式化",
-      "desc": "格式化选中的JSON文本或剪贴板内容",
+      "name": {
+        "default": "JSON格式化",
+        "locales": {
+          "zh-CN": "JSON格式化",
+          "en-US": "Format JSON"
+        }
+      },
+      "desc": {
+        "default": "格式化选中的JSON文本或剪贴板内容",
+        "locales": {
+          "zh-CN": "格式化选中的JSON文本或剪贴板内容",
+          "en-US": "Format the selected JSON text or the clipboard"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

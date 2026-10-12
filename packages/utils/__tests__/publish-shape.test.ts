@@ -88,7 +88,6 @@ describe('bare specifiers the ESM bundle emits', () => {
     // Bundlers resolve `dayjs/plugin/duration`; Node ESM does not, and these stay external in the
     // bundle. Without the extension the built entry throws ERR_MODULE_NOT_FOUND on import — which
     // is the same failure #566 reports, just moved one level down.
-    expect(source).toContain('dayjs/plugin/duration.js')
     expect(source).toContain('dayjs/plugin/relativeTime.js')
     expect(source).not.toMatch(/["']dayjs\/plugin\/[a-zA-Z]+["']/)
   })

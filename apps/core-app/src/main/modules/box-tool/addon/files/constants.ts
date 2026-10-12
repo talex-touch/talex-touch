@@ -12,8 +12,8 @@ export type FileTypeTag =
   | 'ebook'
   | 'installer'
   | 'design'
+  | 'folder'
   | 'other'
-
 export interface ExtensionMetadata {
   tags: FileTypeTag[]
   keywords: string[]
@@ -558,6 +558,7 @@ const typeTagExtensionMap: Record<FileTypeTag, string[]> = {
   ebook: [],
   installer: [],
   design: [],
+  folder: [],
   other: []
 }
 

@@ -196,3 +196,69 @@ describe('TuffItemPreviewer source row', () => {
     })
   })
 })
+
+describe('TuffItemPreviewer application metadata', () => {
+  it.each([
+    { name: 'application', kind: 'app', path: '/Applications/Example.app' },
+    { name: 'indexed bundle', kind: 'file', path: '/Library/Example.bundle' }
+  ])('shows the bundle id, version and creation date of an $name', async ({ kind, path }) => {
+    routeHostEvents({ success: true, application: null })
+    const pane = mountPreviewer({
+      id: path,
+      kind,
+      source: { id: 'apps', type: 'application', name: 'Applications' },
+      render: { mode: 'default', basic: { title: 'Example' } },
+      meta: {
+        app: {
+          path,
+          bundleId: 'com.example.Reader',
+          version: '2.5.1',
+          createdAt: '2026-06-17T10:30:00.000Z'
+        },
+        ...(kind === 'file'
+          ? { file: { path, isDir: true, created_at: '2026-06-18T12:00:00.000Z' } }
+          : {})
+      }
+    } as TuffItem)
+    await flushPromises()
+
+    const infoRows = pane.get('h3').element.parentElement!.querySelectorAll('h3 + div > div')
+    const valueFor = (label: string) =>
+      Array.from(infoRows)
+        .find((row) => row.firstElementChild?.textContent?.trim() === label)
+        ?.lastElementChild?.textContent?.trim()
+
+    expect(valueFor('Bundle ID')).toBe('com.example.Reader')
+    expect(valueFor('Version')).toBe('2.5.1')
+    expect(valueFor('fileInfo.createdAt')).toBe('2026-06-17T10:30:00.000Z')
+  })
+})
+
+describe('TuffItemPreviewer deep match snippet', () => {
+  it('renders matching snippet card with kind, page and score badges', async () => {
+    routeHostEvents({ success: true, application: null })
+    const pane = mountPreviewer({
+      id: '/Documents/lease.pdf',
+      kind: 'file',
+      source: { id: 'files', type: 'file', name: 'Files' },
+      render: { mode: 'default', basic: { title: 'lease.pdf' } },
+      meta: {
+        file: { path: '/Documents/lease.pdf' },
+        deepMatch: {
+          kind: 'semantic',
+          snippet: 'Tenant shall not keep any pets without written consent',
+          pageNumber: 4,
+          score: 0.94,
+          matchTerm: 'pets'
+        }
+      }
+    } as TuffItem)
+    await flushPromises()
+
+    const text = pane.text()
+    expect(text).toContain('fileInfo.deepMatchTitle')
+    expect(text).toContain('fileInfo.deepMatchSemantic')
+    expect(text).toContain('Tenant shall not keep any')
+    expect(pane.find('mark').text()).toBe('pets')
+  })
+})

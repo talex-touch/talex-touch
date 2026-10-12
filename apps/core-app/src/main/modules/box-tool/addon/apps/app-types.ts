@@ -43,6 +43,7 @@ export interface ScannedAppInfo {
   fileName?: string
   alternateNames?: string[]
   description?: string
+  version?: string
 }
 
 /** Clock skew tolerance for a reported birth time before it is treated as unusable. */

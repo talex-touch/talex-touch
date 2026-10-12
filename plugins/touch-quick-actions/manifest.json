@@ -38,8 +38,20 @@
   "features": [
     {
       "id": "quick-actions",
-      "name": "系统快捷动作",
-      "desc": "高频安全动作与设置入口",
+      "name": {
+        "default": "系统快捷动作",
+        "locales": {
+          "zh-CN": "系统快捷动作",
+          "en-US": "Quick Actions"
+        }
+      },
+      "desc": {
+        "default": "高频安全动作与设置入口",
+        "locales": {
+          "zh-CN": "高频安全动作与设置入口",
+          "en-US": "Frequent safe actions and shortcuts to settings"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

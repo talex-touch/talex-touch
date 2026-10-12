@@ -148,12 +148,26 @@ function quotaLimit(value: unknown): string {
         </section>
 
         <section class="RegistryForm-Group">
-          <h3 class="RegistryForm-GroupTitle">
-            {{ t('dashboard.providerRegistry.providers.modelsTitle', 'Models') }}
-          </h3>
-          <p class="RegistryForm-Hint">
-            {{ t('dashboard.providerRegistry.providers.modelsHint', 'Configure the model IDs this AI channel can dispatch. The fetch action uses the stored secure credential server-side.') }}
-          </p>
+          <div class="RegistryForm-GroupHead">
+            <div>
+              <h3 class="RegistryForm-GroupTitle">
+                {{ t('dashboard.providerRegistry.providers.modelsTitle', 'Models') }}
+              </h3>
+              <p class="RegistryForm-Hint">
+                {{ t('dashboard.providerRegistry.providers.modelsHint', 'Configure the model IDs this AI channel can dispatch. The fetch action uses the stored secure credential server-side.') }}
+              </p>
+            </div>
+            <TxButton
+              variant="secondary"
+              size="sm"
+              icon="i-carbon-download"
+              :loading="Boolean(admin.fetchingFormModels?.value)"
+              :disabled="Boolean(admin.fetchingFormModels?.value) || !admin.providerForm.endpoint"
+              @click="admin.fetchFormModels?.()"
+            >
+              {{ t('dashboard.providerRegistry.providers.fetchModels', 'Fetch models') }}
+            </TxButton>
+          </div>
           <div class="RegistryForm-Grid is-models">
             <AdminFormField :label="t('dashboard.providerRegistry.fields.models', 'Models')" :for="fieldId('models')">
               <TuffInput
@@ -180,6 +194,33 @@ function quotaLimit(value: unknown): string {
             <AdminFormField v-else :label="t('dashboard.providerRegistry.fields.defaultModel', 'Default model')" :for="fieldId('default-model')">
               <TuffInput :id="fieldId('default-model')" v-model="admin.providerForm.defaultModel" class="RegistryForm-Control" placeholder="gpt-4.1-mini" />
             </AdminFormField>
+          </div>
+          <div v-if="(admin.fetchedFormModels?.value?.length ?? 0) > 0" class="RegistryModelPicker">
+            <div class="RegistryModelPicker-Head">
+              <span class="RegistryModelPicker-Title">{{ t('dashboard.providerRegistry.providers.fetchedModelsTitle', 'Fetched models (check to enable):') }}</span>
+              <div class="RegistryModelPicker-Actions">
+                <TxButton variant="ghost" size="sm" @click="admin.selectAllFetchedModels?.(true)">
+{{ t('dashboard.providerRegistry.providers.selectAll', 'Select all') }}
+</TxButton>
+                <TxButton variant="ghost" size="sm" @click="admin.deselectAllFetchedModels?.(true)">
+{{ t('dashboard.providerRegistry.providers.deselectAll', 'Deselect all') }}
+</TxButton>
+              </div>
+            </div>
+            <div class="RegistryModelPicker-List">
+              <label
+                v-for="model in admin.fetchedFormModels.value"
+                :key="model"
+                class="RegistryModelPicker-Item"
+              >
+                <input
+                  type="checkbox"
+                  :checked="createModelOptions.includes(model)"
+                  @change="admin.toggleModelSelection?.(model, true)"
+                >
+                <span class="RegistryModelPicker-Name">{{ model }}</span>
+              </label>
+            </div>
           </div>
         </section>
 
@@ -269,6 +310,22 @@ function quotaLimit(value: unknown): string {
                 <TuffSelectItem v-for="type in admin.authTypeOptions" :key="type" :value="type" :label="valueLabel(type)" />
               </TuffSelect>
             </AdminFormField>
+            <AdminFormField v-if="editPanel.authType === 'api_key'" :label="t('dashboard.providerRegistry.fields.apiKey', 'API Key')" :for="fieldId('edit-api-key')">
+              <TuffInput
+                :id="fieldId('edit-api-key')"
+                v-model="editPanel.apiKey"
+                type="password"
+                autocomplete="new-password"
+                class="RegistryForm-Control"
+                :placeholder="t('dashboard.providerRegistry.providers.keyPlaceholder', 'Leave empty to keep existing key; enter to update')"
+              />
+            </AdminFormField>
+            <AdminFormField v-if="editPanel.authType === 'secret_pair'" :label="t('dashboard.providerRegistry.fields.secretId', 'SecretId')" :for="fieldId('edit-secret-id')">
+              <TuffInput :id="fieldId('edit-secret-id')" v-model="editPanel.secretId" class="RegistryForm-Control" autocomplete="off" :placeholder="t('dashboard.providerRegistry.providers.secretIdPlaceholder', 'Leave empty to keep existing')" />
+            </AdminFormField>
+            <AdminFormField v-if="editPanel.authType === 'secret_pair'" :label="t('dashboard.providerRegistry.fields.secretKey', 'SecretKey')" :for="fieldId('edit-secret-key')">
+              <TuffInput :id="fieldId('edit-secret-key')" v-model="editPanel.secretKey" type="password" autocomplete="new-password" class="RegistryForm-Control" :placeholder="t('dashboard.providerRegistry.providers.secretKeyPlaceholder', 'Leave empty to keep existing')" />
+            </AdminFormField>
             <AdminFormField :label="t('dashboard.providerRegistry.fields.endpoint', 'Endpoint')" :for="fieldId('edit-endpoint')">
               <TuffInput :id="fieldId('edit-endpoint')" v-model="editPanel.endpoint" class="RegistryForm-Control" />
             </AdminFormField>
@@ -328,6 +385,33 @@ function quotaLimit(value: unknown): string {
             <AdminFormField v-else :label="t('dashboard.providerRegistry.fields.defaultModel', 'Default model')" :for="fieldId('edit-default-model')">
               <TuffInput :id="fieldId('edit-default-model')" v-model="editPanel.defaultModel" class="RegistryForm-Control" placeholder="gpt-4.1-mini" />
             </AdminFormField>
+          </div>
+          <div v-if="(editPanel.fetchedModels?.length ?? 0) > 0" class="RegistryModelPicker">
+            <div class="RegistryModelPicker-Head">
+              <span class="RegistryModelPicker-Title">{{ t('dashboard.providerRegistry.providers.fetchedModelsTitle', 'Fetched models (check to enable):') }}</span>
+              <div class="RegistryModelPicker-Actions">
+                <TxButton variant="ghost" size="sm" @click="admin.selectAllFetchedModels?.(false, provider)">
+{{ t('dashboard.providerRegistry.providers.selectAll', 'Select all') }}
+</TxButton>
+                <TxButton variant="ghost" size="sm" @click="admin.deselectAllFetchedModels?.(false, provider)">
+{{ t('dashboard.providerRegistry.providers.deselectAll', 'Deselect all') }}
+</TxButton>
+              </div>
+            </div>
+            <div class="RegistryModelPicker-List">
+              <label
+                v-for="model in editPanel.fetchedModels"
+                :key="model"
+                class="RegistryModelPicker-Item"
+              >
+                <input
+                  type="checkbox"
+                  :checked="editModelOptions.includes(model)"
+                  @change="admin.toggleModelSelection?.(model, false, provider)"
+                >
+                <span class="RegistryModelPicker-Name">{{ model }}</span>
+              </label>
+            </div>
           </div>
         </section>
 
@@ -694,5 +778,57 @@ function quotaLimit(value: unknown): string {
   .RegistryRun-Grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.RegistryModelPicker {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--tx-fill-color-light, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--tx-border-color);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.RegistryModelPicker-Head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.RegistryModelPicker-Title {
+  font-weight: 500;
+  color: var(--tx-text-color-primary);
+}
+
+.RegistryModelPicker-Actions {
+  display: flex;
+  gap: 4px;
+}
+
+.RegistryModelPicker-List {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 10px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.RegistryModelPicker-Item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--tx-font-family-mono, monospace);
+  cursor: pointer;
+  user-select: none;
+}
+
+.RegistryModelPicker-Name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

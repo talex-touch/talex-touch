@@ -1435,3 +1435,24 @@ describe('shellConversationList conversation delete', () => {
     }
   })
 })
+
+describe('shellConversationList rail mode', () => {
+  it('shows abbreviated conversation titles in rail mode and navigates on click', async () => {
+    sidebarHolder.collapsed!.value = true
+    listState.projects = [project({ id: 'p1', name: 'MyApp' })]
+    historyHolder.conversations!.value = [
+      conversation({ id: 'c1', title: '修复侧边栏滚动问题', updatedAt: 200 }),
+      conversation({ id: 'c2', title: 'Hello World', projectId: 'p1', updatedAt: 100 })
+    ]
+    const wrapper = await mountList()
+
+    const items = wrapper.findAll('.ShellConversationList-RailItem')
+    expect(items).toHaveLength(2)
+    expect(items[0]!.find('.ShellConversationList-RailShortTitle').text()).toBe('修复')
+    expect(items[1]!.find('.ShellConversationList-RailShortTitle').text()).toBe('Hel')
+
+    await items[0]!.trigger('click')
+    expect(pushMock).toHaveBeenCalledWith('/home/c/c1')
+    wrapper.unmount()
+  })
+})

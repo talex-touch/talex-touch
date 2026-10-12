@@ -3,10 +3,12 @@ import type { IBoxOptions } from '~/modules/box/adapter'
 import type { IUseSearch } from '~/modules/box/adapter/types'
 import { useTuffTransport } from '@talex-touch/utils/transport'
 import { DivisionBoxEvents } from '@talex-touch/utils/transport/events'
+import { isDevEnv } from '@talex-touch/utils/env'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { TxIcon as TuffIcon } from '@talex-touch/tuffex/icon'
 import { windowState } from '~/modules/hooks/core-box'
+import { useStartupInfo } from '~/modules/hooks/useStartupInfo'
 import { useRendererPlatform } from '~/modules/platform/renderer-platform'
 import ActivatedProviders from './ActivatedProviders.vue'
 import BoxInput from './BoxInput.vue'
@@ -24,6 +26,8 @@ const emit = defineEmits<
 
 const { isMac } = useRendererPlatform()
 const { t } = useI18n()
+const { startupInfo } = useStartupInfo()
+const isAppDev = computed(() => isDevEnv() || startupInfo.value?.isDev === true)
 
 interface Props {
   searchVal: string
@@ -123,6 +127,7 @@ async function handleDebug(): Promise<void> {
         />
       </button>
       <button
+        v-if="isAppDev"
         type="button"
         class="control-btn"
         :title="t('corebox.debug', '调试')"
@@ -169,7 +174,6 @@ async function handleDebug(): Promise<void> {
 .DivisionBox-TrafficLight {
   width: 92px; // Traffic lights plus a small visual gap; DivisionBox has no logo
   flex-shrink: 0;
-  -webkit-app-region: no-drag;
 }
 
 .DivisionBox-WindowControls {
@@ -180,29 +184,64 @@ async function handleDebug(): Promise<void> {
 
 .DivisionBox-Input {
   flex: 1;
-  min-width: 200px;
+  min-width: 140px;
   max-width: 400px;
+  margin-inline-start: 12px;
   -webkit-app-region: no-drag;
+
+  :deep(.BoxInput-Wrapper) {
+    font-size: 15px;
+    height: 36px !important;
+  }
+
+  :deep(input) {
+    font-size: 15px;
+  }
+
+  :deep(.BoxInput-Placeholder) {
+    font-size: 15px;
+  }
 }
 
 :deep(.ActivatedProvidersContainer) {
   flex-shrink: 0;
   -webkit-app-region: no-drag;
+
+  .activated-provider-pill {
+    font-size: 0.75rem;
+    border-radius: 9px;
+  }
+
+  .Activated-Provider-PillMajor {
+    padding: 0.25rem 0.45rem;
+    gap: 0.2rem;
+
+    &::after {
+      border-radius: 9px;
+    }
+  }
+
+  .Activated-Provider-FallbackIcon {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex: 0 0 0.875rem;
+  }
+
+  .Activated-Provider-PillMajor-Label {
+    font-size: 0.75rem;
+    max-width: min(16rem, 30vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    animation: none;
+  }
 }
 
-// The pill's label runs a `truncateShrink` animation that collapses it to zero width ~3.5s after
-// it appears. CoreBox still names the active feature through the pill's "vice" section, but a
-// detached window has no vice section and no other place to name its plugin, so the header would
-// end up icon-only. Keep the plugin name readable here.
-//
-// The descendant part is deliberate: the child's own scoped rule is `.…Label[data-v-child]`
-// (0,2,0), so a bare `:deep(.…Label)` would tie on specificity and depend on stylesheet order.
-:deep(.ActivatedProvidersContainer .Activated-Provider-PillMajor-Label) {
-  max-width: min(16rem, 30vw);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  animation: none;
+.DivisionBox-Spacer {
+  flex: 1;
+  min-width: 24px;
+  height: 100%;
+  align-self: stretch;
 }
 
 .DivisionBox-Spacer {

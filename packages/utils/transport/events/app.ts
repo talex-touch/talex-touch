@@ -456,8 +456,32 @@ export const AppEvents = {
       .module('file-index')
       .event('add-path')
       .define<FileIndexAddPathRequest, FileIndexAddPathResult>(),
-  },
 
+    quickLook: defineEvent('app')
+      .module('file-index')
+      .event('quick-look')
+      .define<{ path: string }, { success: boolean; error?: string }>(),
+
+    showPackageContents: defineEvent('app')
+      .module('file-index')
+      .event('show-package-contents')
+      .define<{ path: string }, { success: boolean; error?: string }>(),
+
+    getInfo: defineEvent('app')
+      .module('file-index')
+      .event('get-info')
+      .define<{ path: string }, { success: boolean; error?: string }>(),
+
+    openInTerminal: defineEvent('app')
+      .module('file-index')
+      .event('open-in-terminal')
+      .define<{ path: string }, { success: boolean; error?: string }>(),
+
+    systemShare: defineEvent('app')
+      .module('file-index')
+      .event('system-share')
+      .define<{ path: string }, { success: boolean; error?: string }>(),
+  },
   /**
    * Generic indexed source runtime maintenance events.
    */

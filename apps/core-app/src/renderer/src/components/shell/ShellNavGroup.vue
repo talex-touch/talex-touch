@@ -20,6 +20,7 @@ defineProps<{
   flex-direction: column;
   gap: 2px;
   width: 100%;
+  -webkit-app-region: no-drag;
 }
 
 .ShellNavGroup-LabelWrap {

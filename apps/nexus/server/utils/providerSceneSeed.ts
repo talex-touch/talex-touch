@@ -15,6 +15,9 @@ const SEED_CREATED_BY = 'system:nexus-provider-scene-seed'
 const SEED_SOURCE = 'nexus-provider-scene-seed'
 const OVERLAY_PROVIDER_NAME = 'custom-local-overlay'
 const COREBOX_SCREENSHOT_TRANSLATE_SCENE_ID = 'corebox.screenshot.translate'
+const COREBOX_SELECTION_TRANSLATE_SCENE_ID = 'corebox.selection.translate'
+const COREBOX_FX_LATEST_SCENE_ID = 'corebox.fx.latest'
+const COREBOX_FX_CONVERT_SCENE_ID = 'corebox.fx.convert'
 const SCREENSHOT_TRANSLATE_REQUIRED_CAPABILITIES = ['vision.ocr', 'text.translate', 'overlay.render'] as const
 const SCREENSHOT_TRANSLATE_DIRECT_CAPABILITIES = ['image.translate.e2e'] as const
 const CANONICAL_CAPABILITY_PREFIXES = ['audio.', 'chat.', 'code.', 'content.', 'image.', 'intent.', 'keywords.', 'text.', 'vision.'] as const
@@ -24,6 +27,10 @@ interface ProviderSceneSeedResult {
   createdOverlayProvider: boolean
   createdScreenshotScene: boolean
   updatedScreenshotScene: boolean
+  createdSelectionScene: boolean
+  updatedSelectionScene: boolean
+  createdFxLatestScene: boolean
+  createdFxConvertScene: boolean
   createdCanonicalScenes: string[]
 }
 
@@ -167,21 +174,18 @@ function findFirstSystemProviderWithCapability(
   )[0] ?? null
 }
 
-function hasSystemProviderWithCapability(providers: ProviderRegistryRecord[], capability: string): boolean {
-  return Boolean(findFirstSystemProviderWithCapability(providers, capability))
-}
 
 function resolveSeedRequiredCapabilities(
   providers: ProviderRegistryRecord[],
   overlayProvider: ProviderRegistryRecord,
 ): string[] {
   const hasComposedPath = overlayProvider.status === 'enabled'
-    && hasSystemProviderWithCapability(providers, 'vision.ocr')
-    && hasSystemProviderWithCapability(providers, 'text.translate')
+    && Boolean(findFirstSystemProviderWithCapability(providers, 'vision.ocr'))
+    && Boolean(findFirstSystemProviderWithCapability(providers, 'text.translate'))
 
   if (hasComposedPath)
     return [...SCREENSHOT_TRANSLATE_REQUIRED_CAPABILITIES]
-  if (hasSystemProviderWithCapability(providers, 'image.translate.e2e'))
+  if (findFirstSystemProviderWithCapability(providers, 'image.translate.e2e'))
     return [...SCREENSHOT_TRANSLATE_DIRECT_CAPABILITIES]
   return [...SCREENSHOT_TRANSLATE_REQUIRED_CAPABILITIES]
 }
@@ -207,9 +211,7 @@ function buildSystemBinding(
     providerId: provider.id,
     capability,
     priority,
-    model: providerModels(provider).includes(String(provider.metadata?.defaultModel ?? ''))
-      ? String(provider.metadata?.defaultModel)
-      : providerModels(provider)[0] ?? null,
+    model: null,
     status: 'enabled',
     metadata: {
       source: SEED_SOURCE,
@@ -240,6 +242,7 @@ function buildSeedBindings(
 function mergeSeedBindings(
   scene: SceneRegistryRecord,
   seedBindings: SceneStrategyBindingInput[],
+  options: { allowMultipleProvidersPerCapability?: boolean } = {},
 ): SceneStrategyBindingInput[] {
   const merged: SceneStrategyBindingInput[] = scene.bindings.map(binding => ({
     providerId: binding.providerId,
@@ -259,7 +262,7 @@ function mergeSeedBindings(
       continue
     if (hasBinding(scene, providerId, capability))
       continue
-    if (hasAnyBindingForCapability(scene, capability))
+    if (!options.allowMultipleProvidersPerCapability && hasAnyBindingForCapability(scene, capability))
       continue
     merged.push(binding)
   }
@@ -371,8 +374,138 @@ async function ensureScreenshotTranslateScene(
   return { created: false, updated: true }
 }
 
-function isCanonicalCapability(capability: string): boolean {
-  return CANONICAL_CAPABILITY_PREFIXES.some(prefix => capability.startsWith(prefix))
+
+async function ensureSelectionTranslateScene(
+  event: H3Event,
+  providers: ProviderRegistryRecord[],
+): Promise<{ created: boolean, updated: boolean }> {
+  const existing = await getSceneRegistryEntry(event, COREBOX_SELECTION_TRANSLATE_SCENE_ID)
+  const seedBinding = buildSystemBinding(providers, 'text.translate', 10)
+  const seedBindings = seedBinding ? [seedBinding] : []
+
+  if (!existing || existing.id !== COREBOX_SELECTION_TRANSLATE_SCENE_ID) {
+    await createSceneRegistryEntry(event, {
+      id: COREBOX_SELECTION_TRANSLATE_SCENE_ID,
+      displayName: 'CoreBox Selection Translate',
+      owner: 'core-app',
+      ownerScope: 'system',
+      status: 'enabled',
+      requiredCapabilities: ['text.translate'],
+      strategyMode: 'priority',
+      fallback: 'enabled',
+      meteringPolicy: {
+        units: ['character'],
+      },
+      auditPolicy: {
+        persistInput: false,
+        persistOutput: false,
+        persistTrace: true,
+      },
+      metadata: {
+        source: SEED_SOURCE,
+        seedId: COREBOX_SELECTION_TRANSLATE_SCENE_ID,
+      },
+      bindings: seedBindings,
+    }, SEED_CREATED_BY)
+    return { created: true, updated: false }
+  }
+
+  const mergedBindings = mergeSeedBindings(existing, seedBindings, { allowMultipleProvidersPerCapability: true })
+  if (mergedBindings.length !== existing.bindings.length) {
+    await updateSceneRegistryEntry(event, existing.id, {
+      ...existing,
+      bindings: mergedBindings,
+    })
+    return { created: false, updated: true }
+  }
+  return { created: false, updated: false }
+}
+
+async function ensureExchangeScenes(
+  event: H3Event,
+  providers: ProviderRegistryRecord[],
+): Promise<{ createdLatest: boolean, createdConvert: boolean }> {
+  const latestBinding = buildSystemBinding(providers, 'fx.rate.latest', 10)
+  const convertBinding = buildSystemBinding(providers, 'fx.convert', 10)
+
+  let createdLatest = false
+  let createdConvert = false
+
+  const existingLatest = await getSceneRegistryEntry(event, COREBOX_FX_LATEST_SCENE_ID)
+  if (!existingLatest || existingLatest.id !== COREBOX_FX_LATEST_SCENE_ID) {
+    await createSceneRegistryEntry(event, {
+      id: COREBOX_FX_LATEST_SCENE_ID,
+      displayName: 'CoreBox Exchange Rate Latest',
+      owner: 'core-app',
+      ownerScope: 'system',
+      status: 'enabled',
+      requiredCapabilities: ['fx.rate.latest'],
+      strategyMode: 'priority',
+      fallback: 'enabled',
+      meteringPolicy: {
+        units: ['fx_quote'],
+      },
+      auditPolicy: {
+        persistInput: false,
+        persistOutput: false,
+        persistTrace: true,
+      },
+      metadata: {
+        source: SEED_SOURCE,
+        seedId: COREBOX_FX_LATEST_SCENE_ID,
+      },
+      bindings: latestBinding ? [latestBinding] : [],
+    }, SEED_CREATED_BY)
+    createdLatest = true
+  }
+  else if (latestBinding) {
+    const merged = mergeSeedBindings(existingLatest, [latestBinding])
+    if (merged.length !== existingLatest.bindings.length) {
+      await updateSceneRegistryEntry(event, existingLatest.id, {
+        ...existingLatest,
+        bindings: merged,
+      })
+    }
+  }
+
+  const existingConvert = await getSceneRegistryEntry(event, COREBOX_FX_CONVERT_SCENE_ID)
+  if (!existingConvert || existingConvert.id !== COREBOX_FX_CONVERT_SCENE_ID) {
+    await createSceneRegistryEntry(event, {
+      id: COREBOX_FX_CONVERT_SCENE_ID,
+      displayName: 'CoreBox Exchange Rate Convert',
+      owner: 'core-app',
+      ownerScope: 'system',
+      status: 'enabled',
+      requiredCapabilities: ['fx.convert'],
+      strategyMode: 'priority',
+      fallback: 'enabled',
+      meteringPolicy: {
+        units: ['fx_quote'],
+      },
+      auditPolicy: {
+        persistInput: false,
+        persistOutput: false,
+        persistTrace: true,
+      },
+      metadata: {
+        source: SEED_SOURCE,
+        seedId: COREBOX_FX_CONVERT_SCENE_ID,
+      },
+      bindings: convertBinding ? [convertBinding] : [],
+    }, SEED_CREATED_BY)
+    createdConvert = true
+  }
+  else if (convertBinding) {
+    const merged = mergeSeedBindings(existingConvert, [convertBinding])
+    if (merged.length !== existingConvert.bindings.length) {
+      await updateSceneRegistryEntry(event, existingConvert.id, {
+        ...existingConvert,
+        bindings: merged,
+      })
+    }
+  }
+
+  return { createdLatest, createdConvert }
 }
 
 async function ensureCanonicalCapabilityScenes(
@@ -383,14 +516,13 @@ async function ensureCanonicalCapabilityScenes(
     providers
       .filter(provider => provider.status === 'enabled' && provider.ownerScope === 'system')
       .flatMap(provider => provider.capabilities.map(capability => capability.capability))
-      .filter(isCanonicalCapability),
+      .filter(capability => CANONICAL_CAPABILITY_PREFIXES.some(prefix => capability.startsWith(prefix))),
   )].sort()
   const created: string[] = []
 
   for (const capability of capabilities) {
     const sceneId = `nexus.intelligence.${capability}`
-    if (await getSceneRegistryEntry(event, sceneId))
-      continue
+    const existing = await getSceneRegistryEntry(event, sceneId)
     const bindings = sortProvidersBySeedPreference(
       capability,
       providers.filter(provider =>
@@ -401,30 +533,40 @@ async function ensureCanonicalCapabilityScenes(
     ).map((provider, index) => ({
       providerId: provider.id,
       capability,
-      model: providerModels(provider).includes(String(provider.metadata?.defaultModel ?? ''))
-        ? String(provider.metadata?.defaultModel)
-        : providerModels(provider)[0] ?? null,
+      model: null,
       priority: (index + 1) * 10,
       status: 'enabled' as const,
       metadata: { source: SEED_SOURCE },
     }))
     if (bindings.length === 0)
       continue
-    await createSceneRegistryEntry(event, {
-      id: sceneId,
-      displayName: `Nexus ${capability}`,
-      owner: 'nexus',
-      ownerScope: 'system',
-      status: 'enabled',
-      requiredCapabilities: [capability],
-      strategyMode: 'priority',
-      fallback: 'enabled',
-      meteringPolicy: { source: 'credit-pricing' },
-      auditPolicy: { persistInput: false, persistOutput: false, persistTrace: true },
-      metadata: { source: SEED_SOURCE, seedId: sceneId, canonicalCapability: capability },
-      bindings,
-    }, SEED_CREATED_BY)
-    created.push(sceneId)
+
+    if (!existing || existing.id !== sceneId) {
+      await createSceneRegistryEntry(event, {
+        id: sceneId,
+        displayName: `Nexus ${capability}`,
+        owner: 'nexus',
+        ownerScope: 'system',
+        status: 'enabled',
+        requiredCapabilities: [capability],
+        strategyMode: 'priority',
+        fallback: 'enabled',
+        meteringPolicy: { source: 'credit-pricing' },
+        auditPolicy: { persistInput: false, persistOutput: false, persistTrace: true },
+        metadata: { source: SEED_SOURCE, seedId: sceneId, canonicalCapability: capability },
+        bindings,
+      }, SEED_CREATED_BY)
+      created.push(sceneId)
+    }
+    else {
+      const mergedBindings = mergeSeedBindings(existing, bindings, { allowMultipleProvidersPerCapability: true })
+      if (mergedBindings.length !== existing.bindings.length) {
+        await updateSceneRegistryEntry(event, existing.id, {
+          ...existing,
+          bindings: mergedBindings,
+        })
+      }
+    }
   }
   return created
 }
@@ -434,14 +576,20 @@ export async function ensureDefaultProviderSceneSeed(event: H3Event): Promise<Pr
   const providers = await migrateProviderRoutingMetadata(event, existingProviders)
   const overlay = await ensureLocalOverlayProvider(event, providers)
   const effectiveProviders = overlay.created ? [overlay.provider, ...providers] : providers
-  const scene = await ensureScreenshotTranslateScene(event, effectiveProviders, overlay.provider)
+  const screenshotScene = await ensureScreenshotTranslateScene(event, effectiveProviders, overlay.provider)
+  const selectionScene = await ensureSelectionTranslateScene(event, effectiveProviders)
+  const exchangeScenes = await ensureExchangeScenes(event, effectiveProviders)
   const createdCanonicalScenes = await ensureCanonicalCapabilityScenes(event, effectiveProviders)
 
   return {
     overlayProviderId: overlay.provider.id,
     createdOverlayProvider: overlay.created,
-    createdScreenshotScene: scene.created,
-    updatedScreenshotScene: scene.updated,
+    createdScreenshotScene: screenshotScene.created,
+    updatedScreenshotScene: screenshotScene.updated,
+    createdSelectionScene: selectionScene.created,
+    updatedSelectionScene: selectionScene.updated,
+    createdFxLatestScene: exchangeScenes.createdLatest,
+    createdFxConvertScene: exchangeScenes.createdConvert,
     createdCanonicalScenes,
   }
 }

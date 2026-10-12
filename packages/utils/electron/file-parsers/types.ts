@@ -23,11 +23,18 @@ export interface FileParserEmbedding {
   metadata?: Record<string, any>
 }
 
+export interface FileParserChunk {
+  text: string
+  pageNumber?: number
+  startLine?: number
+  endLine?: number
+}
+
 export interface FileParserResult {
   status: FileParserStatus
   content?: string
+  chunks?: FileParserChunk[]
   metadata?: Record<string, any>
-  tags?: string[]
   warnings?: string[]
   processedBytes?: number
   totalBytes?: number

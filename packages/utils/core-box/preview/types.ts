@@ -85,6 +85,14 @@ export interface PreviewCardPayload {
   warnings?: string[];
   meta?: Record<string, any>;
   confidence?: number;
+  deepMatch?: {
+    kind?: 'semantic' | 'content' | 'code';
+    snippet?: string;
+    pageNumber?: number;
+    lineNumber?: number;
+    matchTerm?: string;
+    score?: number;
+  };
 }
 
 export interface PreviewAbilityResult {

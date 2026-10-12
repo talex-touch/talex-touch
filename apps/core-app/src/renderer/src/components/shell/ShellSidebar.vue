@@ -121,28 +121,29 @@ const isNewChatActive = computed(
         key="settings"
         class="ShellSidebar-Context ShellSidebar-Context--settings"
       >
-        <ShellBackRow />
+        <div class="ShellSidebar-SettingsHeader">
+          <ShellBackRow />
 
-        <ShellSearchEntry :placeholder="t('settingsNav.search')" @activate="openCoreBox" />
+          <ShellSearchEntry :placeholder="t('settingsNav.search')" @activate="openCoreBox" />
+        </div>
 
-        <ShellNavGroup
-          v-for="group in settingGroups"
-          :key="group.group"
-          :label="t(`settingsNav.group.${group.group}`)"
-        >
-          <ShellNavItem
-            v-for="item in group.items"
-            :key="item.key"
-            :icon="item.icon"
-            :label="t(item.labelKey)"
-            :to="item.path"
-            :badge="item.beta ? t('settings.platformTags.beta') : undefined"
-            :active="item.activeExact ? route.path === item.path : undefined"
-          />
-        </ShellNavGroup>
-
-        <div class="ShellSidebar-Spacer" />
-
+        <div class="ShellSidebar-SettingsNav">
+          <ShellNavGroup
+            v-for="group in settingGroups"
+            :key="group.group"
+            :label="t(`settingsNav.group.${group.group}`)"
+          >
+            <ShellNavItem
+              v-for="item in group.items"
+              :key="item.key"
+              :icon="item.icon"
+              :label="t(item.labelKey)"
+              :to="item.path"
+              :badge="item.beta ? t('settings.platformTags.beta') : undefined"
+              :active="item.activeExact ? route.path === item.path : undefined"
+            />
+          </ShellNavGroup>
+        </div>
         <div v-if="appVersion" class="ShellSidebar-Footer">
           {{ appVersion }}
         </div>
@@ -216,6 +217,9 @@ const isNewChatActive = computed(
   flex-direction: column;
   gap: 6px;
   width: var(--shell-sidebar-width);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: 10px;
   box-sizing: border-box;
   border-right: 1px solid var(--shell-border);
@@ -302,20 +306,71 @@ const isNewChatActive = computed(
   gap: 6px;
   width: 100%;
   min-height: 0;
+  -webkit-app-region: no-drag;
 }
 
 .ShellSidebar-Context--settings {
+  overflow: hidden;
+}
+
+.ShellSidebar-SettingsHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.ShellSidebar-SettingsNav {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 
-  > :not(.ShellSidebar-Spacer) {
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 2px;
+    transition: background-color 0.2s ease;
+  }
+
+  &:hover {
+    scrollbar-color: var(--shell-border-strong) transparent;
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--shell-border-strong);
+    }
+  }
+
+  > * {
     flex-shrink: 0;
   }
 }
 
-.ShellSidebar.is-rail .ShellSidebar-Context {
-  gap: 4px;
-  align-items: center;
+.ShellSidebar.is-rail {
+  .ShellSidebar-Context {
+    gap: 4px;
+    align-items: center;
+  }
+
+  .ShellSidebar-SettingsHeader,
+  .ShellSidebar-SettingsNav {
+    gap: 4px;
+    align-items: center;
+  }
 }
 
 .ShellSidebar-forward-enter-active,
@@ -354,6 +409,7 @@ const isNewChatActive = computed(
 }
 
 .ShellSidebar-Footer {
+  flex-shrink: 0;
   padding: 6px 10px;
   color: var(--shell-text-muted);
   font-size: var(--shell-fs-caption);

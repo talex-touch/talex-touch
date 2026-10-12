@@ -126,6 +126,34 @@ describe('file provider utils', () => {
     expect(item.meta?.file?.mime_type).toBe('image/webp')
   })
 
+  it.each([
+    { name: 'directory flag', isDir: true, type: 'file' },
+    { name: 'directory type', isDir: false, type: 'directory' },
+    { name: 'both directory markers', isDir: true, type: 'directory' }
+  ])('renders $name as a folder without requesting media thumbnails', ({ isDir, type }) => {
+    for (const extension of ['.png', '.mp4']) {
+      const onMissingThumbnail = vi.fn()
+      const item = mapFileToTuffItem(
+        createFile({
+          path: `/served/archive${extension}`,
+          name: `archive${extension}`,
+          extension,
+          isDir,
+          type
+        }),
+        {},
+        'file-provider',
+        'File Provider',
+        undefined,
+        onMissingThumbnail
+      )
+
+      expect(item.render.basic?.icon).toEqual({ type: 'class', value: 'i-ri-folder-line' })
+      expect(item.meta?.file).toMatchObject({ mime_type: 'inode/directory', isDir: true })
+      expect(onMissingThumbnail).not.toHaveBeenCalled()
+    }
+  })
+
   it('serves a generated icon as a tfile URL while its cache metadata matches the file', () => {
     const iconPath = '/cache/file-icons/6f2a4c8e9d0b1a2c3d4e5f60718293a4b5c6d7e8f90a1b2c3.png'
     const file = createFile()

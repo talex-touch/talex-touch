@@ -9,6 +9,13 @@
 Most UI is Vue 3 with TypeScript. CoreApp and plugins use Vue SFCs; Nexus uses Nuxt/Vue; TuffEx owns reusable primitives. Match the existing surface before introducing new structure.
 
 ---
+## Surface and Styling Discipline (原生样式与默认材质准则)
+
+1. **页面严禁编写自定义 CSS 样式**：业务页面一律使用 TuffEx 原生组件、样式与 `--tx-*` tokens，禁止页面随意书写覆盖性 CSS。方便其他 AI 接入时遵循统一标准规范，防止视觉体系破损。
+2. **默认 Surface 全部使用 `refraction`**：所有带 surface 背景的组件默认一律使用 `refraction`（琉光/折射）材质。切换到其他材质必须经过用户手动明确确认。
+
+---
+
 
 ## Component Structure
 

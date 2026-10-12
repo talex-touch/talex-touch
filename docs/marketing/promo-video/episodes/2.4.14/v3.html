@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<base href="../../kit/">
+<link rel="stylesheet" href="scene.css">
+<link rel="stylesheet" href="scene2.css">
+<link rel="stylesheet" href="../episodes/2.4.14/scene3.css">
+</head>
+<body>
+<div id="stage">
+  <div id="glow">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div>
+  </div>
+  <div id="rig">
+    <div id="winLayer"></div>
+    <div id="fxBack"></div>
+    <div id="cam"></div>
+    <div id="fxFront"></div>
+  </div>
+  <div id="topLayer"></div>
+  <div id="grain"></div>
+</div>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="mblur" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur id="mblurN" stdDeviation="0 0"/>
+    </filter>
+  </defs>
+</svg>
+<script src="gsap.min.js"></script>
+<script src="icons.js"></script>
+<script src="scene2.js"></script>
+<script src="../episodes/2.4.14/story3.js"></script>
+</body>
+</html>

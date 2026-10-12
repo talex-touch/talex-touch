@@ -188,26 +188,35 @@ export function mapFileToTuffItem(
     }
   }
 
+  const isDir = Boolean(file.isDir || file.type === 'directory')
   let icon: { type: 'file' | 'url' | 'class' | 'emoji'; value: string; colorful?: boolean }
 
   const thumbnail = _extensions.thumbnail
   // A stored thumbnail is only usable when its encoder version is current: the bytes of an older
   // one do not describe the same picture the current encoder would produce, so the row asks for a
   // new one instead of showing the old.
-  if (thumbnail && isThumbnailStatusCurrentVersion(_extensions[THUMBNAIL_STATUS_EXTENSION_KEY])) {
+  if (
+    !isDir &&
+    thumbnail &&
+    isThumbnailStatusCurrentVersion(_extensions[THUMBNAIL_STATUS_EXTENSION_KEY])
+  ) {
     // Use pre-generated thumbnail for fast display
     const thumbnailSource = thumbnail.startsWith('data:') ? thumbnail : toTfileUrl(thumbnail)
     // Raster thumbnails carry the picture's own alpha and colors, so they must not be run through
     // the monochrome-SVG path.
     icon = { type: 'url', value: thumbnailSource, colorful: true }
-  } else if (THUMBNAIL_EXTENSIONS.has(extension) && onMissingThumbnail) {
+  } else if (!isDir && THUMBNAIL_EXTENSIONS.has(extension) && onMissingThumbnail) {
     // Prefer placeholder until thumbnail is ready to avoid blocking IO
     onMissingThumbnail?.(file)
     icon = {
       type: 'class',
       value: VIDEO_THUMBNAIL_EXTENSIONS.has(extension) ? 'i-ri-video-line' : 'i-ri-image-line'
     }
-  } else if (DIRECT_IMAGE_EXTENSIONS.has(extension) && isServableLocalFilePath(file.path)) {
+  } else if (
+    !isDir &&
+    DIRECT_IMAGE_EXTENSIONS.has(extension) &&
+    isServableLocalFilePath(file.path)
+  ) {
     // The picture itself, but only where tfile will serve it: for a screenshot under ~/Pictures
     // the request is refused and the renderer shows its "image failed" square, so such a file
     // takes the OS icon or the glyph below like any other.
@@ -234,10 +243,9 @@ export function mapFileToTuffItem(
     // Return default/empty icon while loading
     icon = {
       type: 'class',
-      value: 'i-ri-file-line' // Default file icon
+      value: isDir ? 'i-ri-folder-line' : 'i-ri-file-line' // Default folder/file icon
     }
   }
-
   return {
     id: file.path,
     source: {
@@ -278,12 +286,13 @@ export function mapFileToTuffItem(
       file: {
         path: file.path,
         size: file.size ?? undefined,
-        mime_type: resolveFileMimeType(extension),
+        mime_type: isDir ? 'inode/directory' : resolveFileMimeType(extension),
         created_at: file.ctime.toISOString(),
         modified_at: file.mtime.toISOString(),
         extension: (file.extension || path.extname(file.name) || '')
           .replace(/^\./, '')
-          .toLowerCase()
+          .toLowerCase(),
+        ...(isDir ? { isDir: true } : {})
       }
     }
   }

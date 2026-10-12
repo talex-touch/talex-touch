@@ -1,0 +1,19 @@
+/* v3 Chinese cut: loaded after scene3.css. Chinese reads cramped at the Latin type's negative tracking. */
+.t-hero, .t-big, .t-head { letter-spacing: 0.01em; }
+.t-sub { letter-spacing: 0.02em; }
+.foot { letter-spacing: 0.04em; }
+.mo .lb { letter-spacing: 0.02em; }
+.btl h3 { letter-spacing: 0; }
+/* 昨天上午 has no space between the word that flips and the rest */
+.fsp { width: 0.04em; }
+
+/* PreviewResultCard's subtitle badge, left of the ability id */
+.pcard .pl { display: flex; align-items: center; gap: 8px; }
+.pcard .psb { padding: 2px 8px; border-radius: 999px; background: #ecf5ff; color: var(--primary); font-size: 11px; }
+
+/* The feature wall: Chinese labels run about 15% shorter than the English ones, which left the rows ending
+   inside the frame. Slightly larger chips at the English chips' height, and story3-zh.js moves each row's drift
+   so its ends stay in the masked margins. */
+.mrow { gap: 20px; }
+.mchip { font-size: 32px; line-height: 1.15; gap: 14px; padding: 17px 36px 17px 29px; }
+.mchip svg { width: 34px; height: 34px; }

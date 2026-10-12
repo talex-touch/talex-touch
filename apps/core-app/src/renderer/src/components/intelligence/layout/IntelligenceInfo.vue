@@ -3,6 +3,9 @@
 import type { IntelligenceProviderConfig, TestResult } from '@talex-touch/tuff-intelligence'
 import { TxButton } from '@talex-touch/tuffex/button'
 import { intelligenceSettings } from '@talex-touch/utils/renderer/storage'
+import { providerModelIds } from '@talex-touch/utils/intelligence/model-binding'
+import { useIntelligenceSdk } from '@talex-touch/utils/renderer'
+import { toast } from 'vue-sonner'
 /**
  * IntelligenceInfo Component
  *
@@ -60,6 +63,41 @@ const { isLoggedIn, loginWithBrowser, authLoadingState } = useAuth()
 const localProvider = ref<IntelligenceProviderConfig>({ ...props.provider })
 const testResult = ref<TestResult | null>(props.testResult || null)
 const isTesting = ref(props.isTesting || false)
+
+const aiClient = useIntelligenceSdk()
+const isFetchingNexusModels = ref(false)
+const nexusModels = computed(() => providerModelIds(localProvider.value))
+
+async function handleFetchNexusModels() {
+  if (isFetchingNexusModels.value) return
+  isFetchingNexusModels.value = true
+  try {
+    const result = await aiClient.fetchModels(localProvider.value)
+    if (result.success && result.models?.length) {
+      const stored = localProvider.value.models ?? []
+      const nextModels = result.models.map((id) => stored.find((b) => b.id === id) ?? { id })
+      localProvider.value.models = nextModels
+      if (!localProvider.value.defaultModel && nextModels[0]) {
+        localProvider.value.defaultModel = nextModels[0].id
+      }
+      intelligenceSettings.updateProvider(localProvider.value.id, {
+        models: nextModels,
+        defaultModel: localProvider.value.defaultModel
+      })
+      emits('update', localProvider.value)
+      toast.success(
+        t('intelligence.config.api.modelsFetchedToast', { count: result.models.length })
+      )
+    } else {
+      toast.error(result.message || t('intelligence.config.api.modelsFetchFailed'))
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    toast.error(message)
+  } finally {
+    isFetchingNexusModels.value = false
+  }
+}
 
 const isModelConfigDisabled = computed(() => {
   if (localProvider.value.type === 'local') {
@@ -194,6 +232,59 @@ function handleToggleCliEnabled() {
           </TxButton>
         </TuffBlockSlot>
       </TuffGroupBlock>
+      <TuffGroupBlock
+        v-if="isNexusManagedProvider"
+        :name="t('intelligence.config.model.title')"
+        default-icon="i-carbon-model"
+        active-icon="i-carbon-model"
+        memory-name="aisdk-nexus-models"
+      >
+        <TuffBlockSlot
+          :title="t('intelligence.config.model.models')"
+          :description="
+            nexusModels.length > 0
+              ? `${nexusModels.length} ${t('intelligence.config.model.modelsCount')}`
+              : t('intelligence.config.model.noModels')
+          "
+          default-icon="i-carbon-model"
+          active-icon="i-carbon-model"
+          :active="nexusModels.length > 0"
+          :icon-size="18"
+        >
+          <TxButton
+            variant="flat"
+            size="sm"
+            native-type="button"
+            :disabled="!isLoggedIn || isFetchingNexusModels"
+            :loading="isFetchingNexusModels"
+            @click.stop="handleFetchNexusModels"
+          >
+            <i v-if="!isFetchingNexusModels" class="i-carbon-renew mr-1" aria-hidden="true" />
+            <span>{{ t('intelligence.config.model.fetchModels') }}</span>
+          </TxButton>
+        </TuffBlockSlot>
+
+        <TuffBlockSlot v-if="nexusModels.length > 0" :title="t('intelligence.config.model.models')">
+          <div class="nexus-models-chip-list">
+            <span
+              v-for="model in nexusModels"
+              :key="model"
+              class="nexus-model-chip"
+              :class="{ 'is-default': model === localProvider.defaultModel }"
+              :title="
+                model === localProvider.defaultModel
+                  ? `${model} (${t('intelligence.config.model.defaultModel')})`
+                  : model
+              "
+            >
+              {{ model }}
+              <span v-if="model === localProvider.defaultModel" class="nexus-model-chip-badge">
+                {{ t('intelligence.config.model.defaultModel') }}
+              </span>
+            </span>
+          </div>
+        </TuffBlockSlot>
+      </TuffGroupBlock>
 
       <TuffGroupBlock
         v-if="isCliProvider"
@@ -324,5 +415,41 @@ function handleToggleCliEnabled() {
 .nexus-status__action {
   flex-shrink: 0;
   min-width: 112px;
+}
+
+.nexus-models-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.nexus-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--tx-font-family-mono, monospace);
+  background: var(--tx-fill-color-light);
+  color: var(--tx-text-color-primary);
+  border: 1px solid var(--tx-border-color-light);
+
+  &.is-default {
+    background: var(--tx-color-primary-light-9);
+    border-color: var(--tx-color-primary-light-5);
+    color: var(--tx-color-primary);
+    font-weight: 500;
+  }
+}
+
+.nexus-model-chip-badge {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--tx-color-primary);
+  color: #fff;
+  font-family: var(--tx-font-family, sans-serif);
 }
 </style>

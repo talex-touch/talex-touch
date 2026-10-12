@@ -238,5 +238,261 @@
         }
       }
     }
+  },
+  "previewCard": {
+    "common": {
+      "result": "Result",
+      "expression": "Expression",
+      "details": "Details",
+      "conversion": "{from} → {to}"
+    },
+    "basic": {
+      "subtitle": "Quick math",
+      "sanitized": "Sanitized"
+    },
+    "advanced": {
+      "subtitle": "Advanced math",
+      "normalized": "Normalized"
+    },
+    "color": {
+      "subtitle": "Color",
+      "color": "Color",
+      "suggestions": "Suggestions",
+      "lightness": "Lightness",
+      "saturation": "Saturation"
+    },
+    "percent": {
+      "subtitleArithmetic": "Percentage math",
+      "subtitleOf": "Percentage",
+      "subtitleChange": "Percentage change",
+      "percentResult": "Percentage result",
+      "operation": "Operation",
+      "delta": "Change",
+      "basePercent": "Base percentage",
+      "base": "Base",
+      "percent": "Percentage"
+    },
+    "lines": {
+      "subtitle": "Line tools",
+      "title": "{operation}: {input} → {output}",
+      "lineCountChange": "Line count",
+      "lineCount": "{count} lines",
+      "lineCountOne": "{count} line",
+      "input": "Input",
+      "output": "Output",
+      "removed": "Removed",
+      "operation": "Operation",
+      "dedupeRule": "Dedupe rule",
+      "dedupeRuleValue": "Keeps the first of identical lines",
+      "sortRule": "Sort rule",
+      "sortRuleValue": "Locale-aware ({locale}), numbers by value",
+      "lineEnding": "Line endings",
+      "lineEndingValue": "Normalized to LF",
+      "truncated": "Over {max} lines, only the first {max} processed",
+      "empty": "No lines left",
+      "operations": {
+        "sortDesc": "Sort descending",
+        "sortAsc": "Sort ascending",
+        "unique": "Remove duplicates",
+        "dropEmpty": "Remove empty lines",
+        "trim": "Trim lines"
+      }
+    },
+    "radix": {
+      "subtitle": "Base conversion",
+      "bitWidth": "Bit width",
+      "byteCount": "Bytes",
+      "beyond64": "Beyond 64-bit range, computed as an arbitrary-precision integer",
+      "bases": {
+        "hex": "Hex",
+        "bin": "Binary",
+        "oct": "Octal",
+        "dec": "Decimal"
+      }
+    },
+    "textStats": {
+      "subtitle": "Text stats",
+      "characters": "Characters",
+      "words": "Words",
+      "chineseCharacters": "Chinese characters",
+      "trimmedLength": "Trimmed length",
+      "lines": "Lines"
+    },
+    "time": {
+      "offsetSubtitle": "Time offset",
+      "durationSubtitle": "Duration",
+      "dateDiffSubtitle": "Date difference",
+      "rangeSubtitle": "Time difference",
+      "targetTime": "Target time",
+      "relativeToNow": "Relative to now",
+      "offset": "Offset",
+      "totalDuration": "Total duration",
+      "hours": "Hours",
+      "minutes": "Minutes",
+      "seconds": "Seconds",
+      "fromNow": "From now",
+      "interval": "Interval",
+      "targetDate": "Target date",
+      "milliseconds": "Milliseconds",
+      "start": "Start",
+      "end": "End"
+    },
+    "unit": {
+      "subtitle": "Unit conversion",
+      "suggestionsSubtitle": "Unit suggestions",
+      "original": "Original",
+      "category": "Category",
+      "categories": {
+        "length": "Length",
+        "mass": "Mass",
+        "temperature": "Temperature",
+        "data": "Digital storage",
+        "time": "Time",
+        "area": "Area",
+        "volume": "Volume",
+        "speed": "Speed"
+      },
+      "formula": "Formula",
+      "commonConversions": "Common conversions"
+    },
+    "constants": {
+      "value": "Value",
+      "alias": "Alias",
+      "details": "Constant details",
+      "id": "ID",
+      "scientific": "Scientific notation",
+      "source": "Source",
+      "items": {
+        "pi": {
+          "name": "Pi",
+          "category": "Mathematical constant",
+          "description": "Ratio of a circle's circumference to its diameter, the basis of geometry and signal math."
+        },
+        "eulers_number": {
+          "name": "Euler's number",
+          "category": "Mathematical constant",
+          "description": "Base of the natural logarithm, found in exponential growth, compound interest and calculus."
+        },
+        "speed_of_light": {
+          "name": "Speed of light in vacuum",
+          "category": "Physical constant",
+          "description": "The meter is defined by how fast light travels in vacuum; the basis of all electromagnetic math."
+        },
+        "planck_constant": {
+          "name": "Planck constant",
+          "category": "Quantum physics",
+          "description": "Relates energy to frequency and sets the scale of the quantum."
+        },
+        "reduced_planck_constant": {
+          "name": "Reduced Planck constant",
+          "category": "Quantum physics",
+          "description": "The Planck constant divided by 2π, used in quantum formulas with angular frequency."
+        },
+        "gravitational_constant": {
+          "name": "Gravitational constant",
+          "category": "Physical constant",
+          "description": "Sets the strength of gravity between two bodies; used in celestial mechanics and physics simulation."
+        },
+        "earth_surface_gravity": {
+          "name": "Standard gravity",
+          "category": "Geophysics",
+          "description": "Standard acceleration of gravity at Earth's surface, used in aerospace and engineering."
+        },
+        "avogadro_constant": {
+          "name": "Avogadro constant",
+          "category": "Chemical constant",
+          "description": "Number of particles in one mole; links the macroscopic and microscopic scales."
+        },
+        "boltzmann_constant": {
+          "name": "Boltzmann constant",
+          "category": "Thermodynamics",
+          "description": "Relates temperature to energy; used in statistical physics and thermal noise."
+        },
+        "gas_constant": {
+          "name": "Ideal gas constant",
+          "category": "Thermodynamics",
+          "description": "Proportionality factor in the ideal gas law; equals the Avogadro constant times the Boltzmann constant."
+        },
+        "elementary_charge": {
+          "name": "Elementary charge",
+          "category": "Electromagnetic constant",
+          "description": "Magnitude of the charge on a single proton or electron, the basis of electromagnetic equations."
+        },
+        "faraday_constant": {
+          "name": "Faraday constant",
+          "category": "Electrochemistry",
+          "description": "Charge carried by one mole of electrons; used for electrolysis and battery capacity."
+        },
+        "vacuum_permittivity": {
+          "name": "Vacuum permittivity",
+          "category": "Electromagnetic constant",
+          "description": "Ratio of electric displacement to electric field in vacuum, the basis of capacitance and field math."
+        },
+        "vacuum_permeability": {
+          "name": "Vacuum permeability",
+          "category": "Electromagnetic constant",
+          "description": "Relates magnetic field strength to flux density in vacuum; also called the magnetic constant."
+        },
+        "electron_mass": {
+          "name": "Electron mass",
+          "category": "Atomic physics",
+          "description": "Rest mass of the electron; used in mass-energy conversion and particle physics."
+        },
+        "proton_mass": {
+          "name": "Proton mass",
+          "category": "Atomic physics",
+          "description": "Rest mass of the proton, about 1836 times the electron mass."
+        },
+        "bohr_radius": {
+          "name": "Bohr radius",
+          "category": "Atomic physics",
+          "description": "Electron orbit radius of the hydrogen ground state, the length scale of atoms."
+        },
+        "rydberg_constant": {
+          "name": "Rydberg constant",
+          "category": "Atomic physics",
+          "description": "Basis of the hydrogen spectral terms; used for line wavenumbers and energy levels."
+        },
+        "stefan_boltzmann_constant": {
+          "name": "Stefan-Boltzmann constant",
+          "category": "Thermodynamics",
+          "description": "Relates a black body's total radiated energy to the fourth power of its temperature."
+        },
+        "standard_atmosphere": {
+          "name": "Standard atmosphere",
+          "category": "Geophysics",
+          "description": "Defined value: standard sea-level pressure, equal to 760 mmHg."
+        }
+      }
+    },
+    "currency": {
+      "subtitle": "Exchange rate · {source} · {time}",
+      "subtitleStale": "Exchange rate ⚠️ Outdated ({time})",
+      "builtIn": "Built-in",
+      "inUsd": "In USD",
+      "rate": "Rate",
+      "source": "Source",
+      "sourceAmount": "Source amount",
+      "targetAmount": "Target amount",
+      "names": {
+        "USD": "US dollar",
+        "CNY": "Chinese yuan",
+        "EUR": "Euro",
+        "JPY": "Japanese yen",
+        "GBP": "British pound",
+        "HKD": "Hong Kong dollar",
+        "TWD": "New Taiwan dollar",
+        "KRW": "South Korean won",
+        "AUD": "Australian dollar",
+        "CAD": "Canadian dollar",
+        "SGD": "Singapore dollar",
+        "THB": "Thai baht",
+        "VND": "Vietnamese dong",
+        "INR": "Indian rupee",
+        "CHF": "Swiss franc",
+        "BTC": "Bitcoin",
+        "ETH": "Ethereum"
+      }
+    }
   }
 }

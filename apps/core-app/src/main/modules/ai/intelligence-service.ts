@@ -9,7 +9,8 @@ import { intelligenceCapabilityRegistry } from './intelligence-capability-regist
 import {
   ensureIntelligenceConfigLoaded,
   getCapabilityOptions,
-  setupConfigUpdateListener
+  setupConfigUpdateListener,
+  syncNexusModelsQuietly
 } from './intelligence-config'
 import { setIntelligenceProviderManager, tuffIntelligence } from './intelligence-sdk'
 import { getProviderModelOptions } from './intelligence-provider-model-options'
@@ -146,6 +147,7 @@ export function initIntelligenceSdkService(): void {
           ? data.capabilityId
           : 'text.chat'
 
+      void syncNexusModelsQuietly()
       return ok(getProviderModelOptions(capabilityId))
     } catch (error) {
       logError('Provider model options failed:', error)

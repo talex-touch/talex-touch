@@ -76,7 +76,7 @@ type AppExtensionSource = Pick<
   | 'identityKind'
   | 'displayNameSource'
   | 'displayNameQuality'
->
+> & { version?: string }
 
 function addExtension(
   extensions: AppExtensionInsert[],
@@ -201,6 +201,7 @@ export function buildAppExtensions(fileId: number, app: AppExtensionSource): App
   addExtension(extensions, fileId, APP_IDENTITY_KIND_EXTENSION_KEY, app.identityKind)
   addExtension(extensions, fileId, APP_DISPLAY_NAME_SOURCE_EXTENSION_KEY, app.displayNameSource)
   addExtension(extensions, fileId, APP_DISPLAY_NAME_QUALITY_EXTENSION_KEY, app.displayNameQuality)
+  addExtension(extensions, fileId, 'version', app.version)
   return extensions
 }
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { i18nMsg } from '@talex-touch/utils/i18n'
 
 const fxRateProviderMock = vi.hoisted(() => ({
   normalizeCurrency: vi.fn((input: string) => {
@@ -94,7 +95,10 @@ describe('CurrencyPreviewAbility', () => {
     })
     expect(result?.payload.primaryValue).toBe('105.0000')
     expect(result?.payload.subtitle).toContain('Nexus')
-    expect(result?.payload.chips).toContainEqual({ label: '数据源', value: 'NEXUS' })
+    expect(result?.payload.chips).toContainEqual({
+      label: i18nMsg('previewCard.currency.source'),
+      value: 'NEXUS'
+    })
   })
 
   it('falls back to local FxRateProvider when scene conversion is unavailable', async () => {
@@ -127,7 +131,10 @@ describe('CurrencyPreviewAbility', () => {
     const result = await new CurrencyPreviewAbility().execute(context('10 USD to CNY'))
 
     expect(result?.payload.primaryValue).toBe('72.5000')
-    expect(result?.payload.chips).toContainEqual({ label: '数据源', value: 'DEFAULT' })
+    expect(result?.payload.chips).toContainEqual({
+      label: i18nMsg('previewCard.currency.source'),
+      value: 'DEFAULT'
+    })
   })
 
   it('hydrates local rates from corebox.fx.latest scene for cross conversion', async () => {

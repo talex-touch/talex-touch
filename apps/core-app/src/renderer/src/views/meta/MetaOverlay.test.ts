@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import type { TuffItem } from '@talex-touch/utils'
 import type { MetaShowRequest } from '@talex-touch/utils/transport/events/types/meta-overlay'
+import { AppEvents } from '@talex-touch/utils/transport/events'
 import { MetaOverlayEvents } from '@talex-touch/utils/transport/events/meta-overlay'
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { buildMetaShowRequest } from '~/modules/box/meta-actions/meta-action-model'
@@ -36,7 +37,8 @@ vi.mock('@talex-touch/utils/transport', () => ({
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key
+    t: (key: string, fallback?: string | Record<string, string>) =>
+      typeof fallback === 'string' ? fallback : fallback?.app ? `${key}:${fallback.app}` : key
   })
 }))
 
@@ -397,6 +399,85 @@ describe('MetaOverlay panel', () => {
     return event
   }
 
+  const applicationCandidates = [
+    { identifier: 'com.apple.Preview', displayName: 'Preview', icon: null },
+    { identifier: 'com.example.Reader', displayName: 'Example Reader', icon: null }
+  ]
+
+  it.each(applicationCandidates)(
+    'lists file handlers in the open group and runs $identifier on Enter',
+    async (candidate) => {
+      state.send.mockImplementation((event: { toEventName?: () => string } | string) =>
+        Promise.resolve(
+          keyOf(event) === AppEvents.fileIndex.defaultApplication.toEventName()
+            ? { success: true, candidates: applicationCandidates }
+            : undefined
+        )
+      )
+
+      const wrapper = await openFilePanel()
+      await flushPromises()
+
+      expect(sendsFor(AppEvents.fileIndex.defaultApplication)).toEqual([
+        [AppEvents.fileIndex.defaultApplication, { path: '/Users/me/report.pdf' }]
+      ])
+      const openSection = wrapper
+        .findAll('.MetaPanel-Section')
+        .find(
+          (section) =>
+            section.find('.MetaPanel-SectionTitle').exists() &&
+            section.get('.MetaPanel-SectionTitle').text() === 'corebox.actions.groups.open'
+        )!
+      expect(
+        openSection
+          .findAll('.meta-action-label')
+          .map((label) => label.text())
+          .filter((label) => label.startsWith('fileInfo.openWith:'))
+      ).toEqual(['fileInfo.openWith:Preview', 'fileInfo.openWith:Example Reader'])
+
+      await wrapper.get('input.SearchInput').setValue(candidate.identifier)
+      expect(rowLabels(wrapper)).toEqual([`fileInfo.openWith:${candidate.displayName}`])
+      expect(activeLabel(wrapper)).toBe(`fileInfo.openWith:${candidate.displayName}`)
+      keydown('Enter')
+      await nextTick()
+
+      expect(dispatchedActionIds()).toEqual([`open-with:${candidate.identifier}`])
+      expect(sendsFor(MetaOverlayEvents.action.execute)[0][1]).toEqual({
+        actionId: `open-with:${candidate.identifier}`,
+        itemId: FILE_ITEM.id,
+        item: FILE_ITEM
+      })
+      expect(wrapper.find('.MetaOverlay').exists()).toBe(false)
+    }
+  )
+
+  it.each([
+    { name: 'folder', path: '/Users/me/Documents', isDir: true },
+    { name: 'application bundle', path: '/Applications/Example.app', isDir: false },
+    { name: 'resource bundle', path: '/Library/Example.bundle', isDir: false }
+  ])('does not request or offer open-with actions for a $name', async ({ path, isDir }) => {
+    state.send.mockImplementation((event: { toEventName?: () => string } | string) =>
+      Promise.resolve(
+        keyOf(event) === AppEvents.fileIndex.defaultApplication.toEventName()
+          ? { success: true, candidates: applicationCandidates }
+          : undefined
+      )
+    )
+    const wrapper = mountPanel()
+    const directoryItem = {
+      ...FILE_ITEM,
+      id: path,
+      meta: { file: { path, isDir } }
+    } as TuffItem
+
+    showRequest(buildMetaShowRequest(directoryItem))
+    await flushPromises()
+
+    expect(sendsFor(AppEvents.fileIndex.defaultApplication)).toEqual([])
+    expect(rowLabels(wrapper).filter((label) => label.startsWith('fileInfo.openWith:'))).toEqual([])
+    expect(rowLabels(wrapper)).toContain('corebox.actions.open')
+  })
+
   it('shows the item in a header, the rows grouped in order, and the filter at the bottom', async () => {
     const wrapper = await openFilePanel()
 
@@ -405,6 +486,11 @@ describe('MetaOverlay panel', () => {
       'corebox.actions.open',
       'corebox.actions.revealInExplorer',
       'corebox.actions.openFolder',
+      'corebox.actions.quickLook',
+      'corebox.actions.getInfo',
+      'corebox.actions.openInTerminal',
+      'corebox.actions.copyFile',
+      'corebox.actions.systemShare',
       'corebox.actions.copyPath',
       'corebox.actions.copyTitle',
       'corebox.actions.flowTransfer',
@@ -575,7 +661,7 @@ describe('MetaOverlay panel', () => {
     expect(activeLabel(wrapper)).toBe('corebox.actions.open')
 
     await rows[3].trigger('pointermove')
-    expect(activeLabel(wrapper)).toBe('corebox.actions.copyPath')
+    expect(activeLabel(wrapper)).toBe('corebox.actions.quickLook')
     // Hover never scrolls: the row is already under the pointer.
     expect(scrollIntoView).not.toHaveBeenCalled()
 

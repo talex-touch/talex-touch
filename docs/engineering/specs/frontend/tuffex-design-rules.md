@@ -5,6 +5,20 @@
 Kumo states its rules against Tailwind utilities (`text-kumo-subtle`, `ring-kumo-line`, `font-semibold`). TuffEx has no utility engine: the equivalent vocabulary is the token set in `packages/tuffex/packages/components/style/variables.scss` and the mixins in `style/mixins.scss`. Each rule below is stated in that vocabulary, with the repo evidence that makes it enforceable rather than aspirational.
 
 ---
+## Core Architecture & Surface Discipline (核心原则与材质准则)
+
+### 1. 业务页面严禁编写自定义覆盖样式，全部使用 TuffEx 原生样式与组件
+
+- 业务页面（无论 Nexus 控制台、Tuff 桌面端还是插件界面）必须保持组件纯净度，**尽量不要编写任何局部自定义 CSS 样式**，所有布局、间距、排版与视觉层统一使用 TuffEx 原生组件和设计令牌（`--tx-*` tokens）。
+- **防异化准则**：此准则旨在确保后续其他 AI Agent、子系统或外部接入时，有明确、坚实的原生契约可循，禁止随意 hack 覆写样式导致全局视觉系统割裂。
+
+### 2. 默认 Surface 材质一律为 `refraction`（琉光/折射）
+
+- 所有带有材质/背景层（Surface）的容器组件（包括但不限于弹窗、卡片、抽屉、Dropdown/Popover、Floating Panel 等），其默认 `surface` 材质属性**全部统一使用 `refraction`**。
+- **切换其他材质的确认门禁**：若因特殊场景需要将 surface 切换为其他材质（如 flat / plain / mask / glass），**必须经过用户手动明确确认**，不得由 AI 或开发人员擅自替换默认材质。
+
+---
+
 
 ## Typography
 

@@ -728,13 +728,20 @@ export function useKeyboard(
     const inputHidden = uiMode && !inputAllowed
     const isDivisionBoxHost = document.body.classList.contains('division-box')
 
-    // Command/Ctrl+K: Open MetaOverlay action panel (should work even in UI mode)
+    // Command/Ctrl+K: Open MetaOverlay action panel (should work even in UI mode).
+    // Not from a DivisionBox, which has no ⌘K card: main hangs the overlay on the CoreBox window
+    // alone, so the card would open there — whenever CoreBox is up — instead of in this window.
     if (
       (event.metaKey || event.ctrlKey) &&
       !event.altKey &&
       !event.shiftKey &&
       (event.key === 'k' || event.key === 'K')
     ) {
+      if (isDivisionBoxHost) {
+        event.preventDefault()
+        return
+      }
+
       const currentItem = resolveQuickActionsItem(
         res.value,
         boxOptions.focus,

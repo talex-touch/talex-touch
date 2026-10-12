@@ -45,7 +45,7 @@ export const HAN_CHAR_REGEX = new RegExp(HAN_CHAR_PATTERN, 'u')
  * Bump this whenever the rules in this module or the keyword emission in
  * `prepareDocument` change.
  */
-export const SEARCH_KEYWORD_SCHEMA_VERSION = 2
+export const SEARCH_KEYWORD_SCHEMA_VERSION = 3
 
 /**
  * Canonical form of any searchable text: NFC, lowercase, separators collapsed
