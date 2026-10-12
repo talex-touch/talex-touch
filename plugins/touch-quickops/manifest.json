@@ -1,7 +1,7 @@
 {
   "id": "com.tuffex.quickops",
   "name": "touch-quickops",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "TalexTouch Team",
   "sdkapi": 261011,
   "category": "utilities",
