@@ -13,6 +13,7 @@ import {
   createDefaultSceneCapabilityInput,
   createSceneEditPanel,
   createSceneRunPanel,
+  deriveCapabilitiesFromAdapter,
   ensureUniqueCapabilities,
   fallbackOptions,
   formatJson,
@@ -25,6 +26,7 @@ import {
   parseOptionalJson,
   parseOptionalNonNegativeNumber,
   ownerScopeOptions,
+  PRODUCT_SCENE_TEMPLATES,
   providerServiceCategoryOptions,
   providerStatusOptions,
   providerCapabilityCatalogOptions,
@@ -50,6 +52,7 @@ import {
   type BindingStatus,
   type CapabilityFormRow,
   type OwnerScope,
+  type ProductSceneTemplate,
   type ProviderCapabilityRecord,
   type ProviderCheckResult,
   type ProviderEditPanelState,
@@ -217,6 +220,7 @@ export function useProviderRegistryAdmin() {
   const sceneCreateError = ref<string | null>(null)
   const fetchingProviderModels = ref<string | null>(null)
   const fetchingFormModels = ref(false)
+  const fetchedFormModels = ref<string[]>([])
   const providerServiceCategoryId = ref<ProviderServiceCategory>('ai')
   const initialProviderTemplate = providerRegistryTemplates.find(template => template.id === 'openai-compatible-ai')
     ?? providerRegistryTemplates[0]!
@@ -331,7 +335,7 @@ export function useProviderRegistryAdmin() {
     providerForm.apiKey = ''
     providerForm.secretId = ''
     providerForm.secretKey = ''
-    capabilityRows.value = template.capabilities.map(row => ({ ...row }))
+    capabilityRows.value = deriveCapabilitiesFromAdapter(template.adapterKey)
   }
 
   function applyProviderServiceCategory(category: unknown) {
@@ -644,7 +648,7 @@ export function useProviderRegistryAdmin() {
             defaultModel: providerForm.defaultModel.trim() || null,
           },
         ),
-        capabilities: capabilityRows.value
+        capabilities: (capabilityRows.value.length ? capabilityRows.value : deriveCapabilitiesFromAdapter(providerForm.adapterKey))
           .filter(row => row.capability.trim())
           .map(row => ({
             capability: row.capability.trim(),
@@ -654,7 +658,6 @@ export function useProviderRegistryAdmin() {
       }
 
       await providerService.createProvider(body)
-
       if (hasCredentialInput) {
         await providerService.createCredential({
           authRef,
@@ -761,7 +764,10 @@ export function useProviderRegistryAdmin() {
           .map(model => model.trim())
           .filter(Boolean),
       ))
-      panel.modelsText = models.join('\n')
+      panel.fetchedModels = models
+      if (!panel.modelsText.trim()) {
+        panel.modelsText = models.join('\n')
+      }
       if (!panel.defaultModel && models[0])
         panel.defaultModel = models[0]
       toast.success(t('dashboard.providerRegistry.providers.modelsFetched', { count: models.length }, `Fetched ${models.length} model(s).`))
@@ -789,7 +795,10 @@ export function useProviderRegistryAdmin() {
           .map(model => model.trim())
           .filter(Boolean),
       ))
-      providerForm.modelsText = models.join('\n')
+      fetchedFormModels.value = models
+      if (!providerForm.modelsText.trim()) {
+        providerForm.modelsText = models.join('\n')
+      }
       if (!providerForm.defaultModel && models[0])
         providerForm.defaultModel = models[0]
       toast.success(t('dashboard.providerRegistry.providers.modelsFetched', { count: models.length }, `Fetched ${models.length} model(s).`))
@@ -834,6 +843,23 @@ export function useProviderRegistryAdmin() {
 
       await providerService.updateProvider(provider.id, body)
       await syncProviderCapabilities(provider, capabilities)
+      if (panel.authType === 'api_key' && panel.apiKey?.trim()) {
+        await providerService.createCredential({
+          authRef: panel.authRef || provider.authRef,
+          authType: 'api_key',
+          credentials: { apiKey: panel.apiKey.trim() },
+        })
+        panel.apiKey = ''
+      }
+      else if (panel.authType === 'secret_pair' && panel.secretId?.trim() && panel.secretKey?.trim()) {
+        await providerService.createCredential({
+          authRef: panel.authRef || provider.authRef,
+          authType: 'secret_pair',
+          credentials: { secretId: panel.secretId.trim(), secretKey: panel.secretKey.trim() },
+        })
+        panel.secretId = ''
+        panel.secretKey = ''
+      }
       toast.success(t('dashboard.providerRegistry.providers.updated', 'Provider updated.'))
       // Unless the drawer was reopened while this saved: that editor is the operator's now.
       if (providerEditPanels[provider.id] === panel)
@@ -1070,6 +1096,83 @@ export function useProviderRegistryAdmin() {
       actionPending.value = null
     }
   }
+  function toggleModelSelection(model: string, isCreate: boolean, provider?: ProviderRegistryRecord) {
+    if (isCreate) {
+      const current = parseProviderModels(providerForm.modelsText)
+      const next = current.includes(model)
+        ? current.filter(m => m !== model)
+        : [...current, model]
+      providerForm.modelsText = next.join('\n')
+      if (providerForm.defaultModel && !next.includes(providerForm.defaultModel)) {
+        providerForm.defaultModel = next[0] ?? ''
+      }
+    }
+    else if (provider) {
+      const panel = getProviderEditPanel(provider)
+      const current = parseProviderModels(panel.modelsText)
+      const next = current.includes(model)
+        ? current.filter(m => m !== model)
+        : [...current, model]
+      panel.modelsText = next.join('\n')
+      if (panel.defaultModel && !next.includes(panel.defaultModel)) {
+        panel.defaultModel = next[0] ?? ''
+      }
+    }
+  }
+
+  function selectAllFetchedModels(isCreate: boolean, provider?: ProviderRegistryRecord) {
+    if (isCreate) {
+      const current = new Set(parseProviderModels(providerForm.modelsText))
+      for (const m of fetchedFormModels.value)
+        current.add(m)
+      providerForm.modelsText = Array.from(current).join('\n')
+      if (!providerForm.defaultModel && fetchedFormModels.value[0])
+        providerForm.defaultModel = fetchedFormModels.value[0]
+    }
+    else if (provider) {
+      const panel = getProviderEditPanel(provider)
+      const current = new Set(parseProviderModels(panel.modelsText))
+      for (const m of (panel.fetchedModels ?? []))
+        current.add(m)
+      panel.modelsText = Array.from(current).join('\n')
+      if (!panel.defaultModel && (panel.fetchedModels ?? [])[0])
+        panel.defaultModel = (panel.fetchedModels ?? [])[0] ?? ''
+    }
+  }
+
+  function deselectAllFetchedModels(isCreate: boolean, provider?: ProviderRegistryRecord) {
+    if (isCreate) {
+      const fetchedSet = new Set(fetchedFormModels.value)
+      const current = parseProviderModels(providerForm.modelsText).filter(m => !fetchedSet.has(m))
+      providerForm.modelsText = current.join('\n')
+      if (!current.includes(providerForm.defaultModel))
+        providerForm.defaultModel = current[0] ?? ''
+    }
+    else if (provider) {
+      const panel = getProviderEditPanel(provider)
+      const fetchedSet = new Set(panel.fetchedModels ?? [])
+      const current = parseProviderModels(panel.modelsText).filter(m => !fetchedSet.has(m))
+      panel.modelsText = current.join('\n')
+      if (!current.includes(panel.defaultModel))
+        panel.defaultModel = current[0] ?? ''
+    }
+  }
+
+  function applyProductSceneTemplate(template: ProductSceneTemplate) {
+    sceneForm.id = template.id
+    sceneForm.displayName = template.displayName
+    sceneForm.owner = template.owner
+    sceneForm.requiredCapabilitiesText = template.requiredCapabilities.join(', ')
+    bindingRows.value = template.requiredCapabilities.map((cap, index) => {
+      const matchingProvider = providers.value.find(p => p.capabilities.some(c => c.capability === cap))
+      return {
+        providerId: matchingProvider?.id || providers.value[0]?.id || '',
+        capability: cap,
+        model: '',
+        priority: (index + 1) * 10,
+      }
+    })
+  }
 
   return {
     /** The registry resource: `loading` (nothing yet), `refreshing`, `error`, `data`. */
@@ -1108,8 +1211,15 @@ export function useProviderRegistryAdmin() {
     fetchFormModels,
     fetchingFormModels,
     fetchingProviderModels,
+    fetchedFormModels,
+    toggleModelSelection,
+    selectAllFetchedModels,
+    deselectAllFetchedModels,
+    applyProductSceneTemplate,
+    productSceneTemplates: PRODUCT_SCENE_TEMPLATES,
     formatJson,
     formatRunJson,
+    parseRequiredCapabilities,
     getProviderCheckResult,
     getProviderEditPanel,
     getProviderQuotaPanel,

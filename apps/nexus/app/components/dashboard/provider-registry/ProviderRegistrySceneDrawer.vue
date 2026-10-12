@@ -89,6 +89,17 @@ function selectRunCapability(capability: unknown) {
           {{ t('dashboard.providerRegistry.routes.createHint', 'Bind a route to provider capabilities and strategy rules.') }}
         </p>
         <section class="RegistryForm-Grid">
+          <AdminFormField class="RegistryForm-Wide" :label="t('dashboard.providerRegistry.routes.preset', 'Function preset')" :for="fieldId('preset')">
+            <TuffSelect
+:id="fieldId('preset')" class="RegistryForm-Control" @change="(id: unknown) => {
+              const tpl = admin.productSceneTemplates.find(item => item.id === String(id))
+              if (tpl) admin.applyProductSceneTemplate(tpl)
+            }"
+>
+              <TuffSelectItem value="" :label="t('dashboard.providerRegistry.routes.customPreset', 'Custom function')" />
+              <TuffSelectItem v-for="tpl in admin.productSceneTemplates" :key="tpl.id" :value="tpl.id" :label="`${tpl.displayName} (${tpl.id})`" />
+            </TuffSelect>
+          </AdminFormField>
           <AdminFormField :label="t('dashboard.providerRegistry.fields.routeId', 'Route ID')" :for="fieldId('id')">
             <TuffInput :id="fieldId('id')" v-model="admin.sceneForm.id" class="RegistryForm-Control" />
           </AdminFormField>
@@ -142,7 +153,15 @@ function selectRunCapability(capability: unknown) {
               <TuffSelect v-model="row.providerId" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.provider', 'Provider'), index)" class="RegistryForm-Control">
                 <TuffSelectItem v-for="provider in admin.providerOptions.value" :key="provider.value" :value="provider.value" :label="provider.label" />
               </TuffSelect>
-              <TuffInput v-model="row.capability" class="RegistryForm-Control" placeholder="image.translate.e2e" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)" />
+              <TuffSelect
+                v-if="admin.parseRequiredCapabilities().length > 0"
+                v-model="row.capability"
+                :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)"
+                class="RegistryForm-Control"
+              >
+                <TuffSelectItem v-for="cap in admin.parseRequiredCapabilities()" :key="cap" :value="cap" :label="cap" />
+              </TuffSelect>
+              <TuffInput v-else v-model="row.capability" class="RegistryForm-Control" placeholder="image.translate.e2e" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)" />
               <TuffSelect v-model="row.model" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.model', 'Model'), index)" class="RegistryForm-Control" :placeholder="t('dashboard.providerRegistry.fields.model', 'Model')">
                 <TuffSelectItem value="" :label="t('dashboard.providerRegistry.providers.modelDefault', 'Use default model')" />
                 <TuffSelectItem v-for="model in admin.bindingModelOptions(row.providerId)" :key="model" :value="model" :label="model" />
@@ -223,11 +242,19 @@ function selectRunCapability(capability: unknown) {
                 <TuffSelect v-model="row.providerId" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.provider', 'Provider'), index)" class="RegistryForm-Control">
                   <TuffSelectItem v-for="providerOption in admin.providerOptions.value" :key="providerOption.value" :value="providerOption.value" :label="providerOption.label" />
                 </TuffSelect>
-                <TuffInput v-model="row.capability" class="RegistryForm-Control" placeholder="image.translate.e2e" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)" />
-                <TuffSelect v-model="row.model" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.model', 'Model'), index)" class="RegistryForm-Control" :placeholder="t('dashboard.providerRegistry.fields.model', 'Model')">
-                  <TuffSelectItem value="" :label="t('dashboard.providerRegistry.providers.modelDefault', 'Use default model')" />
-                  <TuffSelectItem v-for="model in admin.bindingModelOptions(row.providerId)" :key="model" :value="model" :label="model" />
-                </TuffSelect>
+              <TuffSelect
+                v-if="admin.sceneCapabilities(scene).length > 0"
+                v-model="row.capability"
+                :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)"
+                class="RegistryForm-Control"
+              >
+                <TuffSelectItem v-for="cap in admin.sceneCapabilities(scene)" :key="cap" :value="cap" :label="cap" />
+              </TuffSelect>
+              <TuffInput v-else v-model="row.capability" class="RegistryForm-Control" placeholder="image.translate.e2e" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)" />
+              <TuffSelect v-model="row.model" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.model', 'Model'), index)" class="RegistryForm-Control" :placeholder="t('dashboard.providerRegistry.fields.model', 'Model')">
+                <TuffSelectItem value="" :label="t('dashboard.providerRegistry.providers.modelDefault', 'Use default model')" />
+                <TuffSelectItem v-for="model in admin.bindingModelOptions(row.providerId)" :key="model" :value="model" :label="model" />
+              </TuffSelect>
                 <TuffInput v-model="row.priority" type="number" class="RegistryForm-Control" placeholder="100" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.priority', 'Priority'), index)" />
                 <TxIconButton
                   size="xs"

@@ -215,8 +215,10 @@ async function fetchNexusModels(
         trustedBaseUrl: baseUrl
       }
     )
-    if (response?.data && typeof response.data === 'object') {
-      const data = response.data as Record<string, unknown>
+    if (response?.body) {
+      const data = (
+        typeof response.body === 'string' ? JSON.parse(response.body) : response.body
+      ) as Record<string, unknown>
       if (Array.isArray(data.models)) {
         const normalized = normalizeModelEntries(data.models)
         if (normalized.length) {

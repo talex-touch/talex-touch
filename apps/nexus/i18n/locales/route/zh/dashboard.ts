@@ -121,6 +121,12 @@ export default {
         removeCapabilitiesTitle: '删除能力',
         removeCapabilitiesConfirm: '保存会从「{provider}」删除这些能力：{list}。此操作不可撤销。',
         testUpstreamHint: '检查会向服务渠道发一次很小的探测请求。',
+        keyPlaceholder: '留空表示不修改；输入以更换 Key',
+        secretIdPlaceholder: '留空表示不修改',
+        secretKeyPlaceholder: '留空表示不修改',
+        fetchedModelsTitle: '已拉取到的模型（勾选以启用）：',
+        selectAll: '全选',
+        deselectAll: '清空',
       },
       scenes: {
         deleteTitle: '删除能力路由',
@@ -188,6 +194,8 @@ export default {
         missingCount: '缺失 {count} 项',
         priorityValue: '优先级 {value}',
         statusSwitchLabel: '切换 {scene} 状态',
+        preset: '功能预设',
+        customPreset: '自定义功能',
       },
       usage: {
         listTitle: '用量账本',
