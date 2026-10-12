@@ -48,11 +48,23 @@ export type FileContentIndexingState =
   | "disabled"
   | "idle"
   | "indexing"
+  | "paused"
   | "clearing";
+
+export const FILE_CONTENT_INDEX_MIN_FREE_BYTES = 2 * 1024 ** 3;
+export const FILE_CONTENT_INDEX_RESUME_FREE_BYTES = 3 * 1024 ** 3;
+
+export interface FileIndexContentStorage {
+  status: "ready" | "low-space" | "unavailable";
+  availableBytes: number | null;
+  requiredBytes: number;
+  checkedAt: number | null;
+}
 
 export interface FileIndexContentSettings {
   contentIndexingEnabled: boolean;
   state: FileContentIndexingState;
+  storage?: FileIndexContentStorage;
 }
 
 export interface FileIndexContentSettingsUpdate {
@@ -94,6 +106,7 @@ export interface FileIndexStatus {
   estimateBasis?: FileIndexEstimateBasis;
   contentIndexingEnabled?: boolean;
   contentIndexingState?: FileContentIndexingState;
+  contentIndexStorage?: FileIndexContentStorage;
 }
 
 export interface FileIndexStats {

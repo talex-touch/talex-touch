@@ -15,6 +15,7 @@ import type {
   FileIndexBatteryStatus,
   FileIndexEstimateBasis,
   FileIndexContentSettings,
+  FileIndexContentStorage,
   FileIndexEstimateStatus,
   FileIndexFailedFile,
   FileIndexFailedFilesResult,
@@ -96,6 +97,7 @@ const CONTENT_INDEXING_STATES: Record<FileContentIndexingState, true> = {
   idle: true,
   indexing: true,
   clearing: true,
+  paused: true,
 }
 
 function asContentIndexingState(value: unknown): FileContentIndexingState | undefined {
@@ -105,23 +107,40 @@ function asContentIndexingState(value: unknown): FileContentIndexingState | unde
     : undefined
 }
 
+function projectContentStorage(raw: unknown): FileIndexContentStorage | undefined {
+  const input = asRecord(raw)
+  if (!input) return undefined
+  const status = input.status
+  if (status !== 'ready' && status !== 'low-space' && status !== 'unavailable') return undefined
+  const requiredBytes = input.requiredBytes
+  if (typeof requiredBytes !== 'number' || !Number.isSafeInteger(requiredBytes) || requiredBytes < 0) return undefined
+  const available = input.availableBytes
+  const availableBytes = typeof available === 'number' && Number.isSafeInteger(available) && available >= 0 ? available : null
+  const checked = input.checkedAt
+  const checkedAt = typeof checked === 'number' && Number.isFinite(checked) && checked >= 0 ? checked : null
+  return { status, availableBytes, requiredBytes, checkedAt }
+}
+
 export function projectFileIndexContentSettings(raw: unknown): FileIndexContentSettings {
   const input = asRecord(raw) ?? {}
   const contentIndexingEnabled = asBoolean(
     input.contentIndexingEnabled,
     DEFAULT_FILE_INDEX_CONTENT_SETTINGS.contentIndexingEnabled,
   )
+  const storage = projectContentStorage(input.storage)
   return {
     contentIndexingEnabled,
     state:
       asContentIndexingState(input.state) ??
       (contentIndexingEnabled ? 'idle' : DEFAULT_FILE_INDEX_CONTENT_SETTINGS.state),
+    ...(storage ? { storage } : {}),
   }
 }
 export function projectFileIndexStatus(raw: unknown): FileIndexStatus {
   const input = asRecord(raw) ?? {}
   const progress = asRecord(input.progress) ?? {}
   const overallProgress = asOptionalFiniteNumber(progress.progress)
+  const contentIndexStorage = projectContentStorage(input.contentIndexStorage)
   return {
     isInitializing: asBoolean(input.isInitializing),
     initializationFailed: asBoolean(input.initializationFailed),
@@ -146,6 +165,7 @@ export function projectFileIndexStatus(raw: unknown): FileIndexStatus {
     estimateBasis: asEstimateBasis(input.estimateBasis),
     contentIndexingEnabled: asOptionalBoolean(input.contentIndexingEnabled),
     contentIndexingState: asContentIndexingState(input.contentIndexingState),
+    ...(contentIndexStorage ? { contentIndexStorage } : {}),
   }
 }
 
