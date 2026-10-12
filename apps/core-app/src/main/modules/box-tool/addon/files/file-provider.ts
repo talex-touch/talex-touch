@@ -2715,12 +2715,13 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     if (!this.dbUtils) return 0
     const statements = [
       {
-        sql: "UPDATE files SET content = NULL WHERE type = 'file' AND content IS NOT NULL",
+        sql: "UPDATE files SET content = NULL, embedding_status = 'none' WHERE type = 'file'",
         args: []
       },
       { sql: "DELETE FROM embeddings WHERE source_type = 'file'", args: [] },
       { sql: 'DELETE FROM file_index_progress', args: [] },
-      { sql: "UPDATE search_index SET content = '' WHERE provider = ?", args: [this.id] }
+      { sql: "UPDATE search_index SET content = '' WHERE provider = ?", args: [this.id] },
+      { sql: "DELETE FROM file_extensions WHERE key = 'content_chunks'", args: [] }
     ]
 
     if (this.isSearchSplitEnabledNow()) {
@@ -2737,6 +2738,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         const result = await tx.run(
           sql`UPDATE search_index SET content = '' WHERE provider = ${this.id}`
         )
+        await tx.run(sql.raw(statements[4]!.sql))
         return Number(result.rowsAffected ?? 0)
       })
     })

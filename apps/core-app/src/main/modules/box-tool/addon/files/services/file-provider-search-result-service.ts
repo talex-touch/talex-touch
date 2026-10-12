@@ -1,4 +1,6 @@
 import type { TuffItem, TuffQuery, TuffSearchResult } from '@talex-touch/utils'
+import { FILE_CONTENT_CHUNKS_KEY, readFileContentChunks } from '@talex-touch/utils/search'
+import { buildFileContentMatch } from './file-content-match'
 import { TuffSearchResultBuilder } from '@talex-touch/utils'
 import {
   buildSearchKeywordLookupTerms,
@@ -50,8 +52,9 @@ export interface FileProviderSearchResultServiceDeps {
    */
   semanticSearch: (
     query: string,
-    limit: number
-  ) => Promise<Array<{ sourceId: string; score: number }>>
+    limit: number,
+    signal?: AbortSignal
+  ) => Promise<Array<{ sourceId: string; score: number; contentHash?: string | null }>>
   logDebug: (message: string, meta?: Record<string, unknown>) => void
   formatDuration: (durationMs: number) => string
   now?: () => number
@@ -283,7 +286,10 @@ export class FileProviderSearchResultService {
         80,
         signal
       )
+      const minimumNgramOverlap = Math.max(2, Math.floor((normalizedQuery.length - 1) * 0.4))
       for (const match of ngramMatches) {
+        if (Number.isFinite(match.overlapCount) && match.overlapCount < minimumNgramOverlap)
+          continue
         fuzzyCandidatePaths.add(match.itemId)
         if (candidateIds.size >= 120) continue
         candidateIds.add(match.itemId)
@@ -385,6 +391,12 @@ export class FileProviderSearchResultService {
             semanticScore: 0
           }
         }
+        if (ftsScore > 0 && this.deps.isContentIndexingEnabled()) {
+          item.meta.deepMatch = buildFileContentMatch(
+            readFileContentChunks(extensions[FILE_CONTENT_CHUNKS_KEY]),
+            searchText
+          )
+        }
         return this.deps.normalizeItem(item, file, sanitizedExtensions, 'search-result')
       })
       .filter((item): item is TuffItem => item !== null)
@@ -411,7 +423,7 @@ export class FileProviderSearchResultService {
     excludeIds: Set<string>,
     signal: AbortSignal
   ): Promise<TuffItem[]> {
-    if (signal.aborted) return []
+    if (signal.aborted || !this.deps.isContentIndexingEnabled()) return []
     const dbUtils = this.deps.getDbUtils()
     if (!dbUtils) return []
 
@@ -419,21 +431,25 @@ export class FileProviderSearchResultService {
     const normalizedQuery = searchText.toLowerCase()
     if (normalizedQuery.length < SEMANTIC_RECALL_MIN_QUERY_LENGTH) return []
 
-    let matches: Array<{ sourceId: string; score: number }>
+    let matches: Array<{ sourceId: string; score: number; contentHash?: string | null }>
     try {
-      matches = await this.deps.semanticSearch(normalizedQuery, SEMANTIC_RECALL_SCAN_LIMIT)
+      matches = await this.deps.semanticSearch(normalizedQuery, SEMANTIC_RECALL_SCAN_LIMIT, signal)
     } catch (error) {
       this.deps.logDebug('Semantic recall lookup failed', { error: String(error) })
       return []
     }
-    if (signal.aborted || matches.length === 0) return []
+    if (signal.aborted || !this.deps.isContentIndexingEnabled() || matches.length === 0) return []
 
     // embeddings.sourceId === String(files.id); keep the best score per file.
     const scoreByFileId = new Map<number, number>()
+    const hashByFileId = new Map<number, string | null | undefined>()
     for (const match of matches) {
       const fileId = Number(match.sourceId)
       if (!Number.isInteger(fileId)) continue
-      if (match.score > (scoreByFileId.get(fileId) ?? 0)) scoreByFileId.set(fileId, match.score)
+      if (match.score > (scoreByFileId.get(fileId) ?? 0)) {
+        scoreByFileId.set(fileId, match.score)
+        hashByFileId.set(fileId, match.contentHash)
+      }
     }
     if (scoreByFileId.size === 0) return []
 
@@ -450,7 +466,7 @@ export class FileProviderSearchResultService {
       .from(filesSchema)
       .leftJoin(fileExtensions, eq(filesSchema.id, fileExtensions.fileId))
       .where(and(eq(filesSchema.type, 'file'), inArray(filesSchema.id, [...scoreByFileId.keys()])))
-    if (signal.aborted) return []
+    if (signal.aborted || !this.deps.isContentIndexingEnabled()) return []
 
     const scored: Array<{ item: TuffItem; score: number }> = []
     for (const { file, extensions: rawExtensions } of this.groupRows(rows).values()) {
@@ -470,6 +486,15 @@ export class FileProviderSearchResultService {
         ...(item.meta.extension ?? {}),
         search: { keywordMatch: false, ftsScore: 0, semanticScore: score }
       }
+      const contentHash = hashByFileId.get(file.id)
+      const hit = contentHash
+        ? buildFileContentMatch(
+            readFileContentChunks(rawExtensions[FILE_CONTENT_CHUNKS_KEY]),
+            searchText,
+            contentHash
+          )
+        : undefined
+      item.meta.deepMatch = hit ? { ...hit, score } : { kind: 'semantic', score }
       const normalized = this.deps.normalizeItem(item, file, extensions, 'semantic-recall')
       if (normalized && !excludeIds.has(normalized.id)) {
         scored.push({ item: normalized, score })

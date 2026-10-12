@@ -1,3 +1,4 @@
+import { FILE_CONTENT_CHUNKS_KEY } from '@talex-touch/utils/search'
 import type { files as filesSchema } from '../../../../db/schema'
 import { normalizeRenderableSource } from '../../../../utils/local-renderable-assets'
 import { isValidBase64DataUrl } from './utils'
@@ -27,6 +28,7 @@ export function sanitizeIndexedFileExtensions(
   extensions: Record<string, string>
 ): Record<string, string> {
   const sanitized = { ...extensions }
+  delete sanitized[FILE_CONTENT_CHUNKS_KEY]
   for (const key of ['icon', 'thumbnail'] as const) {
     const value = sanitized[key]
     if (!value) continue

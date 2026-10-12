@@ -1,3 +1,4 @@
+import type { FileParserChunk } from '@talex-touch/utils/electron/file-parsers'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 import type { IndexWorkerFileResult } from '../workers/file-index-worker-client'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -14,7 +15,13 @@ export type EmbeddingDbExecutor = Pick<LibSQLDatabase<typeof schema>, 'delete'>
 export interface FileProviderEmbeddingIndexPort {
   isAvailable: () => Promise<boolean>
   indexFiles: (
-    files: Array<{ fileId: string; content: string }>
+    files: Array<{
+      fileId: string
+      content: string
+      chunks?: FileParserChunk[]
+      fileVersion?: number
+      fileSize?: number | null
+    }>
   ) => Promise<{ indexed: number; skipped: number; failed: number }>
 }
 
@@ -56,11 +63,23 @@ export class FileProviderEmbeddingIndexService {
     const embeddingService = this.getEmbeddingService()
     if (!embeddingService) return
 
-    const candidates: Array<{ fileId: string; content: string }> = []
+    const candidates: Array<{
+      fileId: string
+      content: string
+      chunks?: FileParserChunk[]
+      fileVersion?: number
+      fileSize?: number | null
+    }> = []
     for (const entry of entries) {
       const content = entry.indexItem?.content
       if (!content || content.length === 0) continue
-      candidates.push({ fileId: String(entry.fileId), content })
+      candidates.push({
+        fileId: String(entry.fileId),
+        content,
+        chunks: entry.fileUpdate?.chunks,
+        fileVersion: entry.fileVersion,
+        fileSize: entry.fileSize
+      })
     }
     if (candidates.length === 0) return
 

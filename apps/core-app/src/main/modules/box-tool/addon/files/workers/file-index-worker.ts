@@ -137,6 +137,7 @@ const queue: IndexRequest[] = []
 const cancelledTaskIds = new Set<string>()
 let running = false
 let activeTaskId: string | null = null
+let activeParseController: AbortController | null = null
 function buildContentHash(content: string): string | null {
   if (!content) return null
   return createHash('sha256').update(content).digest('hex')
@@ -277,12 +278,17 @@ async function handleIndexTask(
     })
 
     let result: FileParserResult | null = null
+    const parseController = new AbortController()
+    activeParseController = parseController
     try {
       result = await fileParserRegistry.parseWithBestParser({
         filePath: file.path,
         extension,
         size: size ?? 0,
-        maxBytes
+        maxBytes,
+        maxOutputBytes: 200_000,
+        maxChunks: 1024,
+        signal: parseController.signal
       })
     } catch (error) {
       failed += 1
@@ -304,6 +310,8 @@ async function handleIndexTask(
         indexItem: buildSearchIndexItem(file, task.providerId, task.providerType)
       })
       continue
+    } finally {
+      if (activeParseController === parseController) activeParseController = null
     }
 
     if (cancelledTaskIds.has(task.taskId)) break
@@ -517,6 +525,7 @@ parentPort?.on('message', (payload: IndexRequest | CancelRequest | WorkerMetrics
   }
   if (payload.type === 'cancel') {
     cancelledTaskIds.add(payload.taskId)
+    if (activeTaskId === payload.taskId) activeParseController?.abort()
     const queuedIndex = queue.findIndex((task) => task.taskId === payload.taskId)
     if (queuedIndex >= 0) queue.splice(queuedIndex, 1)
     if (activeTaskId !== payload.taskId) cancelledTaskIds.delete(payload.taskId)

@@ -58,7 +58,8 @@ export class FileProviderContentIndexPolicyService {
               ...entry.fileUpdate,
               content: null,
               contentHash: null,
-              embeddings: undefined
+              embeddings: undefined,
+              chunks: undefined
             }
           }
         : entry
