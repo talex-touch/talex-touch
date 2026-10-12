@@ -61,7 +61,7 @@ interface NavGroup {
 function mapItems(items: Array<{ id: string, label: string, icon: string }>): NavItem[] {
   return items.map(item => ({
     ...item,
-    to: sectionPaths[item.id] ?? '/admin/updates',
+    to: sectionPaths[item.id] ?? '/admin/analytics',
   }))
 }
 

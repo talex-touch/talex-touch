@@ -43,7 +43,8 @@ const GLYPH_CLASSES: Readonly<Record<MetaActionGlyph, string>> = {
   edit: 'i-ri-edit-line',
   delete: 'i-ri-delete-bin-line',
   share: 'i-ri-share-forward-line',
-  plugin: 'i-ri-puzzle-line'
+  plugin: 'i-ri-puzzle-line',
+  info: 'i-ri-information-line'
 }
 
 const props = defineProps<{

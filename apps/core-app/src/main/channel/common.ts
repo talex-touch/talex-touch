@@ -170,7 +170,12 @@ import { registerSystemApplicationHandlers } from './system-application-handlers
 import { registerSystemSecureStoreHandlers } from './system-secure-store-handlers'
 import { registerSystemSelectionCaptureHandlers } from './system-selection-capture-handlers'
 import { registerSystemShellHandlers } from './system-shell-handlers'
-
+import { nativeShareService } from '../modules/flow-bus/native-share'
+import {
+  getDirectoryTerminals,
+  openDirectoryInTerminal,
+  resolvePreferredTerminal
+} from '../utils/directory-terminal'
 const BATTERY_POLL_TASK_ID = 'common-channel.battery'
 const pollingService = PollingService.getInstance()
 const READ_FILE_CACHE_TTL_MS = 60_000
@@ -1915,7 +1920,16 @@ export class CommonChannelModule extends BaseModule {
               return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_APPLICATION_REJECTED' }
             }
 
-            await openPathWithApplication(indexedPath, chosen.path)
+            const lineNumber =
+              typeof payload?.lineNumber === 'number' && Number.isFinite(payload.lineNumber)
+                ? Math.floor(payload.lineNumber)
+                : undefined
+            const pageNumber =
+              typeof payload?.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
+                ? Math.floor(payload.pageNumber)
+                : undefined
+
+            await openPathWithApplication(indexedPath, chosen.path, { lineNumber, pageNumber })
             return { success: true }
           } catch (error) {
             const report = reportFileIndexTransportFailure('OPEN_WITH', error)
@@ -1927,6 +1941,144 @@ export class CommonChannelModule extends BaseModule {
           }
         }
       ),
+      transport.on(AppEvents.fileIndex.quickLook, async (payload, context) => {
+        this.assertHostOnly(context, 'fileIndex.quickLook')
+        const inputPath = getOptionalStringProp(payload, 'path')
+        if (!inputPath) return { success: false, error: 'PATH_EMPTY' }
+        const target = path.resolve(inputPath)
+        try {
+          await fs.stat(target)
+          await fs.access(target, fs.constants.R_OK)
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code
+          return {
+            success: false,
+            error: code === 'EACCES' || code === 'EPERM' ? 'PERMISSION_DENIED' : 'PATH_NOT_FOUND'
+          }
+        }
+        if (process.platform === 'darwin') {
+          const win = this.touchApp?.window.window
+          if (win && !win.isDestroyed()) {
+            win.previewFile(target)
+            return { success: true }
+          }
+        }
+        if (target.toLowerCase().endsWith('.app')) {
+          shell.showItemInFolder(target)
+          return { success: true }
+        }
+        const error = await shell.openPath(target)
+        return { success: !error, error: error || undefined }
+      }),
+      transport.on(AppEvents.fileIndex.showPackageContents, async (payload, context) => {
+        this.assertHostOnly(context, 'fileIndex.showPackageContents')
+        const inputPath = getOptionalStringProp(payload, 'path')
+        if (!inputPath) return { success: false, error: 'PATH_EMPTY' }
+        const target = path.resolve(inputPath)
+        try {
+          await fs.stat(target)
+          await fs.access(target, fs.constants.R_OK)
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code
+          return {
+            success: false,
+            error: code === 'EACCES' || code === 'EPERM' ? 'PERMISSION_DENIED' : 'PATH_NOT_FOUND'
+          }
+        }
+        const contentsDir = path.join(target, 'Contents')
+        try {
+          const stat = await fs.stat(contentsDir)
+          await fs.access(contentsDir, fs.constants.R_OK)
+          if (stat.isDirectory()) {
+            const error = await shell.openPath(contentsDir)
+            return { success: !error, error: error || undefined }
+          }
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code
+          if (code === 'EACCES' || code === 'EPERM') {
+            return { success: false, error: 'PERMISSION_DENIED' }
+          }
+        }
+        if (target.toLowerCase().endsWith('.app')) {
+          return { success: false, error: 'PACKAGE_CONTENTS_NOT_FOUND' }
+        }
+        const error = await shell.openPath(target)
+        return { success: !error, error: error || undefined }
+      }),
+      transport.on(AppEvents.fileIndex.getInfo, async (payload, context) => {
+        this.assertHostOnly(context, 'fileIndex.getInfo')
+        const inputPath = getOptionalStringProp(payload, 'path')
+        if (!inputPath) return { success: false, error: 'PATH_EMPTY' }
+        const target = path.resolve(inputPath)
+        try {
+          await fs.stat(target)
+          await fs.access(target, fs.constants.R_OK)
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code
+          return {
+            success: false,
+            error: code === 'EACCES' || code === 'EPERM' ? 'PERMISSION_DENIED' : 'PATH_NOT_FOUND'
+          }
+        }
+        if (process.platform === 'darwin') {
+          try {
+            const escaped = target.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+            await execFileAsync('osascript', [
+              '-e',
+              `tell application "Finder" to open information window of (POSIX file "${escaped}" as alias)`
+            ])
+            return { success: true }
+          } catch {
+            shell.showItemInFolder(target)
+            return { success: true }
+          }
+        }
+        shell.showItemInFolder(target)
+        return { success: true }
+      }),
+      transport.on(AppEvents.fileIndex.openInTerminal, async (payload, context) => {
+        this.assertHostOnly(context, 'fileIndex.openInTerminal')
+        const inputPath = getOptionalStringProp(payload, 'path')
+        if (!inputPath) return { success: false, error: 'PATH_EMPTY' }
+        const target = path.resolve(inputPath)
+        let dirPath = target
+        try {
+          const stat = await fs.stat(target)
+          if (!stat.isDirectory()) {
+            dirPath = path.dirname(target)
+          }
+          await fs.access(dirPath, fs.constants.R_OK | fs.constants.X_OK)
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code
+          return {
+            success: false,
+            error: code === 'EACCES' || code === 'EPERM' ? 'PERMISSION_DENIED' : 'PATH_NOT_FOUND'
+          }
+        }
+        const inventory = await getDirectoryTerminals()
+        const preferred = resolvePreferredTerminal(inventory).terminal
+        if (!preferred) return { success: false, error: 'TERMINAL_UNAVAILABLE' }
+        const success = await openDirectoryInTerminal(preferred, dirPath)
+        return { success }
+      }),
+      transport.on(AppEvents.fileIndex.systemShare, async (payload, context) => {
+        this.assertHostOnly(context, 'fileIndex.systemShare')
+        const inputPath = getOptionalStringProp(payload, 'path')
+        if (!inputPath) return { success: false, error: 'PATH_EMPTY' }
+        const target = path.resolve(inputPath)
+        try {
+          await fs.stat(target)
+          await fs.access(target, fs.constants.R_OK)
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code
+          return {
+            success: false,
+            error: code === 'EACCES' || code === 'EPERM' ? 'PERMISSION_DENIED' : 'PATH_NOT_FOUND'
+          }
+        }
+        const res = await nativeShareService.share({ files: [target] })
+        return { success: res.success, error: res.error }
+      }),
       transport.on<FileIndexAddPathRequest, FileIndexAddPathResult>(
         AppEvents.fileIndex.addPath,
         async (payload) => {
@@ -2543,8 +2695,31 @@ async function projectApplicationTarget(
  * action. `-a` takes the bundle as its own argv entry, and both paths arrive as argv rather than
  * through a shell, so neither can inject arguments.
  */
-async function openPathWithApplication(filePath: string, applicationPath: string): Promise<void> {
-  await execFileAsync('/usr/bin/open', ['-a', applicationPath, filePath], {
+async function openPathWithApplication(
+  filePath: string,
+  applicationPath: string,
+  options?: { lineNumber?: number; pageNumber?: number }
+): Promise<void> {
+  const args = ['-a', applicationPath]
+  const lowerApp = applicationPath.toLowerCase()
+
+  if (
+    options?.lineNumber != null &&
+    options.lineNumber > 0 &&
+    (lowerApp.includes('visual studio code') ||
+      lowerApp.includes('cursor') ||
+      lowerApp.includes('vscodium') ||
+      lowerApp.includes('windsurf') ||
+      lowerApp.includes('zed') ||
+      lowerApp.includes('sublime text') ||
+      lowerApp.includes('code.app'))
+  ) {
+    args.push('--args', '-g', `${filePath}:${options.lineNumber}`)
+  } else {
+    args.push(filePath)
+  }
+
+  await execFileAsync('/usr/bin/open', args, {
     timeout: OPEN_WITH_TIMEOUT_MS
   })
 }

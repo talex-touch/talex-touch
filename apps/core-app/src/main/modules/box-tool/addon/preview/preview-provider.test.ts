@@ -12,7 +12,8 @@ const clipboardModuleMock = vi.hoisted(() => ({
 }))
 
 const i18nHelperMock = vi.hoisted(() => ({
-  getLocale: vi.fn(() => 'zh-CN')
+  getLocale: vi.fn(() => 'zh-CN'),
+  t: vi.fn((key: string) => key)
 }))
 
 vi.mock('electron', () => ({
@@ -27,7 +28,8 @@ vi.mock('../../../clipboard', () => ({
 }))
 
 vi.mock('../../../../utils/i18n-helper', () => ({
-  getLocale: i18nHelperMock.getLocale
+  getLocale: i18nHelperMock.getLocale,
+  t: i18nHelperMock.t
 }))
 
 import { PreviewProvider } from './preview-provider'

@@ -52,8 +52,20 @@
   "features": [
     {
       "id": "system-actions",
-      "name": "系统操作",
-      "desc": "全量系统动作入口",
+      "name": {
+        "default": "系统操作",
+        "locales": {
+          "zh-CN": "系统操作",
+          "en-US": "System Actions"
+        }
+      },
+      "desc": {
+        "default": "全量系统动作入口",
+        "locales": {
+          "zh-CN": "全量系统动作入口",
+          "en-US": "All system actions in one place"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"
@@ -76,8 +88,20 @@
     },
     {
       "id": "quick-actions",
-      "name": "系统快捷动作",
-      "desc": "高频安全动作与设置入口",
+      "name": {
+        "default": "系统快捷动作",
+        "locales": {
+          "zh-CN": "系统快捷动作",
+          "en-US": "Quick Actions"
+        }
+      },
+      "desc": {
+        "default": "高频安全动作与设置入口",
+        "locales": {
+          "zh-CN": "高频安全动作与设置入口",
+          "en-US": "Frequent safe actions and shortcuts to settings"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

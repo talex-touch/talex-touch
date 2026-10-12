@@ -36,7 +36,13 @@
     {
       "id": "orca",
       "name": "Orca",
-      "desc": "查看 Orca 状态并打开 Orca",
+      "desc": {
+        "default": "查看 Orca 状态并打开 Orca",
+        "locales": {
+          "zh-CN": "查看 Orca 状态并打开 Orca",
+          "en-US": "Check Orca status and open Orca"
+        }
+      },
       "icon": { "type": "file", "value": "assets/logo.svg" },
       "keywords": ["orca", "worktree", "terminal", "task", "状态", "工作区"],
       "push": true,

@@ -11,6 +11,7 @@ import type { ProviderContext, TuffQuery, TuffSearchResult } from '../../search-
 import crypto from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import {
+  localizePreviewPayload,
   normalizeLocale,
   TuffInputType,
   TuffItemBuilder,
@@ -20,7 +21,7 @@ import { DEFAULT_WIDGET_RENDERERS } from '@talex-touch/utils/plugin'
 import { clipboard } from 'electron'
 import { clipboardModule } from '../../../clipboard'
 import { createLogger } from '../../../../utils/logger'
-import { getLocale } from '../../../../utils/i18n-helper'
+import { getLocale, t } from '../../../../utils/i18n-helper'
 
 const PREVIEW_COMPONENT_NAME = DEFAULT_WIDGET_RENDERERS.CORE_PREVIEW_CARD
 const SOURCE_ID = 'preview-provider'
@@ -149,13 +150,17 @@ export class PreviewProvider implements ISearchProvider<ProviderContext> {
       previewMeta.expression = query.sdkQuery.text
     }
 
+    // Abilities emit `$i18n:` messages. They resolve here, in main, rather than in the card: the
+    // payload outlives the card. It is also stored whole as calculation history and shown again
+    // from there, where an unresolved message would appear verbatim.
+    const abilityPayload = localizePreviewPayload(abilityResult.payload, t)
     const payload: PreviewCardPayload = {
-      ...abilityResult.payload,
+      ...abilityPayload,
       ...(query.explicitCommand
-        ? { badges: ['Calculator', ...(abilityResult.payload.badges ?? [])] }
+        ? { badges: ['Calculator', ...(abilityPayload.badges ?? [])] }
         : {}),
       meta: {
-        ...abilityResult.payload.meta,
+        ...abilityPayload.meta,
         rawQuery: query.originalQuery.text ?? '',
         resolvedQuery: query.sdkQuery.text ?? '',
         ...(query.explicitCommand ? { explicitCommand: query.explicitCommand } : {})
@@ -193,7 +198,11 @@ export class PreviewProvider implements ISearchProvider<ProviderContext> {
       builder.setTitle(payload.title)
     }
 
-    return builder.build()
+    const item = builder.build()
+    // The title names the answer, not something to search for. Tab and the inline completion
+    // read render.completion before the title, so they keep what the user typed.
+    item.render.completion = query.originalQuery.text ?? ''
+    return item
   }
 
   private extractPayload(item: TuffItem): PreviewCardPayload | undefined {

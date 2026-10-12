@@ -4,6 +4,7 @@ import type {
   PreviewAbilitySafetyPolicy,
   PreviewCardPayload,
 } from "../types";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 interface ParsedColor {
@@ -269,8 +270,8 @@ export class ColorPreviewAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: original,
-      subtitle: "颜色解析",
-      primaryLabel: "颜色",
+      subtitle: i18nMsg("previewCard.color.subtitle"),
+      primaryLabel: i18nMsg("previewCard.color.color"),
       primaryValue: parsed.hex.toUpperCase(),
       secondaryLabel: "RGB",
       secondaryValue: `rgb(${parsed.rgb.r}, ${parsed.rgb.g}, ${parsed.rgb.b}${
@@ -293,10 +294,16 @@ export class ColorPreviewAbility extends BasePreviewAbility {
       ],
       sections: [
         {
-          title: "生成建议",
+          title: i18nMsg("previewCard.color.suggestions"),
           rows: [
-            { label: "亮度", value: `${parsed.hsl.l}%` },
-            { label: "饱和度", value: `${parsed.hsl.s}%` },
+            {
+              label: i18nMsg("previewCard.color.lightness"),
+              value: `${parsed.hsl.l}%`,
+            },
+            {
+              label: i18nMsg("previewCard.color.saturation"),
+              value: `${parsed.hsl.s}%`,
+            },
           ],
         },
       ],

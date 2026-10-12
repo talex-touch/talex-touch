@@ -54,6 +54,13 @@ export function createProviderRegistryCrudService(fetcher: typeof rawFetch = raw
       method: 'POST',
     })
   }
+  async function fetchModelsProbe(body: { type: string, baseUrl?: string, apiKey?: string }) {
+    return await fetcher<{ models: string[] }>('/api/dashboard/intelligence/models', {
+      method: 'POST',
+      body,
+    })
+  }
+
 
   async function fetchProviderQuota(providerId: string) {
     return await fetcher<{ quota: ProviderQuotaRecord | null, quotas?: ProviderQuotaRecord[] }>(`/api/dashboard/provider-registry/providers/${encodeURIComponent(providerId)}/quota`)
@@ -86,6 +93,7 @@ export function createProviderRegistryCrudService(fetcher: typeof rawFetch = raw
     deleteCapability,
     deleteProvider,
     fetchProviderModels,
+    fetchModelsProbe,
     fetchProviderQuota,
     listProviders,
     saveProviderQuota,

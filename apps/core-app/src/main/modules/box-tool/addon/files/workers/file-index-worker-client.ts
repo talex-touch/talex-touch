@@ -1,4 +1,4 @@
-import type { FileParserEmbedding } from '@talex-touch/utils/electron/file-parsers'
+import type { FileParserChunk, FileParserEmbedding } from '@talex-touch/utils/electron/file-parsers'
 import type { SearchIndexItem } from '../../../search-engine/search-index-service'
 import type {
   WorkerMetricsPayload,
@@ -26,6 +26,7 @@ export interface IndexWorkerFileUpdate {
   embeddingStatus: 'pending' | 'completed'
   embeddings?: FileParserEmbedding[]
   contentHash?: string | null
+  chunks?: FileParserChunk[]
 }
 
 export interface IndexWorkerFileResult {

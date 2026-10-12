@@ -110,6 +110,19 @@
   - 写路径 A/B（同机、真实 repository、每轮 100 次 × 12 行）：0.17.4 **65.79ms / 1519.95 iter/s / +100 handles**；0.18.0 **56.74ms / 1762.50 iter/s / +0 handles**，吞吐约 **+16%**，没有以性能换资源收敛。
   - 验证：数据库/索引 18 files / 203 tests、插件 SQLite worker 7 tests、启动扫描一致性 3 files / 81 tests、Node typecheck、Electron Vite production build 全通过。开发与生产启动扫描走同一 eligibility gate，不再携带 dev-only force 分支。
 
+- [x] **B9 — 文件名输错字召回不到：文件条目没有来自文件名的 n-gram** ✅ 已修（2026-10-11）
+  - 位置：`search-engine/search-index-service.ts:1563-1571`、`:1668-1680`；`addon/files/services/file-provider-search-result-service.ts:279-291`。
+  - 根因：`appendKeyword` 经 `normalizeSearchText` 把点号等分隔符替换为空格（`budget.xlsx` → `budget xlsx`），被 `!value.includes(' ')` 排除；分词与 compact 形式原先仅 1.0，过不了 `NGRAM_SOURCE_MIN_PRIORITY (1.1)` 门槛。
+  - 修复：
+    1. 从清洗后的标题和原始标题双向切分单词，排除扩展名后的主体单词赋予优先级 `1.15`（`>= 1.1`）；
+    2. 无空格紧凑名称 `cleanCompact`（如 `budgetxlsx`）赋予优先级 `1.1`（`>= 1.1`）；
+    3. `SEARCH_KEYWORD_SCHEMA_VERSION` bump 至 `3`，使哈希自动失效重写；
+    4. `lookupByNgrams` 保持只在常规 0 候选时触发，零额外常驻性能负担。
+  - 验证：`search-index-service.charset.test.ts` 新增回归测试，验证 `budget.xlsx` 产出 `ng:bu/ud/dg/ge/et`，错字 `budgte` 在 `lookupByNgrams` 下通过 overlap 成功召回（12/12 单元测试通过）。
+  - 存储与重写代价（2026-10-11 实测）：在正式版索引库上，用修复前后两版 `prepareDocument` 重放全部 54,270 个文件。条目按基础发布路径 `mapFileToIndexedSourceRecord` 构建；修复前版本的重放结果与库内逐条一致（54,270/54,270）。
+    - `keyword_mappings` 从 1,744,882 行增到 2,601,671 行（+49%），其中 `ng:` 行从 700,951 增到 1,440,924（+106%）；没有条目触及每条 256 的上限。
+    - 现库这张表连同 5 个索引共 895.9 MB，约 536 B/行，所以增量约 +0.45 GB；`ng:` 行的关键词较短，实际会略低。
+    - `SEARCH_KEYWORD_SCHEMA_VERSION` 升到 3 后，`FileProviderKeywordBackfillService` 会在升级后把全部文件条目的关键词重写一遍。
 ### 🟠 高危工程风险
 
 - [ ] **R1 — Rust 截图模块已接入 CI/安装构建链** ⚠️ **契约测试已接入，发布路径未接入**（2026-08-07 复验，原判「已修 / #321 已关闭」不成立——[#321](https://github.com/talex-touch/tuff/issues/321) 仍 open）

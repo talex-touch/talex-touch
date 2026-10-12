@@ -257,7 +257,7 @@ watch(
           </span>
         </TxDropdownItem>
 
-        <TxDropdownItem v-if="isAdmin" @select="handleMenuNavigate('/admin/updates')">
+        <TxDropdownItem v-if="isAdmin" @select="handleMenuNavigate('/admin/analytics')">
           <span class="header-user-item">
             <span class="i-carbon-settings-adjust header-user-item-icon" />
             <span>{{ tSafe('nav.adminConsole', '管理控制台') }}</span>

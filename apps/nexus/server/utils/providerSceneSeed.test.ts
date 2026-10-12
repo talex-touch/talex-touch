@@ -182,13 +182,20 @@ describe('providerSceneSeed', () => {
       metadata: { source: 'nexus-provider-scene-seed', seedId: 'custom-local-overlay' },
     })
     storeMocks.listProviderRegistryEntries.mockResolvedValue([overlay])
-    storeMocks.getSceneRegistryEntry.mockResolvedValue(scene({
-      metadata: { source: 'nexus-provider-scene-seed', seedId: 'corebox.screenshot.translate' },
-      requiredCapabilities: ['vision.ocr', 'text.translate', 'overlay.render'],
+    storeMocks.getSceneRegistryEntry.mockImplementation(async (_event, id) => scene({
+      id,
+      metadata: { source: 'nexus-provider-scene-seed', seedId: id },
+      requiredCapabilities: id === 'corebox.screenshot.translate'
+        ? ['vision.ocr', 'text.translate', 'overlay.render']
+        : id === 'corebox.selection.translate'
+          ? ['text.translate']
+          : id === 'corebox.fx.latest'
+            ? ['fx.rate.latest']
+            : ['fx.convert'],
       bindings: [
         {
-          id: 'binding_overlay',
-          sceneId: 'corebox.screenshot.translate',
+          id: `binding_${id}`,
+          sceneId: id,
           providerId: 'prv_overlay',
           capability: 'overlay.render',
           priority: 40,
@@ -212,6 +219,9 @@ describe('providerSceneSeed', () => {
       createdOverlayProvider: false,
       createdScreenshotScene: false,
       updatedScreenshotScene: false,
+      createdSelectionScene: false,
+      createdFxLatestScene: false,
+      createdFxConvertScene: false,
     })
   })
 

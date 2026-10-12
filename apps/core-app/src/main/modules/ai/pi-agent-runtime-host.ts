@@ -34,6 +34,7 @@ import { AgentPermission } from '@talex-touch/utils'
 import { agentManager, toolRegistry } from './agents'
 import { tuffIntelligence } from './intelligence-sdk'
 import { intelligenceMcpRegistry } from './intelligence-mcp-registry'
+import { CLI_PROFILE_PROVIDER_MAP } from './providers/pi-cli-runtime'
 import { PI_RUNTIME_PROTOCOL_VERSION } from './pi-agent-runtime-protocol'
 import {
   createApprovalRequiredError,
@@ -748,8 +749,11 @@ export class PiAgentRuntimeHost {
             : request.modelPreference.length > 0
               ? request.modelPreference
               : undefined,
-          ...(context.workspace?.providerId
-            ? { preferredProviderId: context.workspace.providerId }
+          ...(context.workspace?.providerId || CLI_PROFILE_PROVIDER_MAP[context.profile.id]
+            ? {
+                preferredProviderId:
+                  context.workspace?.providerId || CLI_PROFILE_PROVIDER_MAP[context.profile.id]
+              }
             : {}),
           ...(context.workspace?.reasoningEffort
             ? { reasoningEffort: context.workspace.reasoningEffort }

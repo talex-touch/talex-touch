@@ -66,24 +66,47 @@ function highlightText(text: string, query: string): string {
   return escaped.replace(regex, '<mark class="search-highlight">$1</mark>')
 }
 
+const activeSearchQuery = computed(() => {
+  return props.searchQuery?.trim() || props.item.meta?.deepMatch?.matchTerm?.trim() || ''
+})
+
+const targetLineNumber = computed(() => props.item.meta?.deepMatch?.lineNumber)
+
 const highlightedContent = computed(() => {
   if (!textContent.value) return ''
 
-  const query = props.searchQuery?.trim()
-  if (!query) return escapeHtml(textContent.value)
+  const query = activeSearchQuery.value
+  const targetLine = targetLineNumber.value
 
   return textContent.value
     .split('\n')
-    .map((line) => highlightText(line, query))
+    .map((line, idx) => {
+      const lineNum = idx + 1
+      const isTarget = targetLine != null && lineNum === targetLine
+      const highlighted = query ? highlightText(line, query) : escapeHtml(line)
+      const lineClass = isTarget ? ' class="target-line bg-amber-400/20 block rounded px-1"' : ''
+      return `<span data-line="${lineNum}"${lineClass}>${highlighted}</span>`
+    })
     .join('\n')
 })
 
 const hasHighlights = computed(() => {
-  return !!props.searchQuery?.trim() && highlightedContent.value.includes('search-highlight')
+  return (
+    !!activeSearchQuery.value ||
+    targetLineNumber.value != null ||
+    highlightedContent.value.includes('search-highlight')
+  )
 })
 
 function scrollToFirstMatch() {
   nextTick(() => {
+    if (targetLineNumber.value != null) {
+      const targetEl = contentRef.value?.querySelector(`[data-line="${targetLineNumber.value}"]`)
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return
+      }
+    }
     const mark = contentRef.value?.querySelector('.search-highlight')
     if (mark) {
       mark.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -164,7 +187,7 @@ onMounted(loadContent)
     </div>
     <!-- eslint-disable vue/no-v-html -->
     <pre
-      v-else-if="searchQuery?.trim()"
+      v-else-if="activeSearchQuery || targetLineNumber != null"
       ref="contentRef"
       class="highlighted-content"
       v-html="highlightedContent"

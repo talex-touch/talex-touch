@@ -1,0 +1,9 @@
+# Exported on the machine by kit/export-icons.swift; the images belong to their owners.
+kit/icons/
+kit/icons-light/
+# Copied from the workspace's gsap package by the tools on first run.
+kit/gsap.min.js
+# Stills, scores and films are reproducible from the sources here.
+shots/
+*.mp4
+*.wav

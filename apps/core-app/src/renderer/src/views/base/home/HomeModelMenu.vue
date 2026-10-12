@@ -32,6 +32,7 @@ import { useModelOptions } from '~/modules/conversation/useModelOptions'
 import { useRecentModels } from '~/modules/conversation/useRecentModels'
 import { modelFamilyIconFor } from '~/modules/intelligence/model-family-icons'
 import { providerIconForId } from '~/modules/intelligence/provider-icons'
+import { TUFF_NEXUS_PROVIDER_ID } from '~/modules/intelligence/nexus-provider'
 import { useEscapeReturnsFocus } from './escape-returns-focus'
 import { focusWhenShown } from './focus-when-shown'
 
@@ -131,7 +132,13 @@ const rail = computed<RailEntry[]>(() => {
     shortCounts.set(short, (shortCounts.get(short) ?? 0) + 1)
   }
   const entries: RailEntry[] = []
-  for (const [providerId, provider] of providers) {
+  const sortedProviders = [...providers.entries()].sort(([idA, pA], [idB, pB]) => {
+    const aIsNexus = idA === TUFF_NEXUS_PROVIDER_ID || pA.name === 'Tuff Nexus'
+    const bIsNexus = idB === TUFF_NEXUS_PROVIDER_ID || pB.name === 'Tuff Nexus'
+    if (aIsNexus !== bIsNexus) return aIsNexus ? -1 : 1
+    return 0
+  })
+  for (const [providerId, provider] of sortedProviders) {
     const icon = providerIconForId(providerId, provider.type)
     const short = shortProviderName(provider.name)
     // The column is narrow: `Claude Code (local CLI)` prints as `Claude Code` — unless another

@@ -805,3 +805,58 @@ export function parsePiCliLine(line: string): PiCliEvent | null {
 
   return null
 }
+
+export interface CliAgentProfileSpec {
+  id: string
+  name: string
+  description: string
+  providerId: string
+  systemPrompt: string
+  getExecutable: () => string | null | undefined
+}
+
+export const LOCAL_CLI_PROFILE_SPECS: CliAgentProfileSpec[] = [
+  {
+    id: 'default-pi',
+    name: 'Tuff Pi Coordinator',
+    description: 'Host-managed Pi coordinator with explicit tool approval.',
+    providerId: PI_CLI_PROVIDER_ID,
+    systemPrompt:
+      'You are Tuff Pi, the central coordinator. Use only host tools. Before creating child agents, submit one explicit dependency-aware plan through agent.delegate and wait for approval.',
+    getExecutable: getResolvedPiExecutable
+  },
+  {
+    id: 'profile:cli:claude',
+    name: 'Claude Code',
+    description: 'Local Claude Code CLI agent with host tools.',
+    providerId: CLAUDE_CLI_PROVIDER_ID,
+    systemPrompt:
+      'You are Claude Code, operating as a local workspace agent. Use host tools to inspect files, execute tasks, and coordinate with the user.',
+    getExecutable: getResolvedClaudeExecutable
+  },
+  {
+    id: 'profile:cli:codex',
+    name: 'Codex',
+    description: 'Local Codex CLI agent with host tools.',
+    providerId: CODEX_CLI_PROVIDER_ID,
+    systemPrompt:
+      'You are Codex, operating as a local workspace agent. Use host tools to inspect files, execute tasks, and coordinate with the user.',
+    getExecutable: getResolvedCodexExecutable
+  },
+  {
+    id: 'profile:cli:omp',
+    name: 'OMP',
+    description: 'Local OMP CLI agent with host tools.',
+    providerId: OMP_CLI_PROVIDER_ID,
+    systemPrompt:
+      'You are OMP, operating as a local workspace agent. Use host tools to inspect files, execute tasks, and coordinate with the user.',
+    getExecutable: getResolvedOmpExecutable
+  }
+]
+
+export const CLI_PROFILE_PROVIDER_MAP: Readonly<Record<string, string>> = Object.freeze({
+  'default-pi': PI_CLI_PROVIDER_ID,
+  'profile:cli:claude': CLAUDE_CLI_PROVIDER_ID,
+  'profile:cli:codex': CODEX_CLI_PROVIDER_ID,
+  'profile:cli:omp': OMP_CLI_PROVIDER_ID
+})

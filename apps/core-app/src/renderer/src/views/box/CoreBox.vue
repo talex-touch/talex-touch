@@ -1917,6 +1917,12 @@ div.CoreBox {
 
   opacity: 0.75;
   background-color: var(--tx-fill-color);
+  pointer-events: none;
+  // Teleported to `body`, so `body > :not(#app)` (`index.scss`, meant for interactive overlays)
+  // sets `-webkit-app-region: no-drag` on it. Chromium composites drag regions per window across
+  // every `no-drag` box regardless of z-index, so a full-bleed `no-drag` mask cancels the
+  // DivisionBox header's drag region and leaves the detached window unmovable.
+  -webkit-app-region: none;
 }
 
 // The ⌘K panel grew the window (`useMetaPanelState`). The results have no surface of their own,

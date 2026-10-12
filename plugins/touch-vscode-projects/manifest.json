@@ -35,7 +35,13 @@
     {
       "id": "vscode-projects",
       "name": "VS Code Projects",
-      "desc": "查看并打开最近使用的 VS Code 项目",
+      "desc": {
+        "default": "查看并打开最近使用的 VS Code 项目",
+        "locales": {
+          "zh-CN": "查看并打开最近使用的 VS Code 项目",
+          "en-US": "Browse and open recent VS Code projects"
+        }
+      },
       "icon": { "type": "file", "value": "assets/logo.svg" },
       "keywords": ["vscode", "visual studio code", "project", "workspace", "项目", "工作区"],
       "push": true,

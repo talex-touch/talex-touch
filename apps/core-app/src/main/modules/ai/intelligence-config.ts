@@ -32,6 +32,7 @@ import { getMainConfig, saveMainConfig, subscribeMainConfig } from '../storage'
 import { getSanitizedAuthSessionState, subscribeAuthState } from '../auth'
 import { tuffIntelligence } from './intelligence-sdk'
 import { normalizeProviderForRuntime, TUFF_NEXUS_PROVIDER_ID } from './provider-runtime'
+import { fetchProviderModels } from './provider-models'
 import {
   CLAUDE_CLI_ORIGIN,
   CLAUDE_CLI_PROVIDER_ID,
@@ -1530,6 +1531,9 @@ function applyAuthSignedInTransition(signedIn: boolean): void {
     enabled: signedIn,
     persisted
   })
+  if (signedIn) {
+    void syncNexusModelsQuietly(true)
+  }
 }
 
 /**
@@ -1579,6 +1583,49 @@ export function setupConfigUpdateListener(): void {
  */
 export function saveIntelligenceConfig(config: IntelligenceSDKPersistedConfig): void {
   saveMainConfig(StorageList.IntelligenceConfig, config)
+}
+
+let lastNexusSyncAt = 0
+
+/**
+ * Periodically or reactively reconciles Nexus-managed provider models with the remote Nexus backend.
+ * Falls back silently on network / auth errors so offline operation is uninterrupted.
+ */
+export async function syncNexusModelsQuietly(force = false): Promise<boolean> {
+  const now = Date.now()
+  if (!force && now - lastNexusSyncAt < 30_000) return false
+  lastNexusSyncAt = now
+
+  try {
+    const stored = getLatestConfig()
+    if (!stored) return false
+    const nexus = stored.providers?.find((provider) => provider.id === TUFF_NEXUS_PROVIDER_ID)
+    if (!nexus || nexus.enabled === false) return false
+
+    const models = await fetchProviderModels(nexus, { allowStoredFallback: false })
+    if (!models || models.length === 0) return false
+
+    const currentIds = (nexus.models ?? []).map((binding) => binding.id)
+    const isSame =
+      models.length === currentIds.length && models.every((id, index) => currentIds[index] === id)
+
+    if (!isSame) {
+      const existingBindings = nexus.models ?? []
+      const nextModels = models.map((id) => existingBindings.find((b) => b.id === id) ?? { id })
+      nexus.models = nextModels
+      if (!nexus.defaultModel || !nextModels.some((m) => m.id === nexus.defaultModel)) {
+        nexus.defaultModel = nextModels[0]?.id
+      }
+      saveIntelligenceConfig(stored)
+      intelligenceConfigLog.info('Dynamically updated Nexus models from upstream', {
+        count: nextModels.length
+      })
+      return true
+    }
+  } catch (error) {
+    intelligenceConfigLog.warn('Quiet Nexus model sync deferred', { error })
+  }
+  return false
 }
 /**
  * Log non-sensitive persisted config metadata for startup diagnostics.

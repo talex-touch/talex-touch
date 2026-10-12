@@ -84,31 +84,36 @@ const progressValue = computed(() => {
   if (typeof props.installTask?.progress === 'number') {
     return Math.max(0, Math.min(100, Math.round(props.installTask.progress)))
   }
-  if (installStage.value === 'installing') return 100
   return null
 })
 
-/** Whether to show circular progress indicator */
-const showProgressCircle = computed(
-  () =>
+/** Progress value rendered by TxButton's full-width background layer */
+const buttonProgress = computed(() => {
+  if (
     (installStage.value === 'downloading' || installStage.value === 'verifying') &&
     progressValue.value !== null
-)
+  ) {
+    return progressValue.value
+  }
+  return undefined
+})
 
-/** CSS variable for progress circle */
-const progressCircleStyle = computed(() =>
-  showProgressCircle.value
-    ? ({ '--progress': `${progressValue.value}%` } as Record<string, string>)
-    : {}
-)
-
-/** Progress percentage display text */
-const progressDisplay = computed(() =>
-  progressValue.value !== null ? `${progressValue.value}` : ''
-)
+/** Result state rendered by TxButton after the task leaves the active stages */
+const buttonStatus = computed<'' | 'success' | 'warning' | 'error'>(() => {
+  switch (installStage.value) {
+    case 'completed':
+      return 'success'
+    case 'failed':
+      return 'error'
+    case 'cancelled':
+      return 'warning'
+    default:
+      return ''
+  }
+})
 
 /** Whether to show spinning loader */
-const showSpinner = computed(() => installStage.value === 'installing' && !showProgressCircle.value)
+const showSpinner = computed(() => installStage.value === 'installing')
 
 /** Button icon based on current state */
 const buttonIcon = computed(() => {
@@ -133,12 +138,6 @@ const buttonIcon = computed(() => {
       return 'i-ri-shield-check-line'
     case 'awaiting-confirmation':
       return 'i-ri-shield-keyhole-line'
-    case 'completed':
-      return 'i-ri-check-line'
-    case 'failed':
-      return 'i-ri-error-warning-line'
-    case 'cancelled':
-      return 'i-ri-close-line'
     default:
       return 'i-ri-download-line'
   }
@@ -220,52 +219,15 @@ function handleClick(event: MouseEvent): void {
     "
     :disabled="isDisabled"
     :loading="showSpinner"
+    :progress="buttonProgress"
+    :status="buttonStatus"
+    :icon="buttonStatus ? undefined : buttonIcon"
     :class="{
       'upgrade-available':
         !isBundledManaged && isCompatible && hasUpgrade && isInstalled && !isActiveStage
     }"
     @click="handleClick"
   >
-    <div class="install-button-content">
-      <div v-if="showProgressCircle" class="install-progress" :style="progressCircleStyle">
-        <span>{{ progressDisplay }}</span>
-      </div>
-      <i v-else-if="!showSpinner" :class="buttonIcon" />
-      <span>{{ buttonLabel }}</span>
-    </div>
+    <span>{{ buttonLabel }}</span>
   </TxButton>
 </template>
-
-<style lang="scss" scoped>
-.install-button-content {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.install-progress {
-  position: relative;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at center, var(--tx-bg-color-overlay) 0 54%, transparent 56%),
-    conic-gradient(
-      var(--tx-color-primary) 0 var(--progress),
-      rgba(var(--tx-color-primary-rgb), 0.18) var(--progress) 100%
-    );
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--tx-color-primary);
-  font-weight: 700;
-  font-size: 0.65rem;
-  box-shadow: inset 0 0 0 1px rgba(var(--tx-color-primary-rgb), 0.16);
-}
-
-.install-progress span {
-  position: relative;
-  z-index: 1;
-  line-height: 1;
-}
-</style>

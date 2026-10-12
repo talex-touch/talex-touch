@@ -3731,7 +3731,14 @@
     "modifiedAt": "修改时间",
     "openWith": "用 {app} 打开",
     "openWithOther": "选择其他应用打开",
-    "defaultApp": "默认应用"
+    "defaultApp": "默认应用",
+    "deepMatchTitle": "正文命中片段",
+    "deepMatchPage": "第 {page} 页",
+    "deepMatchLine": "第 {line} 行",
+    "deepMatchSemantic": "语义匹配",
+    "deepMatchContent": "正文匹配",
+    "deepMatchCode": "代码匹配",
+    "deepMatchScore": "相关度 {score}%"
   },
   "download": {
     "migration": {
@@ -5863,6 +5870,262 @@
     "countSummary": "共 {count} 条",
     "noRecords": "暂无记录"
   },
+  "previewCard": {
+    "common": {
+      "result": "结果",
+      "expression": "表达式",
+      "details": "详情",
+      "conversion": "{from} → {to}"
+    },
+    "basic": {
+      "subtitle": "快速算式",
+      "sanitized": "算式（安全）"
+    },
+    "advanced": {
+      "subtitle": "高级计算",
+      "normalized": "标准化"
+    },
+    "color": {
+      "subtitle": "颜色解析",
+      "color": "颜色",
+      "suggestions": "生成建议",
+      "lightness": "亮度",
+      "saturation": "饱和度"
+    },
+    "percent": {
+      "subtitleArithmetic": "百分比运算",
+      "subtitleOf": "百分比计算",
+      "subtitleChange": "百分比增减",
+      "percentResult": "百分比结果",
+      "operation": "运算",
+      "delta": "变化量",
+      "basePercent": "基准百分比",
+      "base": "基准",
+      "percent": "百分比"
+    },
+    "lines": {
+      "subtitle": "行处理",
+      "title": "{operation}：{input} → {output}",
+      "lineCountChange": "行数变化",
+      "lineCount": "{count} 行",
+      "lineCountOne": "{count} 行",
+      "input": "输入",
+      "output": "输出",
+      "removed": "移除",
+      "operation": "操作",
+      "dedupeRule": "去重规则",
+      "dedupeRuleValue": "完全相同的行保留首次出现",
+      "sortRule": "排序规则",
+      "sortRuleValue": "本地化排序（{locale}，数字按数值比较）",
+      "lineEnding": "换行符",
+      "lineEndingValue": "统一为 LF",
+      "truncated": "超过 {max} 行，仅处理前 {max} 行",
+      "empty": "处理后没有任何行",
+      "operations": {
+        "sortDesc": "降序排序",
+        "sortAsc": "升序排序",
+        "unique": "去重",
+        "dropEmpty": "删除空行",
+        "trim": "逐行去空格"
+      }
+    },
+    "radix": {
+      "subtitle": "进制转换",
+      "bitWidth": "位宽",
+      "byteCount": "字节数",
+      "beyond64": "超出 64 位整数范围，按任意精度整数计算",
+      "bases": {
+        "hex": "十六进制",
+        "bin": "二进制",
+        "oct": "八进制",
+        "dec": "十进制"
+      }
+    },
+    "textStats": {
+      "subtitle": "文本统计",
+      "characters": "字符数",
+      "words": "词数",
+      "chineseCharacters": "中文字符",
+      "trimmedLength": "去首尾空白",
+      "lines": "行数"
+    },
+    "time": {
+      "offsetSubtitle": "时间偏移",
+      "durationSubtitle": "时长换算",
+      "dateDiffSubtitle": "日期差",
+      "rangeSubtitle": "时间差",
+      "targetTime": "目标时间",
+      "relativeToNow": "相对现在",
+      "offset": "偏移量",
+      "totalDuration": "总时长",
+      "hours": "小时",
+      "minutes": "分钟",
+      "seconds": "秒",
+      "fromNow": "距离现在",
+      "interval": "间隔",
+      "targetDate": "目标日期",
+      "milliseconds": "毫秒",
+      "start": "起点",
+      "end": "终点"
+    },
+    "unit": {
+      "subtitle": "单位换算",
+      "suggestionsSubtitle": "单位建议",
+      "original": "原值",
+      "category": "类别",
+      "categories": {
+        "length": "长度",
+        "mass": "质量",
+        "temperature": "温度",
+        "data": "数据存储",
+        "time": "时间",
+        "area": "面积",
+        "volume": "体积",
+        "speed": "速度"
+      },
+      "formula": "公式",
+      "commonConversions": "常用换算"
+    },
+    "constants": {
+      "value": "常量值",
+      "alias": "别名",
+      "details": "常量详情",
+      "id": "标识",
+      "scientific": "科学计数法",
+      "source": "来源",
+      "items": {
+        "pi": {
+          "name": "圆周率",
+          "category": "数学常数",
+          "description": "定义为圆的周长与直径之比，是各类几何和信号计算的基础常数。"
+        },
+        "eulers_number": {
+          "name": "自然常数",
+          "category": "数学常数",
+          "description": "自然对数的底数，广泛出现在指数增长、复利和微积分公式中。"
+        },
+        "speed_of_light": {
+          "name": "真空光速",
+          "category": "物理常数",
+          "description": "米的定义基于光在真空中传播的速度，为所有电磁计算的基础。"
+        },
+        "planck_constant": {
+          "name": "普朗克常数",
+          "category": "量子物理",
+          "description": "描述能量与频率之间关系的常数，定义了量子的尺度。"
+        },
+        "reduced_planck_constant": {
+          "name": "约化普朗克常数",
+          "category": "量子物理",
+          "description": "普朗克常数除以 2π，常用于角频率相关的量子力学公式。"
+        },
+        "gravitational_constant": {
+          "name": "万有引力常数",
+          "category": "物理常数",
+          "description": "决定两个物体之间引力强度的常数，用于天体力学与物理模拟。"
+        },
+        "earth_surface_gravity": {
+          "name": "标准地表重力",
+          "category": "地球物理",
+          "description": "国际标准地表重力加速度，常用于航空航天及工程计算。"
+        },
+        "avogadro_constant": {
+          "name": "阿伏伽德罗常数",
+          "category": "化学常数",
+          "description": "一摩尔物质所包含的粒子数，连接宏观与微观尺度的重要常数。"
+        },
+        "boltzmann_constant": {
+          "name": "玻尔兹曼常数",
+          "category": "热力学",
+          "description": "关联温度与能量的常数，用于统计物理和热噪计算。"
+        },
+        "gas_constant": {
+          "name": "理想气体常数",
+          "category": "热力学",
+          "description": "出现在理想气体状态方程中的比例系数，也等于阿伏伽德罗常数乘玻尔兹曼常数。"
+        },
+        "elementary_charge": {
+          "name": "元电荷",
+          "category": "电磁常数",
+          "description": "单个质子或电子所带电荷量的绝对值，为各种电磁方程的基础。"
+        },
+        "faraday_constant": {
+          "name": "法拉第常数",
+          "category": "电化学",
+          "description": "每摩尔电子所带电量，在电解与电池容量换算中使用。"
+        },
+        "vacuum_permittivity": {
+          "name": "真空介电常数",
+          "category": "电磁常数",
+          "description": "真空中电位移与电场强度之比，是电容与电磁场计算的基础常数。"
+        },
+        "vacuum_permeability": {
+          "name": "真空磁导率",
+          "category": "电磁常数",
+          "description": "真空中磁场强度与磁感应强度的换算系数，旧称真空磁导率常数。"
+        },
+        "electron_mass": {
+          "name": "电子质量",
+          "category": "原子物理",
+          "description": "电子的静止质量，用于质能换算与粒子物理计算。"
+        },
+        "proton_mass": {
+          "name": "质子质量",
+          "category": "原子物理",
+          "description": "质子的静止质量，约为电子质量的 1836 倍。"
+        },
+        "bohr_radius": {
+          "name": "玻尔半径",
+          "category": "原子物理",
+          "description": "氢原子基态电子轨道半径，是原子尺度的长度基准。"
+        },
+        "rydberg_constant": {
+          "name": "里德伯常数",
+          "category": "原子物理",
+          "description": "氢原子光谱项的基础常数，用于谱线波数与能级计算。"
+        },
+        "stefan_boltzmann_constant": {
+          "name": "斯特藩-玻尔兹曼常数",
+          "category": "热力学",
+          "description": "黑体辐射总能量与温度四次方之间的比例常数。"
+        },
+        "standard_atmosphere": {
+          "name": "标准大气压",
+          "category": "地球物理",
+          "description": "定义值：海平面标准大气压，等于 760 mmHg。"
+        }
+      }
+    },
+    "currency": {
+      "subtitle": "汇率换算 · {source} · {time}",
+      "subtitleStale": "汇率换算 ⚠️ 数据较旧 ({time})",
+      "builtIn": "内置",
+      "inUsd": "折合美元",
+      "rate": "汇率",
+      "source": "数据源",
+      "sourceAmount": "源金额",
+      "targetAmount": "目标金额",
+      "names": {
+        "USD": "美元",
+        "CNY": "人民币",
+        "EUR": "欧元",
+        "JPY": "日元",
+        "GBP": "英镑",
+        "HKD": "港币",
+        "TWD": "新台币",
+        "KRW": "韩元",
+        "AUD": "澳元",
+        "CAD": "加元",
+        "SGD": "新加坡元",
+        "THB": "泰铢",
+        "VND": "越南盾",
+        "INR": "印度卢比",
+        "CHF": "瑞士法郎",
+        "BTC": "比特币",
+        "ETH": "以太坊"
+      }
+    }
+  },
   "boxTag": {
     "image": "图像",
     "imageCount": "{count} 张图像",
@@ -6938,6 +7201,12 @@
       "revealInFinder": "在 Finder 中显示",
       "revealInExplorer": "在资源管理器中显示",
       "revealInFileManager": "在文件管理器中显示",
+      "quickLook": "快速查看",
+      "showPackageContents": "显示包内容",
+      "getInfo": "显示简介",
+      "openInTerminal": "在终端中打开",
+      "copyFile": "拷贝文件",
+      "systemShare": "系统分享",
       "translateImage": "翻译图片",
       "translateImagePin": "翻译并置顶",
       "flowTransfer": "流转到其他插件",

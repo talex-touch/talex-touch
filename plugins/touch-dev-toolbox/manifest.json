@@ -40,8 +40,20 @@
   "features": [
     {
       "id": "dev-toolbox",
-      "name": "开发工具箱",
-      "desc": "常用链接入口",
+      "name": {
+        "default": "开发工具箱",
+        "locales": {
+          "zh-CN": "开发工具箱",
+          "en-US": "Dev Toolbox"
+        }
+      },
+      "desc": {
+        "default": "常用链接入口",
+        "locales": {
+          "zh-CN": "常用链接入口",
+          "en-US": "Quick access to common links"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

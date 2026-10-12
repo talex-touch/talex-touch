@@ -105,6 +105,7 @@ export default {
         searchPlaceholder: 'Search provider, vendor, capability',
         filterPlaceholder: 'Filter status',
         statusSwitchLabel: 'Toggle {provider} status',
+        trendCalls: 'calls',
         editTitle: 'Edit provider',
         empty: 'No providers registered yet.',
         emptySearch: 'No providers match the current search.',
@@ -124,6 +125,12 @@ export default {
         removeCapabilitiesTitle: 'Delete capabilities',
         removeCapabilitiesConfirm: 'Saving deletes these capabilities from "{provider}": {list}. This cannot be undone.',
         testUpstreamHint: 'The check sends one small probe request to the provider.',
+        keyPlaceholder: 'Leave empty to keep existing key; enter to update',
+        secretIdPlaceholder: 'Leave empty to keep existing',
+        secretKeyPlaceholder: 'Leave empty to keep existing',
+        fetchedModelsTitle: 'Fetched models (check to enable):',
+        selectAll: 'Select all',
+        deselectAll: 'Deselect all',
       },
       scenes: {
         deleteTitle: 'Delete capability route',
@@ -191,6 +198,8 @@ export default {
         missingCount: '{count} missing',
         priorityValue: 'priority {value}',
         statusSwitchLabel: 'Toggle {scene}',
+        preset: 'Function preset',
+        customPreset: 'Custom function',
       },
       usage: {
         listTitle: 'Usage ledger',
@@ -264,6 +273,7 @@ export default {
         updatedAt: 'Updated at',
         latestRun: 'Latest run',
         readiness: 'Readiness',
+        trend: 'Trend',
       },
       fields: {
         adapter: 'Adapter',

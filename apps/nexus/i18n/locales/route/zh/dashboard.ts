@@ -102,6 +102,7 @@ export default {
         searchPlaceholder: '搜索服务渠道、厂商、能力',
         filterPlaceholder: '筛选状态',
         statusSwitchLabel: '切换 {provider} 状态',
+        trendCalls: '次调用',
         editTitle: '编辑服务渠道',
         empty: '暂无服务渠道',
         emptySearch: '当前搜索下没有服务渠道',
@@ -121,6 +122,12 @@ export default {
         removeCapabilitiesTitle: '删除能力',
         removeCapabilitiesConfirm: '保存会从「{provider}」删除这些能力：{list}。此操作不可撤销。',
         testUpstreamHint: '检查会向服务渠道发一次很小的探测请求。',
+        keyPlaceholder: '留空表示不修改；输入以更换 Key',
+        secretIdPlaceholder: '留空表示不修改',
+        secretKeyPlaceholder: '留空表示不修改',
+        fetchedModelsTitle: '已拉取到的模型（勾选以启用）：',
+        selectAll: '全选',
+        deselectAll: '清空',
       },
       scenes: {
         deleteTitle: '删除能力路由',
@@ -188,6 +195,8 @@ export default {
         missingCount: '缺失 {count} 项',
         priorityValue: '优先级 {value}',
         statusSwitchLabel: '切换 {scene} 状态',
+        preset: '功能预设',
+        customPreset: '自定义功能',
       },
       usage: {
         listTitle: '用量账本',
@@ -261,6 +270,7 @@ export default {
         updatedAt: '更新时间',
         latestRun: '最近运行',
         readiness: '就绪',
+        trend: '调用趋势',
       },
       fields: {
         adapter: '适配器',

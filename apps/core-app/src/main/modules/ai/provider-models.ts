@@ -2,6 +2,8 @@ import type { IntelligenceProviderConfig } from '@talex-touch/tuff-intelligence'
 import { IntelligenceProviderType } from '@talex-touch/tuff-intelligence'
 import { getNetworkService } from '../network'
 import { isNexusManagedProvider } from '@talex-touch/utils/intelligence/nexus-provider'
+import { performNexusRequestWithAuth } from '../auth'
+import { getRuntimeNexusBaseUrl } from '../nexus/runtime-base'
 
 const DEFAULT_BASE_URLS: Partial<Record<IntelligenceProviderType, string>> = {
   [IntelligenceProviderType.OPENAI]: 'https://api.openai.com/v1',
@@ -198,13 +200,44 @@ async function fetchLocalModels(
 
   return []
 }
+async function fetchNexusModels(
+  provider: IntelligenceProviderConfig,
+  _options: FetchProviderModelsOptions = {}
+): Promise<string[]> {
+  try {
+    const baseUrl = getRuntimeNexusBaseUrl()
+    const response = await performNexusRequestWithAuth(
+      {
+        url: `${baseUrl.replace(/\/+$/, '')}/api/v1/intelligence/models`,
+        method: 'GET'
+      },
+      {
+        trustedBaseUrl: baseUrl
+      }
+    )
+    if (response?.body) {
+      const data = (
+        typeof response.body === 'string' ? JSON.parse(response.body) : response.body
+      ) as Record<string, unknown>
+      if (Array.isArray(data.models)) {
+        const normalized = normalizeModelEntries(data.models)
+        if (normalized.length) {
+          return normalized
+        }
+      }
+    }
+  } catch {
+    // Falls back to stored models on network/auth error
+  }
+  return getStoredModels(provider)
+}
 
 export async function fetchProviderModels(
   provider: IntelligenceProviderConfig,
   options: FetchProviderModelsOptions = {}
 ): Promise<string[]> {
   if (isNexusManagedProvider(provider)) {
-    return getStoredModels(provider)
+    return await fetchNexusModels(provider, options)
   }
 
   if (provider.type === IntelligenceProviderType.LOCAL) {

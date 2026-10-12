@@ -15,6 +15,9 @@ export default antfu(
       '.serena/**',
       // Frozen pre-cutover records retain their original research probes as evidence.
       'docs/engineering/workflow/handoffs/**',
+      // Promo video pages run in a bare headless Chrome with gsap as a page global; the kit's
+      // icon table is generated. Neither is app code.
+      'docs/marketing/promo-video/**',
       '**/.nuxt/**',
       '**/.output/**',
       '**/.wrangler/**',

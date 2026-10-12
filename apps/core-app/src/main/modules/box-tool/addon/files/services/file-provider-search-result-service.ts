@@ -5,7 +5,7 @@ import {
   collectSearchKeywordMatches,
   normalizeSearchText
 } from '@talex-touch/utils/search'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, or } from 'drizzle-orm'
 import type { DbUtils } from '../../../../../db/utils'
 import { fileExtensions, files as filesSchema, fileTypeIs } from '../../../../../db/schema'
 import type { SearchIndexService } from '../../../search-engine/search-index-service'
@@ -99,7 +99,7 @@ export class FileProviderSearchResultService {
           continue
         }
       }
-      if (normalized.startsWith('type:')) {
+      if (normalized.startsWith('type:') || normalized.startsWith('kind:')) {
         const type = resolveTypeTag(normalized.slice(5))
         if (type) {
           typeFilters.add(type)
@@ -308,7 +308,12 @@ export class FileProviderSearchResultService {
       })
       .from(filesSchema)
       .leftJoin(fileExtensions, eq(filesSchema.id, fileExtensions.fileId))
-      .where(and(fileTypeIs('file'), inArray(filesSchema.path, candidatePaths)))
+      .where(
+        and(
+          or(fileTypeIs('file'), fileTypeIs('directory')),
+          inArray(filesSchema.path, candidatePaths)
+        )
+      )
     if (signal.aborted) return this.empty(query)
     searchLogger.fileDataResults(rows.length, this.now() - dataFetchStart)
     this.deps.logDebug('Loaded candidate rows for scoring', {
@@ -488,8 +493,20 @@ export class FileProviderSearchResultService {
     typeFilters: Set<FileTypeTag>
   ): Promise<TuffSearchResult> {
     const dbUtils = this.deps.getDbUtils()
+    if (!dbUtils) return this.empty(query)
+    const wantsFolder = typeFilters.has('folder')
     const extensions = resolveExtensionsForTypeFilters(typeFilters)
-    if (!dbUtils || extensions.length === 0) return this.empty(query)
+    if (!wantsFolder && extensions.length === 0) return this.empty(query)
+    const whereClause =
+      wantsFolder && extensions.length > 0
+        ? or(
+            fileTypeIs('directory'),
+            eq(filesSchema.isDir, true),
+            and(eq(filesSchema.type, 'file'), inArray(filesSchema.extension, extensions))
+          )
+        : wantsFolder
+          ? or(fileTypeIs('directory'), eq(filesSchema.isDir, true))
+          : and(eq(filesSchema.type, 'file'), inArray(filesSchema.extension, extensions))
     const rows = await dbUtils
       .getFileIndexReadDb()
       .select({
@@ -499,7 +516,7 @@ export class FileProviderSearchResultService {
       })
       .from(filesSchema)
       .leftJoin(fileExtensions, eq(filesSchema.id, fileExtensions.fileId))
-      .where(and(eq(filesSchema.type, 'file'), inArray(filesSchema.extension, extensions)))
+      .where(whereClause)
       .orderBy(desc(filesSchema.mtime))
       .limit(50)
     const items = [...this.groupRows(rows).values()].flatMap(
@@ -597,6 +614,9 @@ export class FileProviderSearchResultService {
 
   private matchesTypes(file: FileRecord, typeFilters: Set<FileTypeTag>): boolean {
     if (typeFilters.size === 0) return true
+    if (file.isDir || file.type === 'directory') {
+      return typeFilters.has('folder')
+    }
     const tags = new Set(getTypeTagsForExtension((file.extension || '').toLowerCase()))
     return [...typeFilters].some((type) => tags.has(type))
   }

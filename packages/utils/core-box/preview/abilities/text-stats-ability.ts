@@ -4,6 +4,7 @@ import type {
   PreviewAbilitySafetyPolicy,
   PreviewCardPayload,
 } from "../types";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 const TAG_KEYWORDS = [
@@ -118,20 +119,29 @@ export class TextStatsAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: content.slice(0, 24),
-      subtitle: "文本统计",
-      primaryLabel: "字符数",
+      subtitle: i18nMsg("previewCard.textStats.subtitle"),
+      primaryLabel: i18nMsg("previewCard.textStats.characters"),
       primaryValue: characters.toString(),
-      secondaryLabel: "词数",
+      secondaryLabel: i18nMsg("previewCard.textStats.words"),
       secondaryValue: words.toString(),
       chips: [
-        { label: "中文字符", value: chineseChars.toString() },
+        {
+          label: i18nMsg("previewCard.textStats.chineseCharacters"),
+          value: chineseChars.toString(),
+        },
         { label: "ASCII", value: (characters - chineseChars).toString() },
       ],
       sections: [
         {
           rows: [
-            { label: "去首尾空白", value: content.trim().length.toString() },
-            { label: "行数", value: content.split(/\r?\n/).length.toString() },
+            {
+              label: i18nMsg("previewCard.textStats.trimmedLength"),
+              value: content.trim().length.toString(),
+            },
+            {
+              label: i18nMsg("previewCard.textStats.lines"),
+              value: content.split(/\r?\n/).length.toString(),
+            },
           ],
         },
       ],

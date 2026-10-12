@@ -39,8 +39,20 @@
   "features": [
     {
       "id": "image-tools",
-      "name": "图片转换与压缩",
-      "desc": "调整一张图片的分辨率、质量和输出格式",
+      "name": {
+        "default": "图片转换与压缩",
+        "locales": {
+          "zh-CN": "图片转换与压缩",
+          "en-US": "Convert & Compress Images"
+        }
+      },
+      "desc": {
+        "default": "调整一张图片的分辨率、质量和输出格式",
+        "locales": {
+          "zh-CN": "调整一张图片的分辨率、质量和输出格式",
+          "en-US": "Change an image's resolution, quality and output format"
+        }
+      },
       "icon": {
         "type": "file",
         "value": "assets/logo.svg"

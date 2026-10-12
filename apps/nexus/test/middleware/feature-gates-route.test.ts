@@ -75,7 +75,7 @@ describe('feature-gates.global middleware', () => {
     })
 
     it('sends the risk console to the admin console it belongs to', () => {
-      expect(middleware({ path: '/admin/risk' })).toEqual({ redirectedTo: '/admin/updates' })
+      expect(middleware({ path: '/admin/risk' })).toEqual({ redirectedTo: '/admin/analytics' })
     })
 
     it('sends the standalone emergency console to the site root', () => {
@@ -89,7 +89,7 @@ describe('feature-gates.global middleware', () => {
   })
 
   it('treats a missing riskControl block as disabled', () => {
-    expect(middleware({ path: '/admin/risk' })).toEqual({ redirectedTo: '/admin/updates' })
+    expect(middleware({ path: '/admin/risk' })).toEqual({ redirectedTo: '/admin/analytics' })
     expect(middleware({ path: '/admin/emergency' })).toEqual({ redirectedTo: '/' })
   })
 
@@ -106,7 +106,7 @@ describe('feature-gates.global middleware', () => {
 
   it('still redirects when enabled holds a falsy string form', () => {
     runtimeConfig.public = { riskControl: { enabled: '0' } }
-    expect(middleware({ path: '/admin/risk' })).toEqual({ redirectedTo: '/admin/updates' })
+    expect(middleware({ path: '/admin/risk' })).toEqual({ redirectedTo: '/admin/analytics' })
 
     runtimeConfig.public = { riskControl: { enabled: 'false' } }
     expect(middleware({ path: '/admin/emergency' })).toEqual({ redirectedTo: '/' })
@@ -114,7 +114,7 @@ describe('feature-gates.global middleware', () => {
 
   it('gates nested paths under both consoles', () => {
     runtimeConfig.public = { riskControl: { enabled: false } }
-    expect(middleware({ path: '/admin/risk/cases' })).toEqual({ redirectedTo: '/admin/updates' })
+    expect(middleware({ path: '/admin/risk/cases' })).toEqual({ redirectedTo: '/admin/analytics' })
     expect(middleware({ path: '/admin/emergency/step-2' })).toEqual({ redirectedTo: '/' })
   })
 })

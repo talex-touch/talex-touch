@@ -62,6 +62,17 @@ function buildProcessedAppItem(app: AppSearchRow, match: AppMatchState): Process
   const description = app.extensions.description || ''
   const alternateNames = parseStringList(app.extensions[ALTERNATE_NAMES_EXTENSION_KEY])
   const icon = resolveAppIcon(rawIconValue, app.path, app.extensions.bundleId || '')
+  const rawInstalledAt = app.extensions.installedAt ? Number(app.extensions.installedAt) : NaN
+  const createdAt =
+    Number.isFinite(rawInstalledAt) && rawInstalledAt > 0
+      ? new Date(rawInstalledAt).toISOString()
+      : app.ctime && app.ctime.getTime() > 0
+        ? app.ctime.toISOString()
+        : undefined
+  const version = app.extensions.version || undefined
+  const isLocalAppPath =
+    launchKind === 'path' && Boolean(app.path) && !app.path.startsWith('shell:')
+  const isAppBundle = isLocalAppPath && app.path.toLowerCase().endsWith('.app')
 
   const tuffItem = new TuffItemBuilder(uniqueId, 'application', 'app-provider')
     .setKind('app')
@@ -78,7 +89,45 @@ function buildProcessedAppItem(app: AppSearchRow, match: AppMatchState): Process
         payload: {
           path: app.path
         }
-      }
+      },
+      ...(isAppBundle
+        ? [
+            {
+              id: 'show-package-contents',
+              type: 'open' as const,
+              label: 'Show Package Contents',
+              payload: { path: app.path }
+            }
+          ]
+        : []),
+      ...(isLocalAppPath
+        ? [
+            {
+              id: 'get-info',
+              type: 'open' as const,
+              label: 'Get Info',
+              payload: { path: app.path }
+            },
+            {
+              id: 'open-terminal',
+              type: 'open' as const,
+              label: 'Open in Terminal',
+              payload: { path: app.path }
+            },
+            {
+              id: 'copy-file',
+              type: 'copy' as const,
+              label: 'Copy File',
+              payload: { path: app.path }
+            },
+            {
+              id: 'system-share',
+              type: 'share' as const,
+              label: 'Share',
+              payload: { path: app.path }
+            }
+          ]
+        : [])
     ])
     .setMeta({
       app: {
@@ -89,7 +138,9 @@ function buildProcessedAppItem(app: AppSearchRow, match: AppMatchState): Process
         launchTarget: app.extensions.launchTarget || app.path,
         launchArgs: app.extensions.launchArgs || '',
         workingDirectory: app.extensions.workingDirectory || '',
-        displayPath: app.extensions.displayPath || ''
+        displayPath: app.extensions.displayPath || '',
+        ...(version ? { version } : {}),
+        ...(createdAt ? { createdAt } : {})
       },
       extension: {
         matchResult: match.highlights,

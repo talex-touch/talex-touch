@@ -7,6 +7,7 @@ import { normalizeProviderAuthRef } from './providerCredentialStore'
 import {
   isKnownSceneCapabilityAdapterKey,
   normalizeSceneCapabilityAdapterKey,
+  SCENE_CAPABILITY_ADAPTER_CATALOG,
   sceneCapabilityAdapterSupports,
 } from './sceneCapabilityAdapterRegistry'
 import { defineD1Schema, ensureD1Schema } from './d1Schema'
@@ -450,10 +451,27 @@ function normalizeProviderInput(input: CreateProviderRegistryInput): NormalizedP
   if (authType !== 'none' && !authRef) {
     throw createError({ statusCode: 400, statusMessage: 'authRef is required for credentialed providers.' })
   }
-
-  const capabilities = normalizeCapabilities(input.capabilities)
+  let capabilities = normalizeCapabilities(input.capabilities)
+  const rawMeta = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+    ? input.metadata as Record<string, unknown>
+    : null
+  const inputAdapterKey = normalizeSceneCapabilityAdapterKey(rawMeta?.adapterKey ?? rawMeta?.adapter)
+  if (capabilities.length === 0 && inputAdapterKey && isKnownSceneCapabilityAdapterKey(inputAdapterKey)) {
+    const catalog = SCENE_CAPABILITY_ADAPTER_CATALOG.find(entry => entry.key === inputAdapterKey)
+    if (catalog) {
+      capabilities = catalog.capabilities.map(capability => ({
+        capability,
+        schemaRef: null,
+        metering: null,
+        meteringJson: null,
+        constraints: null,
+        constraintsJson: null,
+        metadata: null,
+        metadataJson: null,
+      }))
+    }
+  }
   const metadata = normalizeProviderMetadata(input.metadata, capabilities)
-
   return {
     name,
     displayName,

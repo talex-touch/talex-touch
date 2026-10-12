@@ -1559,16 +1559,31 @@ export class SearchIndexService {
 
     const titleSource = item.displayName || item.name
     const normalizedTitle = titleSource.toLowerCase().trim()
+    const cleanTitle = normalizeSearchText(normalizedTitle)
 
     this.appendKeyword(keywordMap, normalizedTitle, 1.25)
-
-    for (const token of this.splitWords(normalizedTitle)) {
-      this.appendKeyword(keywordMap, token, 1.0)
+    if (cleanTitle && cleanTitle !== normalizedTitle) {
+      this.appendKeyword(keywordMap, cleanTitle, 1.25)
     }
 
-    const nameCompact = normalizedTitle.replace(/\s+/g, '')
+    const extClean = (item.extension || '').replace(/^\./, '').trim().toLowerCase()
+
+    // Split tokens from both clean and raw titles to ensure dotted words (e.g., budget.xlsx -> budget) are extracted
+    const titleTokens = new Set([
+      ...this.splitWords(cleanTitle),
+      ...this.splitWords(normalizedTitle)
+    ])
+    for (const token of titleTokens) {
+      const isExt = extClean && token.toLowerCase() === extClean
+      // Non-extension filename tokens receive 1.15 >= NGRAM_SOURCE_MIN_PRIORITY (1.1),
+      // making them eligible for n-gram generation and enabling typo recall (B9).
+      this.appendKeyword(keywordMap, token, isExt ? 1.0 : 1.15)
+    }
+
+    const nameCompact = (cleanTitle || normalizedTitle).replace(/\s+/g, '')
     if (nameCompact.length > 1) {
-      this.appendKeyword(keywordMap, nameCompact, 1.0)
+      // Compact form without spaces receives 1.1 >= NGRAM_SOURCE_MIN_PRIORITY to generate bigrams across token boundaries
+      this.appendKeyword(keywordMap, nameCompact, 1.1)
     }
 
     const acronym = this.generateAcronym(titleSource)
@@ -1598,9 +1613,18 @@ export class SearchIndexService {
 
     const secondaryName = item.name.toLowerCase().trim()
     if (secondaryName && secondaryName !== normalizedTitle) {
+      const cleanSecondary = normalizeSearchText(secondaryName)
       this.appendKeyword(keywordMap, secondaryName, 1.1)
-      for (const token of this.splitWords(secondaryName)) {
-        this.appendKeyword(keywordMap, token, 0.95)
+      if (cleanSecondary && cleanSecondary !== secondaryName) {
+        this.appendKeyword(keywordMap, cleanSecondary, 1.1)
+      }
+      const secondaryTokens = new Set([
+        ...this.splitWords(cleanSecondary),
+        ...this.splitWords(secondaryName)
+      ])
+      for (const token of secondaryTokens) {
+        const isExt = extClean && token.toLowerCase() === extClean
+        this.appendKeyword(keywordMap, token, isExt ? 0.95 : 1.1)
       }
     }
 

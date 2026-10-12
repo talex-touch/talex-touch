@@ -13,7 +13,10 @@ import {
   getEffectiveCapabilityRoutingConfig
 } from './intelligence-config'
 import { getIntelligenceProviderManager, providerSupportsCapability } from './intelligence-sdk'
-import { isNexusManagedProvider } from '@talex-touch/utils/intelligence/nexus-provider'
+import {
+  isNexusManagedProvider,
+  TUFF_NEXUS_PROVIDER_ID
+} from '@talex-touch/utils/intelligence/nexus-provider'
 import { providerModelIds } from '@talex-touch/utils/intelligence/model-binding'
 import { resolveProviderEffectiveModel } from './model-request-plan'
 import {
@@ -255,6 +258,11 @@ export function getProviderModelOptions(
         const bIsSystem = b.providerId === systemTranslationProviderId
         if (aIsSystem !== bIsSystem) return aIsSystem ? -1 : 1
       }
+      const aIsNexus =
+        a.providerId === TUFF_NEXUS_PROVIDER_ID || isNexusManagedProvider({ id: a.providerId })
+      const bIsNexus =
+        b.providerId === TUFF_NEXUS_PROVIDER_ID || isNexusManagedProvider({ id: b.providerId })
+      if (aIsNexus !== bIsNexus) return aIsNexus ? -1 : 1
       return a.providerName.localeCompare(b.providerName)
     })
 }

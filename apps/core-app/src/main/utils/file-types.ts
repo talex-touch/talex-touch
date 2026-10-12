@@ -66,7 +66,15 @@ export const TYPE_ALIAS_MAP: Record<string, FileTypeTag> = {
   books: 'ebook',
   design: 'design',
   designs: 'design',
-  设计: 'design'
+  设计: 'design',
+  folder: 'folder',
+  folders: 'folder',
+  directory: 'folder',
+  directories: 'folder',
+  dir: 'folder',
+  dirs: 'folder',
+  文件夹: 'folder',
+  目录: 'folder'
 }
 
 /**
