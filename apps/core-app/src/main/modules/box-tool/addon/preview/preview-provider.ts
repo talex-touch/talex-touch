@@ -196,7 +196,11 @@ export class PreviewProvider implements ISearchProvider<ProviderContext> {
       builder.setTitle(payload.title)
     }
 
-    return builder.build()
+    const item = builder.build()
+    // The title names the answer, not something to search for. Tab and the inline completion
+    // read render.completion before the title, so they keep what the user typed.
+    item.render.completion = query.originalQuery.text ?? ''
+    return item
   }
 
   private extractPayload(item: TuffItem): PreviewCardPayload | undefined {

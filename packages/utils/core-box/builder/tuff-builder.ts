@@ -516,6 +516,10 @@ class TuffItemBuilder {
         throw new Error('自定义渲染模式下必须设置 customRender 属性')
       }
       render.custom = this.customRender as TuffCustomRender
+      // 标题仍要在自定义渲染之外显示：底栏、Tab 补全和「复制名称」都读 render.basic，
+      // 与插件宿主进程的 builder 保持一致。
+      if (this.basicRender.title)
+        render.basic = this.basicRender as TuffBasicRender
     }
 
     // 设置其他渲染属性

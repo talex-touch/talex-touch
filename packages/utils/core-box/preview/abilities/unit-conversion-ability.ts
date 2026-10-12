@@ -94,7 +94,9 @@ export class UnitConversionAbility extends BasePreviewAbility {
             rows: [
               {
                 label: i18nMsg("previewCard.unit.category"),
-                value: i18nMsg(`previewCard.unit.categories.${fromUnit.category}`),
+                value: i18nMsg(
+                  `previewCard.unit.categories.${fromUnit.category}`,
+                ),
               },
               {
                 label: i18nMsg("previewCard.unit.formula"),

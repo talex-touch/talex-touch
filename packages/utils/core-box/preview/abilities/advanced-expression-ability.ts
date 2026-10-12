@@ -7,6 +7,7 @@ import type {
 import type { TuffQuery } from "../../tuff";
 import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
+import { isDateLikeExpression } from "./basic-expression-ability";
 import { evaluateSafeMathExpression } from "./safe-math-expression";
 
 const ALLOWED_ALPHA_TOKENS = new Set([
@@ -95,6 +96,7 @@ export class AdvancedExpressionAbility extends BasePreviewAbility {
 
     if (/^[/~]/.test(text) || /^https?:\/\//i.test(text)) return false;
     if (/^\d+\.\d+\.\d+/.test(text)) return false;
+    if (isDateLikeExpression(text)) return false;
     if (!hasOnlyAllowedExpressionChars(text)) return false;
     if (!hasOnlyAllowedAlphaTokens(text)) return false;
 

@@ -65,7 +65,12 @@ export class ScientificConstantsAbility extends BasePreviewAbility {
   override canHandle(query: { text?: string }): boolean {
     if (!query.text || query.text.length > this.safety.input.maxLength)
       return false;
-    return CONSTANT_KEYWORDS.test(query.text);
+    if (CONSTANT_KEYWORDS.test(query.text)) return true;
+    // A Chinese alias is a full name, never a one-letter symbol, so it may open the card on its
+    // own. The keywords above miss some of them, such as 万有引力常数, 法拉第常数 and 电子静止质量.
+    return (
+      HAN_PATTERN.test(query.text) && findScientificConstant(query.text) !== null
+    );
   }
 
   override async execute(

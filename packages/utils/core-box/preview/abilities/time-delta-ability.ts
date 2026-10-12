@@ -6,12 +6,10 @@ import type {
 } from "../types";
 import dayjs from "dayjs";
 import zhCn from "dayjs/locale/zh-cn.js";
-import duration from "dayjs/plugin/duration.js";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
-dayjs.extend(duration);
 dayjs.extend(relativeTime);
 
 const RELATIVE_PATTERN = /^now\s*([+-])\s*(.+)$/i;
@@ -283,18 +281,23 @@ function parseAbsoluteDate(text: string): dayjs.Dayjs | null {
  * en-US `1d 2h 30m`.
  */
 function formatDuration(ms: number, locale: string): string {
-  const d = dayjs.duration(ms);
   const unit = (value: number, name: string) =>
     new Intl.NumberFormat(locale, {
       style: "unit",
       unit: name,
       unitDisplay: "narrow",
     }).format(value);
+  // Split the milliseconds directly. A dayjs duration also has months of 30.4 days, so its
+  // days() dropped every whole month and hours() carried the remainder: 45 days read as 14d 14h.
+  const days = Math.trunc(ms / DAY_MS);
+  const hours = Math.trunc((ms % DAY_MS) / HOUR_MS);
+  const minutes = Math.trunc((ms % HOUR_MS) / MINUTE_MS);
+  const seconds = Math.trunc((ms % MINUTE_MS) / SECOND_MS);
   const segments: string[] = [];
-  if (d.days()) segments.push(unit(d.days(), "day"));
-  if (d.hours()) segments.push(unit(d.hours(), "hour"));
-  if (d.minutes()) segments.push(unit(d.minutes(), "minute"));
-  if (segments.length === 0) segments.push(unit(d.seconds(), "second"));
+  if (days) segments.push(unit(days, "day"));
+  if (hours) segments.push(unit(hours, "hour"));
+  if (minutes) segments.push(unit(minutes, "minute"));
+  if (segments.length === 0) segments.push(unit(seconds, "second"));
   return new Intl.ListFormat(locale, { type: "unit", style: "narrow" }).format(
     segments,
   );
