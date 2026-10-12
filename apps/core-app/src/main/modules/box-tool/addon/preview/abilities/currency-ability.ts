@@ -5,6 +5,7 @@ import type {
 } from '@talex-touch/utils'
 import type { PreviewAbilityContext } from '../preview-ability'
 import { performance } from 'node:perf_hooks'
+import { i18nMsg, i18nMsgWithParams } from '@talex-touch/utils/i18n'
 import { BasePreviewAbility } from '../preview-ability'
 import { fxRateProvider } from '../providers'
 import {
@@ -17,26 +18,32 @@ import {
   runNexusScene
 } from '../../../../nexus/scene-client'
 
-// 货币名称映射
-const CURRENCY_NAMES: Record<string, string> = {
-  USD: '美元',
-  CNY: '人民币',
-  EUR: '欧元',
-  JPY: '日元',
-  GBP: '英镑',
-  HKD: '港币',
-  TWD: '新台币',
-  KRW: '韩元',
-  AUD: '澳元',
-  CAD: '加元',
-  SGD: '新加坡元',
-  THB: '泰铢',
-  VND: '越南盾',
-  INR: '印度卢比',
-  CHF: '瑞士法郎',
-  BTC: '比特币',
-  ETH: '以太坊'
+// 有本地化名称（previewCard.currency.names）的货币；其余显示代码
+const NAMED_CURRENCIES = new Set([
+  'USD',
+  'CNY',
+  'EUR',
+  'JPY',
+  'GBP',
+  'HKD',
+  'TWD',
+  'KRW',
+  'AUD',
+  'CAD',
+  'SGD',
+  'THB',
+  'VND',
+  'INR',
+  'CHF',
+  'BTC',
+  'ETH'
+])
+
+function currencyName(code: string): string {
+  return NAMED_CURRENCIES.has(code) ? i18nMsg(`previewCard.currency.names.${code}`) : code
 }
+
+const BUILT_IN_SOURCE_LABEL = i18nMsg('previewCard.currency.builtIn')
 
 const CURRENCY_PATTERN =
   /^\s*(?:([$€¥£₩₫฿₿Ξ]|[a-z]{3})\s*)?([-+]?(?:\d+(?:\.\d+)?|\.\d+))\s*(?:([a-z]{3})\s*)?(?:to|in|[=转换]|->)\s*([a-z\u4E00-\u9FA5]{2,})\s*$/i
@@ -131,35 +138,48 @@ export class CurrencyPreviewAbility extends BasePreviewAbility {
     const usdConversion = fxRateProvider.convert(amount, source, 'USD')
     const usdValue = usdConversion?.result ?? amount
 
-    const sourceName = CURRENCY_NAMES[source] || source
-    const targetName = CURRENCY_NAMES[target] || target
-
     // Format update time
-    const updateTime = new Date(status.lastRefresh).toLocaleString('zh-CN')
+    const updateTime = new Date(status.lastRefresh).toLocaleString(context.locale ?? 'zh-CN')
     const sourceLabel =
       conversion.sourceLabel ||
-      (status.source === 'nexus' ? 'Nexus' : status.source === 'ecb' ? 'ECB' : '内置')
+      (status.source === 'nexus'
+        ? 'Nexus'
+        : status.source === 'ecb'
+          ? 'ECB'
+          : BUILT_IN_SOURCE_LABEL)
     const subtitle = status.isStale
-      ? `汇率换算 ⚠️ 数据较旧 (${updateTime})`
-      : `汇率换算 · ${sourceLabel} · ${updateTime}`
+      ? i18nMsgWithParams('previewCard.currency.subtitleStale', { time: updateTime })
+      : i18nMsgWithParams('previewCard.currency.subtitle', {
+          source: sourceLabel,
+          time: updateTime
+        })
 
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: `${amount} ${source} → ${target}`,
       subtitle,
-      primaryLabel: `${sourceName} → ${targetName}`,
+      primaryLabel: i18nMsgWithParams('previewCard.common.conversion', {
+        from: currencyName(source),
+        to: currencyName(target)
+      }),
       primaryValue: converted.toFixed(4),
-      secondaryLabel: '折合美元',
+      secondaryLabel: i18nMsg('previewCard.currency.inUsd'),
       secondaryValue: usdValue.toFixed(4),
       chips: [
-        { label: '汇率', value: `1 ${source} = ${rate.rate.toFixed(6)} ${target}` },
-        { label: '数据源', value: status.source.toUpperCase() }
+        {
+          label: i18nMsg('previewCard.currency.rate'),
+          value: `1 ${source} = ${rate.rate.toFixed(6)} ${target}`
+        },
+        { label: i18nMsg('previewCard.currency.source'), value: status.source.toUpperCase() }
       ],
       sections: [
         {
           rows: [
-            { label: '源金额', value: `${amount} ${source}` },
-            { label: '目标金额', value: `${converted.toFixed(4)} ${target}` }
+            { label: i18nMsg('previewCard.currency.sourceAmount'), value: `${amount} ${source}` },
+            {
+              label: i18nMsg('previewCard.currency.targetAmount'),
+              value: `${converted.toFixed(4)} ${target}`
+            }
           ]
         }
       ]
@@ -195,7 +215,12 @@ export class CurrencyPreviewAbility extends BasePreviewAbility {
     return {
       result: localConversion.result,
       rate: localConversion.rate,
-      sourceLabel: status.source === 'nexus' ? 'Nexus' : status.source === 'ecb' ? 'ECB' : '内置',
+      sourceLabel:
+        status.source === 'nexus'
+          ? 'Nexus'
+          : status.source === 'ecb'
+            ? 'ECB'
+            : BUILT_IN_SOURCE_LABEL,
       isStale: status.isStale
     }
   }

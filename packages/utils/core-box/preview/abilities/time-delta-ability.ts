@@ -5,8 +5,10 @@ import type {
   PreviewCardPayload,
 } from "../types";
 import dayjs from "dayjs";
+import zhCn from "dayjs/locale/zh-cn.js";
 import duration from "dayjs/plugin/duration.js";
 import relativeTime from "dayjs/plugin/relativeTime.js";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 dayjs.extend(duration);
@@ -276,14 +278,34 @@ function parseAbsoluteDate(text: string): dayjs.Dayjs | null {
   return null;
 }
 
-function formatDuration(ms: number): string {
+/**
+ * Unit names and joining follow the locale: zh-CN reads `1天2小时30分钟`,
+ * en-US `1d 2h 30m`.
+ */
+function formatDuration(ms: number, locale: string): string {
   const d = dayjs.duration(ms);
+  const unit = (value: number, name: string) =>
+    new Intl.NumberFormat(locale, {
+      style: "unit",
+      unit: name,
+      unitDisplay: "narrow",
+    }).format(value);
   const segments: string[] = [];
-  if (d.days()) segments.push(`${d.days()}天`);
-  if (d.hours()) segments.push(`${d.hours()}小时`);
-  if (d.minutes()) segments.push(`${d.minutes()}分钟`);
-  if (segments.length === 0) segments.push(`${d.seconds()}秒`);
-  return segments.join("");
+  if (d.days()) segments.push(unit(d.days(), "day"));
+  if (d.hours()) segments.push(unit(d.hours(), "hour"));
+  if (d.minutes()) segments.push(unit(d.minutes(), "minute"));
+  if (segments.length === 0) segments.push(unit(d.seconds(), "second"));
+  return new Intl.ListFormat(locale, { type: "unit", style: "narrow" }).format(
+    segments,
+  );
+}
+
+/**
+ * dayjs reads `fromNow()` from its global locale, which stays English, so the
+ * locale is set on the instance: zh-CN reads `3 天前`, en-US `3 days ago`.
+ */
+function fromNow(target: dayjs.Dayjs, locale: string): string {
+  return target.locale(locale.startsWith("zh") ? zhCn : "en").fromNow();
 }
 
 export class TimeDeltaAbility extends BasePreviewAbility {
@@ -324,6 +346,7 @@ export class TimeDeltaAbility extends BasePreviewAbility {
     const startedAt = Date.now();
     const text = this.getNormalizedQuery(context.query);
     if (!this.isInputWithinLimit(context)) return null;
+    const locale = context.locale ?? "zh-CN";
 
     const relativeMatch = text.match(RELATIVE_PATTERN);
     if (relativeMatch) {
@@ -339,15 +362,18 @@ export class TimeDeltaAbility extends BasePreviewAbility {
         payload: {
           abilityId: this.id,
           title: text,
-          subtitle: "时间偏移",
-          primaryLabel: "目标时间",
+          subtitle: i18nMsg("previewCard.time.offsetSubtitle"),
+          primaryLabel: i18nMsg("previewCard.time.targetTime"),
           primaryValue: target.format("YYYY-MM-DD HH:mm:ss"),
-          secondaryLabel: "相对现在",
-          secondaryValue: target.fromNow(),
+          secondaryLabel: i18nMsg("previewCard.time.relativeToNow"),
+          secondaryValue: fromNow(target, locale),
           sections: [
             {
               rows: [
-                { label: "偏移量", value: formatDuration(offset) },
+                {
+                  label: i18nMsg("previewCard.time.offset"),
+                  value: formatDuration(offset, locale),
+                },
                 { label: "ISO", value: target.toISOString() },
               ],
             },
@@ -366,17 +392,17 @@ export class TimeDeltaAbility extends BasePreviewAbility {
         payload: {
           abilityId: this.id,
           title: text,
-          subtitle: "时间偏移",
-          primaryLabel: "目标时间",
+          subtitle: i18nMsg("previewCard.time.offsetSubtitle"),
+          primaryLabel: i18nMsg("previewCard.time.targetTime"),
           primaryValue: target.format("YYYY-MM-DD HH:mm:ss"),
-          secondaryLabel: "相对现在",
-          secondaryValue: target.fromNow(),
+          secondaryLabel: i18nMsg("previewCard.time.relativeToNow"),
+          secondaryValue: fromNow(target, locale),
           sections: [
             {
               rows: [
                 {
-                  label: "偏移量",
-                  value: formatDuration(Math.abs(naturalOffset)),
+                  label: i18nMsg("previewCard.time.offset"),
+                  value: formatDuration(Math.abs(naturalOffset), locale),
                 },
                 { label: "ISO", value: target.toISOString() },
               ],
@@ -395,21 +421,24 @@ export class TimeDeltaAbility extends BasePreviewAbility {
         payload: {
           abilityId: this.id,
           title: text,
-          subtitle: "时长换算",
-          primaryLabel: "总时长",
-          primaryValue: formatDuration(durationValue),
+          subtitle: i18nMsg("previewCard.time.durationSubtitle"),
+          primaryLabel: i18nMsg("previewCard.time.totalDuration"),
+          primaryValue: formatDuration(durationValue, locale),
           sections: [
             {
               rows: [
                 {
-                  label: "小时",
+                  label: i18nMsg("previewCard.time.hours"),
                   value: (durationValue / (60 * 60 * 1000)).toFixed(2),
                 },
                 {
-                  label: "分钟",
+                  label: i18nMsg("previewCard.time.minutes"),
                   value: (durationValue / (60 * 1000)).toFixed(2),
                 },
-                { label: "秒", value: (durationValue / 1000).toFixed(2) },
+                {
+                  label: i18nMsg("previewCard.time.seconds"),
+                  value: (durationValue / 1000).toFixed(2),
+                },
               ],
             },
           ],
@@ -427,19 +456,22 @@ export class TimeDeltaAbility extends BasePreviewAbility {
         payload: {
           abilityId: this.id,
           title: text,
-          subtitle: "日期差",
-          primaryLabel: "距离现在",
-          primaryValue: absoluteDate.fromNow(),
-          secondaryLabel: "间隔",
-          secondaryValue: formatDuration(diff),
+          subtitle: i18nMsg("previewCard.time.dateDiffSubtitle"),
+          primaryLabel: i18nMsg("previewCard.time.fromNow"),
+          primaryValue: fromNow(absoluteDate, locale),
+          secondaryLabel: i18nMsg("previewCard.time.interval"),
+          secondaryValue: formatDuration(diff, locale),
           sections: [
             {
               rows: [
                 {
-                  label: "目标日期",
+                  label: i18nMsg("previewCard.time.targetDate"),
                   value: absoluteDate.format("YYYY-MM-DD HH:mm:ss"),
                 },
-                { label: "毫秒", value: diff.toString() },
+                {
+                  label: i18nMsg("previewCard.time.milliseconds"),
+                  value: diff.toString(),
+                },
               ],
             },
           ],
@@ -460,16 +492,22 @@ export class TimeDeltaAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: text,
-      subtitle: "时间差",
-      primaryLabel: "间隔",
-      primaryValue: formatDuration(diff),
-      secondaryLabel: "毫秒",
+      subtitle: i18nMsg("previewCard.time.rangeSubtitle"),
+      primaryLabel: i18nMsg("previewCard.time.interval"),
+      primaryValue: formatDuration(diff, locale),
+      secondaryLabel: i18nMsg("previewCard.time.milliseconds"),
       secondaryValue: diff.toString(),
       sections: [
         {
           rows: [
-            { label: "起点", value: start.format("YYYY-MM-DD HH:mm:ss") },
-            { label: "终点", value: end.format("YYYY-MM-DD HH:mm:ss") },
+            {
+              label: i18nMsg("previewCard.time.start"),
+              value: start.format("YYYY-MM-DD HH:mm:ss"),
+            },
+            {
+              label: i18nMsg("previewCard.time.end"),
+              value: end.format("YYYY-MM-DD HH:mm:ss"),
+            },
           ],
         },
       ],

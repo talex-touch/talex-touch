@@ -4,6 +4,7 @@ import type {
   PreviewAbilitySafetyPolicy,
   PreviewCardPayload,
 } from "../types";
+import { i18nMsg, i18nMsgWithParams } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 type LineOperation = "sort-asc" | "sort-desc" | "unique" | "drop-empty" | "trim";
@@ -26,7 +27,7 @@ interface LineMatcher {
 const LINE_OPERATIONS: LineOperationDefinition[] = [
   {
     operation: "sort-desc",
-    label: "降序排序",
+    label: i18nMsg("previewCard.lines.operations.sortDesc"),
     keywords: [
       "sort desc",
       "sort descending",
@@ -39,7 +40,7 @@ const LINE_OPERATIONS: LineOperationDefinition[] = [
   },
   {
     operation: "sort-asc",
-    label: "升序排序",
+    label: i18nMsg("previewCard.lines.operations.sortAsc"),
     keywords: [
       "sort asc",
       "sort ascending",
@@ -53,12 +54,12 @@ const LINE_OPERATIONS: LineOperationDefinition[] = [
   },
   {
     operation: "unique",
-    label: "去重",
+    label: i18nMsg("previewCard.lines.operations.unique"),
     keywords: ["unique lines", "dedupe", "dedup", "去除重复", "唯一行", "去重"],
   },
   {
     operation: "drop-empty",
-    label: "删除空行",
+    label: i18nMsg("previewCard.lines.operations.dropEmpty"),
     keywords: [
       "drop empty lines",
       "no empty lines",
@@ -70,7 +71,7 @@ const LINE_OPERATIONS: LineOperationDefinition[] = [
   },
   {
     operation: "trim",
-    label: "逐行去空格",
+    label: i18nMsg("previewCard.lines.operations.trim"),
     keywords: ["trim lines", "trim each line", "去除行首尾空格", "逐行去空格", "trim"],
   },
 ];
@@ -220,45 +221,83 @@ export class LineToolsAbility extends BasePreviewAbility {
 
     const warnings: string[] = [];
     if (truncated) {
-      warnings.push(`超过 ${MAX_LINES} 行，仅处理前 ${MAX_LINES} 行`);
+      warnings.push(
+        i18nMsgWithParams("previewCard.lines.truncated", { max: MAX_LINES }),
+      );
     }
     if (!output) {
-      warnings.push("处理后没有任何行");
+      warnings.push(i18nMsg("previewCard.lines.empty"));
     }
+
+    const operationLabel =
+      definition?.label ?? i18nMsg("previewCard.lines.subtitle");
+    const lineCount = (count: number) =>
+      i18nMsgWithParams(
+        count === 1
+          ? "previewCard.lines.lineCountOne"
+          : "previewCard.lines.lineCount",
+        { count },
+      );
 
     const payload: PreviewCardPayload = {
       abilityId: this.id,
-      title: `${definition?.label ?? "行处理"}：${targetLines.length} → ${outputLines.length} 行`,
-      subtitle: "行处理",
-      primaryLabel: "结果",
+      title: i18nMsgWithParams("previewCard.lines.title", {
+        operation: operationLabel,
+        input: targetLines.length,
+        output: lineCount(outputLines.length),
+      }),
+      subtitle: i18nMsg("previewCard.lines.subtitle"),
+      primaryLabel: i18nMsg("previewCard.common.result"),
       primaryValue: output,
-      secondaryLabel: "行数变化",
+      secondaryLabel: i18nMsg("previewCard.lines.lineCountChange"),
       secondaryValue: `${targetLines.length} → ${outputLines.length}`,
       chips: [
-        { label: "输入", value: `${targetLines.length} 行` },
-        { label: "输出", value: `${outputLines.length} 行` },
         {
-          label: "移除",
-          value: `${targetLines.length - outputLines.length} 行`,
+          label: i18nMsg("previewCard.lines.input"),
+          value: lineCount(targetLines.length),
+        },
+        {
+          label: i18nMsg("previewCard.lines.output"),
+          value: lineCount(outputLines.length),
+        },
+        {
+          label: i18nMsg("previewCard.lines.removed"),
+          value: lineCount(targetLines.length - outputLines.length),
         },
       ],
       sections: [
         {
-          title: "详情",
+          title: i18nMsg("previewCard.common.details"),
           rows: [
-            { label: "操作", value: definition?.label ?? "行处理" },
+            {
+              label: i18nMsg("previewCard.lines.operation"),
+              value: operationLabel,
+            },
             ...(parsed.operation === "unique"
-              ? [{ label: "去重规则", value: "完全相同的行保留首次出现" }]
+              ? [
+                  {
+                    label: i18nMsg("previewCard.lines.dedupeRule"),
+                    value: i18nMsg("previewCard.lines.dedupeRuleValue"),
+                  },
+                ]
               : []),
             ...(parsed.operation === "sort-asc" || parsed.operation === "sort-desc"
               ? [
                   {
-                    label: "排序规则",
-                    value: `本地化排序（${context.locale ?? "zh-CN"}，数字按数值比较）`,
+                    label: i18nMsg("previewCard.lines.sortRule"),
+                    value: i18nMsgWithParams(
+                      "previewCard.lines.sortRuleValue",
+                      {
+                        locale: context.locale ?? "zh-CN",
+                      },
+                    ),
                   },
                 ]
               : []),
-            { label: "换行符", value: "统一为 LF" },
+            {
+              label: i18nMsg("previewCard.lines.lineEnding"),
+              value: i18nMsg("previewCard.lines.lineEndingValue"),
+            },
           ],
         },
       ],

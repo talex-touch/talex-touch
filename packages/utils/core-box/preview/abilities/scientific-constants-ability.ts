@@ -4,6 +4,7 @@ import type {
   PreviewAbilitySafetyPolicy,
   PreviewCardPayload,
 } from "../types";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 import {
   findScientificConstant,
@@ -16,8 +17,11 @@ export {
 } from "./scientific-constants-data";
 export type { ScientificConstantDefinition } from "./scientific-constants-data";
 
+/** Aliases are search vocabulary; the Chinese ones are only shown to zh-CN. */
+const HAN_PATTERN = /[\u4E00-\u9FA5]/;
+
 const CONSTANT_KEYWORDS =
-  /(constant|常量|gravity|光速|普朗克|玻尔兹曼|阿伏伽德罗|π|\bpi\b|planck|boltzmann|avogadro|faraday|圆周率|自然常数|元电荷|气体常数|重力|permittivity|permeability|介电|电容率|磁导率|electron mass|电子质量|proton mass|质子质量|bohr|玻尔|rydberg|里德伯|stefan|斯特藩|atmosphere|大气压|\batm\b|ħ|ℏ|[εμσρλ∞₀-₉ₑₚₙ])/i;
+  /(constant|常量|gravity|光速|speed of light|light speed|普朗克|玻尔兹曼|阿伏伽德罗|π|\bpi\b|planck|boltzmann|avogadro|faraday|圆周率|自然常数|euler['’]?s number|元电荷|elementary charge|fundamental charge|electric charge quantum|气体常数|重力|permittivity|permeability|\bepsilon(?:0|\s+naught)\b|\bmu(?:0|\s+naught)\b|介电|电容率|磁导率|electron mass|电子质量|proton mass|质子质量|bohr|玻尔|rydberg|里德伯|stefan|斯特藩|atmosphere|大气压|\batm\b|ħ|ℏ|\bh ?bar\b|[εμσρλ∞₀-₉ₑₚₙ])/i;
 
 function formatValue(value: string): {
   formatted: string;
@@ -75,29 +79,43 @@ export class ScientificConstantsAbility extends BasePreviewAbility {
     if (!matched) return null;
 
     const value = formatValue(matched.value);
+    const itemKey = `previewCard.constants.items.${matched.id}`;
+    const showHanAliases = (context.locale ?? "zh-CN") === "zh-CN";
 
     const payload: PreviewCardPayload = {
       abilityId: this.id,
-      title: matched.name,
-      subtitle: matched.category,
-      primaryLabel: "常量值",
+      title: i18nMsg(`${itemKey}.name`),
+      subtitle: i18nMsg(`${itemKey}.category`),
+      primaryLabel: i18nMsg("previewCard.constants.value"),
       primaryValue: value.formatted,
       primaryUnit: matched.unit,
-      description: matched.description,
+      description: i18nMsg(`${itemKey}.description`),
       badges: [matched.symbol ?? "", matched.source ?? ""].filter(Boolean),
       chips: matched.aliases
         .filter((alias) => alias !== matched.name)
+        .filter((alias) => showHanAliases || !HAN_PATTERN.test(alias))
         .slice(0, 3)
-        .map((alias) => ({ label: "别名", value: alias })),
+        .map((alias) => ({
+          label: i18nMsg("previewCard.constants.alias"),
+          value: alias,
+        })),
       sections: [
         {
-          title: "常量详情",
+          title: i18nMsg("previewCard.constants.details"),
           rows: [
-            { label: "标识", value: matched.id },
+            { label: i18nMsg("previewCard.constants.id"), value: matched.id },
             ...(value.scientific
-              ? [{ label: "科学计数法", value: value.scientific }]
+              ? [
+                  {
+                    label: i18nMsg("previewCard.constants.scientific"),
+                    value: value.scientific,
+                  },
+                ]
               : []),
-            { label: "来源", value: matched.source ?? "CODATA 2018" },
+            {
+              label: i18nMsg("previewCard.constants.source"),
+              value: matched.source ?? "CODATA 2018",
+            },
           ],
         },
       ],

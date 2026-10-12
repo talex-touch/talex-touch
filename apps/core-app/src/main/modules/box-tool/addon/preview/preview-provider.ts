@@ -20,7 +20,8 @@ import { DEFAULT_WIDGET_RENDERERS } from '@talex-touch/utils/plugin'
 import { clipboard } from 'electron'
 import { clipboardModule } from '../../../clipboard'
 import { createLogger } from '../../../../utils/logger'
-import { getLocale } from '../../../../utils/i18n-helper'
+import { getLocale, t } from '../../../../utils/i18n-helper'
+import { localizePreviewPayload } from './localize-preview-payload'
 
 const PREVIEW_COMPONENT_NAME = DEFAULT_WIDGET_RENDERERS.CORE_PREVIEW_CARD
 const SOURCE_ID = 'preview-provider'
@@ -149,13 +150,15 @@ export class PreviewProvider implements ISearchProvider<ProviderContext> {
       previewMeta.expression = query.sdkQuery.text
     }
 
+    // Abilities emit `$i18n:` messages; localizePreviewPayload explains why they resolve here.
+    const abilityPayload = localizePreviewPayload(abilityResult.payload, t)
     const payload: PreviewCardPayload = {
-      ...abilityResult.payload,
+      ...abilityPayload,
       ...(query.explicitCommand
-        ? { badges: ['Calculator', ...(abilityResult.payload.badges ?? [])] }
+        ? { badges: ['Calculator', ...(abilityPayload.badges ?? [])] }
         : {}),
       meta: {
-        ...abilityResult.payload.meta,
+        ...abilityPayload.meta,
         rawQuery: query.originalQuery.text ?? '',
         resolvedQuery: query.sdkQuery.text ?? '',
         ...(query.explicitCommand ? { explicitCommand: query.explicitCommand } : {})

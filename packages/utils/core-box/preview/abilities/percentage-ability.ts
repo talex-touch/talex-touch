@@ -4,6 +4,7 @@ import type {
   PreviewAbilitySafetyPolicy,
   PreviewCardPayload,
 } from "../types";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 const PERCENT_PATTERNS = [
@@ -109,13 +110,17 @@ export class PercentageAbility extends BasePreviewAbility {
       abilityId: this.id,
       title: query,
       subtitle: purePercent
-        ? "百分比运算"
+        ? i18nMsg("previewCard.percent.subtitleArithmetic")
         : operation === "of"
-          ? "百分比计算"
-          : "百分比增减",
-      primaryLabel: purePercent ? "百分比结果" : "结果",
+          ? i18nMsg("previewCard.percent.subtitleOf")
+          : i18nMsg("previewCard.percent.subtitleChange"),
+      primaryLabel: purePercent
+        ? i18nMsg("previewCard.percent.percentResult")
+        : i18nMsg("previewCard.common.result"),
       primaryValue: purePercent ? `${result}%` : result.toString(),
-      secondaryLabel: purePercent ? "运算" : "变化量",
+      secondaryLabel: purePercent
+        ? i18nMsg("previewCard.percent.operation")
+        : i18nMsg("previewCard.percent.delta"),
       secondaryValue: purePercent
         ? `${base}% ${operation === "add" ? "+" : "-"} ${percent}%`
         : delta.toString(),
@@ -123,10 +128,15 @@ export class PercentageAbility extends BasePreviewAbility {
         {
           rows: [
             {
-              label: purePercent ? "基准百分比" : "基准",
+              label: purePercent
+                ? i18nMsg("previewCard.percent.basePercent")
+                : i18nMsg("previewCard.percent.base"),
               value: base.toString(),
             },
-            { label: "百分比", value: `${percent}%` },
+            {
+              label: i18nMsg("previewCard.percent.percent"),
+              value: `${percent}%`,
+            },
           ],
         },
       ],

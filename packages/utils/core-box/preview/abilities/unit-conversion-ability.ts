@@ -4,6 +4,7 @@ import type {
   PreviewAbilitySafetyPolicy,
   PreviewCardPayload,
 } from "../types";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 import {
   formatUnitNumber,
@@ -72,10 +73,10 @@ export class UnitConversionAbility extends BasePreviewAbility {
       const payload: PreviewCardPayload = {
         abilityId: this.id,
         title: text,
-        subtitle: "单位换算",
+        subtitle: i18nMsg("previewCard.unit.subtitle"),
         primaryLabel: `${fromUnit.display} → ${toUnit.display}`,
         primaryValue: formattedResult,
-        secondaryLabel: "原值",
+        secondaryLabel: i18nMsg("previewCard.unit.original"),
         secondaryValue: `${parsed.value} ${parsed.fromUnit}`,
         chips: [
           {
@@ -89,10 +90,16 @@ export class UnitConversionAbility extends BasePreviewAbility {
         ],
         sections: [
           {
-            title: "详情",
+            title: i18nMsg("previewCard.common.details"),
             rows: [
-              { label: "类别", value: fromUnit.category },
-              { label: "公式", value: `${parsed.fromUnit} → ${parsed.toUnit}` },
+              {
+                label: i18nMsg("previewCard.unit.category"),
+                value: i18nMsg(`previewCard.unit.categories.${fromUnit.category}`),
+              },
+              {
+                label: i18nMsg("previewCard.unit.formula"),
+                value: `${parsed.fromUnit} → ${parsed.toUnit}`,
+              },
             ],
           },
         ],
@@ -120,13 +127,13 @@ export class UnitConversionAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: text,
-      subtitle: "单位建议",
+      subtitle: i18nMsg("previewCard.unit.suggestionsSubtitle"),
       primaryLabel: fromUnit.display,
       primaryValue: `${parsed.value} ${parsed.fromUnit}`,
       sections: filteredRows.length
         ? [
             {
-              title: "常用换算",
+              title: i18nMsg("previewCard.unit.commonConversions"),
               rows: filteredRows,
             },
           ]

@@ -4,6 +4,7 @@ import type {
   PreviewAbilitySafetyPolicy,
   PreviewCardPayload,
 } from "../types";
+import { i18nMsg, i18nMsgWithParams } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 interface RadixDefinition {
@@ -24,13 +25,28 @@ interface RadixMatcher {
 const RADIX_DEFINITIONS: RadixDefinition[] = [
   {
     base: 16,
-    label: "十六进制",
+    label: i18nMsg("previewCard.radix.bases.hex"),
     keywords: ["hexadecimal", "hex", "十六进制"],
     prefix: "0x",
   },
-  { base: 2, label: "二进制", keywords: ["binary", "bin", "二进制"], prefix: "0b" },
-  { base: 8, label: "八进制", keywords: ["octal", "oct", "八进制"], prefix: "0o" },
-  { base: 10, label: "十进制", keywords: ["decimal", "dec", "十进制"], prefix: "" },
+  {
+    base: 2,
+    label: i18nMsg("previewCard.radix.bases.bin"),
+    keywords: ["binary", "bin", "二进制"],
+    prefix: "0b",
+  },
+  {
+    base: 8,
+    label: i18nMsg("previewCard.radix.bases.oct"),
+    keywords: ["octal", "oct", "八进制"],
+    prefix: "0o",
+  },
+  {
+    base: 10,
+    label: i18nMsg("previewCard.radix.bases.dec"),
+    keywords: ["decimal", "dec", "十进制"],
+    prefix: "",
+  },
 ];
 
 const ALL_KEYWORDS = RADIX_DEFINITIONS.flatMap(
@@ -58,10 +74,10 @@ const RADIX_MATCHERS: RadixMatcher[] = RADIX_DEFINITIONS.map((definition) => {
 });
 
 const RADIX_LABEL_BY_BASE: Record<number, string> = {
-  2: "二进制",
-  8: "八进制",
-  10: "十进制",
-  16: "十六进制",
+  2: i18nMsg("previewCard.radix.bases.bin"),
+  8: i18nMsg("previewCard.radix.bases.oct"),
+  10: i18nMsg("previewCard.radix.bases.dec"),
+  16: i18nMsg("previewCard.radix.bases.hex"),
 };
 
 const RADIX_PREFIX_BY_BASE: Record<number, string> = {
@@ -246,10 +262,13 @@ export class RadixConversionAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: text,
-      subtitle: "进制转换",
-      primaryLabel: `${RADIX_LABEL_BY_BASE[parsed.sourceBase]} → ${RADIX_LABEL_BY_BASE[parsed.targetBase]}`,
+      subtitle: i18nMsg("previewCard.radix.subtitle"),
+      primaryLabel: i18nMsgWithParams("previewCard.common.conversion", {
+        from: RADIX_LABEL_BY_BASE[parsed.sourceBase],
+        to: RADIX_LABEL_BY_BASE[parsed.targetBase],
+      }),
       primaryValue: formatValue(parsed.value, parsed.targetBase),
-      secondaryLabel: "十进制",
+      secondaryLabel: i18nMsg("previewCard.radix.bases.dec"),
       secondaryValue: formatGrouped(parsed.value),
       chips: RADIX_DEFINITIONS.map((definition) => ({
         label: definition.label,
@@ -257,15 +276,20 @@ export class RadixConversionAbility extends BasePreviewAbility {
       })),
       sections: [
         {
-          title: "详情",
+          title: i18nMsg("previewCard.common.details"),
           rows: [
-            { label: "位宽", value: `${bits} bit` },
-            { label: "字节数", value: `${Math.ceil(bits / 8)} B` },
+            {
+              label: i18nMsg("previewCard.radix.bitWidth"),
+              value: `${bits} bit`,
+            },
+            {
+              label: i18nMsg("previewCard.radix.byteCount"),
+              value: `${Math.ceil(bits / 8)} B`,
+            },
           ],
         },
       ],
-      warnings:
-        bits > 64 ? ["超出 64 位整数范围，按任意精度整数计算"] : undefined,
+      warnings: bits > 64 ? [i18nMsg("previewCard.radix.beyond64")] : undefined,
     };
 
     return {

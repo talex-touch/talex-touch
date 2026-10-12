@@ -5,6 +5,7 @@ import type {
   PreviewCardPayload,
 } from "../types";
 import type { TuffQuery } from "../../tuff";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 
 const EXPRESSION_REGEX = /^[\d+\-*/().%\s]+$/u;
@@ -259,14 +260,17 @@ export class BasicExpressionAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: expression,
-      subtitle: "快速算式",
-      primaryLabel: "结果",
+      subtitle: i18nMsg("previewCard.basic.subtitle"),
+      primaryLabel: i18nMsg("previewCard.common.result"),
       primaryValue: formatNumber(evaluated),
       sections: [
         {
           rows: [
-            { label: "表达式", value: expression },
-            { label: "算式（安全）", value: sanitized },
+            {
+              label: i18nMsg("previewCard.common.expression"),
+              value: expression,
+            },
+            { label: i18nMsg("previewCard.basic.sanitized"), value: sanitized },
           ],
         },
       ],

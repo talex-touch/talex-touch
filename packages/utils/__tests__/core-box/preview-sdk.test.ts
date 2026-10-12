@@ -22,6 +22,7 @@ import {
   hasQuickOpsDeveloperCommand,
   runPreviewSdkBenchmark,
 } from "../../core-box/preview";
+import { i18nMsg } from "../../i18n";
 
 function signal(): AbortSignal {
   return new AbortController().signal;
@@ -127,8 +128,12 @@ describe("PreviewSDK", () => {
     });
 
     expect(advanced?.payload.primaryValue).toBe("4");
-    expect(constant?.payload.title).toBe("真空光速");
-    expect(time?.payload.subtitle).toBe("时长换算");
+    expect(constant?.payload.title).toBe(
+      i18nMsg("previewCard.constants.items.speed_of_light.name"),
+    );
+    expect(time?.payload.subtitle).toBe(
+      i18nMsg("previewCard.time.durationSubtitle"),
+    );
     expect(currency?.payload.primaryValue).toBe("72.50 CNY");
     expect(currency?.payload.warnings?.[0]).toContain("静态离线汇率");
   });
@@ -172,7 +177,9 @@ describe("PreviewSDK", () => {
     });
 
     expect(chineseTime?.abilityId).toBe("preview.time");
-    expect(chineseTime?.payload.subtitle).toBe("时间偏移");
+    expect(chineseTime?.payload.subtitle).toBe(
+      i18nMsg("previewCard.time.offsetSubtitle"),
+    );
     expect(chinesePercentage?.abilityId).toBe("preview.percent");
     expect(chinesePercentage?.payload.primaryValue).toBe("120");
     expect(invalidRelativeTime.result).toBeNull();
@@ -979,11 +986,12 @@ describe("PreviewSDK radix conversion", () => {
 
     expect(beyond64?.payload.primaryValue).toBe("36893488147419103231");
     expect(beyond64?.payload.warnings?.join(" ")).toContain(
-      "超出 64 位整数范围",
+      i18nMsg("previewCard.radix.beyond64"),
     );
     expect(
-      beyond64?.payload.sections?.[0]?.rows.find((row) => row.label === "位宽")
-        ?.value,
+      beyond64?.payload.sections?.[0]?.rows.find(
+        (row) => row.label === i18nMsg("previewCard.radix.bitWidth"),
+      )?.value,
     ).toBe("65 bit");
 
     expect(taggedBeyond64?.payload.primaryValue).toBe("36893488147419103231");
@@ -1002,10 +1010,10 @@ describe("PreviewSDK radix conversion", () => {
         (result?.payload.chips ?? []).map((chip) => [chip.label, chip.value]),
       ),
     ).toEqual({
-      十六进制: "0xff",
-      二进制: "0b11111111",
-      八进制: "0o377",
-      十进制: "255",
+      [i18nMsg("previewCard.radix.bases.hex")]: "0xff",
+      [i18nMsg("previewCard.radix.bases.bin")]: "0b11111111",
+      [i18nMsg("previewCard.radix.bases.oct")]: "0o377",
+      [i18nMsg("previewCard.radix.bases.dec")]: "255",
     });
   });
 
@@ -1126,22 +1134,22 @@ describe("PreviewSDK scientific constants", () => {
   }
 
   it.each([
-    ["ε₀", "真空介电常数"],
-    ["ε0", "真空介电常数"],
-    ["μ₀", "真空磁导率"],
-    ["mₑ", "电子质量"],
-    ["a₀", "玻尔半径"],
-    ["R∞", "里德伯常数"],
-    ["介电常数", "真空介电常数"],
-    ["磁导率", "真空磁导率"],
-    ["玻尔半径", "玻尔半径"],
-    ["rydberg constant", "里德伯常数"],
-    ["stefan boltzmann constant", "斯特藩-玻尔兹曼常数"],
-    ["standard atmosphere", "标准大气压"],
-    ["atm", "标准大气压"],
-    ["ħ", "约化普朗克常数"],
-    ["光速", "真空光速"],
-  ] as const)("resolves %s", async (query, expectedName) => {
+    ["ε₀", "vacuum_permittivity"],
+    ["ε0", "vacuum_permittivity"],
+    ["μ₀", "vacuum_permeability"],
+    ["mₑ", "electron_mass"],
+    ["a₀", "bohr_radius"],
+    ["R∞", "rydberg_constant"],
+    ["介电常数", "vacuum_permittivity"],
+    ["磁导率", "vacuum_permeability"],
+    ["玻尔半径", "bohr_radius"],
+    ["rydberg constant", "rydberg_constant"],
+    ["stefan boltzmann constant", "stefan_boltzmann_constant"],
+    ["standard atmosphere", "standard_atmosphere"],
+    ["atm", "standard_atmosphere"],
+    ["ħ", "reduced_planck_constant"],
+    ["光速", "speed_of_light"],
+  ] as const)("resolves %s", async (query, expectedId) => {
     const sdk = createConstantsSdk();
     const result = await sdk.resolve({
       query: { text: query, inputs: [] },
@@ -1149,7 +1157,9 @@ describe("PreviewSDK scientific constants", () => {
     });
 
     expect(result?.abilityId).toBe("preview.constants.scientific");
-    expect(result?.payload.title).toBe(expectedName);
+    expect(result?.payload.title).toBe(
+      i18nMsg(`previewCard.constants.items.${expectedId}.name`),
+    );
   });
 
   it("keeps the ascii zero alias free instead of collapsing ε₀ onto it", () => {

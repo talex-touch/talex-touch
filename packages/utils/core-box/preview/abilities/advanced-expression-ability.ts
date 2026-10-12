@@ -5,6 +5,7 @@ import type {
   PreviewCardPayload,
 } from "../types";
 import type { TuffQuery } from "../../tuff";
+import { i18nMsg } from "../../../i18n";
 import { BasePreviewAbility } from "../sdk";
 import { evaluateSafeMathExpression } from "./safe-math-expression";
 
@@ -118,14 +119,17 @@ export class AdvancedExpressionAbility extends BasePreviewAbility {
     const payload: PreviewCardPayload = {
       abilityId: this.id,
       title: text,
-      subtitle: "高级计算",
-      primaryLabel: "结果",
+      subtitle: i18nMsg("previewCard.advanced.subtitle"),
+      primaryLabel: i18nMsg("previewCard.common.result"),
       primaryValue: formatted,
       sections: [
         {
           rows: [
-            { label: "表达式", value: text },
-            { label: "标准化", value: normalized },
+            { label: i18nMsg("previewCard.common.expression"), value: text },
+            {
+              label: i18nMsg("previewCard.advanced.normalized"),
+              value: normalized,
+            },
           ],
         },
       ],
