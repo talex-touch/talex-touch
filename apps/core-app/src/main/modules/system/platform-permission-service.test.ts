@@ -29,10 +29,16 @@ vi.mock('@talex-touch/tuff-native', () => ({
   getNotificationAuthorizationStatus: notificationStatusMock
 }))
 
-vi.mock('node:child_process', () => ({
-  execFileSync: execFileSyncMock,
-  spawn: spawnMock
-}))
+// Partial: modules further down the import graph take other exports at load (the PDF parser
+// promisifies execFile), and a bare factory leaves those undefined.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return {
+    ...actual,
+    execFileSync: execFileSyncMock,
+    spawn: spawnMock
+  }
+})
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()

@@ -187,6 +187,13 @@ vi.mock('../storage', () => ({
   isMainStorageReady: vi.fn(() => false)
 }))
 
+// Signing in also refreshes the Nexus model list. That refresh resolves the Nexus origin from the
+// app settings, which this one-document storage would take for the intelligence config, and then
+// goes to the network; neither is what this file is about, so it finds nothing to reconcile.
+vi.mock('./provider-models', () => ({
+  fetchProviderModels: vi.fn(async () => [])
+}))
+
 vi.mock('./intelligence-sdk', () => ({
   tuffIntelligence: {
     updateConfig: vi.fn()
