@@ -812,7 +812,7 @@ export interface CliAgentProfileSpec {
   description: string
   providerId: string
   systemPrompt: string
-  getExecutable: () => string | null
+  getExecutable: () => string | null | undefined
 }
 
 export const LOCAL_CLI_PROFILE_SPECS: CliAgentProfileSpec[] = [

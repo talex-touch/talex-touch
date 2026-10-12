@@ -520,7 +520,7 @@ export class AiOrchestratorStore {
                 .set({ enabled: isAvailable, updatedAt: now })
                 .where(eq(aiAgentProfiles.id, spec.id))
             },
-            { priority: 'normal' }
+            { priority: 'background' }
           )
         }
       }
