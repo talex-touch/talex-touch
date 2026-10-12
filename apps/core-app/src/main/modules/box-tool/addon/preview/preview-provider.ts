@@ -11,6 +11,7 @@ import type { ProviderContext, TuffQuery, TuffSearchResult } from '../../search-
 import crypto from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import {
+  localizePreviewPayload,
   normalizeLocale,
   TuffInputType,
   TuffItemBuilder,
@@ -21,7 +22,6 @@ import { clipboard } from 'electron'
 import { clipboardModule } from '../../../clipboard'
 import { createLogger } from '../../../../utils/logger'
 import { getLocale, t } from '../../../../utils/i18n-helper'
-import { localizePreviewPayload } from './localize-preview-payload'
 
 const PREVIEW_COMPONENT_NAME = DEFAULT_WIDGET_RENDERERS.CORE_PREVIEW_CARD
 const SOURCE_ID = 'preview-provider'
@@ -150,7 +150,9 @@ export class PreviewProvider implements ISearchProvider<ProviderContext> {
       previewMeta.expression = query.sdkQuery.text
     }
 
-    // Abilities emit `$i18n:` messages; localizePreviewPayload explains why they resolve here.
+    // Abilities emit `$i18n:` messages. They resolve here, in main, rather than in the card: the
+    // payload outlives the card. It is also stored whole as calculation history and shown again
+    // from there, where an unresolved message would appear verbatim.
     const abilityPayload = localizePreviewPayload(abilityResult.payload, t)
     const payload: PreviewCardPayload = {
       ...abilityPayload,
