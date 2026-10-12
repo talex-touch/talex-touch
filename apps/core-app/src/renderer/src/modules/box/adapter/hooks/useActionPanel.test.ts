@@ -592,4 +592,34 @@ describe('useActionPanel MetaOverlay item action bridge', () => {
     expect(state.send).not.toHaveBeenCalled()
     expect(footerFeedback.value).toBeNull()
   })
+
+  it('relays open-with action with lineNumber and pageNumber from deepMatch', async () => {
+    state.send.mockResolvedValueOnce({ success: true })
+    useActionPanel()
+
+    const item = {
+      ...createItem(),
+      meta: {
+        file: { path: '/Workspace/app.ts' },
+        deepMatch: {
+          kind: 'code',
+          lineNumber: 42,
+          pageNumber: undefined
+        }
+      }
+    } as unknown as TuffItem
+
+    getListener(CoreBoxEvents.metaOverlay.itemAction)({
+      actionId: 'open-with:com.microsoft.VSCode',
+      item
+    })
+    await settle()
+
+    expect(state.send).toHaveBeenCalledExactlyOnceWith(AppEvents.fileIndex.openWith, {
+      path: '/Workspace/app.ts',
+      applicationId: 'com.microsoft.VSCode',
+      lineNumber: 42,
+      pageNumber: undefined
+    })
+  })
 })

@@ -285,4 +285,41 @@ describe('SearchIndexService keyword charset', () => {
       ])
     })
   })
+
+  it('emits n-gram entries for filename tokens and recovers typos via lookupByNgrams (B9)', async () => {
+    const keywords = await prepareKeywords({
+      itemId: 'file:/tmp/budget.xlsx',
+      providerId: 'file-provider',
+      type: 'file',
+      name: 'budget.xlsx',
+      extension: '.xlsx'
+    })
+
+    expect(keywords).toContain('budget')
+    expect(keywords).toContain('budgetxlsx')
+    // Bigrams for 'budget': bu, ud, dg, ge, et
+    expect(keywords).toContain('ng:bu')
+    expect(keywords).toContain('ng:ud')
+    expect(keywords).toContain('ng:dg')
+    expect(keywords).toContain('ng:ge')
+    expect(keywords).toContain('ng:et')
+
+    await withIndexService(async (service) => {
+      await service.indexItems([
+        {
+          itemId: 'file:/tmp/budget.xlsx',
+          providerId: 'file-provider',
+          type: 'file',
+          name: 'budget.xlsx',
+          extension: '.xlsx'
+        }
+      ])
+
+      // Typo search: 'budgte' (transposed 't' and 'e') shares 'bu', 'ud', 'dg' with 'budget'
+      const ngramResults = await service.lookupByNgrams('file-provider', 'budgte')
+      expect(ngramResults).toHaveLength(1)
+      expect(ngramResults[0].itemId).toBe('file:/tmp/budget.xlsx')
+      expect(ngramResults[0].overlapCount).toBeGreaterThanOrEqual(2)
+    })
+  })
 })

@@ -1,4 +1,5 @@
 import type {
+  FileParserChunk,
   FileParserEmbedding,
   FileParserResult
 } from '@talex-touch/utils/electron/file-parsers'
@@ -90,6 +91,7 @@ interface IndexFileUpdate {
   embeddingStatus: 'pending' | 'completed'
   embeddings?: FileParserEmbedding[]
   contentHash?: string | null
+  chunks?: FileParserChunk[]
 }
 
 interface IndexFileResultMessage {
@@ -355,7 +357,8 @@ async function handleIndexTask(
           content: trimmedContent,
           embeddingStatus,
           embeddings: result.embeddings?.length ? result.embeddings : undefined,
-          contentHash
+          contentHash,
+          chunks: result.chunks?.length ? result.chunks : undefined
         } satisfies IndexFileUpdate,
         indexItem: buildSearchIndexItem(file, task.providerId, task.providerType, trimmedContent)
       } satisfies IndexFileResultMessage

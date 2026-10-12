@@ -3731,7 +3731,14 @@
     "modifiedAt": "修改时间",
     "openWith": "用 {app} 打开",
     "openWithOther": "选择其他应用打开",
-    "defaultApp": "默认应用"
+    "defaultApp": "默认应用",
+    "deepMatchTitle": "正文命中片段",
+    "deepMatchPage": "第 {page} 页",
+    "deepMatchLine": "第 {line} 行",
+    "deepMatchSemantic": "语义匹配",
+    "deepMatchContent": "正文匹配",
+    "deepMatchCode": "代码匹配",
+    "deepMatchScore": "相关度 {score}%"
   },
   "download": {
     "migration": {

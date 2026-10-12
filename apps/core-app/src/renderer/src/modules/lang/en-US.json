@@ -3731,7 +3731,14 @@
     "modifiedAt": "Modified At",
     "openWith": "Open with {app}",
     "openWithOther": "Open with another app",
-    "defaultApp": "default app"
+    "defaultApp": "default app",
+    "deepMatchTitle": "Matching Content Snippet",
+    "deepMatchPage": "Page {page}",
+    "deepMatchLine": "Line {line}",
+    "deepMatchSemantic": "Semantic Match",
+    "deepMatchContent": "Content Match",
+    "deepMatchCode": "Code Match",
+    "deepMatchScore": "Relevance {score}%"
   },
   "download": {
     "migration": {

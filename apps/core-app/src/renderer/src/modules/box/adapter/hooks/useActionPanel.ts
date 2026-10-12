@@ -161,8 +161,15 @@ export function useActionPanel(options: UseActionPanelOptions = {}) {
       const applicationId = actionId.slice('open-with:'.length).trim()
       const path = targetItem.meta?.file?.path
       if (path && applicationId) {
+        const lineNumber = targetItem.meta?.deepMatch?.lineNumber
+        const pageNumber = targetItem.meta?.deepMatch?.pageNumber
         const res = await transport
-          .send(AppEvents.fileIndex.openWith, { path, applicationId })
+          .send(AppEvents.fileIndex.openWith, {
+            path,
+            applicationId,
+            lineNumber,
+            pageNumber
+          })
           .catch(() => ({ success: false }))
         if (!res?.success) {
           showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
@@ -197,11 +204,7 @@ export function useActionPanel(options: UseActionPanelOptions = {}) {
         const path = targetItem.meta?.app?.path || targetItem.meta?.file?.path
         // Select it, never open it: opening a directory would launch an .app or open a folder.
         if (path) {
-          try {
-            await appSdk.showInFolder(path, { reveal: true })
-          } catch {
-            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
-          }
+          await appSdk.showInFolder(path, { reveal: true })
         }
         break
       }

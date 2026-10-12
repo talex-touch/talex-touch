@@ -1920,7 +1920,16 @@ export class CommonChannelModule extends BaseModule {
               return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_APPLICATION_REJECTED' }
             }
 
-            await openPathWithApplication(indexedPath, chosen.path)
+            const lineNumber =
+              typeof payload?.lineNumber === 'number' && Number.isFinite(payload.lineNumber)
+                ? Math.floor(payload.lineNumber)
+                : undefined
+            const pageNumber =
+              typeof payload?.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
+                ? Math.floor(payload.pageNumber)
+                : undefined
+
+            await openPathWithApplication(indexedPath, chosen.path, { lineNumber, pageNumber })
             return { success: true }
           } catch (error) {
             const report = reportFileIndexTransportFailure('OPEN_WITH', error)
@@ -2686,8 +2695,31 @@ async function projectApplicationTarget(
  * action. `-a` takes the bundle as its own argv entry, and both paths arrive as argv rather than
  * through a shell, so neither can inject arguments.
  */
-async function openPathWithApplication(filePath: string, applicationPath: string): Promise<void> {
-  await execFileAsync('/usr/bin/open', ['-a', applicationPath, filePath], {
+async function openPathWithApplication(
+  filePath: string,
+  applicationPath: string,
+  options?: { lineNumber?: number; pageNumber?: number }
+): Promise<void> {
+  const args = ['-a', applicationPath]
+  const lowerApp = applicationPath.toLowerCase()
+
+  if (
+    options?.lineNumber != null &&
+    options.lineNumber > 0 &&
+    (lowerApp.includes('visual studio code') ||
+      lowerApp.includes('cursor') ||
+      lowerApp.includes('vscodium') ||
+      lowerApp.includes('windsurf') ||
+      lowerApp.includes('zed') ||
+      lowerApp.includes('sublime text') ||
+      lowerApp.includes('code.app'))
+  ) {
+    args.push('--args', '-g', `${filePath}:${options.lineNumber}`)
+  } else {
+    args.push(filePath)
+  }
+
+  await execFileAsync('/usr/bin/open', args, {
     timeout: OPEN_WITH_TIMEOUT_MS
   })
 }

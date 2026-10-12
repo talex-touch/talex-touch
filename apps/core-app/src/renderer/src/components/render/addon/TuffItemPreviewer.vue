@@ -253,6 +253,59 @@ const itemCreatedAt = computed(() => {
     | undefined
   return meta?.app?.createdAt || meta?.file?.created_at || '-'
 })
+
+const deepMatch = computed(() => props.item?.meta?.deepMatch)
+
+const deepMatchKindLabel = computed(() => {
+  if (!deepMatch.value?.kind) return ''
+  switch (deepMatch.value.kind) {
+    case 'semantic':
+      return t('fileInfo.deepMatchSemantic')
+    case 'content':
+      return t('fileInfo.deepMatchContent')
+    case 'code':
+      return t('fileInfo.deepMatchCode')
+    default:
+      return ''
+  }
+})
+
+const deepMatchPositionLabel = computed(() => {
+  if (deepMatch.value?.pageNumber != null) {
+    return t('fileInfo.deepMatchPage', { page: deepMatch.value.pageNumber })
+  }
+  if (deepMatch.value?.lineNumber != null) {
+    return t('fileInfo.deepMatchLine', { line: deepMatch.value.lineNumber })
+  }
+  return ''
+})
+
+const deepMatchScoreLabel = computed(() => {
+  if (deepMatch.value?.score == null) return ''
+  return t('fileInfo.deepMatchScore', { score: Math.round(deepMatch.value.score * 100) })
+})
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+const highlightedSnippet = computed(() => {
+  const snippet = deepMatch.value?.snippet
+  if (!snippet) return ''
+  const term = deepMatch.value?.matchTerm || props.searchQuery?.trim()
+  if (!term) return escapeHtml(snippet)
+  const escaped = escapeHtml(snippet)
+  const escapedTerm = escapeHtml(term)
+  const regex = new RegExp(`(${escapedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  return escaped.replace(
+    regex,
+    '<mark class="bg-amber-400/30 text-amber-900 dark:text-amber-200 rounded px-0.5 font-medium">$1</mark>'
+  )
+})
 </script>
 
 <template>
@@ -345,6 +398,41 @@ const itemCreatedAt = computed(() => {
         >
           <TxTextTransformer :text="imageDimensions" mode="fade" :duration-ms="200" :blur-px="4" />
         </span>
+      </div>
+      <div
+        v-if="deepMatch?.snippet"
+        class="m-3 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 dark:border-amber-400/15 dark:bg-amber-400/5 text-xs"
+      >
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-300">
+            <i class="i-ri-sparkling-fill" aria-hidden="true" />
+            <span>{{ t('fileInfo.deepMatchTitle') }}</span>
+            <span
+              v-if="deepMatchKindLabel"
+              class="px-1.5 py-0.2 rounded text-[10px] bg-amber-500/15 text-amber-800 dark:text-amber-200 font-normal"
+            >
+              {{ deepMatchKindLabel }}
+            </span>
+            <span
+              v-if="deepMatchPositionLabel"
+              class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/15 text-sky-800 dark:text-sky-200 font-mono"
+            >
+              {{ deepMatchPositionLabel }}
+            </span>
+          </div>
+          <span
+            v-if="deepMatchScoreLabel"
+            class="text-[11px] font-mono text-amber-600/80 dark:text-amber-400/80"
+          >
+            {{ deepMatchScoreLabel }}
+          </span>
+        </div>
+        <!-- eslint-disable vue/no-v-html -->
+        <div
+          class="text-[11px] leading-relaxed text-gray-700 dark:text-gray-300 font-mono select-text break-words whitespace-pre-wrap max-h-32 overflow-y-auto"
+          v-html="highlightedSnippet"
+        />
+        <!-- eslint-enable vue/no-v-html -->
       </div>
       <div class="p-4 border-t border-gray-200 dark:border-gray-700">
         <h3 class="text-sm font-semibold mb-4">

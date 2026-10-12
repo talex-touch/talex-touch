@@ -233,3 +233,32 @@ describe('TuffItemPreviewer application metadata', () => {
     expect(valueFor('fileInfo.createdAt')).toBe('2026-06-17T10:30:00.000Z')
   })
 })
+
+describe('TuffItemPreviewer deep match snippet', () => {
+  it('renders matching snippet card with kind, page and score badges', async () => {
+    routeHostEvents({ success: true, application: null })
+    const pane = mountPreviewer({
+      id: '/Documents/lease.pdf',
+      kind: 'file',
+      source: { id: 'files', type: 'file', name: 'Files' },
+      render: { mode: 'default', basic: { title: 'lease.pdf' } },
+      meta: {
+        file: { path: '/Documents/lease.pdf' },
+        deepMatch: {
+          kind: 'semantic',
+          snippet: 'Tenant shall not keep any pets without written consent',
+          pageNumber: 4,
+          score: 0.94,
+          matchTerm: 'pets'
+        }
+      }
+    } as TuffItem)
+    await flushPromises()
+
+    const text = pane.text()
+    expect(text).toContain('fileInfo.deepMatchTitle')
+    expect(text).toContain('fileInfo.deepMatchSemantic')
+    expect(text).toContain('Tenant shall not keep any')
+    expect(pane.find('mark').text()).toBe('pets')
+  })
+})

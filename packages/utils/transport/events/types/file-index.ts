@@ -165,6 +165,10 @@ export interface FileIndexOpenWithRequest {
    * for this file and never an arbitrary application the caller supplies.
    */
   applicationId: string;
+  /** Optional line number to navigate to in supported editors (e.g. VS Code, Cursor). */
+  lineNumber?: number;
+  /** Optional page number to navigate to in supported PDF viewers. */
+  pageNumber?: number;
 }
 
 export interface FileIndexOpenWithResult {

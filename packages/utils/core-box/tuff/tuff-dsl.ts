@@ -1022,6 +1022,23 @@ export interface TuffMeta {
     /** 是否为目录 */
     isDir?: boolean
   }
+  /**
+   * 深度内容/语义命中上下文（来自正文或端侧向量检索）
+   */
+  deepMatch?: {
+    /** 命中类型：语义匹配、正文匹配或代码符号匹配 */
+    kind?: 'semantic' | 'content' | 'code'
+    /** 命中的正文摘要/片段文本 */
+    snippet?: string
+    /** 命中的页码（如 PDF 第 4 页，1-based） */
+    pageNumber?: number
+    /** 命中的行号（如代码文件第 42 行，1-based） */
+    lineNumber?: number
+    /** 命中的关键词或短语（用于在文本中高亮） */
+    matchTerm?: string
+    /** 语义相似度得分 (0~1) */
+    score?: number
+  }
 
   /**
    * 网络信息
