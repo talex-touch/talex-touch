@@ -1,4 +1,5 @@
 import type { IndexWorkerFileResult } from '../workers/file-index-worker-client'
+import { FileProviderContentCapacityService } from './file-provider-content-capacity-service'
 import type {
   PersistEntriesSummary,
   FilePersistenceEntry
@@ -68,6 +69,10 @@ function createService(options: {
   publishRecords?: (entries: IndexWorkerFileResult[]) => Promise<number>
   logWarn?: (message: string, error?: unknown, meta?: Record<string, unknown>) => void
   config?: FileProviderIndexRuntimeServiceDeps['config']
+  checkContentCapacity?: FileProviderIndexRuntimeServiceDeps['checkContentCapacity']
+  isContentAdmissionEnabled?: FileProviderIndexRuntimeServiceDeps['isContentAdmissionEnabled']
+  recordStorageFailure?: FileProviderIndexRuntimeServiceDeps['recordStorageFailure']
+  indexEmbeddings?: FileProviderIndexRuntimeServiceDeps['indexEmbeddings']
 }) {
   const persistEntries = vi.fn(
     options.persistEntries ?? (async (entries) => createPersistSummary(entries))
@@ -80,6 +85,10 @@ function createService(options: {
     publishRecords,
     logWarn,
     service: new FileProviderIndexRuntimeService({
+      checkContentCapacity: options.checkContentCapacity,
+      isContentAdmissionEnabled: options.isContentAdmissionEnabled,
+      recordStorageFailure: options.recordStorageFailure,
+      indexEmbeddings: options.indexEmbeddings,
       flushBatchScheduler: {
         currentSize: 10,
         recordDuration: vi.fn()
@@ -290,6 +299,183 @@ describe('FileProviderIndexRuntimeService worker readiness', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     expect(persistEntries).toHaveBeenCalledTimes(2)
+  })
+
+  it('checks capacity after worker readiness and prevents body persistence and embeddings when space vanished', async () => {
+    vi.useFakeTimers()
+    let admitted = true
+    const indexEmbeddings = vi.fn(async () => undefined)
+    const { service, persistEntries, publishRecords } = createService({
+      pending: new Map([[1, createResult(1)]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => {
+        admitted = false
+        return true
+      },
+      checkContentCapacity: async () => admitted,
+      isContentAdmissionEnabled: () => admitted,
+      indexEmbeddings
+    })
+    try {
+      await service.flush()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(persistEntries).not.toHaveBeenCalled()
+      expect(publishRecords).not.toHaveBeenCalled()
+      expect(indexEmbeddings).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('stops publication and embeddings when capacity vanishes immediately after a committed body write', async () => {
+    vi.useFakeTimers()
+    let admitted = true
+    const indexEmbeddings = vi.fn(async () => undefined)
+    const { service, persistEntries, publishRecords } = createService({
+      pending: new Map([[1, createResult(1)]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      checkContentCapacity: async () => admitted,
+      isContentAdmissionEnabled: () => admitted,
+      persistEntries: async (entries) => {
+        admitted = false
+        return createPersistSummary(entries)
+      },
+      indexEmbeddings
+    })
+    try {
+      await service.flush()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(persistEntries).toHaveBeenCalledTimes(1)
+      expect(publishRecords).not.toHaveBeenCalled()
+      expect(indexEmbeddings).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it('pauses on wrapped SQLITE_FULL and does not retry the same disk-full write every 250ms', async () => {
+    vi.useFakeTimers()
+    const capacity = new FileProviderContentCapacityService({
+      getDirectory: () => '/synthetic/index',
+      statfs: async () => ({ bavail: 4 * 1024 ** 3, bsize: 1 })
+    })
+    await capacity.check(true)
+    const error = new Error('worker persistence failed', {
+      cause: Object.assign(new Error('database or disk is full'), { code: 'SQLITE_FULL' })
+    })
+    const { service, persistEntries, publishRecords } = createService({
+      pending: new Map([[1, createResult(1)]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      checkContentCapacity: () => capacity.check(),
+      isContentAdmissionEnabled: () => capacity.isReady(),
+      recordStorageFailure: (failure) => capacity.recordFailure(failure),
+      persistEntries: async () => {
+        throw error
+      }
+    })
+    try {
+      await service.flush()
+      expect(capacity.isReady()).toBe(false)
+      service.handleIndexWorkerFile(createResult(2))
+      await vi.advanceTimersByTimeAsync(30_000)
+      await service.flush()
+      expect(persistEntries).toHaveBeenCalledTimes(1)
+      expect(publishRecords).not.toHaveBeenCalled()
+      expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      service.dispose()
+      capacity.dispose()
+    }
+  })
+
+  it('accepts and persists a fresh scheduled result after a disk-full pause recovers', async () => {
+    vi.useFakeTimers()
+    const capacity = new FileProviderContentCapacityService({
+      getDirectory: () => '/synthetic/index',
+      checkIntervalMs: 1000,
+      statfs: async () => ({ bavail: 4 * 1024 ** 3, bsize: 1 })
+    })
+    await capacity.check(true)
+    const publishedIds: number[] = []
+    let firstWrite = true
+    const { service } = createService({
+      pending: new Map([[1, createResult(1)]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      checkContentCapacity: () => capacity.check(),
+      isContentAdmissionEnabled: () => capacity.isReady(),
+      recordStorageFailure: (error) => capacity.recordFailure(error),
+      config: { baseDelayMs: 1, backlogDelayMs: 1 },
+      persistEntries: async (entries) => {
+        if (firstWrite) {
+          firstWrite = false
+          throw Object.assign(new Error('disk full'), { code: 'ENOSPC' })
+        }
+        return createPersistSummary(entries)
+      },
+      publishRecords: async (entries) => {
+        publishedIds.push(...entries.map((entry) => entry.fileId))
+        return entries.length
+      }
+    })
+    try {
+      await service.flush()
+      await vi.advanceTimersByTimeAsync(1000)
+      await expect(capacity.check(true)).resolves.toBe(true)
+      service.handleIndexWorkerFile(createResult(2))
+      await vi.advanceTimersByTimeAsync(1)
+      expect(publishedIds).toEqual([2])
+      expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+    } finally {
+      service.dispose()
+      capacity.dispose()
+    }
+  })
+
+  it('does not finalize completed progress or retry when a late embedding callback reports disk full', async () => {
+    vi.useFakeTimers()
+    const capacity = new FileProviderContentCapacityService({
+      getDirectory: () => '/synthetic/index',
+      statfs: async () => ({ bavail: 4 * 1024 ** 3, bsize: 1 })
+    })
+    await capacity.check(true)
+    const progressWrites: string[] = []
+    const embedded = vi.fn(async () => {
+      throw new Error('embedding worker write failed', {
+        cause: Object.assign(new Error('device full'), { code: 'ENOSPC' })
+      })
+    })
+    const { service, persistEntries, publishRecords } = createService({
+      pending: new Map([[1, createResult(1)]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      checkContentCapacity: () => capacity.check(),
+      isContentAdmissionEnabled: () => capacity.isReady(),
+      recordStorageFailure: (error) => capacity.recordFailure(error),
+      persistEntries: async (entries) => {
+        progressWrites.push(...entries.map((entry) => entry.progress.status))
+        return createPersistSummary(entries)
+      },
+      indexEmbeddings: embedded
+    })
+    try {
+      await service.flush()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(capacity.isReady()).toBe(false)
+      expect(progressWrites).toEqual(['pending'])
+      expect(persistEntries).toHaveBeenCalledTimes(1)
+      expect(publishRecords).toHaveBeenCalledTimes(1)
+      expect(embedded).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      service.dispose()
+      capacity.dispose()
+    }
   })
 })
 

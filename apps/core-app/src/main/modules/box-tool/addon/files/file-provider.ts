@@ -163,6 +163,7 @@ import { FileProviderRuntimeResetService } from './services/file-provider-runtim
 import { FileProviderScanProgressService } from './services/file-provider-scan-progress-service'
 import { FileProviderEnrichmentResumeService } from './services/file-provider-enrichment-resume-service'
 import { FileProviderContentIndexPolicyService } from './services/file-provider-content-index-policy-service'
+import { FileProviderContentCapacityService } from './services/file-provider-content-capacity-service'
 import { shouldBootstrapFileReindex } from './services/file-provider-bootstrap-reindex'
 import {
   FileProviderPathNormalizationService,
@@ -459,6 +460,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   private readonly enrichmentResumeService: FileProviderEnrichmentResumeService
   private readonly contentIndexPolicyService: FileProviderContentIndexPolicyService
   private readonly embeddingIndexService = new FileProviderEmbeddingIndexService({
+    checkContentCapacity: () => this.contentIndexPolicyService.checkAdmission(),
     getEmbeddingService: () => this.embeddingService ?? null,
     logDebug: (m, meta) => this.logDebug(m, meta)
   })
@@ -948,6 +950,9 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         // A failed completion barrier does not release the old result payloads.
         // Never ask the parser for another batch until their owner has drained.
         await this.indexRuntimeService.waitForPersisted()
+        if (!(await this.contentIndexPolicyService.checkAdmission())) {
+          throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+        }
         return await this.fileIndexWorker.indexFiles(dbPath, providerId, providerType, files)
       },
       logWarn: (message, error, meta) => this.logWarn(message, error, meta)
@@ -956,7 +961,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       getDbUtils: () => this.dbUtils,
       isSearchIndexAvailable: () => Boolean(this.searchIndex),
       isShuttingDown: () => this.shuttingDown,
-      isEnabled: () => this.contentIndexPolicyService.isEnabled(),
+      isEnabled: () => this.contentIndexPolicyService.isAdmissionEnabled(),
       withMutationLease: async (operation) =>
         await this.requireRuntimeMutationDelegate().withMutationLease(operation, {
           maintenance: true,
@@ -969,6 +974,15 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       logWarn: (message, error, meta) => this.logWarn(message, error, meta)
     })
     this.contentIndexPolicyService = new FileProviderContentIndexPolicyService({
+      capacity: new FileProviderContentCapacityService({
+        getDirectory: () => {
+          const database = this.initializationContext?.databaseManager
+          if (!database) return null
+          const target = database.getSearchDatabaseFilePath()
+          return target && target !== ':memory:' ? path.dirname(target) : null
+        },
+        onChange: () => this.contentIndexPolicyService.handleStorageChange()
+      }),
       cleanupVersion: FILE_CONTENT_INDEX_POLICY_VERSION,
       getSettings: () => this.fileIndexSettings,
       updateSettings: (patch) => this.watchService.updateFileIndexSettings(patch),
@@ -977,11 +991,18 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       isResumeActive: () => this.enrichmentResumeService.isActive(),
       resume: (reason) => this.enrichmentResumeService.resume(reason),
       stop: () => this.enrichmentResumeService.stop(),
-      cancelPending: () => this.indexSchedulerService.cancelPending(),
+      cancelPending: () => {
+        this.indexSchedulerService.cancelPending()
+        if (this.contentIndexPolicyService.isEnabled()) this.fileIndexWorker?.shutdown()
+        this.pendingIndexWorkerResults.clear()
+      },
       clearData: () => this.clearContentIndexingDataWithLease(),
       compact: (reason) => this.maintenanceService.compactSearchIndex(reason)
     })
     this.indexRuntimeService = new FileProviderIndexRuntimeService({
+      checkContentCapacity: () => this.contentIndexPolicyService.checkAdmission(true),
+      isContentAdmissionEnabled: () => this.contentIndexPolicyService.isAdmissionEnabled(),
+      recordStorageFailure: (error) => this.contentIndexPolicyService.recordStorageFailure(error),
       flushBatchScheduler: this.flushBatchScheduler,
       getDbUtils: () => this.dbUtils,
       getSearchIndex: () => this.searchIndex,
@@ -1108,6 +1129,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   public async prepareForSearchIndexShutdown(): Promise<void> {
     this.workerStatusService.stopDiagnostics()
     this.shuttingDown = true
+    this.contentIndexPolicyService.dispose()
+    this.indexRuntimeService.dispose()
     const maintenanceDrain = this.maintenanceService.stop()
     this.indexRunAbortController?.abort(new Error('FILE_PROVIDER_SHUTTING_DOWN'))
     // Content enrichment is durably marked pending before admission. Stop accepting work and
@@ -2051,6 +2074,9 @@ class FileProvider implements ISearchProvider<ProviderContext> {
 
     let indexedItems = 0
     for (const [mutationLeaseId, group] of entriesByLease) {
+      if (!(await this.contentIndexPolicyService.checkAdmission())) {
+        throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+      }
       if (this.isIndexWorkerMutationLeaseCancelled(mutationLeaseId)) {
         // Persistence may already have marked these rows complete. Without
         // publication they remain recoverable, even when the lease timed out.
@@ -2585,6 +2611,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         isSplitEnabled: () => context.databaseManager.isSearchSplitEnabled(),
         getReadDb: () => context.databaseManager.getSearchDb(),
         getPrimaryDb: () => context.databaseManager.getDb(),
+        checkContentCapacity: () => this.contentIndexPolicyService.checkAdmission(),
+        recordStorageFailure: (error) => this.contentIndexPolicyService.recordStorageFailure(error),
         execWrite: async (statements, mode) => await searchIndexWriter.execWrite(statements, mode)
       })
     } catch (error) {
@@ -2691,8 +2719,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     this.openersChannelRegistered = true
   }
 
-  public getContentIndexSettings(): FileIndexContentSettings {
-    return this.contentIndexPolicyService.getSnapshot()
+  public async getContentIndexSettings(): Promise<FileIndexContentSettings> {
+    return await this.contentIndexPolicyService.refreshSnapshot()
   }
 
   public updateContentIndexSettings(contentIndexingEnabled: boolean) {
@@ -2704,7 +2732,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     await delegate.withMutationLease(async () => {
       this.indexSchedulerService.cancelPending()
       await this.indexSchedulerService.drain(this.indexSchedulerService.getDrainTimeoutMs(false))
-      await this.indexRuntimeService.waitForPersisted()
+      await this.indexRuntimeService.waitForInFlight()
       const affectedItems = await this.clearContentIndexingData()
       await delegate.publishContentCleared(affectedItems)
     })
@@ -2763,7 +2791,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       startupErrorCode: this.backgroundStartupFailure?.code ?? null,
       ...this.progressState.getSnapshot(isIndexing),
       contentIndexingEnabled: contentSettings.contentIndexingEnabled,
-      contentIndexingState: contentSettings.state
+      contentIndexingState: contentSettings.state,
+      contentIndexStorage: contentSettings.storage
     }
   }
 
@@ -3263,9 +3292,19 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     reason: string,
     mutationLeaseId?: string
   ): Promise<IndexedWorkerScheduleResult> {
-    await this.markContentEnrichmentPending(files, mutationLeaseId)
+    if (!(await this.contentIndexPolicyService.checkAdmission())) {
+      return { accepted: 0, deferred: files.length }
+    }
+    try {
+      await this.markContentEnrichmentPending(files, mutationLeaseId)
+    } catch (error) {
+      if (this.contentIndexPolicyService.recordStorageFailure(error)) {
+        return { accepted: 0, deferred: files.length }
+      }
+      throw error
+    }
     if (
-      !this.contentIndexPolicyService.isEnabled() ||
+      !this.contentIndexPolicyService.isAdmissionEnabled() ||
       this.isInitializing ||
       this.maintenanceService.isBaseMutationSliceActive
     ) {

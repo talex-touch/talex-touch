@@ -1782,9 +1782,9 @@ export class CommonChannelModule extends BaseModule {
       }),
       transport.on<void, FileIndexContentSettings>(
         AppEvents.fileIndex.settingsGet,
-        (_payload, context) => {
+        async (_payload, context) => {
           this.assertHostOnly(context, 'fileIndex.settingsGet')
-          return fileProvider.getContentIndexSettings()
+          return await fileProvider.getContentIndexSettings()
         }
       ),
       transport.on<FileIndexContentSettingsUpdate, FileIndexContentSettings>(

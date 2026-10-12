@@ -54,6 +54,8 @@ interface CachedEmbedding {
  * resolver-timing trap class) cannot leave this service writing a stale file.
  */
 export interface EmbeddingDbRouting {
+  checkContentCapacity?: () => Promise<boolean>
+  recordStorageFailure?: (error: unknown) => boolean
   /** Call-time split decision — mirrors DbUtilsSplitContext.enabled. */
   isSplitEnabled(): boolean
   /** Read connection: the search file when the split is on (falls back to primary until ready). */
@@ -180,6 +182,12 @@ export class EmbeddingService {
     mode: 'single' | 'transaction' = 'single'
   ): Promise<number> {
     if (queries.length === 0) return 0
+    if (
+      label === 'embedding.index' &&
+      this.routing.checkContentCapacity &&
+      !(await this.routing.checkContentCapacity())
+    )
+      throw new Error('FILE_CONTENT_STORAGE_PAUSED')
 
     if (this.routing.isSplitEnabled()) {
       const statements = queries.map((query) => {
@@ -190,6 +198,12 @@ export class EmbeddingService {
     }
 
     return await scheduleDbWrite(label, async () => {
+      if (
+        label === 'embedding.index' &&
+        this.routing.checkContentCapacity &&
+        !(await this.routing.checkContentCapacity())
+      )
+        throw new Error('FILE_CONTENT_STORAGE_PAUSED')
       const [first, ...rest] = queries
       if (!first) return 0
       if (mode === 'transaction') {
@@ -228,6 +242,7 @@ export class EmbeddingService {
     } catch (error) {
       // Not cached: the limit says nothing about whether embedding works once it resets.
       if (this.pauseOnUsageLimit(error)) return false
+      if (this.routing.recordStorageFailure?.(error)) return false
       this.available = false
     }
 
@@ -251,6 +266,8 @@ export class EmbeddingService {
   }
 
   private async indexFileOutcome(input: EmbeddingFileInput): Promise<IndexFileOutcome> {
+    if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+      return 'paused'
     if (!(await this.isAvailable())) return this.usageLimitPause ? 'paused' : 'skipped'
     if (!input.content?.trim()) return 'skipped'
     const { fileId, content } = input
@@ -259,7 +276,11 @@ export class EmbeddingService {
       : [{ text: content.slice(0, MAX_TEXT_LENGTH) }]
     const hashes = chunks.map(hashFileContentChunk)
     try {
+      if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+        return 'paused'
       const first = await this.generate(chunks[0].text)
+      if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+        return 'paused'
       if (!usableVector(first.vector) || !first.model)
         throw new Error('FILE_EMBEDDING_INVALID_VECTOR')
       const existing = await this.routing
@@ -283,7 +304,11 @@ export class EmbeddingService {
       const generated = [first]
       for (let index = 1; index < chunks.length; index++) {
         if (this.getUsageLimitPause()) return 'paused'
+        if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+          return 'paused'
         const result = await this.generate(chunks[index].text)
+        if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+          return 'paused'
         if (
           !usableVector(result.vector) ||
           result.model !== first.model ||
@@ -338,6 +363,11 @@ export class EmbeddingService {
       return written > 0 ? 'done' : 'skipped'
     } catch (error) {
       if (this.pauseOnUsageLimit(error)) return 'paused'
+      if (
+        this.routing.recordStorageFailure?.(error) ||
+        (error instanceof Error && error.message === 'FILE_CONTENT_STORAGE_PAUSED')
+      )
+        return 'paused'
       const code =
         error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
           ? error.code
@@ -353,6 +383,9 @@ export class EmbeddingService {
   async indexFiles(
     files: EmbeddingFileInput[]
   ): Promise<{ indexed: number; skipped: number; failed: number }> {
+    if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity())) {
+      return { indexed: 0, skipped: files.length, failed: 0 }
+    }
     if (!(await this.isAvailable())) return { indexed: 0, skipped: files.length, failed: 0 }
     const start = performance.now()
     let indexed = 0
@@ -361,6 +394,7 @@ export class EmbeddingService {
     // the retained model buffers by concurrent files.
     for (const file of files) {
       if (this.getUsageLimitPause()) break
+      if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity())) break
       const outcome = await this.indexFileOutcome(file)
       if (outcome === 'done') indexed++
       if (outcome === 'failed') failed++

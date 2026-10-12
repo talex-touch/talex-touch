@@ -174,6 +174,37 @@ export function isSqliteCorruptionError(error: unknown): boolean {
   return hasSqliteCorruptionError(error)
 }
 
+/** Capacity failures can be wrapped by worker RPC or transaction errors. */
+export function isSqliteStorageFullError(error: unknown): boolean {
+  const visited = new Set<unknown>()
+  const pending: unknown[] = [error]
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (typeof current === 'string') {
+      if (/\b(?:SQLITE_FULL|ENOSPC)\b/.test(current)) return true
+      continue
+    }
+    if (!current || typeof current !== 'object' || visited.has(current)) continue
+    visited.add(current)
+    const identity = resolveSqliteErrorIdentity(current)
+    if (identity.code === 'ENOSPC' || identity.code === 'SQLITE_FULL') return true
+    if (identity.rawCode !== undefined && identity.rawCode % 256 === 13) return true
+    if ('message' in current && typeof current.message === 'string') {
+      if (
+        /\b(?:SQLITE_FULL|ENOSPC)\b|database or disk is full|no space left on device/i.test(
+          current.message
+        )
+      )
+        return true
+    }
+    if (current instanceof AggregateError) pending.push(...current.errors)
+    if ('cause' in current) pending.push(current.cause)
+    if ('original' in current) pending.push(current.original)
+    if ('error' in current) pending.push(current.error)
+  }
+  return false
+}
+
 export function getSqliteBusyRetryCount(): number {
   return SQLITE_BUSY_RETRY_COUNT
 }

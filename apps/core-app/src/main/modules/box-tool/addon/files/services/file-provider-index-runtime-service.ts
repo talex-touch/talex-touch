@@ -39,6 +39,9 @@ export type FileProviderIndexFlushSnapshot = Omit<IndexedWriteFlushSnapshot, 'st
 }
 
 export interface FileProviderIndexRuntimeServiceDeps {
+  checkContentCapacity?: () => Promise<boolean>
+  isContentAdmissionEnabled?: () => boolean
+  recordStorageFailure?: (error: unknown) => boolean
   flushBatchScheduler: { currentSize: number; recordDuration: (durationMs: number) => void }
   getDbUtils: () => unknown | null
   getSearchIndex: () => unknown | null
@@ -78,6 +81,8 @@ export class FileProviderIndexRuntimeService {
   private readonly logWarn: FileProviderIndexRuntimeServiceDeps['logWarn']
   private readonly now: () => number
   private readonly config: Required<NonNullable<FileProviderIndexRuntimeServiceDeps['config']>>
+  private readonly deps: FileProviderIndexRuntimeServiceDeps
+  private disposed = false
   private explicitFlushNotBefore = 0
   private activeFlushes = 0
   private failureLogState: { signature: string; loggedAt: number; suppressed: number } | null = null
@@ -94,6 +99,7 @@ export class FileProviderIndexRuntimeService {
     new IndexedWriteFlushSnapshotService<FileProviderIndexFlushSnapshot>()
 
   constructor(deps: FileProviderIndexRuntimeServiceDeps) {
+    this.deps = deps
     this.flushBatchScheduler = deps.flushBatchScheduler
     this.getDbUtils = deps.getDbUtils
     this.getSearchIndex = deps.getSearchIndex
@@ -132,6 +138,7 @@ export class FileProviderIndexRuntimeService {
       busyRetryMaxMs: this.config.busyRetryMaxMs
     })
     this.flushExecutor = new FileProviderIndexFlushExecutorService({
+      checkContentCapacity: deps.checkContentCapacity,
       flushBatchScheduler: this.flushBatchScheduler,
       getDbUtils: this.getDbUtils,
       getSearchIndex: this.getSearchIndex,
@@ -141,6 +148,7 @@ export class FileProviderIndexRuntimeService {
       buildPersistEntries: this.buildPersistEntries,
       publishRecords: this.publishRecords,
       indexEmbeddings: this.indexEmbeddings,
+      recordStorageFailure: deps.recordStorageFailure,
       logDebug: this.logDebug,
       config: {
         dbBackpressureMaxQueued: this.config.dbBackpressureMaxQueued
@@ -149,7 +157,10 @@ export class FileProviderIndexRuntimeService {
     this.flushRuntime = new IndexedWriteFlushRuntimeService({
       getPendingSize: () => this.bufferService.pendingSize,
       getInflightSize: () => this.bufferService.inflightSize,
-      isAvailable: () => Boolean(this.getDbUtils() && this.getSearchIndex()),
+      isAvailable: () =>
+        !this.disposed &&
+        Boolean(this.getDbUtils() && this.getSearchIndex()) &&
+        (deps.isContentAdmissionEnabled?.() ?? true),
       executeFlush: () => this.executeFlush(),
       recordIdle: (input) => this.recordFlushSnapshot(buildIndexedWriteFlushIdleSnapshot(input)),
       getFlushDelay: (pendingSize) => this.retryService.getFlushDelay(pendingSize),
@@ -177,10 +188,27 @@ export class FileProviderIndexRuntimeService {
     await this.ensureSearchIndexWorkerReady('index-runtime.init')
   }
 
+  dispose(): void {
+    this.disposed = true
+    this.flushRuntime.dispose()
+  }
+
+  /** Cleanup waits only for the bounded active writer, not paused parser payloads. */
+  async waitForInFlight(timeoutMs = FILE_INDEX_PERSIST_BARRIER_TIMEOUT_MS): Promise<void> {
+    const deadline = this.now() + timeoutMs
+    while (this.activeFlushes > 0 && this.now() < deadline) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, FILE_INDEX_PERSIST_BARRIER_INTERVAL_MS)
+      )
+    }
+    if (this.activeFlushes > 0) throw new Error('FILE_INDEX_PERSIST_BARRIER_TIMEOUT')
+  }
+
   handleIndexWorkerFile(payload: IndexWorkerFileResult): void {
     if (!payload || typeof payload.fileId !== 'number') {
       return
     }
+    if (this.disposed || this.deps.isContentAdmissionEnabled?.() === false) return
 
     const pendingSize = this.bufferService.enqueue(payload)
     this.scheduleFlush(this.retryService.getFlushDelay(pendingSize), 'worker-payload')
@@ -217,6 +245,10 @@ export class FileProviderIndexRuntimeService {
       this.bufferService.pendingSize > 0 ||
       this.bufferService.inflightSize > 0
     ) {
+      if (this.deps.isContentAdmissionEnabled?.() === false) {
+        this.flushRuntime.cancelScheduledFlush()
+        throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+      }
       this.scheduleFlush(0, 'batch-completion-barrier')
       if (this.now() >= deadline) break
       await new Promise<void>((resolve) =>
@@ -233,6 +265,7 @@ export class FileProviderIndexRuntimeService {
   }
 
   scheduleFlush(delayMs: number, reason: string): void {
+    if (this.disposed || this.deps.isContentAdmissionEnabled?.() === false) return
     this.flushRuntime.scheduleFlush(delayMs, reason)
   }
 
@@ -257,6 +290,13 @@ export class FileProviderIndexRuntimeService {
         })
       }
       return result
+    } catch (error) {
+      this.deps.recordStorageFailure?.(error)
+      if (this.deps.isContentAdmissionEnabled?.() === false) {
+        this.flushRuntime.cancelScheduledFlush()
+        this.deps.getPendingResults().clear()
+      }
+      throw error
     } finally {
       this.activeFlushes -= 1
     }

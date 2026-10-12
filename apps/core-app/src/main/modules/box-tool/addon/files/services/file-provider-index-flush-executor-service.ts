@@ -27,6 +27,8 @@ export interface FileProviderIndexFlushExecutorResult {
 }
 
 export interface FileProviderIndexFlushExecutorServiceDeps {
+  checkContentCapacity?: () => Promise<boolean>
+  recordStorageFailure?: (error: unknown) => boolean
   flushBatchScheduler: { currentSize: number; recordDuration: (durationMs: number) => void }
   getDbUtils: () => unknown | null
   getSearchIndex: () => unknown | null
@@ -100,14 +102,30 @@ export class FileProviderIndexFlushExecutorService {
       isAvailable: () => Boolean(this.getDbUtils() && this.getSearchIndex()),
       ensureReady: () => this.ensureSearchIndexWorkerReady('index-runtime.flush'),
       buildPersistEntries: this.buildPersistEntries,
-      persist: (entries) => this.getSearchIndexWorker().persistEntries(entries),
+      persist: async (entries) => {
+        if (deps.checkContentCapacity && !(await deps.checkContentCapacity())) {
+          throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+        }
+        // A parser result is not complete until publication and the final capacity fence.
+        // Keeping this durable row pending avoids a repair write on an already-full volume.
+        const pendingEntries = deps.checkContentCapacity
+          ? entries.map((entry) => ({
+              ...entry,
+              progress: { ...entry.progress, status: 'pending' }
+            }))
+          : entries
+        return await this.getSearchIndexWorker().persistEntries(pendingEntries)
+      },
       waitForCapacity: () => this.waitForCapacity(this.dbBackpressureMaxQueued),
       recordDuration: (durationMs) => this.flushBatchScheduler.recordDuration(durationMs),
       now: this.now,
       onBatchTaken: (entries) => this.logBatchTaken(entries),
       resolveBatchMetadata: (entries) => this.resolveBatchMetadata(entries),
       resolvePersistMetadata: (result) => this.resolvePersistMetadata(result),
-      afterPersist: async ({ entries, result }) => {
+      afterPersist: async ({ entries, persistEntries, result }) => {
+        if (deps.checkContentCapacity && !(await deps.checkContentCapacity())) {
+          throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+        }
         const skippedFileIds = new Set([
           ...(result.staleFileIds ?? []),
           ...(result.supersededFileIds ?? [])
@@ -124,10 +142,18 @@ export class FileProviderIndexFlushExecutorService {
           try {
             await this.indexEmbeddings(committedEntries)
           } catch (error) {
+            deps.recordStorageFailure?.(error)
             this.logDebug('Embedding indexing failed for flushed batch', {
               error: error instanceof Error ? error.message : String(error)
             })
           }
+        }
+        if (deps.checkContentCapacity) {
+          if (!(await deps.checkContentCapacity())) throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+          const completions = persistEntries
+            .filter((entry) => !skippedFileIds.has(entry.fileId))
+            .map((entry) => ({ ...entry, fileUpdate: null }))
+          if (completions.length > 0) await this.getSearchIndexWorker().persistEntries(completions)
         }
         return {
           indexedItems,

@@ -124,7 +124,7 @@ export class FileProviderEnrichmentResumeService {
         // pass would otherwise wait for some unrelated mutation.
         const followUp = this.rerunRequested || outcome === 'paused' || outcome === 'wrapped'
         this.rerunRequested = false
-        if (followUp && !this.deps.isShuttingDown()) {
+        if (followUp && !this.deps.isShuttingDown() && this.deps.isEnabled()) {
           this.scheduleFollowUp(ENRICHMENT_RESUME_ROUND_COOLDOWN_MS, 'follow-up')
         }
       })

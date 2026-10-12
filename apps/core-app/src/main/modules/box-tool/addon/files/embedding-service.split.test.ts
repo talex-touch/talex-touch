@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { FileProviderContentCapacityService } from './services/file-provider-content-capacity-service'
 vi.mock('../../../ai/intelligence-sdk', () => ({
   tuffIntelligence: { embedding: { generate: vi.fn() } }
 }))
@@ -42,7 +43,9 @@ async function makeDb(name: string) {
   const url = `file:${join(directory, `${name}.sqlite`)}`
   const client = createClient({ url })
   clients.push(client)
+  await client.execute('PRAGMA page_size = 4096')
   await client.execute(EMBEDDINGS_DDL)
+  await client.execute('PRAGMA max_page_count = 128')
   await client.execute(FILES_DDL)
   await client.execute(
     "INSERT INTO files (id, path, name, mtime, ctime, size) VALUES (1, '/lease.pdf', 'lease.pdf', 2, 2, 64), (2, '/other.pdf', 'other.pdf', 2, 2, 64)"
@@ -507,6 +510,137 @@ describe('EmbeddingService semantic scan and publication fences', () => {
     } finally {
       release.resolve()
       await operation
+    }
+  })
+})
+
+describe('EmbeddingService device capacity admission', () => {
+  it('does not send file bodies to inference while capacity is blocked', async () => {
+    const home = await makeDb('capacity-blocked')
+    const inferred: string[] = []
+    const service = new EmbeddingService(
+      {
+        isSplitEnabled: () => false,
+        getReadDb: () => home.db,
+        getPrimaryDb: () => home.db,
+        execWrite: async () => {
+          throw new Error('Unexpected worker write')
+        },
+        checkContentCapacity: async () => false
+      },
+      async (text) => {
+        inferred.push(text)
+        return generateEmbedding(text)
+      }
+    )
+    await service.indexFiles([{ fileId: '1', content: CHUNKS[0]!.text }])
+    expect(inferred.filter((text) => text !== 'test')).toEqual([])
+    expect((await home.client.execute('SELECT embedding FROM embeddings')).rows).toEqual([])
+    expect(
+      (await home.client.execute('SELECT embedding_status FROM files WHERE id = 1')).rows
+    ).toEqual([{ embedding_status: 'pending' }])
+  })
+
+  it.each([
+    { name: 'between chunks', pauseOn: CHUNKS[0]!.text, inferredBodies: [CHUNKS[0]!.text] },
+    {
+      name: 'after generation before replacement write',
+      pauseOn: CHUNKS[1]!.text,
+      inferredBodies: CHUNKS.map((chunk) => chunk.text)
+    }
+  ])(
+    'preserves the previous complete vectors when capacity vanishes $name',
+    async ({ pauseOn, inferredBodies }) => {
+      const home = await makeDb('capacity-replacement')
+      const content = CHUNKS.map((chunk) => chunk.text).join('\n\n')
+      await home.client.execute({
+        sql: 'UPDATE files SET content = ? WHERE id = 1',
+        args: [content]
+      })
+      await home.client.execute(
+        "INSERT INTO embeddings (source_id, source_type, embedding, model, content_hash) VALUES ('1', 'file', '[0,1,0]', 'previous-model', 'previous-hash')"
+      )
+      let admitted = true
+      const inferred: string[] = []
+      const service = new EmbeddingService(
+        {
+          isSplitEnabled: () => false,
+          getReadDb: () => home.db,
+          getPrimaryDb: () => home.db,
+          execWrite: async () => {
+            throw new Error('Unexpected worker write')
+          },
+          checkContentCapacity: async () => admitted
+        },
+        async (text) => {
+          inferred.push(text)
+          if (text === pauseOn) admitted = false
+          return generateEmbedding(text)
+        }
+      )
+      await service.indexFiles([{ fileId: '1', content, chunks: CHUNKS }])
+      expect(inferred.filter((text) => text !== 'test')).toEqual(inferredBodies)
+      expect(
+        (await home.client.execute('SELECT embedding, model, content_hash FROM embeddings')).rows
+      ).toEqual([{ embedding: '[0,1,0]', model: 'previous-model', content_hash: 'previous-hash' }])
+      expect(
+        (await home.client.execute('SELECT content, embedding_status FROM files WHERE id = 1')).rows
+      ).toEqual([{ content, embedding_status: 'pending' }])
+    }
+  )
+
+  it('pauses at a wrapped disk-full worker write and does not infer the rest of the batch', async () => {
+    const home = await makeDb('capacity-worker-full')
+    const capacity = new FileProviderContentCapacityService({
+      getDirectory: () => '/synthetic/search-index',
+      statfs: async () => ({ bavail: 4 * 1024 ** 3, bsize: 1 })
+    })
+    await capacity.check(true)
+    await home.client.execute({
+      sql: 'UPDATE files SET content = ? WHERE id = 1',
+      args: [CHUNKS[0]!.text]
+    })
+    await home.client.execute({
+      sql: 'UPDATE files SET content = ? WHERE id = 2',
+      args: [CHUNKS[1]!.text]
+    })
+    const inferred: string[] = []
+    let writes = 0
+    const service = new EmbeddingService(
+      {
+        isSplitEnabled: () => true,
+        getReadDb: () => home.db,
+        getPrimaryDb: () => home.db,
+        checkContentCapacity: () => capacity.check(),
+        recordStorageFailure: (error) => capacity.recordFailure(error),
+        execWrite: async () => {
+          writes++
+          throw new Error('worker batch failed', {
+            cause: Object.assign(new Error('database full'), { code: 'SQLITE_FULL' })
+          })
+        }
+      },
+      async (text) => {
+        inferred.push(text)
+        return generateEmbedding(text)
+      }
+    )
+    try {
+      const files = CHUNKS.map((chunk, index) => ({
+        fileId: String(index + 1),
+        content: chunk.text
+      }))
+      await service.indexFiles(files)
+      await service.indexFiles(files)
+      expect(capacity.isReady()).toBe(false)
+      expect(inferred.filter((text) => text !== 'test')).toEqual([CHUNKS[0]!.text])
+      expect(writes).toBe(1)
+      expect((await home.client.execute('SELECT embedding FROM embeddings')).rows).toEqual([])
+      expect(
+        (await home.client.execute('SELECT embedding_status FROM files ORDER BY id')).rows
+      ).toEqual([{ embedding_status: 'pending' }, { embedding_status: 'pending' }])
+    } finally {
+      capacity.dispose()
     }
   })
 })

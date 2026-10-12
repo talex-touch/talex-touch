@@ -26,6 +26,7 @@ export interface FileProviderEmbeddingIndexPort {
 }
 
 export interface FileProviderEmbeddingIndexServiceDeps {
+  checkContentCapacity?: () => Promise<boolean>
   /** Returns `null` when no embedding provider was available at construction. */
   getEmbeddingService: () => FileProviderEmbeddingIndexPort | null
   logDebug: (message: string, meta?: Record<string, unknown>) => void
@@ -42,8 +43,10 @@ export interface FileProviderEmbeddingIndexServiceDeps {
 export class FileProviderEmbeddingIndexService {
   private readonly getEmbeddingService: FileProviderEmbeddingIndexServiceDeps['getEmbeddingService']
   private readonly logDebug: FileProviderEmbeddingIndexServiceDeps['logDebug']
+  private readonly deps: FileProviderEmbeddingIndexServiceDeps
 
   constructor(deps: FileProviderEmbeddingIndexServiceDeps) {
+    this.deps = deps
     this.getEmbeddingService = deps.getEmbeddingService
     this.logDebug = deps.logDebug
   }
@@ -60,6 +63,7 @@ export class FileProviderEmbeddingIndexService {
    *   and would be a wasted billable call.
    */
   async indexCommittedEntries(entries: IndexWorkerFileResult[]): Promise<void> {
+    if (this.deps.checkContentCapacity && !(await this.deps.checkContentCapacity())) return
     const embeddingService = this.getEmbeddingService()
     if (!embeddingService) return
 
