@@ -1,0 +1,138 @@
+/* v3 additions: match highlight, yesterday moments, preview + Ask AI cards, the two-part finale. Loaded after scene2.css. */
+
+/* BoxItem's CoreBoxTextHighlight: the matched ranges in primary, bold */
+.mh { color: var(--primary); font-weight: 700; }
+.cb-footer { overflow: hidden; }
+/* BoxGridItem sets min-width: 0, so a long app name ellipsizes instead of widening its column */
+.tile { min-width: 0; }
+
+/* ---------- yesterday: three moments that become today's tiles ---------- */
+.moments { position: absolute; left: 0; right: 0; top: 470px; display: flex; justify-content: center; gap: 36px; }
+.mo {
+  display: flex; align-items: center; gap: 24px; padding: 26px 50px 26px 28px; border-radius: 34px; opacity: 0;
+  background: rgba(250, 250, 252, 0.94); color: #1d1d1f;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+.mo img { width: 96px; height: 96px; flex: 0 0 96px; }
+.mo .tm { font-size: 30px; font-weight: 600; color: #86868b; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.mo .lb { margin-top: 2px; font-size: 46px; font-weight: 650; letter-spacing: -0.015em; white-space: nowrap; }
+.flyic { position: absolute; left: 0; top: 0; transform-origin: 0 0; opacity: 0; pointer-events: none; }
+
+/* ---------- preview cards (PreviewResultCard.vue: primary, title, badges, chips) ---------- */
+.pcard .psub { margin-top: 6px; font-size: 13px; color: var(--text-2); display: flex; gap: 8px; }
+.pcard .pills { margin-top: 10px; }
+.pcard .pill { font-size: 11px; padding: 2px 10px; background: var(--fill-dark); color: var(--text); }
+.pcard .pchips { margin-top: 10px; display: flex; gap: 6px; }
+.pcard .pchip { border-radius: 8px; padding: 6px 8px; background: #f5f7fa; min-width: 120px; white-space: nowrap; }
+.pcard .pchip span { font-size: 11px; color: var(--text-3); }
+.pcard .pchip b { margin-left: 4px; font-size: 13px; font-weight: 500; color: var(--text); }
+
+/* ---------- Ask AI widget (ask-panel.vue → TxAiConversation) ---------- */
+.aiw { height: 360px; padding: 24px 28px; }
+.aie { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #6b7280; text-align: center; }
+.aiei { width: 48px; height: 48px; display: grid; place-items: center; color: #3082ff; }
+.aiei svg { width: 26px; height: 26px; }
+.aie strong { color: #1f2937; font-size: 16px; font-weight: 650; }
+.aie span { max-width: 340px; font-size: 14px; line-height: 1.6; }
+.aiml { display: flex; flex-direction: column; gap: 10px; }
+.aim { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; opacity: 0; }
+.aih { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.air { color: #6b7280; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+.ais { padding: 2px 6px; border-radius: 999px; color: #409eff; background: rgba(64, 158, 255, 0.1); font-size: 10px; font-weight: 600; }
+.aic { color: #111827; font-size: 13px; line-height: 1.6; }
+.aic p { margin: 0 0 0.5em; }
+.aic ul { margin: 0; padding: 0; list-style: none; }
+.aic li { position: relative; padding-left: 1.1em; }
+.aic li + li { margin-top: 0.35em; }
+.aic li .bul { position: absolute; left: 0.15em; }
+.aic .tk { opacity: 0; }
+
+/* ---------- finale, part 1: a drifting wall of features ---------- */
+.marq { position: absolute; left: 0; right: 0; top: 388px; height: 330px; opacity: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 13%, #000 87%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 13%, #000 87%, transparent 100%); }
+.mrow { position: absolute; left: 0; top: 0; display: flex; gap: 18px; will-change: transform; }
+.mrow:nth-child(2) { top: 112px; }
+.mrow:nth-child(3) { top: 224px; }
+.mchip {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 13px; padding: 18px 32px 18px 26px; border-radius: 999px;
+  font-size: 30px; font-weight: 500; color: #ececf1; white-space: nowrap; opacity: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+.mchip svg { width: 32px; height: 32px; }
+
+/* ---------- finale, part 2: the ecosystem as a bento ---------- */
+.bento { position: absolute; inset: 0; transform-origin: 960px 620px; }
+.btl {
+  position: absolute; border-radius: 30px; padding: 30px 32px; overflow: hidden; opacity: 0; color: #f5f5f7;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.045));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(26px) saturate(1.5);
+}
+.btl .bi { width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center; }
+.btl .bi svg { width: 32px; height: 32px; }
+.btl h3 { margin-top: 18px; font-size: 38px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.btl p { margin-top: 8px; font-size: 21px; color: #a1a1a6; letter-spacing: -0.003em; }
+.btl .mono { font-family: var(--mono); font-size: 16px; color: #8e8e93; }
+.bi-vue { background: #fff; }
+.btl .bi-vue svg { width: 34px; height: 30px; }
+.bi-docs { background: linear-gradient(140deg, #3aa0ff, #5e5ce6); color: #fff; }
+.bi-ts { background: transparent; }
+.btl .bi-ts svg { width: 58px; height: 58px; }
+.bi-store { background: linear-gradient(140deg, #bf5af2, #ff375f); color: #fff; }
+
+/* TuffEx: a few live components */
+.txd { position: absolute; right: 26px; top: 26px; bottom: 26px; width: 352px; border-radius: 20px; padding: 22px 24px;
+  background: #f5f5f7; color: #303133; display: flex; flex-direction: column; justify-content: space-between;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05); }
+.txr { display: flex; align-items: center; gap: 14px; }
+.txb { display: inline-flex; align-items: center; justify-content: center; height: 38px; padding: 0 18px; border-radius: 10px;
+  font-size: 16px; font-weight: 600; background: #fff; color: #303133; box-shadow: inset 0 0 0 1px #dcdfe6; }
+.txb.pri { background: #409eff; color: #fff; box-shadow: none; }
+.txsw { position: relative; width: 52px; height: 30px; border-radius: 999px; background: #dcdfe6; }
+.txsw i { position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); }
+.txcb { width: 26px; height: 26px; border-radius: 7px; background: #fff; box-shadow: inset 0 0 0 1.5px #dcdfe6; display: grid; place-items: center; color: #fff; }
+.txcb svg { width: 18px; height: 18px; transform: scale(0); }
+.txpg { flex: 1; height: 8px; border-radius: 999px; background: #e4e7ed; overflow: hidden; }
+.txpg i { display: block; height: 100%; width: 100%; border-radius: 999px; background: linear-gradient(90deg, #409eff, #79bbff); transform-origin: 0 50%; }
+.txsl { position: relative; flex: 1; height: 26px; }
+.txsl b { position: absolute; left: 0; right: 0; top: 11px; height: 4px; border-radius: 4px; background: #e4e7ed; }
+.txsl em { position: absolute; left: 0; top: 11px; height: 4px; width: 100%; border-radius: 4px; background: #409eff; transform-origin: 0 50%; }
+.txsl i { position: absolute; top: 2px; left: 0; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #409eff, 0 2px 6px rgba(64, 158, 255, 0.35); }
+.txseg { position: relative; flex: 1; display: flex; height: 36px; padding: 3px; border-radius: 11px; background: #e9e9ee; }
+.txseg em { position: absolute; left: 3px; top: 3px; bottom: 3px; border-radius: 8px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+.txseg span { position: relative; flex: 1; display: grid; place-items: center; font-size: 15px; font-weight: 600; color: #606266; }
+
+/* Docs */
+.blink { position: absolute; left: 32px; bottom: 30px; display: inline-flex; align-items: center; gap: 6px; font-size: 20px; font-weight: 600; color: #4fb2ff; }
+.blink svg { width: 20px; height: 20px; }
+.blink u { position: absolute; left: 0; right: 0; bottom: -4px; height: 2px; border-radius: 2px; background: #4fb2ff; transform: scaleX(0); transform-origin: 0 50%; text-decoration: none; }
+
+/* a page of the docs, peeking in from the corner */
+.dpage { position: absolute; right: -20px; bottom: -70px; width: 130px; height: 170px; box-sizing: border-box; border-radius: 14px; padding: 18px 16px;
+  background: linear-gradient(180deg, #ffffff, #eef1f7); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); transform: rotate(-8deg); }
+.dpage::before { content: ''; position: absolute; inset: 0; border-radius: 14px; background: rgba(255, 255, 255, 0.3); transform: translate(14px, -8px) rotate(12deg); z-index: -1; }
+.dpage b { display: block; width: 62%; height: 11px; border-radius: 6px; background: #409eff; }
+.dpage i { display: block; height: 7px; margin-top: 10px; border-radius: 4px; background: #d5dae3; }
+
+/* SDKs */
+.sdkp { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px; }
+.sdkp span { padding: 8px 14px; border-radius: 12px; font-size: 18px; font-weight: 600; color: #dfe9ff;
+  background: rgba(49, 120, 198, 0.22); border: 1px solid rgba(91, 156, 230, 0.35); opacity: 0; }
+.npm { position: absolute; left: 24px; right: 24px; bottom: 24px; display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 14px; white-space: nowrap;
+  background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); font-family: var(--mono); font-size: 15px; color: #e5e5ea; }
+.npm svg { width: 18px; height: 18px; flex: 0 0 18px; }
+
+/* Tuff CLI */
+.term { position: absolute; left: 24px; right: 24px; bottom: 24px; height: 138px; border-radius: 14px; padding: 14px 18px;
+  background: #0d0d10; border: 1px solid rgba(255, 255, 255, 0.08); font-family: var(--mono); font-size: 19px; line-height: 36px; color: #e5e5ea; }
+.term .pr { color: #30d158; }
+.term .tl { white-space: pre; opacity: 0; }
+
+/* Plugin Store */
+.shelf { position: absolute; right: 40px; top: 50%; margin-top: -102px; display: grid; grid-template-columns: repeat(3, 90px); gap: 24px; }
+.shelf div { width: 90px; height: 90px; border-radius: 24px; display: grid; place-items: center; color: #fff; opacity: 0;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.shelf svg { width: 44px; height: 44px; }
