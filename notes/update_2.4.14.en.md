@@ -2,7 +2,7 @@
 
 ## Summary Notes
 
-- Improve first-open input, keyboard navigation, and recommendations in CoreBox, with direct actions for directories and URLs.
+- Improve first-open input, keyboard navigation, and recommendations in CoreBox, with direct actions for directories; URLs open directly through the bundled Browser entry.
 - Use bounded scans, incremental reconciliation, and CPU yielding for file indexing; content indexing is off by default.
 - Add folder projects and native CLI session resumption to Home, with input and resizing in embedded terminals.
 - Support local models and cloud channels for dictation, retain recording drafts, and send voice messages.
@@ -21,7 +21,7 @@
 ## What's Changed
 
 - Fix first-open CoreBox input focus, incorrect window preload paths, and missing search content when animations are disabled.
-- Base recommendations on real usage history, time, and the foreground app, with separate reasons; show a learning hint rather than invented frequent items.
+- Base recommendations on real usage history, time, and the foreground app, with separate reasons; no invented frequent items appear before habits form.
 - Match keyboard grid navigation to rendered columns and let number keys execute or select; Esc dismisses overlays, attachments, and input in stages, while macOS Option shortcuts retain the physical key.
 - Avoid recursively enumerating existing files when macOS watching starts and reconcile affected subtrees after changes; fix index-connection, lease, and shutdown cleanup.
 - Bound full-scan and write batches and yield CPU between them; require resource and privacy confirmation for content indexing and clear retained text when it is disabled.
