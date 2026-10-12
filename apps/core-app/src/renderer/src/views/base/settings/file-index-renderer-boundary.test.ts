@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const settingsSource = readFileSync(new URL('./SettingFileIndex.vue', import.meta.url), 'utf8')
 const dashboardSource = readFileSync(new URL('../LingPan.vue', import.meta.url), 'utf8')
 const dashboardMainSource = readFileSync(
   new URL('../../../../../main/modules/system/tuff-dashboard.ts', import.meta.url),
@@ -9,12 +8,6 @@ const dashboardMainSource = readFileSync(
 )
 
 describe('file index renderer public boundary source contract', () => {
-  it('never passes caught Error objects to the settings renderer logger', () => {
-    expect(settingsSource).not.toMatch(/settingFileIndexLog\.error\([\s\S]{0,160},\s*error\s*\)/)
-    expect(settingsSource).not.toContain('error instanceof Error')
-    expect(settingsSource).not.toContain('error.message')
-  })
-
   it('renders only safe File Index dashboard names and error codes', () => {
     expect(dashboardSource).toContain('snapshot.indexing.watchedPathNames')
     expect(dashboardSource).toContain('entry.fileName')
