@@ -61,7 +61,8 @@ import {
   debugPrintConfig,
   ensureIntelligenceConfigLoaded,
   getCapabilityOptions,
-  setupConfigUpdateListener
+  setupConfigUpdateListener,
+  syncNexusModelsQuietly
 } from './intelligence-config'
 import { intelligenceContextExecutionService } from './intelligence-context-execution'
 import { contextHygieneService } from './intelligence-context-hygiene'
@@ -844,6 +845,8 @@ export class IntelligenceModule extends BaseModule<TalexEvents> {
     // 超过 24 小时才真正拉取；不阻塞初始化，也不阻塞任何调用。
     startPricingCatalogSchedule()
 
+    // 后台静默同步 Nexus 动态模型列表，避免写死初始值
+    void syncNexusModelsQuietly()
     intelligenceLog.success('Intelligence module initialized')
   }
 
@@ -954,6 +957,7 @@ export class IntelligenceModule extends BaseModule<TalexEvents> {
     try {
       const resolved = await probeAllCliExecutables()
       intelligenceLog.info('Local CLI providers resolved', { meta: { ...resolved } })
+      await aiCliOrchestrator.listProfiles()
     } catch (error) {
       intelligenceLog.warn('Local CLI probe failed', { error })
     }

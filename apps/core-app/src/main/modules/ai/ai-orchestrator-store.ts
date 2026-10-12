@@ -35,6 +35,7 @@ import { getSecureStoreValue, setSecureStoreValue } from '../../utils/secure-sto
 import { databaseModule } from '../database'
 import { normalizeAutomationPolicy } from './ai-automation-policy'
 import type { AiPreparedImportItem } from './ai-import-types'
+import { LOCAL_CLI_PROFILE_SPECS } from './providers/pi-cli-runtime'
 
 const DEFAULT_PROFILE_ID = 'default-pi'
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
@@ -460,50 +461,74 @@ export class AiOrchestratorStore {
     private readonly privacyDependencies: AiOrchestratorStorePrivacyDependencies = DEFAULT_PRIVACY_DEPENDENCIES
   ) {}
 
-  async initialize(): Promise<void> {
+  async syncLocalCliProfiles(): Promise<void> {
     const db = databaseModule.getDb()
-    const existing = await db
-      .select({ id: aiAgentProfiles.id })
-      .from(aiAgentProfiles)
-      .where(eq(aiAgentProfiles.id, DEFAULT_PROFILE_ID))
-      .limit(1)
+    const now = Date.now()
+    const defaultTools = [
+      'file.read',
+      'file.exists',
+      'file.list',
+      'file.info',
+      'desktop.context.activeApp',
+      'desktop.context.snapshot',
+      'agent.delegate',
+      'skill.read',
+      'mcp.listTools',
+      'mcp.call'
+    ]
 
-    if (existing.length === 0) {
-      const now = Date.now()
-      await scheduleDbWrite(
-        'ai-orchestrator.profile.default',
-        async () => {
-          await db.insert(aiAgentProfiles).values({
-            id: DEFAULT_PROFILE_ID,
-            name: 'Tuff Pi Coordinator',
-            description: 'Host-managed Pi coordinator with explicit tool approval.',
-            runtimeProvider: 'pi-core',
-            enabled: true,
-            systemPrompt:
-              'You are Tuff Pi, the central coordinator. Use only host tools. Before creating child agents, submit one explicit dependency-aware plan through agent.delegate and wait for approval.',
-            modelPreference: '[]',
-            allowedToolIds: JSON.stringify([
-              'file.read',
-              'file.exists',
-              'file.list',
-              'file.info',
-              'desktop.context.activeApp',
-              'desktop.context.snapshot',
-              'agent.delegate',
-              'skill.read',
-              'mcp.listTools',
-              'mcp.call'
-            ]),
-            enabledSkillIds: '[]',
-            permissionPolicy: JSON.stringify({ mode: 'manual', allowedPermissions: [] }),
-            timeoutMs: DEFAULT_TIMEOUT_MS,
-            createdAt: now,
-            updatedAt: now
-          })
-        },
-        { priority: 'critical' }
-      )
+    for (const spec of LOCAL_CLI_PROFILE_SPECS) {
+      const isAvailable = Boolean(spec.getExecutable())
+      const existing = await db
+        .select()
+        .from(aiAgentProfiles)
+        .where(eq(aiAgentProfiles.id, spec.id))
+        .limit(1)
+
+      if (existing.length === 0) {
+        if (isAvailable || spec.id === DEFAULT_PROFILE_ID) {
+          await scheduleDbWrite(
+            `ai-orchestrator.profile.sync.${spec.id}`,
+            async () => {
+              await db.insert(aiAgentProfiles).values({
+                id: spec.id,
+                name: spec.name,
+                description: spec.description,
+                runtimeProvider: 'pi-core',
+                enabled: true,
+                systemPrompt: spec.systemPrompt,
+                modelPreference: JSON.stringify([spec.providerId]),
+                allowedToolIds: JSON.stringify(defaultTools),
+                enabledSkillIds: '[]',
+                permissionPolicy: JSON.stringify({ mode: 'manual', allowedPermissions: [] }),
+                timeoutMs: DEFAULT_TIMEOUT_MS,
+                createdAt: now,
+                updatedAt: now
+              })
+            },
+            { priority: 'critical' }
+          )
+        }
+      } else {
+        const row = existing[0]
+        if (spec.id !== DEFAULT_PROFILE_ID && row.enabled !== isAvailable) {
+          await scheduleDbWrite(
+            `ai-orchestrator.profile.sync.${spec.id}.status`,
+            async () => {
+              await db
+                .update(aiAgentProfiles)
+                .set({ enabled: isAvailable, updatedAt: now })
+                .where(eq(aiAgentProfiles.id, spec.id))
+            },
+            { priority: 'normal' }
+          )
+        }
+      }
     }
+  }
+
+  async initialize(): Promise<void> {
+    await this.syncLocalCliProfiles()
 
     const defaultProfile = await this.getProfile(DEFAULT_PROFILE_ID)
     if (defaultProfile) {
@@ -524,6 +549,7 @@ export class AiOrchestratorStore {
   }
 
   async listProfiles(): Promise<AiAgentProfile[]> {
+    await this.syncLocalCliProfiles()
     const rows = await databaseModule
       .getDb()
       .select()
