@@ -40,3 +40,14 @@
 - **R9.2 ContextHygiene** retains completed P0/P1 and isolated packaged-entrypoint evidence, while real-profile and later scope migration remain open.
 - **R8-F CatalogService MVP** 的 domain-lexicon 产品触发仍暂停；已获执行授权的 `09-13-voice-provider-cloud-pack` 是独立 scoped extension，代码与本地验证已完成，待 review/landing。AI/Assistant/OmniPanel polish、desktop fireworks 与 broad search-class refactors 继续按原顺序暂停。
 - **macOS 原生能力渠道化**先进入 AI topical backlog，不抢占当前 release/search blocker：评估机器本地能力的运行时发现、自动注入与平台降级，详细范围见 [`TODO-AI.md`](./TODO-AI.md#macos-原生能力渠道化候选)。
+
+## Version-planned work
+
+- [ ] **2.5.1：文件搜索与文件动作融合。** P0（目录结果与 `.app` 去重、⌘K 打开方式与 7 组文件动作、应用版本与真实创建时间摘要、权限/删除错误反馈）代码与 209 项单测已落地；P1–P4（原生 Scanner 对比、按瓶颈评估名字加速、文件移动/复制/废纸篓、显式源码正文检索）待实施。方案、依赖、风险与验收见 [调研报告](../engineering/reports/file-search-integration-2.5.1-2026-10-11.md)。保留现有 Windows Everything、正文授权与单写者边界；技术采用须满足报告中的验证条件，本条不改变前述全局执行顺序。
+
+## Release follow-ups
+
+- [ ] **v2.4.14 发布说明有两处与代码不符（2026-10-11 核对）。** 涉及 `notes/update_2.4.14.zh.md`、`notes/update_2.4.14.en.md` 和已发布的 GitHub Release 正文；改已发布的正文属于对外发布，需先获授权。
+  - 「尚未形成习惯时显示学习提示」不成立：`b8f2a2477`（10-03）已把学习提示换成空位占位网格，`habitualEmptyTitle` / `habitualEmptyHint` 在 tag 里已不存在。「不填充虚构常用项目」仍然成立。
+  - 「支持从目录和网址直达常用操作」只对一半：目录成立，`system-actions-provider.ts` 给已存在的目录提供终端和文件管理器动作（`162809001`）；内核只把 `file://`、`tfile://` 解析成路径，普通网址直开由官方插件「浏览器打开」（`touch-browser-open`）提供。改写措辞或注明依赖该插件。
+

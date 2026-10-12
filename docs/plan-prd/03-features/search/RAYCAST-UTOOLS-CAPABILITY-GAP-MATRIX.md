@@ -81,6 +81,13 @@ Tuff 的竞争收敛方向：
 - Hacker News 未检出有效 Tinycast 讨论，Reddit 返回空结果，Twitter / X 要求登录；`opencli doctor` 显示 daemon 正常，但 Chrome Browser Bridge 扩展未连接。
 - 因此 OpenCLI 空结果**不能**推导为“没有社区讨论”。当前只把官方仓库、Release 资产、下载计数和产品文档作为可复核信号。
 
+### 2.4 2026-10-11 Tinycast 复核
+
+上文 2.1～2.3 保留 7 月快照，不代表当前能力。Tinycast 0.11.19 已覆盖 Raycast 扩展、窗口布局、笔记、AI／MCP 与本地听写；“只做四个基础功能”的竞争判断已不适用于当前版本。扩展 OAuth 支持近期有移除，不能把公开兼容声明理解成全量无损替代。
+
+完整功能、近三个月重点、正负用户反馈及 Tuff 优化建议见 [Tinycast 竞品调研与 Tuff 优化方向](../../../engineering/reports/tinycast-competitive-analysis-2026-10-11.md)。该报告建议先稳住高频体验与资源成本，再推进窄迁移和按需增强；不修改本矩阵全局优先级或现有版本承诺。
+
+
 ## 3. 当前仓库证据
 
 | 证据                          | 位置                                                                                                                                           | 结论                                                                                                                                                                                                                                                           |

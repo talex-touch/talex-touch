@@ -110,6 +110,14 @@
   - 写路径 A/B（同机、真实 repository、每轮 100 次 × 12 行）：0.17.4 **65.79ms / 1519.95 iter/s / +100 handles**；0.18.0 **56.74ms / 1762.50 iter/s / +0 handles**，吞吐约 **+16%**，没有以性能换资源收敛。
   - 验证：数据库/索引 18 files / 203 tests、插件 SQLite worker 7 tests、启动扫描一致性 3 files / 81 tests、Node typecheck、Electron Vite production build 全通过。开发与生产启动扫描走同一 eligibility gate，不再携带 dev-only force 分支。
 
+- [ ] **B9 — 文件名输错字召回不到：文件条目没有来自文件名的 n-gram**（发现 2026-10-11，v2.4.14 与当前 master 代码相同）
+  - 位置：`search-engine/search-index-service.ts:1563-1571`（标题 1.25；分词与去空格的 compact 形式均为 1.0）、`:1668-1680`（n-gram 源须 `priority >= NGRAM_SOURCE_MIN_PRIORITY`（1.1）、长度 ≥3、不含空格）；`addon/files/services/file-provider-search-result-service.ts:279-291`（n-gram 兜底只在关键词 / FTS / 前缀全部 0 候选时触发，没有分数阈值）。
+  - 根因：`appendKeyword` 经 `normalizeSearchText` 把扩展名的点等字符清成空格，文件标题几乎都带空格（`budget.xlsx` → `budget xlsx`），被不含空格的条件排除；分词和 compact 形式只有 1.0，过不了 1.1 门槛。`:1663-1667` 的注释假定 compact 形式提供了召回，但它的优先级进不了 n-gram 源。结果文件条目的 n-gram 只来自类型 / 扩展名标签（`log`、`text`、`code`、`react`、`typescript`）、≥3 字母的首字母缩写和中文拼音。
+  - 取证（2026-10-11，本机正式版 `tuff/modules/database/search-index.db`，`immutable=1` 只读）：file provider 共 1,735,822 行关键词映射，带 n-gram 的文件条目 54,036 个。`budgte` 种子 bigram 的倒排长度为 `ng:ge` 10,615 / `ng:te` 9,578 / `ng:ud` 503 / `ng:et` 239 / `ng:gt` 47 / `ng:dg` 37 / `ng:bu` 15。按现行逐种子 `LIMIT 80` 模拟 25–31 ms，目标文件不在候选内；改成 `GROUP BY` 统计重叠需 248–505 ms，同样找不到。所以问题在索引侧缺文件名 n-gram，不在查询侧。
+  - 对照：应用走内存目录 `addon/apps/services/app-search-catalog-service.ts`（召回阈值 5，最少重叠 `max(1, floor((len−1)·0.4))`），`chorme` → Google Chrome、`aplpe` → Apple Music 均可召回，后者有测试锁定。
+  - 修复方向（待拍板）：把 compact 文件名或文件名分词纳入 n-gram 源，需要重建文件索引，`keyword_mappings` 行数随文件数线性增加，要先量化增量。兜底的触发条件（仅 0 候选）和无阈值噪声要一起定。与 [2.5.1 文件搜索调研](./file-search-integration-2.5.1-2026-10-11.md)中「拼写容错 / 先确认召回是否不足」一并评估。
+  - 对外口径：修复前不宣称「文件名输错字也能找到」。
+
 ### 🟠 高危工程风险
 
 - [ ] **R1 — Rust 截图模块已接入 CI/安装构建链** ⚠️ **契约测试已接入，发布路径未接入**（2026-08-07 复验，原判「已修 / #321 已关闭」不成立——[#321](https://github.com/talex-touch/tuff/issues/321) 仍 open）

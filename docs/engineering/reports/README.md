@@ -40,6 +40,9 @@
 - [`cloudflare-ai-gateway-nexus-scene-routing-2026-09-25.md`](./cloudflare-ai-gateway-nexus-scene-routing-2026-09-25.md)：CF AI Gateway 接入 Nexus 的计费口径、硬限制、上游覆盖与本仓不变量冲突点调研结论（未落地，含待实测清单）。
 - [`nexus-cn-access-2026-10-10.md`](./nexus-cn-access-2026-10-10.md)：中国大陆访问 Nexus 的链路实测与方案对比（优选 IP、EdgeOne、自建中转、国内反代），**检测中**（含待实测清单），附同批待定项：构建方式已定为继续用 Pages 构建，边缘缓存、Sentry、维护定时任务、共享 D1 读额度与 Smart Placement 执行位置待定。
 - [`lightweight-voice-cloning-2026-10-11.md`](./lightweight-voice-cloning-2026-10-11.md)：轻量声音克隆与科幻系统声线调研，含 Qwen、Nano、ZipVoice 本地串行实测、电子处理参数、磁盘占用与试听验证；用户听感尚未确认。
+- [`file-search-integration-2.5.1-2026-10-11.md`](./file-search-integration-2.5.1-2026-10-11.md)：everyfiles、fsearch 与文件动作体验融合调研；目标版本 **2.5.1**，状态 **待实施**，含现状差距、接入边界、隔离样本验证、实施清单与验收条件。
+- [`tinycast-competitive-analysis-2026-10-11.md`](./tinycast-competitive-analysis-2026-10-11.md)：Tinycast 近三个月功能演进与用户口碑，含 Tuff 高频体验、窄迁移、按需 AI／语音及未来方向建议；调研完成，优化建议未实施，不改变现有版本范围。
+- [`pulse-system-monitor-extension-analysis-2026-10-11.md`](./pulse-system-monitor-extension-analysis-2026-10-11.md)：Pulse 产品与平台边界调研，后续作为独立外置系统监控扩展；含 SDK 261011 现状、监控接口缺口、权限与生命周期设计及验收矩阵，建议未实施，未实测竞品性能。
 
 ## 活报告
 
