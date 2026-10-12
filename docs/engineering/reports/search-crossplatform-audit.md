@@ -119,6 +119,10 @@
     3. `SEARCH_KEYWORD_SCHEMA_VERSION` bump 至 `3`，使哈希自动失效重写；
     4. `lookupByNgrams` 保持只在常规 0 候选时触发，零额外常驻性能负担。
   - 验证：`search-index-service.charset.test.ts` 新增回归测试，验证 `budget.xlsx` 产出 `ng:bu/ud/dg/ge/et`，错字 `budgte` 在 `lookupByNgrams` 下通过 overlap 成功召回（12/12 单元测试通过）。
+  - 存储与重写代价（2026-10-11 实测）：在正式版索引库上，用修复前后两版 `prepareDocument` 重放全部 54,270 个文件。条目按基础发布路径 `mapFileToIndexedSourceRecord` 构建；修复前版本的重放结果与库内逐条一致（54,270/54,270）。
+    - `keyword_mappings` 从 1,744,882 行增到 2,601,671 行（+49%），其中 `ng:` 行从 700,951 增到 1,440,924（+106%）；没有条目触及每条 256 的上限。
+    - 现库这张表连同 5 个索引共 895.9 MB，约 536 B/行，所以增量约 +0.45 GB；`ng:` 行的关键词较短，实际会略低。
+    - `SEARCH_KEYWORD_SCHEMA_VERSION` 升到 3 后，`FileProviderKeywordBackfillService` 会在升级后把全部文件条目的关键词重写一遍。
 ### 🟠 高危工程风险
 
 - [ ] **R1 — Rust 截图模块已接入 CI/安装构建链** ⚠️ **契约测试已接入，发布路径未接入**（2026-08-07 复验，原判「已修 / #321 已关闭」不成立——[#321](https://github.com/talex-touch/tuff/issues/321) 仍 open）
