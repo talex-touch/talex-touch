@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   IndexedWriteFlushRuntimeService,
-  resolveIndexedWriteFlushRuntimeConfig,
 } from "../../search";
 
 function createRuntime(options: {
   pendingSize?: () => number;
   inflightSize?: () => number;
   isAvailable?: () => boolean;
+  hasWork?: () => boolean;
+  handleDeferredFailure?: (error: unknown) => boolean;
   executeFlush?: () => Promise<{ status: string }>;
   resolveFailure?: () => {
     delayMs: number;
@@ -29,6 +30,8 @@ function createRuntime(options: {
     getPendingSize: options.pendingSize ?? (() => 1),
     getInflightSize: options.inflightSize ?? (() => 0),
     isAvailable: options.isAvailable ?? (() => true),
+    hasWork: options.hasWork,
+    handleDeferredFailure: options.handleDeferredFailure,
     executeFlush: options.executeFlush ?? (async () => ({ status: "flushed" })),
     recordIdle,
     getFlushDelay: () => 15,
@@ -227,55 +230,51 @@ describe("IndexedWriteFlushRuntimeService", () => {
   });
 });
 
-describe("resolveIndexedWriteFlushRuntimeConfig", () => {
-  it("keeps shared defaults for write flush runtime adapters", () => {
-    expect(resolveIndexedWriteFlushRuntimeConfig()).toEqual({
-      baseDelayMs: 250,
-      backlogDelayMs: 500,
-      flushDeferMs: 300,
-      backpressureMaxQueued: 10,
-      retryBaseMs: 250,
-      retryMaxMs: 5000,
-    });
+describe("IndexedWriteFlushRuntimeService lifecycle ownership", () => {
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it("preserves explicit zero values for tests and adapter overrides", () => {
-    expect(
-      resolveIndexedWriteFlushRuntimeConfig({
-        baseDelayMs: 0,
-        backlogDelayMs: 0,
-        flushDeferMs: 0,
-        backpressureMaxQueued: 0,
-        retryBaseMs: 0,
-        retryMaxMs: 0,
-      }),
-    ).toEqual({
-      baseDelayMs: 0,
-      backlogDelayMs: 0,
-      flushDeferMs: 0,
-      backpressureMaxQueued: 0,
-      retryBaseMs: 0,
-      retryMaxMs: 0,
+  it("does not report or poll a foreground deferral as a persistence failure", async () => {
+    vi.useFakeTimers();
+    const lifecycle = new Error("foreground-preempted");
+    let available = true;
+    let attempts = 0;
+    const { service, handleFailure, resolveFailure } = createRuntime({
+      isAvailable: () => available,
+      executeFlush: async () => { attempts += 1; throw lifecycle; },
+      handleDeferredFailure: (error) => {
+        if (error !== lifecycle) return false;
+        available = false;
+        return true;
+      },
     });
+    await service.flush();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(attempts).toBe(1);
+    expect(handleFailure).not.toHaveBeenCalled();
+    expect(resolveFailure).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    service.dispose();
   });
 
-  it("falls back for malformed shared runtime config values", () => {
-    expect(
-      resolveIndexedWriteFlushRuntimeConfig({
-        baseDelayMs: Number.NaN,
-        backlogDelayMs: Number.POSITIVE_INFINITY,
-        flushDeferMs: -1,
-        backpressureMaxQueued: Number.NEGATIVE_INFINITY,
-        retryBaseMs: Number.NaN,
-        retryMaxMs: -10,
-      }),
-    ).toEqual({
-      baseDelayMs: 250,
-      backlogDelayMs: 500,
-      flushDeferMs: 300,
-      backpressureMaxQueued: 10,
-      retryBaseMs: 250,
-      retryMaxMs: 5000,
+  it("flushes retained inflight work even when no pending entries remain", async () => {
+    vi.useFakeTimers();
+    let retained = true;
+    const outputs: string[] = [];
+    const { service } = createRuntime({
+      pendingSize: () => 0,
+      inflightSize: () => retained ? 1 : 0,
+      hasWork: () => retained,
+      executeFlush: async () => { outputs.push("durable payload published"); retained = false; return { status: "flushed" }; },
     });
+    await service.flush();
+    expect(outputs).toEqual(["durable payload published"]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(outputs).toEqual(["durable payload published"]);
+    expect(vi.getTimerCount()).toBe(0);
+    service.dispose();
   });
 });

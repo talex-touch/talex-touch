@@ -136,6 +136,8 @@ export interface FileIndexAddPathResult {
 
 export interface FileIndexPreviewResourceRequest {
   path: string;
+  /** Host-captured clipboard-files record; the host verifies its exact path membership. */
+  clipboardId?: number;
 }
 
 export interface FileIndexPreviewResourceResult {

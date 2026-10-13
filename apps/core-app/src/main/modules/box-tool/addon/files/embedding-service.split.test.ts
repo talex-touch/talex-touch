@@ -1,18 +1,40 @@
 import type { Client, InValue } from '@libsql/client'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
-import { mkdtemp, rm } from 'node:fs/promises'
+import type { LibSQLDatabase } from 'drizzle-orm/libsql'
+import type { IntelligenceInvokeResult } from '@talex-touch/tuff-intelligence'
+import type { TuffQuery } from '@talex-touch/utils'
+import { mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import sharp from 'sharp'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FileProviderContentCapacityService } from './services/file-provider-content-capacity-service'
 vi.mock('../../../ai/intelligence-sdk', () => ({
-  tuffIntelligence: { embedding: { generate: vi.fn() } }
+  tuffIntelligence: { embedding: { generate: vi.fn(), generateLocalImage: vi.fn() } }
 }))
 import * as schema from '../../../../db/schema'
-import { EmbeddingService, type EmbeddingDbRouting } from './embedding-service'
+import {
+  EmbeddingService,
+  type EmbeddingDbRouting,
+  type FileEmbeddingGenerator
+} from './embedding-service'
 import { SqliteFileIndexPersistenceRepository } from '../../search-engine/file-index-persistence-repository'
+import { getSearchIndexReadWorkerTestPath } from '../../search-engine/workers/search-index-read-worker.test-harness'
 import { hashFileContentChunk } from './services/file-content-match'
+import { tuffIntelligence } from '../../../ai/intelligence-sdk'
+import { getLocalEmbeddingRuntime } from '../../../ai/local-embedding-runtime'
+import { LOCAL_EMBEDDING_MODEL_KEY } from '../../../ai/local-embedding-model'
+import { FileProviderEmbeddingIndexService } from './services/file-provider-embedding-index-service'
+import type { IndexWorkerFileResult } from './workers/file-index-worker-client'
+import { FileProviderSearchResultService } from './services/file-provider-search-result-service'
+
+interface EmbeddingTestDb {
+  client: Client
+  db: LibSQLDatabase<typeof schema>
+  url: string
+  databasePath: string
+}
 
 const EMBEDDINGS_DDL = `CREATE TABLE embeddings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,10 +59,16 @@ const CHUNKS = [
 const QUERY = 'Are animals allowed in the rented apartment?'
 const MODEL = 'lease-space@revision-a/dim3'
 const clients: Client[] = []
+const services: EmbeddingService[] = []
 let directory: string | undefined
+let workerPath: string
+beforeAll(async () => {
+  workerPath = await getSearchIndexReadWorkerTestPath()
+})
 async function makeDb(name: string) {
   directory ??= await mkdtemp(join(tmpdir(), 'embedding-contract-'))
-  const url = `file:${join(directory, `${name}.sqlite`)}`
+  const databasePath = join(directory, `${name}.sqlite`)
+  const url = `file:${databasePath}`
   const client = createClient({ url })
   clients.push(client)
   await client.execute('PRAGMA page_size = 4096')
@@ -50,12 +78,23 @@ async function makeDb(name: string) {
   await client.execute(
     "INSERT INTO files (id, path, name, mtime, ctime, size) VALUES (1, '/lease.pdf', 'lease.pdf', 2, 2, 64), (2, '/other.pdf', 'other.pdf', 2, 2, 64)"
   )
-  return { client, db: drizzle(client, { schema }), url }
+  return { client, db: drizzle(client, { schema }), url, databasePath }
 }
 function generateEmbedding(text: string): Promise<{ vector: number[]; model: string }> {
   return Promise.resolve({ vector: text === CHUNKS[0]!.text ? [0, 1, 0] : [1, 0, 0], model: MODEL })
 }
+
+function createEmbeddingService(
+  routing: EmbeddingDbRouting,
+  generate: FileEmbeddingGenerator = generateEmbedding
+): EmbeddingService {
+  const service = new EmbeddingService(routing, generate, { workerPath })
+  services.push(service)
+  return service
+}
 afterEach(async () => {
+  vi.restoreAllMocks()
+  for (const service of services.splice(0)) await service.close()
   for (const client of clients.splice(0)) client.close()
   if (directory) await rm(directory, { recursive: true, force: true })
   directory = undefined
@@ -68,6 +107,7 @@ describe('EmbeddingService physical chunk ownership', () => {
     const routing: EmbeddingDbRouting = {
       isSplitEnabled: () => true,
       getReadDb: () => search.db,
+      getDatabasePath: () => search.databasePath,
       getPrimaryDb: () => main.db,
       execWrite: async (statements) =>
         search.client.batch(
@@ -78,7 +118,7 @@ describe('EmbeddingService physical chunk ownership', () => {
           'write'
         )
     }
-    const service = new EmbeddingService(routing, generateEmbedding)
+    const service = createEmbeddingService(routing, generateEmbedding)
     await search.client.execute({
       sql: 'UPDATE files SET content = ? WHERE id = 1',
       args: [CHUNKS.map((chunk) => chunk.text).join('\n\n')]
@@ -99,12 +139,13 @@ describe('EmbeddingService physical chunk ownership', () => {
       CHUNKS.map((chunk) => ({ id: '1', hash: hashFileContentChunk(chunk) }))
     )
     expect((await main.client.execute('SELECT source_id FROM embeddings')).rows).toEqual([])
+    await service.close()
     search.client.close()
     clients.splice(clients.indexOf(search.client), 1)
     search.client = createClient({ url: search.url })
     clients.push(search.client)
     search.db = drizzle(search.client, { schema })
-    const reopened = new EmbeddingService(routing, generateEmbedding)
+    const reopened = createEmbeddingService(routing, generateEmbedding)
     const result = await reopened.semanticSearch(QUERY)
     expect(result[0]).toEqual({
       sourceId: '1',
@@ -115,14 +156,15 @@ describe('EmbeddingService physical chunk ownership', () => {
     expect(await reopened.semanticSearch(QUERY)).toEqual([])
   })
 
-  it('resolves each write home at call time rather than capturing the split state', async () => {
+  it('resolves each read and write home at call time rather than capturing the split state', async () => {
     const main = await makeDb('main')
     const search = await makeDb('search')
     let split = false
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => split,
         getReadDb: () => (split ? search.db : main.db),
+        getDatabasePath: () => (split ? search.databasePath : main.databasePath),
         getPrimaryDb: () => main.db,
         execWrite: async (statements) =>
           search.client.batch(
@@ -140,6 +182,9 @@ describe('EmbeddingService physical chunk ownership', () => {
       args: [CHUNKS[0]!.text]
     })
     await service.indexFile('1', CHUNKS[0]!.text)
+    expect((await service.semanticSearch(CHUNKS[0]!.text)).map((row) => row.sourceId)).toEqual([
+      '1'
+    ])
     split = true
     await search.client.execute({
       sql: 'UPDATE files SET content = ? WHERE id = 2',
@@ -176,10 +221,11 @@ describe('EmbeddingService physical chunk ownership', () => {
         'same-model-hash'
       ]
     })
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => false,
         getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
         getPrimaryDb: () => home.db,
         execWrite: async () => {
           throw new Error('Unexpected worker write')
@@ -197,12 +243,13 @@ describe('EmbeddingService physical chunk ownership', () => {
     const routing: EmbeddingDbRouting = {
       isSplitEnabled: () => false,
       getReadDb: () => home.db,
+      getDatabasePath: () => home.databasePath,
       getPrimaryDb: () => home.db,
       execWrite: async () => {
         throw new Error('Unexpected worker write')
       }
     }
-    const original = new EmbeddingService(routing, generateEmbedding)
+    const original = createEmbeddingService(routing, generateEmbedding)
     await home.client.execute({
       sql: 'UPDATE files SET content = ? WHERE id = 1',
       args: [CHUNKS.map((chunk) => chunk.text).join('\n\n')]
@@ -215,7 +262,7 @@ describe('EmbeddingService physical chunk ownership', () => {
         'SELECT source_id, content_hash, embedding FROM embeddings ORDER BY id'
       )
     ).rows
-    const failing = new EmbeddingService(routing, async (text) => {
+    const failing = createEmbeddingService(routing, async (text) => {
       if (text === 'replacement second page') throw new Error('model inference failed')
       return generateEmbedding(text)
     })
@@ -257,10 +304,11 @@ describe('EmbeddingService physical chunk ownership', () => {
         sql: 'UPDATE files SET content = ? WHERE id = 1',
         args: [content]
       })
-      const service = new EmbeddingService(
+      const service = createEmbeddingService(
         {
           isSplitEnabled: () => false,
           getReadDb: () => home.db,
+          getDatabasePath: () => home.databasePath,
           getPrimaryDb: () => home.db,
           execWrite: async () => {
             throw new Error('Unexpected worker write')
@@ -283,10 +331,11 @@ describe('EmbeddingService physical chunk ownership', () => {
     const home = await makeDb('insert-rollback')
     const content = CHUNKS.map((chunk) => chunk.text).join('\n\n')
     await home.client.execute({ sql: 'UPDATE files SET content = ? WHERE id = 1', args: [content] })
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => false,
         getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
         getPrimaryDb: () => home.db,
         execWrite: async () => {
           throw new Error('Unexpected worker write')
@@ -365,10 +414,11 @@ describe('EmbeddingService semantic scan and publication fences', () => {
       })),
       'write'
     )
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => false,
         getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
         getPrimaryDb: () => home.db,
         execWrite: async () => {
           throw new Error('Unexpected worker write')
@@ -389,10 +439,11 @@ describe('EmbeddingService semantic scan and publication fences', () => {
     })
     const started = Promise.withResolvers<void>()
     const answered = Promise.withResolvers<{ vector: number[]; model: string }>()
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => false,
         getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
         getPrimaryDb: () => home.db,
         execWrite: async () => {
           throw new Error('Unexpected worker write')
@@ -456,10 +507,11 @@ describe('EmbeddingService semantic scan and publication fences', () => {
     ])
     const queued = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => true,
         getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
         getPrimaryDb: () => main.db,
         execWrite: async (statements) => {
           queued.resolve()
@@ -518,10 +570,11 @@ describe('EmbeddingService device capacity admission', () => {
   it('does not send file bodies to inference while capacity is blocked', async () => {
     const home = await makeDb('capacity-blocked')
     const inferred: string[] = []
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => false,
         getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
         getPrimaryDb: () => home.db,
         execWrite: async () => {
           throw new Error('Unexpected worker write')
@@ -562,10 +615,11 @@ describe('EmbeddingService device capacity admission', () => {
       )
       let admitted = true
       const inferred: string[] = []
-      const service = new EmbeddingService(
+      const service = createEmbeddingService(
         {
           isSplitEnabled: () => false,
           getReadDb: () => home.db,
+          getDatabasePath: () => home.databasePath,
           getPrimaryDb: () => home.db,
           execWrite: async () => {
             throw new Error('Unexpected worker write')
@@ -606,10 +660,11 @@ describe('EmbeddingService device capacity admission', () => {
     })
     const inferred: string[] = []
     let writes = 0
-    const service = new EmbeddingService(
+    const service = createEmbeddingService(
       {
         isSplitEnabled: () => true,
         getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
         getPrimaryDb: () => home.db,
         checkContentCapacity: () => capacity.check(),
         recordStorageFailure: (error) => capacity.recordFailure(error),
@@ -642,5 +697,378 @@ describe('EmbeddingService device capacity admission', () => {
     } finally {
       capacity.dispose()
     }
+  })
+})
+
+describe('EmbeddingService real image publication contracts', () => {
+  async function prepareImage(home: EmbeddingTestDb) {
+    const path = join(directory!, 'IMG_2048.png')
+    await sharp({ create: { width: 2, height: 2, channels: 3, background: '#996633' } })
+      .png()
+      .toFile(path)
+    // SQLite owns the integer-second version; the image runtime owns exact disk milliseconds.
+    await utimes(path, new Date(2_471), new Date(2_471))
+    const details = await stat(path)
+    const image = { path, mtime: details.mtimeMs, size: details.size }
+    await home.client.execute({
+      sql: "UPDATE files SET path = ?, name = 'IMG_2048.png', extension = '.png', size = ?, content = NULL, embedding_status = 'pending' WHERE id = 1",
+      args: [path, details.size]
+    })
+    await home.client.execute(`CREATE TABLE file_index_progress (
+      file_id INTEGER PRIMARY KEY, status TEXT NOT NULL, progress INTEGER NOT NULL,
+      processed_bytes INTEGER, total_bytes INTEGER, last_error TEXT, started_at INTEGER, updated_at INTEGER NOT NULL
+    )`)
+    await home.client.execute(
+      "INSERT INTO file_index_progress (file_id, status, progress, updated_at) VALUES (1, 'pending', 0, 0)"
+    )
+    await home.client.execute(
+      'CREATE TABLE file_extensions (id INTEGER PRIMARY KEY AUTOINCREMENT, file_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL)'
+    )
+    vi.spyOn(getLocalEmbeddingRuntime(), 'isImageReady').mockReturnValue(true)
+    vi.spyOn(tuffIntelligence.embedding, 'generateLocalImage').mockImplementation(async (input) => {
+      const source = await stat(input.path)
+      if (source.mtimeMs !== input.mtime || source.size !== input.size) {
+        throw new Error('MODEL_IMAGE_IDENTITY_MISMATCH')
+      }
+      return {
+        result: [1, 0, 0],
+        model: LOCAL_EMBEDDING_MODEL_KEY,
+        provider: 'local',
+        traceId: 'image-fixture',
+        latency: 0,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+      }
+    })
+    return {
+      image,
+      input: { fileId: '1', content: null, image, fileVersion: 2_000, fileSize: details.size },
+      entry: {
+        type: 'file',
+        taskId: 'image-fixture',
+        fileId: 1,
+        fileVersion: 2_000,
+        fileSize: details.size,
+        progress: {
+          status: 'pending',
+          progress: 0,
+          processedBytes: 0,
+          totalBytes: details.size,
+          lastError: 'image-embedding-pending'
+        },
+        fileUpdate: { content: null, embeddingStatus: 'pending' },
+        indexItem: {
+          itemId: path,
+          providerId: 'files',
+          type: 'file',
+          path,
+          name: 'IMG_2048.png',
+          extension: '.png'
+        }
+      } satisfies IndexWorkerFileResult
+    }
+  }
+
+  function imageService(
+    primary: EmbeddingTestDb,
+    home = primary,
+    options: {
+      split?: boolean
+      execWrite?: EmbeddingDbRouting['execWrite']
+      capacity?: () => Promise<boolean>
+    } = {}
+  ): EmbeddingService {
+    return createEmbeddingService(
+      {
+        isSplitEnabled: () => options.split ?? false,
+        getReadDb: () => home.db,
+        getDatabasePath: () => home.databasePath,
+        getPrimaryDb: () => primary.db,
+        checkContentCapacity: options.capacity,
+        execWrite:
+          options.execWrite ??
+          (async (statements) =>
+            home.client.batch(
+              statements.map((statement) => ({
+                sql: statement.sql,
+                args: statement.args as InValue[]
+              })),
+              'write'
+            ))
+      },
+      async () => ({ vector: [1, 0, 0], model: LOCAL_EMBEDDING_MODEL_KEY })
+    )
+  }
+
+  it('indexes a content-null committed image only in the worker home, recalls it by text, and deletes its vector', async () => {
+    const primary = await makeDb('image-primary')
+    const home = await makeDb('image-worker')
+    const { entry, image } = await prepareImage(home)
+    const service = imageService(primary, home, { split: true })
+    const consumer = new FileProviderEmbeddingIndexService({
+      getEmbeddingService: () => service,
+      logDebug: () => {}
+    })
+    await consumer.indexCommittedEntries([entry])
+    expect(
+      (await home.client.execute('SELECT source_id, source_type, embedding, model FROM embeddings'))
+        .rows
+    ).toEqual([
+      {
+        source_id: '1',
+        source_type: 'file',
+        embedding: '[1,0,0]',
+        model: LOCAL_EMBEDDING_MODEL_KEY
+      }
+    ])
+    expect((await primary.client.execute('SELECT source_id FROM embeddings')).rows).toEqual([])
+    expect(
+      (await home.client.execute('SELECT path, content, embedding_status FROM files WHERE id = 1'))
+        .rows
+    ).toEqual([{ path: image.path, content: null, embedding_status: 'completed' }])
+    expect(
+      (
+        await home.client.execute(
+          "SELECT file_id FROM file_extensions WHERE key = 'content_chunks'"
+        )
+      ).rows
+    ).toEqual([])
+    expect(
+      (await service.semanticSearch('猫')).map((result) => ({
+        id: result.sourceId,
+        score: result.score
+      }))
+    ).toEqual([{ id: '1', score: 1 }])
+    const results = new FileProviderSearchResultService({
+      providerId: 'files',
+      getDbUtils: () => ({ getDb: () => primary.db, getFileIndexReadDb: () => home.db }) as never,
+      getSearchIndex: () => null,
+      isContentIndexingEnabled: () => true,
+      isPathAdmitted: (path) => path.startsWith(directory!),
+      buildItem: (file) => ({
+        id: file.path,
+        kind: 'file',
+        source: { id: 'files', name: 'Files', type: 'file' },
+        render: { mode: 'default', basic: { title: file.name } },
+        meta: { file: { path: file.path } }
+      }),
+      normalizeItem: (item) => item,
+      sanitizeExtensions: (extensions) => extensions,
+      cleanupStaleCandidates: () => {},
+      semanticSearch: (query, limit, signal) => service.semanticSearch(query, limit, signal),
+      logDebug: () => {},
+      formatDuration: (duration) => `${duration}ms`
+    })
+    const recalled = await results.semanticRecall(
+      { text: '猫' } as TuffQuery,
+      new Set(),
+      new AbortController().signal
+    )
+    expect(recalled.map((item) => item.id)).toEqual([image.path])
+    expect(recalled[0]?.meta?.deepMatch).toEqual({ kind: 'semantic', score: 1 })
+    await consumer.deleteByFileIds(home.db, [1])
+    expect(await service.semanticSearch('宠物')).toEqual([])
+  })
+
+  it('continues indexing committed text in a mixed batch when image media is unavailable', async () => {
+    const home = await makeDb('mixed-media-missing')
+    const { entry } = await prepareImage(home)
+    vi.mocked(getLocalEmbeddingRuntime().isImageReady).mockReturnValue(false)
+    const content = CHUNKS[1]!.text
+    await home.client.execute({ sql: 'UPDATE files SET content = ? WHERE id = 2', args: [content] })
+    const text: IndexWorkerFileResult = {
+      ...entry,
+      fileId: 2,
+      fileSize: 64,
+      progress: {
+        status: 'completed',
+        progress: 100,
+        processedBytes: 64,
+        totalBytes: 64,
+        lastError: null
+      },
+      fileUpdate: { content, embeddingStatus: 'pending' },
+      indexItem: {
+        itemId: '/other.pdf',
+        providerId: 'files',
+        type: 'file',
+        path: '/other.pdf',
+        name: 'other.pdf',
+        extension: '.pdf',
+        content
+      }
+    }
+    const consumer = new FileProviderEmbeddingIndexService({
+      getEmbeddingService: () => imageService(home),
+      logDebug: () => {}
+    })
+    await consumer.indexCommittedEntries([entry, text])
+    expect((await home.client.execute('SELECT source_id, model FROM embeddings')).rows).toEqual([
+      { source_id: '2', model: LOCAL_EMBEDDING_MODEL_KEY }
+    ])
+    expect(
+      (await home.client.execute('SELECT id, content, embedding_status FROM files ORDER BY id'))
+        .rows
+    ).toEqual([
+      { id: 1, content: null, embedding_status: 'pending' },
+      { id: 2, content, embedding_status: 'completed' }
+    ])
+  })
+
+  it('does not read an image whose watch root was withdrawn before the flush consumer ran', async () => {
+    const home = await makeDb('withdrawn-image-root')
+    const { entry, image } = await prepareImage(home)
+    let imageRead = false
+    vi.mocked(tuffIntelligence.embedding.generateLocalImage).mockImplementation(async () => {
+      imageRead = true
+      throw new Error('WITHDRAWN_ROOT_IMAGE_READ')
+    })
+    const consumer = new FileProviderEmbeddingIndexService({
+      getEmbeddingService: () => imageService(home),
+      isPathAdmitted: () => false,
+      logDebug: () => {}
+    })
+    await consumer.indexCommittedEntries([entry])
+    expect(imageRead).toBe(false)
+    expect((await home.client.execute('SELECT source_id FROM embeddings')).rows).toEqual([])
+    expect(
+      (await home.client.execute('SELECT path, content, embedding_status FROM files WHERE id = 1'))
+        .rows
+    ).toEqual([{ path: image.path, content: null, embedding_status: 'pending' }])
+  })
+
+  it.each([
+    { name: 'file deletion', sql: 'DELETE FROM files WHERE id = 1' },
+    { name: 'path replacement', sql: "UPDATE files SET path = '/replacement.png' WHERE id = 1" },
+    { name: 'mtime replacement', sql: 'UPDATE files SET mtime = 3 WHERE id = 1' },
+    { name: 'size replacement', sql: 'UPDATE files SET size = size + 1 WHERE id = 1' },
+    {
+      name: 'text ownership',
+      sql: "UPDATE files SET content = 'new extracted owner' WHERE id = 1"
+    },
+    { name: 'content cleanup', sql: "UPDATE files SET embedding_status = 'none' WHERE id = 1" }
+  ])(
+    'does not publish a queued image vector after $name invalidates its SQLite fence',
+    async ({ sql }) => {
+      const primary = await makeDb('image-queue-primary')
+      const home = await makeDb('image-queue-worker')
+      const { input } = await prepareImage(home)
+      const queued = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const service = imageService(primary, home, {
+        split: true,
+        execWrite: async (statements) => {
+          queued.resolve()
+          await release.promise
+          return home.client.batch(
+            statements.map((statement) => ({
+              sql: statement.sql,
+              args: statement.args as InValue[]
+            })),
+            'write'
+          )
+        }
+      })
+      const operation = service.indexFiles([input])
+      try {
+        await queued.promise
+        await home.client.execute(sql)
+        release.resolve()
+        expect(await operation).toEqual({ indexed: 0, skipped: 1, failed: 0 })
+        expect((await home.client.execute('SELECT source_id FROM embeddings')).rows).toEqual([])
+        expect(
+          (await home.client.execute('SELECT status FROM file_index_progress WHERE file_id = 1'))
+            .rows
+        ).toEqual([{ status: 'pending' }])
+      } finally {
+        release.resolve()
+        await operation
+      }
+    }
+  )
+
+  it('does not republish an image when content indexing is cancelled during inference', async () => {
+    const home = await makeDb('image-cancel')
+    const { input } = await prepareImage(home)
+    const entered = Promise.withResolvers<void>()
+    const answer = Promise.withResolvers<IntelligenceInvokeResult<number[]>>()
+    vi.mocked(tuffIntelligence.embedding.generateLocalImage).mockImplementation(async () => {
+      entered.resolve()
+      return answer.promise
+    })
+    const service = imageService(home)
+    const operation = service.indexFiles([input])
+    try {
+      await entered.promise
+      service.cancelPending()
+      await home.client.execute(
+        "UPDATE files SET embedding_status = 'none', content = NULL WHERE id = 1"
+      )
+      answer.resolve({
+        result: [1, 0, 0],
+        model: LOCAL_EMBEDDING_MODEL_KEY,
+        provider: 'local',
+        traceId: 'late-image',
+        latency: 0,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+      })
+      expect(await operation).toEqual({ indexed: 0, skipped: 1, failed: 0 })
+      expect((await home.client.execute('SELECT source_id FROM embeddings')).rows).toEqual([])
+      expect(
+        (await home.client.execute('SELECT content, embedding_status FROM files WHERE id = 1')).rows
+      ).toEqual([{ content: null, embedding_status: 'none' }])
+    } finally {
+      service.cancelPending()
+      answer.resolve({
+        result: [1, 0, 0],
+        model: LOCAL_EMBEDDING_MODEL_KEY,
+        provider: 'local',
+        traceId: 'late-image',
+        latency: 0,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+      })
+      await operation
+    }
+  })
+
+  it('does not publish a vector for bytes replaced while the image model was answering', async () => {
+    const home = await makeDb('image-source-change')
+    const { input, image } = await prepareImage(home)
+    vi.mocked(tuffIntelligence.embedding.generateLocalImage).mockImplementation(async () => {
+      await writeFile(image.path, 'replacement bytes')
+      return {
+        result: [1, 0, 0],
+        model: LOCAL_EMBEDDING_MODEL_KEY,
+        provider: 'local',
+        traceId: 'changed-image',
+        latency: 0,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+      }
+    })
+    const result = await imageService(home).indexFiles([input])
+    expect(result.indexed).toBe(0)
+    expect((await home.client.execute('SELECT source_id FROM embeddings')).rows).toEqual([])
+    expect(
+      (await home.client.execute('SELECT path, content, embedding_status FROM files WHERE id = 1'))
+        .rows
+    ).toEqual([{ path: image.path, content: null, embedding_status: 'pending' }])
+  })
+
+  it('does not start image inference or alter an existing vector under low storage', async () => {
+    const home = await makeDb('image-capacity')
+    const { input } = await prepareImage(home)
+    await home.client.execute(
+      "INSERT INTO embeddings (source_id, source_type, embedding, model, content_hash) VALUES ('1', 'file', '[0,1,0]', 'previous-image-space', 'previous-image')"
+    )
+    vi.mocked(tuffIntelligence.embedding.generateLocalImage).mockRejectedValue(
+      new Error('IMAGE_MODEL_STARTED_WHILE_STORAGE_PAUSED')
+    )
+    expect(
+      await imageService(home, home, { capacity: async () => false }).indexFiles([input])
+    ).toEqual({ indexed: 0, skipped: 1, failed: 0 })
+    expect(
+      (await home.client.execute('SELECT embedding, model, content_hash FROM embeddings')).rows
+    ).toEqual([
+      { embedding: '[0,1,0]', model: 'previous-image-space', content_hash: 'previous-image' }
+    ])
   })
 })

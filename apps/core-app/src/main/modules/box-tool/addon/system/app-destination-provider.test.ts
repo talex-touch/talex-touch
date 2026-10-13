@@ -3,6 +3,7 @@ import { TuffInputType } from '@talex-touch/utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import zhCN from '../../../../../renderer/src/modules/lang/zh-CN.json'
 import {
+  APP_DESTINATION_ITEM_IDS,
   COMMON_SETTING_DESTINATION_IDS,
   getAppDestination
 } from '../../../../../shared/app-destinations'
@@ -190,6 +191,18 @@ describe('appDestinationProvider search', () => {
 
     expect(item.render.basic?.title).toBe(zhCN.corebox.destinations.settingsTitle)
     expect(item.render.basic?.title).not.toBe(zhCN.settingsNav.category.overview)
+  })
+  it('resolves Tuff Settings item when searching tuff sz, tuffsz, or tuff 设置', async () => {
+    const provider = await createProvider()
+    const itemSz = onlyItem(await search(provider, 'tuff sz'))
+    expect(itemSz.render.basic?.title).toBe(zhCN.corebox.destinations.settingsTitle)
+    expect(itemSz.id).toBe(APP_DESTINATION_ITEM_IDS['settings-overview'])
+
+    const itemTuffSz = onlyItem(await search(provider, 'tuffsz'))
+    expect(itemTuffSz.render.basic?.title).toBe(zhCN.corebox.destinations.settingsTitle)
+
+    const itemShezhi = onlyItem(await search(provider, 'tuff 设置'))
+    expect(itemShezhi.render.basic?.title).toBe(zhCN.corebox.destinations.settingsTitle)
   })
 
   it('groups the common settings as secondary actions on the Settings item', async () => {

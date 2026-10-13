@@ -74,3 +74,15 @@ export function getWorkerMemorySnapshot(
     arrayBuffers: memory.arrayBuffers ?? 0
   }
 }
+
+type ProcessWithThreadCpu = NodeJS.Process & { threadCpuUsage?: () => NodeJS.CpuUsage }
+
+/**
+ * This worker thread's own CPU. `process.cpuUsage()` inside a worker reports the whole process, so
+ * every worker used to show the main process's figure (two workers sampled together reported the
+ * same 47.40 s of user time on 2026-10-13).
+ */
+export function readWorkerThreadCpuUsage(): WorkerMetricsPayload['cpuUsage'] {
+  const threadCpuUsage = (process as ProcessWithThreadCpu).threadCpuUsage
+  return threadCpuUsage ? threadCpuUsage.call(process) : process.cpuUsage()
+}

@@ -1,6 +1,8 @@
 import type { FileIndexProgress as FileIndexProgressPayload } from '@talex-touch/utils/transport/events/types'
 import { describe, expect, it } from 'vitest'
 import {
+  FileProviderProgressStateService,
+  FileProviderProgressStreamPublisher,
   getProgressStreamFlushDelayMs,
   resolveFileProviderOverallProgress,
   shouldEmitProgressStreamImmediately
@@ -281,5 +283,54 @@ describe('resolveFileProviderOverallProgress', () => {
         previousProgress: 90
       })
     ).toBe(100)
+  })
+})
+
+describe('FileProviderProgressStateService snapshot and reset contract', () => {
+  it('normalizes in-progress stages to idle when isIndexing is false', () => {
+    const publisher = new FileProviderProgressStreamPublisher()
+    const state = new FileProviderProgressStateService(publisher)
+
+    state.emit('cleanup', 1, 1)
+    expect(state.getSnapshot(true).progress).toMatchObject({
+      stage: 'cleanup',
+      progress: 5
+    })
+
+    expect(state.getSnapshot(false).progress).toMatchObject({
+      stage: 'idle',
+      progress: 0
+    })
+  })
+
+  it('preserves completed stage in snapshot when isIndexing is false', () => {
+    const publisher = new FileProviderProgressStreamPublisher()
+    const state = new FileProviderProgressStateService(publisher)
+
+    state.emit('completed', 1, 1)
+    expect(state.getSnapshot(false).progress).toMatchObject({
+      stage: 'completed',
+      progress: 100
+    })
+  })
+
+  it('emits idle payload through publisher on resetRun', () => {
+    const publisher = new FileProviderProgressStreamPublisher()
+    const state = new FileProviderProgressStateService(publisher)
+    const emitted: unknown[] = []
+
+    publisher.register({
+      emit: (data: unknown) => emitted.push(data),
+      isCancelled: () => false,
+      cancel: () => undefined
+    } as never)
+
+    state.emit('cleanup', 1, 1)
+    state.resetRun()
+
+    expect(emitted.at(-1)).toMatchObject({
+      stage: 'idle',
+      progress: 0
+    })
   })
 })

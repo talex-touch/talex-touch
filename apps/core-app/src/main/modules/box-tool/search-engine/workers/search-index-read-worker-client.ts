@@ -2,6 +2,8 @@ import type { SearchIndexReadExecutor } from '../search-index-service'
 import type { SQL } from 'drizzle-orm'
 import type {
   SearchIndexReadWorkerQueryMessage,
+  SearchIndexReadWorkerSemanticMessage,
+  SearchIndexSemanticMatch,
   SearchIndexReadWorkerResponse
 } from './search-index-read-worker-types'
 import { existsSync } from 'node:fs'
@@ -9,6 +11,7 @@ import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import { deserializeSearchIndexWorkerError } from './search-index-worker-error'
+import { trackWorkerThread } from '../../../../core/worker-thread-registry'
 import { createLogger } from '../../../../utils/logger'
 
 const DEFAULT_QUERY_TIMEOUT_MS = 15_000
@@ -83,7 +86,7 @@ export class SearchIndexReadWorkerQueueFullError extends Error {
 }
 
 interface PendingRead {
-  request: SearchIndexReadWorkerQueryMessage
+  request: SearchIndexReadWorkerQueryMessage | SearchIndexReadWorkerSemanticMessage
   resolve: (rows: unknown[]) => void
   reject: (error: Error) => void
   signal?: AbortSignal
@@ -181,7 +184,44 @@ export class SearchIndexReadWorkerClient implements SearchIndexReadExecutor {
     this.lane = options.lane?.trim() || DEFAULT_LANE
   }
 
+  semanticSearch(
+    vector: number[],
+    model: string,
+    limit: number,
+    signal?: AbortSignal
+  ): Promise<SearchIndexSemanticMatch[]> {
+    return this.enqueue<SearchIndexSemanticMatch>(
+      {
+        type: 'semantic-search',
+        requestId: `search-index-read-${this.lane}-${++this.sequence}`,
+        vector,
+        model,
+        limit,
+        cancelFlag: new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+      },
+      signal
+    )
+  }
+
   all<T>(query: SQL, signal?: AbortSignal): Promise<T[]> {
+    let compiled: { sql: string; params: unknown[] }
+    try {
+      compiled = sqliteDialect.sqlToQuery(query)
+    } catch (error) {
+      return Promise.reject(asError(error))
+    }
+    return this.enqueue<T>(
+      {
+        type: 'query',
+        requestId: `search-index-read-${this.lane}-${++this.sequence}`,
+        sql: compiled.sql,
+        args: compiled.params
+      },
+      signal
+    )
+  }
+
+  private enqueue<T>(request: PendingRead['request'], signal?: AbortSignal): Promise<T[]> {
     if (this.closed) {
       return Promise.reject(new SearchIndexReadWorkerUnavailableError('closed'))
     }
@@ -190,28 +230,13 @@ export class SearchIndexReadWorkerClient implements SearchIndexReadExecutor {
         new SearchIndexReadWorkerUnavailableError('reader is cooling down after repeated failures')
       )
     }
-    if (signal?.aborted) {
-      return Promise.reject(new SearchIndexReadWorkerCancelledError())
-    }
+    if (signal?.aborted) return Promise.reject(new SearchIndexReadWorkerCancelledError())
     if ((this.active ? 1 : 0) + this.queued.length >= this.maxQueueDepth) {
       return Promise.reject(new SearchIndexReadWorkerQueueFullError(this.maxQueueDepth))
     }
-
-    let compiled: { sql: string; params: unknown[] }
-    try {
-      compiled = sqliteDialect.sqlToQuery(query)
-    } catch (error) {
-      return Promise.reject(asError(error))
-    }
-
     return new Promise<T[]>((resolve, reject) => {
       const pending: PendingRead = {
-        request: {
-          type: 'query',
-          requestId: `search-index-read-${this.lane}-${++this.sequence}`,
-          sql: compiled.sql,
-          args: compiled.params
-        },
+        request,
         resolve: (rows) => resolve(rows as T[]),
         reject,
         signal,
@@ -281,6 +306,7 @@ export class SearchIndexReadWorkerClient implements SearchIndexReadExecutor {
         stackSizeMb: 4
       }
     })
+    trackWorkerThread(worker, 'search-index-reader', this.lane)
     worker.on('message', (message: unknown) => this.handleMessage(worker, message))
     worker.on('error', (error) => this.failWorker(worker, error))
     worker.on('exit', (code) => {
@@ -327,6 +353,9 @@ export class SearchIndexReadWorkerClient implements SearchIndexReadExecutor {
   private settlePending(pending: PendingRead, error?: Error, rows?: unknown[]): void {
     if (pending.settled) return
     pending.settled = true
+    if (error && pending.request.type === 'semantic-search') {
+      Atomics.store(new Int32Array(pending.request.cancelFlag), 0, 1)
+    }
     if (pending.signal && pending.onAbort) {
       pending.signal.removeEventListener('abort', pending.onAbort)
     }

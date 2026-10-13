@@ -19,12 +19,11 @@ import {
   resolveTypeTag
 } from './file-provider-search-service'
 import { scoreFileFuzzyMatch } from './file-provider-fuzzy-score'
+import { isDeferredSemanticQueryEligible } from '../../../search-engine/search-core-utils'
 
 type FileRecord = typeof filesSchema.$inferSelect
 type FileSearchEntry = { file: FileRecord; extensions: Record<string, string> }
 
-/** Minimum query length before deferred semantic recall is worth running. */
-const SEMANTIC_RECALL_MIN_QUERY_LENGTH = 3
 /** How many nearest-neighbour embedding matches to consider. */
 const SEMANTIC_RECALL_SCAN_LIMIT = 30
 /** Hard cap on how many semantic-recall items are appended to a result set. */
@@ -429,7 +428,7 @@ export class FileProviderSearchResultService {
 
     const { text: searchText } = this.extractFilters(query.text.trim())
     const normalizedQuery = searchText.toLowerCase()
-    if (normalizedQuery.length < SEMANTIC_RECALL_MIN_QUERY_LENGTH) return []
+    if (!isDeferredSemanticQueryEligible(normalizedQuery)) return []
 
     let matches: Array<{ sourceId: string; score: number; contentHash?: string | null }>
     try {

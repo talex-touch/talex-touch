@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks'
 import process from 'node:process'
 import { parentPort } from 'node:worker_threads'
 import { generateThumbnail, type ThumbnailGenerationResult } from '../thumbnail-service'
-import { getWorkerMemorySnapshot } from './worker-status'
+import { getWorkerMemorySnapshot, readWorkerThreadCpuUsage } from './worker-status'
 
 interface ThumbnailRequest {
   type: 'thumbnail'
@@ -41,7 +41,7 @@ function buildMetricsPayload(): WorkerMetricsPayload {
   return {
     timestamp: Date.now(),
     memory: getWorkerMemorySnapshot(memory),
-    cpuUsage: process.cpuUsage(),
+    cpuUsage: readWorkerThreadCpuUsage(),
     eventLoop: eventLoop
       ? {
           active: eventLoop.active,

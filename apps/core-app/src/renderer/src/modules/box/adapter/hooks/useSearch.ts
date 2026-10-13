@@ -675,13 +675,10 @@ export function useSearch(
   }
 
   /**
-   * Merge a later batch into what is on screen without moving a row the user is
-   * already looking at. A row that is on screen keeps its position and takes the
-   * newer item data; rows new to the screen are ranked among themselves and
-   * appended below everything, so the deferred layer (the files) never
-   * reshuffles the fast results or the selection. Pinned arrivals are the one
-   * exception: they join the pinned block at the top, after the pinned rows
-   * already there.
+   * Keep rendered rows in their relative order and refresh their data. Ordinary
+   * arrivals append; pinned arrivals join the pinned block. Before the user picks
+   * a row, semantic arrivals may insert ahead of lower-scoring unpinned rows.
+   * Once a row is selected, semantic arrivals append too, preserving its place.
    */
   function mergeRenderedItems(
     current: TuffItem[],
@@ -749,7 +746,36 @@ export function useSearch(
       }
       merged.splice(pinnedEnd, 0, ...pinnedArrivals)
     }
-    merged.push(...unpinnedArrivals)
+    for (const item of unpinnedArrivals) {
+      const score = item.scoring?.final
+      if (
+        !keepItemId &&
+        item.scoring?.match_details?.type === 'semantic' &&
+        typeof score === 'number' &&
+        Number.isFinite(score) &&
+        score > 0
+      ) {
+        // Current rows need not be score-sorted across batches. Insert after
+        // every stronger/equal row and pin without changing their relative order.
+        let insertAt = 0
+        for (let index = merged.length - 1; index >= 0; index -= 1) {
+          const existing = merged[index]
+          const existingScore = existing.scoring?.final
+          if (
+            existing.scoring?.pinned === true ||
+            score <= (typeof existingScore === 'number' ? existingScore : 0)
+          ) {
+            insertAt = index + 1
+            break
+          }
+        }
+        if (insertAt < merged.length) {
+          merged.splice(insertAt, 0, item)
+          continue
+        }
+      }
+      merged.push(item)
+    }
 
     return applyRenderedItemQuota(merged, keepItemId)
   }
@@ -953,7 +979,11 @@ export function useSearch(
       allowPendingTextClipboard: options?.allowPendingTextClipboard ?? false,
       includeClipboardImage:
         options?.includeClipboardImage ??
-        (!queryText.trim() || hasPluginFeatureActivation(activeActivations.value)),
+        Boolean(
+          clipboardOptions?.last?.type === 'image' ||
+          !queryText.trim() ||
+          hasPluginFeatureActivation(activeActivations.value)
+        ),
       filePaths: boxOptions.file?.paths,
       useFileMode: boxOptions.mode === BoxMode.FILE
     })
@@ -1380,9 +1410,9 @@ export function useSearch(
                   if (currentSearchId.value !== chunk.sessionId) return
                   const items = limitIncomingBatchItems(filterDetachedItems(chunk.items))
                   if (items.length === 0) return
-                  // Arrivals append below the rows on screen, so a row keeps its index unless a
-                  // pinned arrival lands above it or the quota drops it. Only a row the user
-                  // moved to (focus > 0) follows its item; the untouched default stays on row 0.
+                  // Only a row the user moved to follows its item. With no
+                  // choice yet, semantic arrivals can become the new row 0;
+                  // once chosen, semantic arrivals append without moving it.
                   const focusedItemId =
                     boxOptions.focus > 0 ? (res.value[boxOptions.focus]?.id ?? null) : null
                   if (

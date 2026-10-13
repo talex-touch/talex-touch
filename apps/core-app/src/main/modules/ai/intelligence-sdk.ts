@@ -101,7 +101,7 @@ import {
   withReasoningPlan
 } from './reasoning-effort-runtime'
 import { IntelligenceProvider } from './runtime/base-provider'
-import { getLocalEmbeddingRuntime } from './local-embedding-runtime'
+import { getLocalEmbeddingRuntime, type LocalEmbeddingImageInput } from './local-embedding-runtime'
 import { LOCAL_EMBEDDING_MODEL_KEY } from './local-embedding-model'
 import { HOME_CONVERSATION_CALLER } from './usage-ledger/constants'
 import {
@@ -189,6 +189,9 @@ async function awaitIntelligenceBoundary<T>(
 type HostIntelligenceInvokeOptions = IntelligenceInvokeOptions & {
   readonly signal?: AbortSignal
 }
+
+// Only an in-process host call can create this receipt. IPC payloads/metadata cannot name a file.
+const localImageInputs = new WeakMap<object, LocalEmbeddingImageInput>()
 
 function isNetworkCooldownError(error: unknown): error is Error & { retryAfterMs?: number } {
   if (error instanceof NetworkCooldownError) {
@@ -709,9 +712,16 @@ export class TuffIntelligenceSDK {
     throwIfIntelligenceCancelled(signal)
     const outerGoverned = isOuterGovernedInvocation(options)
     capabilityId = this.normalizeCapabilityId(capabilityId)
-    assertCancellableCapability(capabilityId, signal)
     const payloadRecord =
       payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null
+    const localImageInput =
+      capabilityId === 'embedding.generate' && payloadRecord
+        ? localImageInputs.get(payloadRecord)
+        : undefined
+    const isLocalEmbeddingInvocation =
+      capabilityId === 'embedding.generate' &&
+      (Boolean(localImageInput) || options.metadata?.localEmbeddingRuntime === 'llama.cpp')
+    if (!isLocalEmbeddingInvocation) assertCancellableCapability(capabilityId, signal)
     const disposeInvoke = enterPerfContext('Intelligence.invoke', {
       capabilityId,
       payloadType: typeof payload,
@@ -745,9 +755,9 @@ export class TuffIntelligenceSDK {
         options
       )
 
-      // STT receipts belong to one request; JSON also erases ArrayBuffer audio identity.
+      // Image calls always revalidate source identity; a pathname is not a content cache key.
       const cacheKey =
-        this.config.enableCache && capabilityId !== 'audio.stt'
+        this.config.enableCache && capabilityId !== 'audio.stt' && !localImageInput
           ? this.getCacheKey(capabilityId, payload, runtimeOptions)
           : null
       throwIfIntelligenceCancelled(signal)
@@ -778,19 +788,19 @@ export class TuffIntelligenceSDK {
 
       // Host-owned local content embeddings use the same admission, cache and audit
       // boundary as providers, but never fall back to a remote provider on failure.
-      if (
-        capabilityId === 'embedding.generate' &&
-        runtimeOptions.metadata?.localEmbeddingRuntime === 'llama.cpp'
-      ) {
-        if (!payloadRecord || typeof payloadRecord.text !== 'string')
+      if (isLocalEmbeddingInvocation) {
+        if (!localImageInput && (!payloadRecord || typeof payloadRecord.text !== 'string'))
           throw new Error('LOCAL_EMBEDDING_TEXT_REQUIRED')
         const startTime = Date.now()
         const providerId = 'local-embeddinggemma-2'
         try {
-          const generated = await awaitIntelligenceBoundary(
-            getLocalEmbeddingRuntime().generate(payloadRecord.text, signal),
-            signal
-          )
+          // The image runtime owns cancellation cleanup; do not return before its snapshot is removed.
+          const generated = localImageInput
+            ? await getLocalEmbeddingRuntime().generateImage(localImageInput, signal)
+            : await awaitIntelligenceBoundary(
+                getLocalEmbeddingRuntime().generate(payloadRecord!.text as string, signal),
+                signal
+              )
           throwIfIntelligenceCancelled(signal)
           if (generated.modelKey !== LOCAL_EMBEDDING_MODEL_KEY)
             throw new Error('LOCAL_EMBEDDING_MODEL_MISMATCH')
@@ -2955,8 +2965,25 @@ export class TuffIntelligenceSDK {
   }
 
   embedding = {
-    generate: (payload: IntelligenceEmbeddingPayload, options?: IntelligenceInvokeOptions) =>
-      this.invoke<number[]>('embedding.generate', payload, options)
+    generate: (payload: IntelligenceEmbeddingPayload, options?: HostIntelligenceInvokeOptions) =>
+      this.invoke<number[]>('embedding.generate', payload, options),
+
+    /** Main-process indexer seam: no renderer/plugin counterpart and no cloud fallback. */
+    generateLocalImage: async (
+      input: LocalEmbeddingImageInput,
+      options?: HostIntelligenceInvokeOptions
+    ): Promise<IntelligenceInvokeResult<number[]>> => {
+      const payload: IntelligenceEmbeddingPayload = { text: '' }
+      localImageInputs.set(payload, { path: input.path, mtime: input.mtime, size: input.size })
+      try {
+        return await this.invoke<number[]>('embedding.generate', payload, {
+          ...options,
+          metadata: { ...options?.metadata, localEmbeddingRuntime: 'llama.cpp' }
+        })
+      } finally {
+        localImageInputs.delete(payload)
+      }
+    }
   }
 
   code = {

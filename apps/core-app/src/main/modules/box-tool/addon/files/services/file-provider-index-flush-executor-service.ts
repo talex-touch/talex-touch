@@ -11,6 +11,11 @@ import {
   mapIndexedWriteFlushExecutorResult
 } from '@talex-touch/utils/search'
 import { FileProviderIndexFlushBufferService } from './file-provider-index-flush-service'
+import {
+  IndexMaintenanceDeferredError,
+  indexMaintenanceContext
+} from '../../../search-engine/index-maintenance-context'
+import { isIndexMaintenanceIdle } from '../../../search-engine/search-activity'
 
 export type FileProviderIndexFlushExecutorStatus = 'idle' | 'flushed' | 'worker-not-ready'
 
@@ -28,7 +33,9 @@ export interface FileProviderIndexFlushExecutorResult {
 
 export interface FileProviderIndexFlushExecutorServiceDeps {
   checkContentCapacity?: () => Promise<boolean>
+  isAvailable?: () => boolean
   recordStorageFailure?: (error: unknown) => boolean
+  prepareBatch?: (entries: IndexWorkerFileResult[]) => Promise<boolean>
   flushBatchScheduler: { currentSize: number; recordDuration: (durationMs: number) => void }
   getDbUtils: () => unknown | null
   getSearchIndex: () => unknown | null
@@ -80,6 +87,14 @@ export class FileProviderIndexFlushExecutorService {
     FilePersistenceEntry,
     PersistEntriesSummary
   >
+  private readonly publicationStages = new WeakMap<
+    IndexWorkerFileResult[],
+    {
+      indexedItems: number | null
+      embeddingsComplete: boolean
+      completionsComplete: boolean
+    }
+  >()
 
   constructor(deps: FileProviderIndexFlushExecutorServiceDeps) {
     this.flushBatchScheduler = deps.flushBatchScheduler
@@ -90,6 +105,12 @@ export class FileProviderIndexFlushExecutorService {
     this.getSearchIndexWorker = deps.getSearchIndexWorker
     this.buildPersistEntries = deps.buildPersistEntries
     this.publishRecords = deps.publishRecords
+    const assertFlushAllowed = (): void => {
+      if (deps.isAvailable?.() === false) throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+      if (indexMaintenanceContext.getStore() === true && !isIndexMaintenanceIdle()) {
+        throw new IndexMaintenanceDeferredError()
+      }
+    }
     this.indexEmbeddings = deps.indexEmbeddings
     this.logDebug = deps.logDebug
     this.waitForCapacity =
@@ -99,13 +120,18 @@ export class FileProviderIndexFlushExecutorService {
     this.executor = new IndexedWriteFlushExecutorService({
       buffer: this.buffer,
       getBatchSize: () => this.flushBatchScheduler.currentSize,
-      isAvailable: () => Boolean(this.getDbUtils() && this.getSearchIndex()),
+      isAvailable: () =>
+        Boolean(this.getDbUtils() && this.getSearchIndex()) && (deps.isAvailable?.() ?? true),
       ensureReady: () => this.ensureSearchIndexWorkerReady('index-runtime.flush'),
+      prepareBatch: deps.prepareBatch,
       buildPersistEntries: this.buildPersistEntries,
+      shouldRetainBatch: (error) => error instanceof IndexMaintenanceDeferredError,
       persist: async (entries) => {
+        assertFlushAllowed()
         if (deps.checkContentCapacity && !(await deps.checkContentCapacity())) {
           throw new Error('FILE_CONTENT_STORAGE_PAUSED')
         }
+        assertFlushAllowed()
         // A parser result is not complete until publication and the final capacity fence.
         // Keeping this durable row pending avoids a repair write on an already-full volume.
         const pendingEntries = deps.checkContentCapacity
@@ -116,16 +142,21 @@ export class FileProviderIndexFlushExecutorService {
           : entries
         return await this.getSearchIndexWorker().persistEntries(pendingEntries)
       },
-      waitForCapacity: () => this.waitForCapacity(this.dbBackpressureMaxQueued),
+      waitForCapacity: async () => {
+        await this.waitForCapacity(this.dbBackpressureMaxQueued)
+        assertFlushAllowed()
+      },
       recordDuration: (durationMs) => this.flushBatchScheduler.recordDuration(durationMs),
       now: this.now,
       onBatchTaken: (entries) => this.logBatchTaken(entries),
       resolveBatchMetadata: (entries) => this.resolveBatchMetadata(entries),
       resolvePersistMetadata: (result) => this.resolvePersistMetadata(result),
       afterPersist: async ({ entries, persistEntries, result }) => {
+        assertFlushAllowed()
         if (deps.checkContentCapacity && !(await deps.checkContentCapacity())) {
           throw new Error('FILE_CONTENT_STORAGE_PAUSED')
         }
+        assertFlushAllowed()
         const skippedFileIds = new Set([
           ...(result.staleFileIds ?? []),
           ...(result.supersededFileIds ?? [])
@@ -134,26 +165,48 @@ export class FileProviderIndexFlushExecutorService {
           skippedFileIds.size === 0
             ? entries
             : entries.filter((entry) => !skippedFileIds.has(entry.fileId))
-        const indexedItems = await this.publishRecords(committedEntries)
+        let stage = this.publicationStages.get(entries)
+        if (!stage) {
+          stage = { indexedItems: null, embeddingsComplete: false, completionsComplete: false }
+          this.publicationStages.set(entries, stage)
+        }
+        if (stage.indexedItems === null)
+          stage.indexedItems = await this.publishRecords(committedEntries)
+        const indexedItems = stage.indexedItems
+        assertFlushAllowed()
         // Embeddings are generated only for rows that actually committed, and only after
         // publishing: a metered provider call must never block the results reaching the UI,
         // and a failure here must not fail an otherwise-good flush.
-        if (this.indexEmbeddings && committedEntries.length > 0) {
+        if (!stage.embeddingsComplete && this.indexEmbeddings && committedEntries.length > 0) {
           try {
             await this.indexEmbeddings(committedEntries)
           } catch (error) {
+            if (error instanceof IndexMaintenanceDeferredError) throw error
             deps.recordStorageFailure?.(error)
             this.logDebug('Embedding indexing failed for flushed batch', {
               error: error instanceof Error ? error.message : String(error)
             })
           }
         }
-        if (deps.checkContentCapacity) {
+        stage.embeddingsComplete = true
+        assertFlushAllowed()
+        if (deps.checkContentCapacity && !stage.completionsComplete) {
           if (!(await deps.checkContentCapacity())) throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+          assertFlushAllowed()
+          // Image embedding owns its completion transaction. A worker's original
+          // pending/processing state must not overwrite that committed outcome.
           const completions = persistEntries
-            .filter((entry) => !skippedFileIds.has(entry.fileId))
+            .filter(
+              (entry) =>
+                !skippedFileIds.has(entry.fileId) &&
+                (entry.progress.status === 'completed' ||
+                  entry.progress.status === 'skipped' ||
+                  entry.progress.status === 'failed')
+            )
             .map((entry) => ({ ...entry, fileUpdate: null }))
           if (completions.length > 0) await this.getSearchIndexWorker().persistEntries(completions)
+          stage.completionsComplete = true
+          assertFlushAllowed()
         }
         return {
           indexedItems,
@@ -162,6 +215,15 @@ export class FileProviderIndexFlushExecutorService {
         }
       }
     })
+  }
+
+  /** The exact batch remains accounted as inflight while its old lease is detached. */
+  get retainedEntries(): IndexWorkerFileResult[] {
+    return this.executor.retainedEntries
+  }
+
+  discardRetainedBatch(): void {
+    this.executor.discardRetainedBatch()
   }
 
   async execute(): Promise<FileProviderIndexFlushExecutorResult> {

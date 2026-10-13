@@ -57,6 +57,18 @@ describe('app destination alias matching', () => {
     ['settings-overview', 'options'],
     ['settings-overview', 'config'],
     ['settings-overview', 'configuration'],
+    ['settings-overview', 'tuff settings'],
+    ['settings-overview', 'tuff preferences'],
+    ['settings-overview', 'tuff 设置'],
+    ['settings-overview', 'tuff设置'],
+    ['settings-overview', 'tuff sz'],
+    ['settings-overview', 'tuffsz'],
+    ['settings-overview', 'tfsz'],
+    ['settings-overview', 'tuff shezhi'],
+    ['settings-overview', '塔芙设置'],
+    ['main-window', 'tuff'],
+    ['settings-general', 'tuff 通用'],
+    ['settings-appearance', 'tuff 外观'],
     ['settings-general', '通用'],
     ['settings-general', '常规'],
     ['settings-appearance', '外观'],
@@ -385,6 +397,7 @@ describe('app destination icon classes', () => {
       'i-ri-file-search-line',
       'i-ri-global-line',
       'i-ri-refresh-line',
+      'i-ri-pulse-line',
       'i-ri-information-line'
     ])
   })

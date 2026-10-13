@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { createClient } from '@libsql/client'
+import { drizzle } from 'drizzle-orm/libsql'
+import * as schema from '../../../../db/schema'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileIndexProgress as FileIndexProgressPayload } from '@talex-touch/utils/transport/events/types'
 import type {
@@ -14,11 +17,15 @@ import {
   hasActiveForegroundSearches,
   markSearchActivity
 } from '../../search-engine/search-activity'
-import type { FileProviderRuntimeWriteSnapshot } from './file-provider-index-contracts'
+import type {
+  FileIndexedSourceRuntimeMutationDelegate,
+  FileProviderRuntimeWriteSnapshot
+} from './file-provider-index-contracts'
 import type { FileIndexSettings } from './types'
 import { DEFAULT_FILE_INDEX_SETTINGS } from './types'
 import { IndexedSourceResetReasons, IndexedSourceScanReasons } from '@talex-touch/utils/search'
 import type * as SqliteRetryModule from '../../../../db/sqlite-retry'
+import type * as DbUtilsModule from '../../../../db/utils'
 
 const {
   transportOn,
@@ -169,6 +176,7 @@ vi.mock('../../../../db/sqlite-retry', async (importOriginal) => {
 vi.mock('./embedding-service', () => ({
   EmbeddingService: vi.fn(() => ({
     semanticSearch: vi.fn(async () => []),
+    close: vi.fn(async () => undefined),
     // Read by the indexed-source evidence: null while embedding runs.
     getUsageLimitPause: vi.fn(() => null)
   }))
@@ -3083,4 +3091,162 @@ describe('runtime writer ack re-admission', () => {
     expect(scheduleIndexing).not.toHaveBeenCalled()
     expect(extensionBatches).toEqual([])
   })
+
+  it.each([
+    { name: 'enabled', enabled: true, expectedStatus: 'pending', expectedError: null },
+    {
+      name: 'disabled',
+      enabled: false,
+      expectedStatus: 'skipped',
+      expectedError: 'content-indexing-disabled'
+    }
+  ])(
+    're-admits a metadata-unchanged manual file only with content policy $name',
+    async ({ enabled, expectedStatus, expectedError }) => {
+      const provider = fileProvider as unknown as FileProviderRuntimeAckTestApi & {
+        handleIncrementalAddsOrChanges: (
+          entries: Array<[string, { action: 'add'; rawPath: string; manual: boolean }]>
+        ) => Promise<void>
+        indexSchedulerService: FileProviderLeaseRecoveryTestApi['indexSchedulerService']
+        drainIndexedSourceMutations: FileProviderLeaseRecoveryTestApi['drainIndexedSourceMutations']
+      }
+      const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tuff-manual-content-refresh-'))
+      const backingFilePath = path.join(fixtureDir, 'unchanged.txt')
+      // Manual admission correctly excludes the OS temporary root. Map only this fixture's
+      // logical document path to its private backing file at the filesystem boundary.
+      const filePath = '/Users/tuff-manual-refresh-fixture/Documents/unchanged.txt'
+      const actualLstat = fs.lstat.bind(fs)
+      const fileMetadata = vi
+        .spyOn(fs, 'lstat')
+        .mockImplementation(async (candidate) =>
+          actualLstat(candidate === filePath ? backingFilePath : candidate)
+        )
+      const client = createClient({ url: ':memory:' })
+      const originalDbUtils = provider.dbUtils
+      const originalSearchIndex = provider.searchIndex
+      const originalScheduler = provider.indexSchedulerService
+      const originalSettings = capacityFixture.fileIndexSettings
+      const extensionRefresh = vi
+        .spyOn(provider, 'processFileExtensions')
+        .mockResolvedValue(undefined)
+      // The background drain is outside this admission contract; the actual progress write,
+      // writer acknowledgement filter and policy-controlled scheduler ingress remain intact.
+      const drain = vi.spyOn(provider, 'drainIndexedSourceMutations').mockResolvedValue(undefined)
+      const queuedFileIds: number[] = []
+
+      try {
+        await client.execute(`CREATE TABLE files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        display_name TEXT,
+        extension TEXT,
+        size INTEGER,
+        mtime INTEGER NOT NULL,
+        ctime INTEGER NOT NULL,
+        last_indexed_at INTEGER NOT NULL,
+        is_dir INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        content TEXT,
+        embedding_status TEXT NOT NULL
+      )`)
+        await client.execute(`CREATE TABLE file_index_progress (
+        file_id INTEGER PRIMARY KEY,
+        status TEXT NOT NULL,
+        progress INTEGER NOT NULL,
+        processed_bytes INTEGER,
+        total_bytes INTEGER,
+        last_error TEXT,
+        started_at INTEGER,
+        updated_at INTEGER NOT NULL
+      )`)
+        await fs.writeFile(backingFilePath, 'content waiting for the first authorized parse')
+        const details = await fs.lstat(backingFilePath)
+        const db = drizzle(client, { schema })
+        const [file] = await db
+          .insert(schema.files)
+          .values({
+            path: filePath,
+            name: path.basename(filePath),
+            extension: '.txt',
+            size: details.size,
+            mtime: details.mtime,
+            ctime: details.birthtime,
+            lastIndexedAt: new Date(0),
+            isDir: false,
+            type: 'file',
+            content: null,
+            embeddingStatus: 'none'
+          })
+          .returning()
+        await db.insert(schema.fileIndexProgress).values({
+          fileId: file.id,
+          status: 'skipped',
+          progress: 0,
+          lastError: 'content-indexing-disabled',
+          updatedAt: new Date(1_000)
+        })
+        const { createDbUtils } =
+          await vi.importActual<typeof DbUtilsModule>('../../../../db/utils')
+        provider.dbUtils = createDbUtils(db)
+        provider.searchIndex = {}
+        capacityFixture.fileIndexSettings = {
+          ...originalSettings,
+          contentIndexingEnabled: enabled
+        }
+        if (enabled) await admitContentFixture()
+        provider.indexSchedulerService = {
+          schedule: (batch: Parameters<typeof provider.indexSchedulerService.schedule>[0]) => {
+            queuedFileIds.push(...batch.map((entry) => entry.id!))
+            return { accepted: batch.length, deferred: 0 }
+          }
+        } as unknown as typeof provider.indexSchedulerService
+        const delegate: FileIndexedSourceRuntimeMutationDelegate = {
+          withMutationLease: async (operation) => operation('lease-manual-refresh'),
+          applyBatch: async ({ records, mutationLeaseId }) => {
+            await provider.handleIndexedSourceRuntimeRecordsApplied(
+              records.map((record) => ({ path: record.path!, metadata: record.metadata })),
+              mutationLeaseId
+            )
+          },
+          applyBatchWithPersistence: async () => ({ persistedCount: 0 }),
+          publishFileDeletionCommit: runtimePublishFileDeletionCommit,
+          cleanupSource: runtimeCleanupSource,
+          countSource: runtimeCountSource,
+          publishContentCleared: runtimePublishContentCleared,
+          drainSource: runtimeDrainSource,
+          scanSource: runtimeScanSource
+        }
+        provider.setIndexedSourceRuntimeMutationDelegate(delegate)
+        await provider.handleIndexedSourceRuntimeRecordsApplied(
+          [{ path: filePath, metadata: { runtimePublication: 'base' } }],
+          'lease-before-manual-refresh'
+        )
+        expect(queuedFileIds).toEqual([])
+
+        await provider.handleIncrementalAddsOrChanges([
+          ['', { action: 'add', rawPath: filePath, manual: true }]
+        ])
+
+        const [progress] = await db.select().from(schema.fileIndexProgress)
+        expect({ status: progress.status, lastError: progress.lastError }).toEqual({
+          status: expectedStatus,
+          lastError: expectedError
+        })
+        expect(queuedFileIds).toEqual(enabled ? [file.id] : [])
+        expect(await db.select().from(schema.files)).toEqual([file])
+      } finally {
+        provider.dbUtils = originalDbUtils
+        provider.searchIndex = originalSearchIndex
+        provider.indexSchedulerService = originalScheduler
+        capacityFixture.fileIndexSettings = originalSettings
+        installRuntimeDependencies(provider)
+        extensionRefresh.mockRestore()
+        drain.mockRestore()
+        fileMetadata.mockRestore()
+        client.close()
+        await fs.rm(fixtureDir, { recursive: true, force: true })
+      }
+    }
+  )
 })

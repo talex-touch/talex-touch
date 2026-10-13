@@ -9,6 +9,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { promisify } from 'node:util'
 import { and, eq } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core/alias'
 import plist from 'plist'
 
 const execFileAsync = promisify(execFile)
@@ -274,12 +275,17 @@ export class FileProviderOpenerService {
       return
     }
 
-    // Same SQL shape as before, but through the split-routed dbUtils write
-    // (execWrite → search-index worker when the split is on) instead of a
-    // direct main-thread insert on the primary connection — file_extensions
-    // is a moved table under the split (2d.3 opener extension writer).
+    // Application ids belong to the primary catalog, never the file-only search home.
     const write = this.withDbWrite('file-opener.icon.persist', () =>
-      dbUtils.addFileExtension(fileId, 'icon', logo)
+      dbUtils
+        .getDb()
+        .insert(fileExtensions)
+        .values({ fileId, key: 'icon', value: logo })
+        .onConflictDoUpdate({
+          target: [fileExtensions.fileId, fileExtensions.key],
+          set: { value: logo }
+        })
+        .then(() => undefined)
     )
     this.ownedWrites.add(write)
     void write
@@ -526,46 +532,38 @@ export class FileProviderOpenerService {
     }
 
     try {
-      // The fileId resolved here feeds persistOpenerIcon writes (routed to
-      // the worker's home under the split) — read the same home.
-      const db = dbUtils.getFileIndexReadDb()
-      const mapping = await db
-        .select({ fileId: fileExtensions.fileId })
-        .from(fileExtensions)
-        .where(and(eq(fileExtensions.key, 'bundleId'), eq(fileExtensions.value, bundleId)))
-        .limit(1)
-
-      const fileId = mapping[0]?.fileId
-      if (!fileId) {
-        return null
-      }
-
-      const [fileRow] = await db
+      const iconExtension = alias(fileExtensions, 'opener_icon')
+      // App metadata stays primary-homed even when file indexing is split to its worker.
+      const [application] = await dbUtils
+        .getDb()
         .select({
-          id: filesSchema.id,
+          fileId: filesSchema.id,
           name: filesSchema.name,
           displayName: filesSchema.displayName,
-          path: filesSchema.path
+          path: filesSchema.path,
+          logo: iconExtension.value
         })
-        .from(filesSchema)
-        .where(eq(filesSchema.id, fileId))
-        .limit(1)
-
-      if (!fileRow) {
-        return null
-      }
-
-      const [iconRow] = await db
-        .select({ value: fileExtensions.value })
         .from(fileExtensions)
-        .where(and(eq(fileExtensions.fileId, fileId), eq(fileExtensions.key, 'icon')))
+        .innerJoin(filesSchema, eq(filesSchema.id, fileExtensions.fileId))
+        .leftJoin(
+          iconExtension,
+          and(eq(iconExtension.fileId, filesSchema.id), eq(iconExtension.key, 'icon'))
+        )
+        .where(
+          and(
+            eq(fileExtensions.key, 'bundleId'),
+            eq(fileExtensions.value, bundleId),
+            eq(filesSchema.type, 'app')
+          )
+        )
         .limit(1)
+      if (!application) return null
 
       return {
-        fileId,
-        name: fileRow.displayName || fileRow.name,
-        path: fileRow.path,
-        logo: iconRow?.value ?? ''
+        fileId: application.fileId,
+        name: application.displayName || application.name,
+        path: application.path,
+        logo: application.logo ?? ''
       }
     } catch (error) {
       this.logError('Failed to read app info for bundle', error, { bundleId })

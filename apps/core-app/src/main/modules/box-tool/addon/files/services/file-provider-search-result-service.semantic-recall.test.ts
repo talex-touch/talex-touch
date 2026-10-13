@@ -355,3 +355,37 @@ describe('semantic recall repeated page text', () => {
     expect(result[0]?.meta?.deepMatch).toMatchObject({ snippet: target.text, pageNumber: 4 })
   })
 })
+
+describe('semantic recall image identity', () => {
+  it.each(['猫', '宠物'])(
+    'recalls a content-null image for the Han query %s without invented text',
+    async (text) => {
+      const path = '/Downloads/IMG_2048.png'
+      const { service } = makeService({
+        semanticMatches: [{ sourceId: '17', score: 0.91, contentHash: 'image-fingerprint' }],
+        rows: [{ id: 17, path, extension: '.png' }]
+      })
+      const result = await service.semanticRecall(
+        { text } as TuffQuery,
+        new Set(),
+        new AbortController().signal
+      )
+      expect(result.map((item) => item.id)).toEqual([path])
+      expect(result[0]?.meta?.deepMatch).toEqual({ kind: 'semantic', score: 0.91 })
+      expect(result[0]?.scoring?.match_details?.type).toBe('semantic')
+    }
+  )
+
+  it.each(['a', 'ab', '12', '🐈'])(
+    'does not lower the non-Han query boundary for %s',
+    async (text) => {
+      const { service } = makeService({
+        semanticMatches: [{ sourceId: '17', score: 0.91 }],
+        rows: [{ id: 17, path: '/Downloads/IMG_2048.png', extension: '.png' }]
+      })
+      expect(
+        await service.semanticRecall({ text } as TuffQuery, new Set(), new AbortController().signal)
+      ).toEqual([])
+    }
+  )
+})

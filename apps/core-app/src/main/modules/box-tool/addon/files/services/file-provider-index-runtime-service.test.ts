@@ -1,3 +1,4 @@
+import { createClient } from '@libsql/client'
 import type { IndexWorkerFileResult } from '../workers/file-index-worker-client'
 import { FileProviderContentCapacityService } from './file-provider-content-capacity-service'
 import type {
@@ -5,10 +6,15 @@ import type {
   FilePersistenceEntry
 } from '../../../search-engine/workers/search-index-worker-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { FileProviderIndexRuntimeServiceDeps } from './file-provider-index-runtime-service'
+import { FileProviderIndexRuntimeService } from './file-provider-index-runtime-service'
+import { indexMaintenanceContext } from '../../../search-engine/index-maintenance-context'
 import {
-  FileProviderIndexRuntimeService,
-  type FileProviderIndexRuntimeServiceDeps
-} from './file-provider-index-runtime-service'
+  beginForegroundSearchActivity,
+  endForegroundSearchActivity,
+  getLastSearchActivityAt,
+  markSearchActivity
+} from '../../../search-engine/search-activity'
 
 function createResult(fileId: number): IndexWorkerFileResult {
   return {
@@ -21,7 +27,7 @@ function createResult(fileId: number): IndexWorkerFileResult {
       processedBytes: 1,
       totalBytes: 1,
       lastError: null,
-      updatedAt: new Date().toISOString()
+      updatedAt: '2026-10-12T00:00:00.000Z'
     },
     fileUpdate: null,
     indexItem: {
@@ -37,7 +43,9 @@ function createResult(fileId: number): IndexWorkerFileResult {
 function toPersistEntries(entries: IndexWorkerFileResult[]): FilePersistenceEntry[] {
   return entries.map((entry) => ({
     fileId: entry.fileId,
-    fileUpdate: null,
+    fileUpdate: entry.fileUpdate
+      ? { ...entry.fileUpdate, contentHash: entry.fileUpdate.contentHash ?? null }
+      : null,
     progress: {
       status: entry.progress.status,
       progress: entry.progress.progress,
@@ -73,6 +81,9 @@ function createService(options: {
   isContentAdmissionEnabled?: FileProviderIndexRuntimeServiceDeps['isContentAdmissionEnabled']
   recordStorageFailure?: FileProviderIndexRuntimeServiceDeps['recordStorageFailure']
   indexEmbeddings?: FileProviderIndexRuntimeServiceDeps['indexEmbeddings']
+  resumeDeferredFlush?: FileProviderIndexRuntimeServiceDeps['resumeDeferredFlush']
+  prepareDeferredEntries?: FileProviderIndexRuntimeServiceDeps['prepareDeferredEntries']
+  isMutationLeaseCancelled?: FileProviderIndexRuntimeServiceDeps['isMutationLeaseCancelled']
 }) {
   const persistEntries = vi.fn(
     options.persistEntries ?? (async (entries) => createPersistSummary(entries))
@@ -85,6 +96,10 @@ function createService(options: {
     publishRecords,
     logWarn,
     service: new FileProviderIndexRuntimeService({
+      resumeDeferredFlush:
+        options.resumeDeferredFlush ?? (async (operation) => operation('resumed-lease')),
+      prepareDeferredEntries: options.prepareDeferredEntries ?? (async () => true),
+      isMutationLeaseCancelled: options.isMutationLeaseCancelled,
       checkContentCapacity: options.checkContentCapacity,
       isContentAdmissionEnabled: options.isContentAdmissionEnabled,
       recordStorageFailure: options.recordStorageFailure,
@@ -242,22 +257,22 @@ describe('FileProviderIndexRuntimeService worker readiness', () => {
 
     expect(persistEntries).toHaveBeenCalledTimes(1)
     expect(publishRecords).toHaveBeenCalledTimes(1)
-    expect(pending.has(1)).toBe(true)
-    expect(inflight.size).toBe(0)
+    expect(pending.has(1)).toBe(false)
+    expect(inflight.get(1)?.indexItem.content).toBe('content-1')
     expect(logWarn).toHaveBeenCalledWith(
       'Index worker flush failed, scheduling retry',
       expect.any(Error),
       expect.objectContaining({
         isBusy: false,
-        pending: 1,
-        inflight: 0
+        pending: 0,
+        inflight: 1
       })
     )
     expect(service.getFlushSnapshot()).toMatchObject({
       status: 'failed',
       entries: 1,
-      pending: 1,
-      inflight: 0,
+      pending: 0,
+      inflight: 1,
       reason: 'persist-failed',
       error: 'runtime publish exploded',
       metadata: {
@@ -512,30 +527,23 @@ describe('FileProviderIndexRuntimeService buffer byte ownership', () => {
       persistEntries: () => persistGate.promise
     })
 
-    expect(service.getBufferSnapshot()).toMatchObject({
-      pending: 0,
-      inflight: 0,
-      pendingBytes: 0,
-      inflightBytes: 0
-    })
-
     service.handleIndexWorkerFile(resultWithContent(1, 'a'.repeat(64)))
     const afterSmall = service.getBufferSnapshot()
     service.handleIndexWorkerFile(resultWithContent(2, 'b'.repeat(4_096)))
     const afterLarge = service.getBufferSnapshot()
 
     expect(afterSmall).toMatchObject({ pending: 1, inflight: 0 })
-    expect(afterSmall.pendingBytes).toBeGreaterThan(0)
+    expect(afterSmall.pendingBytes).toBeGreaterThanOrEqual(64)
     expect(afterLarge.pending).toBe(2)
-    // Byte ownership must scale with retained payload, not be a constant sample.
-    expect(afterLarge.pendingBytes).toBeGreaterThan(afterSmall.pendingBytes)
+    // Conservatively accounted ownership must include both retained UTF-8 payloads.
+    expect(afterLarge.pendingBytes).toBeGreaterThanOrEqual(64 + 4_096)
 
     const flush = service.doFlush()
     const duringFlush = service.getBufferSnapshot()
     expect(duringFlush).toMatchObject({ pending: 0, inflight: 2, pendingBytes: 0 })
-    expect(duringFlush.inflightBytes).toBeGreaterThan(0)
+    expect(duringFlush.inflightBytes).toBe(afterLarge.pendingBytes)
 
-    persistGate.resolve(createPersistSummary([]))
+    persistGate.resolve(createPersistSummary(toPersistEntries([...inflight.values()])))
     await flush
     expect(service.getBufferSnapshot()).toMatchObject({
       pending: 0,
@@ -543,15 +551,14 @@ describe('FileProviderIndexRuntimeService buffer byte ownership', () => {
       pendingBytes: 0,
       inflightBytes: 0
     })
+    service.dispose()
   })
 })
 
 describe('FileProviderIndexRuntimeService persist barrier', () => {
   beforeEach(() => {
-    // Sibling describes in this file install fake timers and spies; start the barrier cases from
-    // a known-clean state so no earlier case can leave a dead clock behind for the polls below.
     vi.restoreAllMocks()
-    vi.useRealTimers()
+    vi.useFakeTimers()
   })
 
   afterEach(() => {
@@ -564,11 +571,13 @@ describe('FileProviderIndexRuntimeService persist barrier', () => {
     const pending = new Map<number, IndexWorkerFileResult>([[1, createResult(1)]])
     const inflight = new Map<number, IndexWorkerFileResult>()
     const persistGate = Promise.withResolvers<void>()
+    const persistStarted = Promise.withResolvers<void>()
     const { service, persistEntries } = createService({
       pending,
       inflight,
       ensureSearchIndexWorkerReady: vi.fn(async () => true),
       persistEntries: async (entries) => {
+        persistStarted.resolve()
         await persistGate.promise
         return createPersistSummary(entries)
       }
@@ -580,31 +589,38 @@ describe('FileProviderIndexRuntimeService persist barrier', () => {
     })
 
     // A flush is genuinely in flight and its persistence has not completed yet.
-    await vi.waitFor(() => expect(persistEntries).toHaveBeenCalledTimes(1))
+    await vi.advanceTimersByTimeAsync(0)
+    await persistStarted.promise
     expect(settled).toBe(false)
 
     persistGate.resolve(undefined)
+    await vi.advanceTimersByTimeAsync(100)
     await barrier
 
     expect(settled).toBe(true)
     expect(persistEntries).toHaveBeenCalledTimes(1)
     expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+    service.dispose()
   })
 
   it('does not treat a cancelled flush as released while its publish is still pending', async () => {
     const pending = new Map<number, IndexWorkerFileResult>([[1, createResult(1)]])
     const inflight = new Map<number, IndexWorkerFileResult>()
     const publishGate = Promise.withResolvers<number>()
-    const { service, publishRecords } = createService({
+    const publicationStarted = Promise.withResolvers<void>()
+    const { service } = createService({
       pending,
       inflight,
       ensureSearchIndexWorkerReady: vi.fn(async () => true),
-      publishRecords: async () => publishGate.promise
+      publishRecords: async () => {
+        publicationStarted.resolve()
+        return publishGate.promise
+      }
     })
 
     // An explicit flush is already in flight: it owns the batch and is suspending in publish.
     const flush = service.doFlush()
-    await vi.waitFor(() => expect(publishRecords).toHaveBeenCalledTimes(1))
+    await publicationStarted.promise
     expect(inflight.size).toBe(1)
 
     // Cancellation clears local ownership while that publish is still outstanding.
@@ -625,10 +641,459 @@ describe('FileProviderIndexRuntimeService persist barrier', () => {
 
     publishGate.resolve(1)
     await flush
-    await vi.waitFor(() => expect(settled).toBe(true))
-    // Consume the real promise so a barrier rejection (e.g. PERSIST_BARRIER_TIMEOUT) surfaces
-    // here instead of as an unhandled rejection.
+    await vi.advanceTimersByTimeAsync(100)
     await barrier
     expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+    service.dispose()
   })
+})
+
+describe('FileProviderIndexRuntimeService foreground handoff', () => {
+  const session = 'file-index-deferred-regression'
+  let previousActivity = 0
+
+  beforeEach(() => {
+    previousActivity = getLastSearchActivityAt()
+    vi.useFakeTimers()
+    vi.setSystemTime(10_000)
+    markSearchActivity(0)
+  })
+
+  afterEach(() => {
+    endForegroundSearchActivity(session)
+    markSearchActivity(previousActivity)
+    vi.clearAllTimers()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  function resumeGate() {
+    const release = Promise.withResolvers<void>()
+    const finished = Promise.withResolvers<void>()
+    const ownership: string[] = []
+    let attempts = 0
+    const resume: FileProviderIndexRuntimeServiceDeps['resumeDeferredFlush'] = async (
+      operation,
+      signal
+    ) => {
+      await release.promise
+      try {
+        signal.throwIfAborted()
+        const leaseId = ++attempts === 1 ? 'fresh-lease' : `fresh-lease-${attempts}`
+        ownership.push(`acquire:${leaseId}`)
+        try {
+          await indexMaintenanceContext.run(true, () => operation(leaseId))
+        } finally {
+          ownership.push(`release:${leaseId}`)
+        }
+      } finally {
+        finished.resolve()
+      }
+    }
+    return { release, finished, ownership, resume }
+  }
+
+  function makeIdle() {
+    endForegroundSearchActivity(session)
+    markSearchActivity(0)
+  }
+
+  it('releases the old source lease without SQL retry spin or warning, then publishes the retained payload once under a fresh lease', async () => {
+    const gate = resumeGate()
+    const result = { ...createResult(1), mutationLeaseId: 'old-lease' }
+    const durable: string[] = []
+    const published: Array<{
+      id: number
+      lease: string | undefined
+      content: IndexWorkerFileResult['indexItem']['content']
+    }> = []
+    const embeddings: number[] = []
+    let oldLeaseCancelled = false
+    const { service, logWarn } = createService({
+      pending: new Map([[1, result]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      resumeDeferredFlush: gate.resume,
+      checkContentCapacity: async () => true,
+      isMutationLeaseCancelled: (leaseId) => oldLeaseCancelled && leaseId === 'old-lease',
+      persistEntries: async (entries) => {
+        durable.push(...entries.map((entry) => `${entry.fileId}:${entry.progress.status}`))
+        return createPersistSummary(entries)
+      },
+      publishRecords: async (entries) => {
+        published.push(
+          ...entries.map((entry) => ({
+            id: entry.fileId,
+            lease: entry.mutationLeaseId,
+            content: entry.indexItem.content
+          }))
+        )
+        return entries.length
+      },
+      indexEmbeddings: async (entries) => {
+        embeddings.push(...entries.map((entry) => entry.fileId))
+      }
+    })
+    try {
+      beginForegroundSearchActivity(session)
+      await indexMaintenanceContext.run(true, () => service.flush())
+      expect(await service.waitForPersisted()).toBe(false)
+      expect(service.isMutationLeaseDetached('old-lease')).toBe(true)
+      expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 1 })
+      expect(service.getFlushSnapshot()).toMatchObject({
+        status: 'foreground-deferred',
+        reason: 'foreground-deferred'
+      })
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(durable).toEqual([])
+      expect(published).toEqual([])
+      expect(logWarn).not.toHaveBeenCalled()
+      expect(gate.ownership).toEqual([])
+      // The source's afterBatch cancels the handed-off lease once its barrier returns false.
+      oldLeaseCancelled = true
+      makeIdle()
+      gate.release.resolve()
+      await gate.finished.promise
+      expect(await service.waitForPersisted()).toBe(true)
+      expect(durable).toEqual(['1:pending', '1:completed'])
+      expect(published).toEqual([{ id: 1, lease: 'fresh-lease', content: 'content-1' }])
+      expect(embeddings).toEqual([1])
+      expect(gate.ownership).toEqual(['acquire:fresh-lease', 'release:fresh-lease'])
+      expect(service.isMutationLeaseDetached('old-lease')).toBe(false)
+      await service.flush()
+      expect(durable).toEqual(['1:pending', '1:completed'])
+    } finally {
+      service.dispose()
+      gate.release.resolve()
+    }
+  })
+
+  it.each(['publication', 'embeddings', 'completion'] as const)(
+    'does not repeat finished durable stages after foreground preempts late %s',
+    async (preemptAt) => {
+      const gate = resumeGate()
+      const durable: string[] = []
+      const published: number[] = []
+      const embeddings: number[] = []
+      let preempted = false
+      const preempt = (stage: string) => {
+        if (stage === preemptAt && !preempted) {
+          preempted = true
+          beginForegroundSearchActivity(session)
+        }
+      }
+      const { service, logWarn } = createService({
+        pending: new Map([[1, { ...createResult(1), mutationLeaseId: 'old-lease' }]]),
+        inflight: new Map(),
+        ensureSearchIndexWorkerReady: async () => true,
+        resumeDeferredFlush: gate.resume,
+        checkContentCapacity: async () => true,
+        persistEntries: async (entries) => {
+          durable.push(...entries.map((entry) => `${entry.fileId}:${entry.progress.status}`))
+          if (entries.some((entry) => entry.progress.status === 'completed')) preempt('completion')
+          return createPersistSummary(entries)
+        },
+        publishRecords: async (entries) => {
+          published.push(...entries.map((entry) => entry.fileId))
+          preempt('publication')
+          return entries.length
+        },
+        indexEmbeddings: async (entries) => {
+          embeddings.push(...entries.map((entry) => entry.fileId))
+          preempt('embeddings')
+        }
+      })
+      try {
+        await indexMaintenanceContext.run(true, () => service.flush())
+        expect(await service.waitForPersisted()).toBe(false)
+        expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 1 })
+        expect(service.isMutationLeaseDetached('old-lease')).toBe(true)
+        expect(logWarn).not.toHaveBeenCalled()
+        makeIdle()
+        gate.release.resolve()
+        await gate.finished.promise
+        expect(await service.waitForPersisted()).toBe(true)
+        expect(durable).toEqual(['1:pending', '1:completed'])
+        expect(published).toEqual([1])
+        expect(embeddings).toEqual([1])
+      } finally {
+        service.dispose()
+        gate.release.resolve()
+      }
+    }
+  )
+
+  it.each(['reset', 'cancelled-lease', 'storage-pause', 'dispose'] as const)(
+    'prevents retained late writes after %s and refuses cancelled producer results',
+    async (action) => {
+      const gate = resumeGate()
+      let admission = true
+      let cancelled = false
+      const written: number[] = []
+      const visible: number[] = []
+      const { service } = createService({
+        pending: new Map([[1, { ...createResult(1), mutationLeaseId: 'old-lease' }]]),
+        inflight: new Map(),
+        ensureSearchIndexWorkerReady: async () => true,
+        resumeDeferredFlush: gate.resume,
+        isContentAdmissionEnabled: () => admission,
+        isMutationLeaseCancelled: () => cancelled,
+        persistEntries: async (entries) => {
+          written.push(...entries.map((entry) => entry.fileId))
+          return createPersistSummary(entries)
+        },
+        publishRecords: async (entries) => {
+          visible.push(...entries.map((entry) => entry.fileId))
+          return entries.length
+        }
+      })
+      try {
+        beginForegroundSearchActivity(session)
+        await indexMaintenanceContext.run(true, () => service.flush())
+        if (action === 'reset') service.cancelDeferredFlush()
+        if (action === 'cancelled-lease') cancelled = true
+        if (action === 'storage-pause') admission = false
+        if (action === 'dispose') service.dispose()
+        makeIdle()
+        gate.release.resolve()
+        await gate.finished.promise
+        service.handleIndexWorkerFile({ ...createResult(2), mutationLeaseId: 'old-lease' })
+        await vi.advanceTimersByTimeAsync(30_000)
+        expect(written).toEqual([])
+        expect(visible).toEqual([])
+        expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+      } finally {
+        service.dispose()
+        gate.release.resolve()
+      }
+    }
+  )
+
+  it('fences an active fresh-lease preparation invalidated by reset before its await returns', async () => {
+    const gate = resumeGate()
+    const preparing = Promise.withResolvers<void>()
+    const preparation = Promise.withResolvers<boolean>()
+    const committed: number[] = []
+    const { service } = createService({
+      pending: new Map([[1, { ...createResult(1), mutationLeaseId: 'old-lease' }]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      resumeDeferredFlush: gate.resume,
+      prepareDeferredEntries: async () => {
+        preparing.resolve()
+        return preparation.promise
+      },
+      persistEntries: async (entries) => {
+        committed.push(...entries.map((entry) => entry.fileId))
+        return createPersistSummary(entries)
+      }
+    })
+    try {
+      beginForegroundSearchActivity(session)
+      await indexMaintenanceContext.run(true, () => service.flush())
+      makeIdle()
+      gate.release.resolve()
+      await preparing.promise
+      service.cancelDeferredFlush()
+      preparation.resolve(true)
+      await gate.finished.promise
+      expect(committed).toEqual([])
+      expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+      expect(gate.ownership).toEqual(['acquire:fresh-lease', 'release:fresh-lease'])
+    } finally {
+      preparation.resolve(false)
+      service.dispose()
+      gate.release.resolve()
+    }
+  })
+
+  it('releases a not-ready resume lease and rearms outside it before a new lease commits', async () => {
+    const gate = resumeGate()
+    const visible: Array<{ id: number; lease: string | undefined }> = []
+    let readinessAttempts = 0
+    const { service, persistEntries } = createService({
+      pending: new Map([[1, { ...createResult(1), mutationLeaseId: 'old-lease' }]]),
+      inflight: new Map(),
+      resumeDeferredFlush: gate.resume,
+      ensureSearchIndexWorkerReady: async () => ++readinessAttempts !== 2,
+      config: { backlogDelayMs: 1_000 },
+      publishRecords: async (entries) => {
+        visible.push(
+          ...entries.map((entry) => ({ id: entry.fileId, lease: entry.mutationLeaseId }))
+        )
+        return entries.length
+      }
+    })
+    try {
+      beginForegroundSearchActivity(session)
+      await indexMaintenanceContext.run(true, () => service.flush())
+      makeIdle()
+      gate.release.resolve()
+      await gate.finished.promise
+      expect(gate.ownership).toEqual(['acquire:fresh-lease', 'release:fresh-lease'])
+      expect(visible).toEqual([])
+      expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 1 })
+      await vi.advanceTimersByTimeAsync(999)
+      expect(visible).toEqual([])
+      expect(gate.ownership).toEqual(['acquire:fresh-lease', 'release:fresh-lease'])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await service.waitForPersisted()).toBe(true)
+      expect(visible).toEqual([{ id: 1, lease: 'fresh-lease-2' }])
+      expect(persistEntries).toHaveBeenCalledTimes(1)
+      expect(gate.ownership).toEqual([
+        'acquire:fresh-lease',
+        'release:fresh-lease',
+        'acquire:fresh-lease-2',
+        'release:fresh-lease-2'
+      ])
+    } finally {
+      service.dispose()
+      gate.release.resolve()
+    }
+  })
+
+  it('still reports real SQL errors and retries them only after releasing the resumed source lease', async () => {
+    const client = createClient({ url: ':memory:' })
+    const gate = resumeGate()
+    const visible: number[] = []
+    const { service, logWarn } = createService({
+      pending: new Map([[1, { ...createResult(1), mutationLeaseId: 'old-lease' }]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      resumeDeferredFlush: gate.resume,
+      config: { baseDelayMs: 10_000 },
+      persistEntries: async (entries) => {
+        for (const entry of entries)
+          await client.execute({
+            sql: 'INSERT INTO progress VALUES (?, ?)',
+            args: [entry.fileId, entry.progress.status]
+          })
+        return createPersistSummary(entries)
+      },
+      publishRecords: async (entries) => {
+        visible.push(...entries.map((entry) => entry.fileId))
+        return entries.length
+      }
+    })
+    try {
+      beginForegroundSearchActivity(session)
+      await indexMaintenanceContext.run(true, () => service.flush())
+      makeIdle()
+      gate.release.resolve()
+      await gate.finished.promise
+      await vi.advanceTimersByTimeAsync(0)
+      expect(gate.ownership).toEqual(['acquire:fresh-lease', 'release:fresh-lease'])
+      expect(visible).toEqual([])
+      expect(logWarn).toHaveBeenCalledWith(
+        'Index worker flush failed, scheduling retry',
+        expect.objectContaining({ code: 'SQLITE_ERROR' }),
+        expect.objectContaining({ isBusy: false, pending: 1, inflight: 0 })
+      )
+      await client.execute(
+        'CREATE TABLE progress (file_id INTEGER PRIMARY KEY, status TEXT NOT NULL)'
+      )
+      await vi.advanceTimersByTimeAsync(9_999)
+      expect(visible).toEqual([])
+      expect(gate.ownership).toEqual(['acquire:fresh-lease', 'release:fresh-lease'])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await service.waitForPersisted()).toBe(true)
+      expect((await client.execute('SELECT file_id, status FROM progress')).rows).toEqual([
+        { file_id: 1, status: 'completed' }
+      ])
+      expect(visible).toEqual([1])
+      expect(gate.ownership).toEqual([
+        'acquire:fresh-lease',
+        'release:fresh-lease',
+        'acquire:fresh-lease-2',
+        'release:fresh-lease-2'
+      ])
+    } finally {
+      service.dispose()
+      gate.release.resolve()
+      client.close()
+    }
+  })
+
+  it('rejects a cancelled producer lease on an ordinary flush rather than treating it as a fresh handoff', async () => {
+    const visible: number[] = []
+    const { service, persistEntries } = createService({
+      pending: new Map([[1, { ...createResult(1), mutationLeaseId: 'cancelled-lease' }]]),
+      inflight: new Map(),
+      ensureSearchIndexWorkerReady: async () => true,
+      isMutationLeaseCancelled: (leaseId) => leaseId === 'cancelled-lease',
+      publishRecords: async (entries) => {
+        visible.push(...entries.map((entry) => entry.fileId))
+        return entries.length
+      }
+    })
+    try {
+      await service.flush()
+      expect(visible).toEqual([])
+      expect(persistEntries).not.toHaveBeenCalled()
+      expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+    } finally {
+      service.dispose()
+    }
+  })
+
+  it.each([
+    { action: 'reset', stage: 'publication' },
+    { action: 'reset', stage: 'embeddings' },
+    { action: 'dispose', stage: 'publication' },
+    { action: 'dispose', stage: 'embeddings' },
+    { action: 'storage-pause', stage: 'publication' },
+    { action: 'storage-pause', stage: 'embeddings' }
+  ])(
+    'does not complete or repeat an admitted $stage continuation after $action',
+    async ({ action, stage }) => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      let admitted = true
+      const durable: string[] = []
+      const visible: number[] = []
+      const embedded: number[] = []
+      const hold = async () => {
+        entered.resolve()
+        await release.promise
+      }
+      const { service, logWarn } = createService({
+        pending: new Map([[1, { ...createResult(1), mutationLeaseId: 'old-lease' }]]),
+        inflight: new Map(),
+        ensureSearchIndexWorkerReady: async () => true,
+        checkContentCapacity: async () => admitted,
+        isContentAdmissionEnabled: () => admitted,
+        persistEntries: async (entries) => {
+          durable.push(...entries.map((entry) => `${entry.fileId}:${entry.progress.status}`))
+          return createPersistSummary(entries)
+        },
+        publishRecords: async (entries) => {
+          visible.push(...entries.map((entry) => entry.fileId))
+          if (stage === 'publication') await hold()
+          return entries.length
+        },
+        indexEmbeddings: async (entries) => {
+          embedded.push(...entries.map((entry) => entry.fileId))
+          if (stage === 'embeddings') await hold()
+        }
+      })
+      try {
+        const flushing = service.flush()
+        await entered.promise
+        if (action === 'reset') service.cancelDeferredFlush()
+        else if (action === 'dispose') service.dispose()
+        else admitted = false
+        release.resolve()
+        await flushing
+        await vi.advanceTimersByTimeAsync(30_000)
+        expect(durable).toEqual(['1:pending'])
+        expect(visible).toEqual([1])
+        expect(embedded).toEqual(stage === 'embeddings' ? [1] : [])
+        expect(service.getBufferSnapshot()).toMatchObject({ pending: 0, inflight: 0 })
+        expect(logWarn).not.toHaveBeenCalled()
+      } finally {
+        release.resolve()
+        service.dispose()
+      }
+    }
+  )
 })

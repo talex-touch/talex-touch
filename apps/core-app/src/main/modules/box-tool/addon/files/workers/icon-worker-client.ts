@@ -7,6 +7,7 @@ import type {
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { getLogger } from '@talex-touch/utils/common/logger'
+import { trackWorkerThread } from '../../../../../core/worker-thread-registry'
 import { FILE_WORKER_IDLE_SHUTDOWN_MS, IdleWorkerShutdownController } from './idle-worker-shutdown'
 
 interface PendingIcon {
@@ -101,6 +102,7 @@ export class IconWorkerClient {
 
     const workerPath = path.join(__dirname, 'icon-worker.js')
     const worker = new Worker(workerPath)
+    trackWorkerThread(worker, 'file-icon')
 
     worker.on('message', (message: WorkerMessage) => this.handleMessage(message))
     worker.on('error', (error) => this.handleWorkerError(error))

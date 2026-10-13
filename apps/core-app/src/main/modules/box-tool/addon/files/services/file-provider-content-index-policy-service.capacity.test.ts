@@ -1,15 +1,15 @@
-import { createClient, type Client } from '@libsql/client'
+import type { Client } from '@libsql/client'
+import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { FILE_CONTENT_CHUNKS_KEY } from '@talex-touch/utils/search'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '../../../../../db/schema'
-import {
-  SqliteFileIndexPersistenceRepository,
-  type FilePersistenceEntry
-} from '../../../search-engine/file-index-persistence-repository'
-import { DEFAULT_FILE_INDEX_SETTINGS, type FileIndexSettings } from '../types'
+import type { FilePersistenceEntry } from '../../../search-engine/file-index-persistence-repository'
+import { SqliteFileIndexPersistenceRepository } from '../../../search-engine/file-index-persistence-repository'
+import type { FileIndexSettings } from '../types'
+import { DEFAULT_FILE_INDEX_SETTINGS } from '../types'
 import { FileProviderContentCapacityService } from './file-provider-content-capacity-service'
 import { FileProviderContentIndexPolicyService } from './file-provider-content-index-policy-service'
 import { FileProviderIndexRuntimeService } from './file-provider-index-runtime-service'
@@ -346,6 +346,11 @@ describe('content capacity policy transitions', () => {
     const pending = new Map([[7, workerResult]])
     const inflight = new Map<number, IndexWorkerFileResult>()
     const runtime = new FileProviderIndexRuntimeService({
+      resumeDeferredFlush: async (operation, signal) => {
+        signal.throwIfAborted()
+        await operation('capacity-regression-lease')
+      },
+      prepareDeferredEntries: async () => true,
       flushBatchScheduler: { currentSize: 1, recordDuration: () => undefined },
       getDbUtils: () => repository,
       getSearchIndex: () => repository,

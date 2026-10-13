@@ -1,10 +1,13 @@
 /**
  * File embedding under the global AI usage limit (usage-limits task C5, AC-C4): the refusal stops
  * the batch, nothing is retried or re-probed until the limit's reset time, and the pause is
- * readable for the file-index diagnostics. Real libsql in memory, the SDK mocked.
+ * readable for the file-index diagnostics. Real temporary libsql file, the SDK mocked.
  */
 import { createClient, type Client } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '../../../../db/schema'
 import { tuffIntelligence } from '../../../ai/intelligence-sdk'
@@ -13,6 +16,7 @@ import {
   notifyUsageLimitsChanged
 } from '../../../ai/usage-ledger/usage-limits'
 import { EmbeddingService } from './embedding-service'
+import { getSearchIndexReadWorkerTestPath } from '../../search-engine/workers/search-index-read-worker.test-harness'
 
 vi.mock('../../../ai/intelligence-sdk', () => ({
   tuffIntelligence: {
@@ -59,8 +63,14 @@ function refusal() {
 }
 
 const clients: Client[] = []
+const services: EmbeddingService[] = []
+const directories: string[] = []
 async function createService(): Promise<EmbeddingService> {
-  const client = createClient({ url: ':memory:' })
+  const workerPath = await getSearchIndexReadWorkerTestPath()
+  const directory = await mkdtemp(join(tmpdir(), 'embedding-usage-limit-'))
+  directories.push(directory)
+  const databasePath = join(directory, 'index.sqlite')
+  const client = createClient({ url: `file:${databasePath}` })
   await client.execute(EMBEDDINGS_DDL)
   clients.push(client)
   await client.execute(`CREATE TABLE files (
@@ -85,12 +95,19 @@ async function createService(): Promise<EmbeddingService> {
     "INSERT INTO files (id, path, name, mtime, ctime, content, embedding_status) VALUES (99, '/after.txt', 'after.txt', 0, 0, 'after the reset', 'pending')"
   )
   const db = drizzle(client, { schema })
-  return new EmbeddingService({
-    isSplitEnabled: () => false,
-    getReadDb: () => db,
-    getPrimaryDb: () => db,
-    execWrite: vi.fn()
-  })
+  const service = new EmbeddingService(
+    {
+      isSplitEnabled: () => false,
+      getReadDb: () => db,
+      getDatabasePath: () => databasePath,
+      getPrimaryDb: () => db,
+      execWrite: vi.fn()
+    },
+    undefined,
+    { workerPath }
+  )
+  services.push(service)
+  return service
 }
 
 function files(count: number) {
@@ -106,8 +123,11 @@ beforeEach(() => {
   generate.mockReset()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  for (const service of services.splice(0)) await service.close()
   for (const client of clients.splice(0)) client.close()
+  for (const directory of directories.splice(0))
+    await rm(directory, { recursive: true, force: true })
   vi.useRealTimers()
 })
 

@@ -1,4 +1,4 @@
-import type { TuffItem, TuffSearchResult } from '@talex-touch/utils'
+import type { TuffItem, TuffQuery, TuffSearchResult } from '@talex-touch/utils'
 import type { Ref } from 'vue'
 import type { IBoxOptions } from '..'
 import type { IClipboardItem, IClipboardOptions } from './types'
@@ -1401,6 +1401,35 @@ describe('useSearch CoreBox reopen behavior', () => {
 
     expect(state.latestClipboardRequests).toContainEqual({ refresh: true })
     expect(clipboardOptions.last).toBeNull()
+  })
+  it('keeps clipboard image attached in inputs when typing query text', async () => {
+    const timestamp = new Date().toISOString()
+    const clipboardOptions = createClipboardOptions()
+    clipboardOptions.last = {
+      id: 95,
+      type: 'image',
+      content: 'tfile:///tmp/tuff/clipboard/images/original.png',
+      thumbnail: 'data:image/png;base64,thumb',
+      timestamp,
+      captureSource: 'native-watch',
+      autoPasteEligible: true
+    }
+    clipboardOptions.activeClipboardSource = 'manual'
+    const hook = useSearch(createBoxOptions(), clipboardOptions)
+    await flushPromises()
+
+    hook.searchVal.value = 'hdjsq'
+    await hook.handleSearchImmediate({ force: true })
+    await flushPromises()
+
+    const lastRequest = state.searchRequests[state.searchRequests.length - 1]
+    const payload = lastRequest?.payload as { query?: TuffQuery }
+    expect(payload?.query?.text).toBe('hdjsq')
+    expect(payload?.query?.inputs).toEqual([
+      expect.objectContaining({
+        type: TuffInputType.Image
+      })
+    ])
   })
 
   it('runs a forced search when the main process sets the query', async () => {

@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { resolveLocalEmbeddingAssets } from './local-embedding-assets'
 
 /** Exact EmbeddingGemma 2 GGUF identity used by the verified llama.cpp runtime. */
 export const LOCAL_EMBEDDING_MODEL = {
@@ -16,6 +17,14 @@ export const LOCAL_EMBEDDING_MODEL = {
   dtype: 'text-q8_0+mmproj-q8_0'
 } as const
 export const LOCAL_EMBEDDING_MODEL_KEY = `${'google/embeddinggemma-2'}@${LOCAL_EMBEDDING_MODEL.revision}/${LOCAL_EMBEDDING_MODEL.runtime}/${LOCAL_EMBEDDING_MODEL.dtype}/dim${LOCAL_EMBEDDING_MODEL.dimension}`
+
+/** The image encoder is pinned to the same upstream revision and vector space as text. */
+export const LOCAL_EMBEDDING_MEDIA_MODEL = {
+  revision: LOCAL_EMBEDDING_MODEL.revision,
+  file: 'mmproj-embeddinggemma-2-Q8_0.gguf',
+  bytes: 554_821_024,
+  sha256: 'c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f'
+} as const
 
 export interface LocalEmbeddingModelLocation {
   readonly directory: string
@@ -54,18 +63,26 @@ function cacheDirectory(): string {
 export function embeddingModelDirectories(): string[] {
   const configured = process.env.TUFF_LOCAL_EMBEDDING_MODEL_DIR || process.env.DIGUP_MODELS
   if (configured) return [configured]
+  const installedDirectory = resolveLocalEmbeddingAssets()?.modelDirectory
+  if (installedDirectory) return [installedDirectory]
   return [
     path.join(os.homedir(), 'Library', 'Application Support', 'DigUp', 'Models'),
     cacheDirectory()
   ]
 }
 
-export async function locateLocalEmbeddingModel(): Promise<LocalEmbeddingModelLocation | null> {
+export async function locateLocalEmbeddingModel(
+  requireMedia = false
+): Promise<LocalEmbeddingModelLocation | null> {
   for (const directory of embeddingModelDirectories()) {
     const file = path.join(directory, LOCAL_EMBEDDING_MODEL.file)
     try {
       const details = await stat(file)
       if (details.isFile() && details.size === LOCAL_EMBEDDING_MODEL.bytes) {
+        if (requireMedia) {
+          const media = await stat(path.join(directory, LOCAL_EMBEDDING_MEDIA_MODEL.file))
+          if (!media.isFile() || media.size !== LOCAL_EMBEDDING_MEDIA_MODEL.bytes) continue
+        }
         return { directory, file }
       }
     } catch {
@@ -92,6 +109,27 @@ export async function verifyLocalEmbeddingModel(
   if (digest !== LOCAL_EMBEDDING_MODEL.sha256) {
     throw new Error(
       `EmbeddingGemma 2 model checksum mismatch for ${LOCAL_EMBEDDING_MODEL.revision}`
+    )
+  }
+}
+
+export async function verifyLocalEmbeddingMediaModel(
+  location: LocalEmbeddingModelLocation
+): Promise<void> {
+  const file = path.join(location.directory, LOCAL_EMBEDDING_MEDIA_MODEL.file)
+  const details = await stat(file)
+  if (!details.isFile() || details.size !== LOCAL_EMBEDDING_MEDIA_MODEL.bytes) {
+    throw new Error(
+      `EmbeddingGemma 2 media model size mismatch: expected ${LOCAL_EMBEDDING_MEDIA_MODEL.bytes} bytes`
+    )
+  }
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(file, { highWaterMark: 8 << 20 })) {
+    hash.update(chunk)
+  }
+  if (hash.digest('hex') !== LOCAL_EMBEDDING_MEDIA_MODEL.sha256) {
+    throw new Error(
+      `EmbeddingGemma 2 media model checksum mismatch for ${LOCAL_EMBEDDING_MEDIA_MODEL.revision}`
     )
   }
 }

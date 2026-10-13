@@ -918,7 +918,7 @@ export class SearchIndexService {
     const ftsMatchExpr = this.buildFtsMatchExpr(trimmed, options.includeContent !== false)
     searchLogger.indexSearchExecuting()
     const rows = await this.readAll<{ item_id: string; score: number }>(
-      sql`SELECT item_id, bm25(search_index) as score FROM search_index WHERE provider = ${providerId} AND search_index MATCH ${ftsMatchExpr} ORDER BY score LIMIT ${limit}`,
+      sql`SELECT item_id, rank as score FROM search_index WHERE provider = ${providerId} AND search_index MATCH ${ftsMatchExpr} AND rank MATCH 'bm25()' ORDER BY rank LIMIT ${limit}`,
       signal
     )
     signal?.throwIfAborted()
@@ -1017,12 +1017,21 @@ export class SearchIndexService {
     // Escaped like the subsequence sibling below. Concatenating raw user text let
     // '%' and '_' through as wildcards: typing '%' produced '%%' and matched every
     // keyword row for the provider (#663).
-    const likePattern = `${escapeLikeWildcards(prefix)}%`
+    // All writer paths persist lowercase keywords. LIKE alone cannot use the
+    // BINARY index for its case-insensitive prefix and scans the entire provider.
+    const normalizedPrefix = prefix.toLowerCase()
+    const upperBound = prefixSuccessor(normalizedPrefix)
+    const prefixRange =
+      upperBound === null
+        ? sql`km.keyword >= ${normalizedPrefix}`
+        : sql`km.keyword >= ${normalizedPrefix} AND km.keyword < ${upperBound}`
+    const likePattern = `${escapeLikeWildcards(normalizedPrefix)}%`
     const rows = await this.readAll<{ itemId: string; keyword: string; priority: number }>(
       sql`SELECT km.item_id AS itemId, km.keyword AS keyword, km.priority AS priority
           FROM keyword_mappings km
           WHERE km.keyword LIKE ${likePattern} ESCAPE ${SUBSEQUENCE_LIKE_ESCAPE_CHAR}
             AND km.provider_id = ${providerId}
+            AND ${prefixRange}
             AND km.keyword NOT LIKE 'ng:%'
           LIMIT ${limit}`,
       signal
@@ -1878,6 +1887,18 @@ function subsequenceScore(query: string, target: string): number {
   const coverage = qLen / tLen
   const consecutiveBonus = maxConsecutive / qLen
   return coverage * 0.5 + consecutiveBonus * 0.5
+}
+
+/** Exclusive UTF-8/BINARY upper bound; unlike a U+FFFF suffix, includes astral continuations. */
+function prefixSuccessor(prefix: string): string | null {
+  const characters = Array.from(prefix)
+  for (let index = characters.length - 1; index >= 0; index--) {
+    const codePoint = characters[index].codePointAt(0)!
+    if (codePoint < 0x10ffff) {
+      return characters.slice(0, index).join('') + String.fromCodePoint(codePoint + 1)
+    }
+  }
+  return null
 }
 
 /**

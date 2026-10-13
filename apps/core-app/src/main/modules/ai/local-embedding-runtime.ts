@@ -2,24 +2,44 @@ import { createHash } from 'node:crypto'
 import { Buffer } from 'node:buffer'
 import { spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { constants, createReadStream, existsSync, statSync } from 'node:fs'
+import type { Stats } from 'node:fs'
+import { lstat, mkdtemp, open, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import sharp from 'sharp'
 import {
   embeddingModelDirectories,
   locateLocalEmbeddingModel,
   LOCAL_EMBEDDING_MODEL,
+  LOCAL_EMBEDDING_MEDIA_MODEL,
   LOCAL_EMBEDDING_MODEL_KEY,
-  verifyLocalEmbeddingModel
+  verifyLocalEmbeddingModel,
+  verifyLocalEmbeddingMediaModel
 } from './local-embedding-model'
+import type { LocalEmbeddingAssets } from './local-embedding-assets'
+import { resolveLocalEmbeddingAssets } from './local-embedding-assets'
 
 export interface LocalEmbeddingGeneration {
   readonly vector: number[]
   readonly modelKey: string
 }
 
+export interface LocalEmbeddingImageInput {
+  readonly path: string
+  readonly mtime: number
+  readonly size: number
+}
+
 export interface LocalEmbeddingRuntime {
   /** Synchronous readiness probe: no process launch, model loading, hashing, or download. */
   isReady(): boolean
+  isImageReady(): boolean
   generate(text: string, signal?: AbortSignal): Promise<LocalEmbeddingGeneration>
+  generateImage(
+    input: LocalEmbeddingImageInput,
+    signal?: AbortSignal
+  ): Promise<LocalEmbeddingGeneration>
   close(): void
 }
 
@@ -29,6 +49,7 @@ interface WorkerInfo {
   readonly runtime?: string
   readonly dtype?: string
   readonly dim?: number
+  readonly text_only?: boolean
 }
 
 interface WorkerResponse {
@@ -52,15 +73,149 @@ interface PendingRequest {
 const MAX_INPUT_CHARS = 32_000
 const START_TIMEOUT_MS = 20_000
 const REQUEST_TIMEOUT_MS = 120_000
+const MAX_IMAGE_BYTES = 32 * 1024 * 1024
+const MAX_IMAGE_PIXELS = 16 * 1024 * 1024
+const IMAGE_EXTENSIONS: Record<string, true> = {
+  '.png': true,
+  '.jpg': true,
+  '.jpeg': true,
+  '.webp': true,
+  '.gif': true,
+  '.tiff': true
+}
 
-function configuredHelperPath(): string | undefined {
-  const configured = process.env.TUFF_LOCAL_EMBEDDING_HELPER || process.env.TUFF_DIGUP_HELPER
-  if (!configured) return undefined
+function sameImageIdentity(before: Stats, after: Stats): boolean {
+  return (
+    after.isFile() &&
+    before.dev === after.dev &&
+    before.ino === after.ino &&
+    before.size === after.size &&
+    before.mtimeMs === after.mtimeMs &&
+    before.ctimeMs === after.ctimeMs
+  )
+}
+
+interface ImageSnapshot {
+  readonly path: string
+  readonly recheck: () => Promise<void>
+  readonly cleanup: () => Promise<void>
+}
+
+/** Only the bounded bytes from this no-follow descriptor ever reach the image decoder/helper. */
+async function prepareImageSnapshot(
+  input: LocalEmbeddingImageInput,
+  signal?: AbortSignal
+): Promise<ImageSnapshot> {
+  const { path: imagePath, mtime, size } = input
+  if (
+    !path.isAbsolute(imagePath) ||
+    !Object.hasOwn(IMAGE_EXTENSIONS, path.extname(imagePath).toLowerCase()) ||
+    !Number.isFinite(mtime) ||
+    !Number.isSafeInteger(size) ||
+    size <= 0 ||
+    size > MAX_IMAGE_BYTES
+  ) {
+    throw new Error('Local EmbeddingGemma image identity or size is invalid')
+  }
+  if (signal?.aborted) throw abortError()
+  const handle = await open(
+    imagePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
+  )
+  let directory: string | undefined
   try {
-    const details = statSync(configured)
-    return details.isFile() && (details.mode & 0o111) !== 0 ? configured : undefined
+    const before = await handle.stat()
+    if (!before.isFile() || before.size !== size || before.mtimeMs !== mtime) {
+      throw new Error('Local EmbeddingGemma image identity changed')
+    }
+    const recheck = async () => {
+      if (!sameImageIdentity(before, await lstat(imagePath))) {
+        throw new Error('Local EmbeddingGemma image identity changed')
+      }
+    }
+    await recheck()
+    const bytes = Buffer.allocUnsafe(size)
+    let offset = 0
+    while (offset < bytes.length) {
+      if (signal?.aborted) throw abortError()
+      const result = await handle.read(
+        bytes,
+        offset,
+        Math.min(1024 * 1024, bytes.length - offset),
+        offset
+      )
+      if (result.bytesRead === 0) throw new Error('Local EmbeddingGemma image was truncated')
+      offset += result.bytesRead
+    }
+    if (!sameImageIdentity(before, await handle.stat())) {
+      throw new Error('Local EmbeddingGemma image identity changed during read')
+    }
+    await recheck()
+    if (signal?.aborted) throw abortError()
+    const decoder = sharp(bytes, {
+      failOn: 'error',
+      limitInputPixels: MAX_IMAGE_PIXELS,
+      pages: 1
+    }).timeout({ seconds: 20 })
+    const decoding = (async () => {
+      const metadata = await decoder.metadata()
+      if (!['png', 'jpeg', 'webp', 'gif', 'tiff'].includes(metadata.format ?? '')) {
+        throw new Error('Local EmbeddingGemma image format is unsupported')
+      }
+      if (signal?.aborted) throw abortError()
+      return decoder
+        .rotate()
+        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+        .png()
+        .toBuffer()
+    })()
+    const normalized = await new Promise<Buffer>((resolve, reject) => {
+      const onAbort = () => {
+        signal?.removeEventListener('abort', onAbort)
+        decoder.destroy()
+        reject(abortError())
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      decoding.then(
+        (result) => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve(result)
+        },
+        (error) => {
+          signal?.removeEventListener('abort', onAbort)
+          reject(error)
+        }
+      )
+      if (signal?.aborted) onAbort()
+    })
+    if (signal?.aborted) throw abortError()
+    await recheck()
+    directory = await mkdtemp(path.join(os.tmpdir(), 'tuff-embedding-image-'))
+    const snapshotPath = path.join(directory, 'input.png')
+    await writeFile(snapshotPath, normalized, { mode: 0o600, flag: 'wx' })
+    if (signal?.aborted) throw abortError()
+    const snapshotDirectory = directory
+    return {
+      path: snapshotPath,
+      recheck,
+      cleanup: () => rm(snapshotDirectory, { recursive: true, force: true })
+    }
+  } catch (error) {
+    if (directory) await rm(directory, { recursive: true, force: true })
+    throw error
+  } finally {
+    await handle.close()
+  }
+}
+
+function configuredHelperAssets(): LocalEmbeddingAssets | null {
+  const assets = resolveLocalEmbeddingAssets()
+  if (!assets) return null
+  try {
+    const details = statSync(assets.helper)
+    return details.isFile() && (details.mode & 0o111) !== 0 ? assets : null
   } catch {
-    return undefined
+    return null
   }
 }
 
@@ -84,13 +239,14 @@ function readOptionalString(value: Record<string, unknown>, key: string): string
   if (typeof field !== 'string') throw new Error(`EmbeddingGemma worker field ${key} is invalid`)
   return field
 }
-async function verifyHelperBinary(helper: string): Promise<void> {
-  const expected = process.env.TUFF_LOCAL_EMBEDDING_HELPER_SHA256
-  if (!expected || !/^[a-f0-9]{64}$/i.test(expected)) {
-    throw new Error(
-      'Local EmbeddingGemma helper hash is required in TUFF_LOCAL_EMBEDDING_HELPER_SHA256'
-    )
-  }
+
+function readOptionalBoolean(value: Record<string, unknown>, key: string): boolean | undefined {
+  const field = value[key]
+  if (field === undefined) return undefined
+  if (typeof field !== 'boolean') throw new Error(`EmbeddingGemma worker field ${key} is invalid`)
+  return field
+}
+async function verifyHelperBinary(helper: string, expected: string): Promise<void> {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(helper, { highWaterMark: 8 << 20 })) hash.update(chunk)
   if (hash.digest('hex') !== expected.toLowerCase())
@@ -126,7 +282,8 @@ function parseWorkerResponse(line: string): WorkerResponse {
       revision: readOptionalString(infoRecord, 'revision'),
       runtime: readOptionalString(infoRecord, 'runtime'),
       dtype: readOptionalString(infoRecord, 'dtype'),
-      dim: readOptionalNumber(infoRecord, 'dim')
+      dim: readOptionalNumber(infoRecord, 'dim'),
+      text_only: readOptionalBoolean(infoRecord, 'text_only')
     }
   }
   return {
@@ -163,7 +320,6 @@ function readFloat32Vector(encoded: string, dimension: number): number[] {
 class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
   private child: ChildProcessWithoutNullStreams | null = null
   private ready = false
-  private starting: Promise<void> | null = null
   private nextId = 1
   private busy = false
   private stdout = ''
@@ -171,21 +327,41 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
   private startResolve: (() => void) | null = null
   private startReject: ((error: unknown) => void) | null = null
   private startTimer: NodeJS.Timeout | undefined
-  private shutdownTimer: NodeJS.Timeout | undefined
+  private stopping: Promise<void> | null = null
+  private textOnly = true
+  private imageController: AbortController | null = null
   private closed = false
 
   isReady(): boolean {
     if (this.closed) return false
-    const helper = configuredHelperPath()
-    if (!helper || !existsSync(helper)) return false
-    const helperHash = process.env.TUFF_LOCAL_EMBEDDING_HELPER_SHA256
-    if (!helperHash || !/^[a-f0-9]{64}$/i.test(helperHash)) return false
+    const assets = configuredHelperAssets()
+    if (!assets || !existsSync(assets.helper)) return false
     for (const directory of embeddingModelDirectories()) {
       try {
         const model = statSync(`${directory}/${LOCAL_EMBEDDING_MODEL.file}`)
         if (model.isFile() && model.size === LOCAL_EMBEDDING_MODEL.bytes) return true
       } catch {
         // A missing model is an unavailable local capability, not a download trigger.
+      }
+    }
+    return false
+  }
+
+  isImageReady(): boolean {
+    if (!this.isReady()) return false
+    for (const directory of embeddingModelDirectories()) {
+      try {
+        const text = statSync(path.join(directory, LOCAL_EMBEDDING_MODEL.file))
+        const media = statSync(path.join(directory, LOCAL_EMBEDDING_MEDIA_MODEL.file))
+        if (
+          text.isFile() &&
+          text.size === LOCAL_EMBEDDING_MODEL.bytes &&
+          media.isFile() &&
+          media.size === LOCAL_EMBEDDING_MEDIA_MODEL.bytes
+        )
+          return true
+      } catch {
+        // Media is optional for text generation; readiness never hashes or downloads.
       }
     }
     return false
@@ -202,40 +378,96 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
     try {
       await this.ensureStarted(signal)
       if (!this.child || !this.ready) throw new Error('Local EmbeddingGemma runtime is not ready')
-      return await this.request(text, signal)
+      return await this.request('text', text, signal)
     } finally {
+      await this.stopping
       this.busy = false
+    }
+  }
+
+  async generateImage(
+    input: LocalEmbeddingImageInput,
+    signal?: AbortSignal
+  ): Promise<LocalEmbeddingGeneration> {
+    if (this.closed) throw new Error('Local EmbeddingGemma runtime is closed')
+    if (signal?.aborted) throw abortError()
+    if (this.busy) throw new Error('Local EmbeddingGemma runtime is busy')
+    if (!this.isImageReady()) throw new Error('Local EmbeddingGemma media model is unavailable')
+    this.busy = true
+    const controller = new AbortController()
+    this.imageController = controller
+    const onAbort = () => controller.abort()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, REQUEST_TIMEOUT_MS)
+    let snapshot: ImageSnapshot | undefined
+    try {
+      snapshot = await prepareImageSnapshot(input, controller.signal)
+      await this.ensureStarted(controller.signal, true)
+      if (controller.signal.aborted) throw abortError()
+      await snapshot.recheck()
+      const generated = await this.request('image', snapshot.path, controller.signal)
+      await snapshot.recheck()
+      if (controller.signal.aborted) throw abortError()
+      return generated
+    } catch (error) {
+      if (controller.signal.aborted) {
+        const failure = timedOut
+          ? new Error('Local EmbeddingGemma image request timed out')
+          : abortError()
+        this.terminate(failure)
+        throw failure
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      this.imageController = null
+      try {
+        await this.stopping
+        await snapshot?.cleanup()
+      } finally {
+        this.busy = false
+      }
     }
   }
 
   close(): void {
     this.closed = true
+    this.imageController?.abort()
     this.terminate(new Error('Local EmbeddingGemma runtime closed'))
   }
 
-  private async ensureStarted(signal?: AbortSignal): Promise<void> {
-    if (this.child && this.ready) return
-    if (!this.starting) this.starting = this.start(signal)
-    try {
-      await this.awaitWithAbort(this.starting, signal)
-    } finally {
-      this.starting = null
-    }
+  private async ensureStarted(signal?: AbortSignal, requireImage = false): Promise<void> {
+    if (signal?.aborted) throw abortError()
+    if (this.child && this.ready && (!requireImage || !this.textOnly)) return
+    await this.awaitWithAbort(this.start(signal, requireImage), signal)
   }
 
-  private async start(signal?: AbortSignal): Promise<void> {
-    const helper = configuredHelperPath()
-    if (!helper)
-      throw new Error('Local EmbeddingGemma helper is unavailable; set TUFF_LOCAL_EMBEDDING_HELPER')
-    await verifyHelperBinary(helper)
-    const model = await locateLocalEmbeddingModel()
+  private async start(signal?: AbortSignal, requireImage = false): Promise<void> {
+    if (signal?.aborted) throw abortError()
+    const assets = configuredHelperAssets()
+    if (!assets)
+      throw new Error('Local EmbeddingGemma helper is unavailable; install local model assets')
+    const helper = assets.helper
+    await verifyHelperBinary(helper, assets.helperSha256)
+    const model = await locateLocalEmbeddingModel(requireImage)
     if (!model)
       throw new Error(
         `EmbeddingGemma 2 model is unavailable at pinned revision ${LOCAL_EMBEDDING_MODEL.revision}`
       )
     if (this.closed) throw new Error('Local EmbeddingGemma runtime is closed')
     await verifyLocalEmbeddingModel(model)
+    if (requireImage) await verifyLocalEmbeddingMediaModel(model)
     if (signal?.aborted) throw abortError()
+    if (this.child) this.terminate(new Error('EmbeddingGemma helper upgrading to image mode'))
+    await this.stopping
+    if (this.closed) throw new Error('Local EmbeddingGemma runtime is closed')
+    if (signal?.aborted) throw abortError()
+    this.textOnly = !requireImage
 
     const readiness = new Promise<void>((resolve, reject) => {
       this.startResolve = resolve
@@ -247,7 +479,7 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
     })
     let child: ChildProcessWithoutNullStreams
     try {
-      child = spawn(helper, ['worker', '--text-only'], {
+      child = spawn(helper, requireImage ? ['worker'] : ['worker', '--text-only'], {
         env: { ...process.env, DIGUP_MODELS: model.directory },
         stdio: ['pipe', 'pipe', 'pipe']
       })
@@ -258,18 +490,14 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
     this.child = child
     this.ready = false
     child.stdout.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => this.consumeOutput(chunk))
+    child.stdout.on('data', (chunk: string) => {
+      if (this.child === child) this.consumeOutput(chunk)
+    })
     child.stderr.resume()
-    child.once('error', (error) => this.terminate(error))
+    child.once('error', (error) => {
+      if (this.child === child) this.terminate(error)
+    })
     child.once('exit', (code, signalName) => {
-      clearTimeout(this.shutdownTimer)
-      this.shutdownTimer = undefined
-      if (!this.ready)
-        this.rejectStart(
-          new Error(
-            `EmbeddingGemma helper exited before ready (${code ?? signalName ?? 'unknown'})`
-          )
-        )
       if (this.child === child)
         this.terminate(
           new Error(`EmbeddingGemma helper exited (${code ?? signalName ?? 'unknown'})`)
@@ -306,7 +534,8 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
           info.revision !== LOCAL_EMBEDDING_MODEL.revision ||
           info.dim !== LOCAL_EMBEDDING_MODEL.dimension ||
           info.runtime !== LOCAL_EMBEDDING_MODEL.runtime ||
-          info.dtype !== LOCAL_EMBEDDING_MODEL.dtype
+          info.dtype !== LOCAL_EMBEDDING_MODEL.dtype ||
+          info.text_only !== this.textOnly
         ) {
           this.terminate(
             new Error('EmbeddingGemma helper model identity does not match the pinned vector space')
@@ -350,7 +579,15 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
     }
   }
 
-  private request(text: string, signal?: AbortSignal): Promise<LocalEmbeddingGeneration> {
+  private request(
+    op: 'text' | 'image',
+    input: string,
+    signal?: AbortSignal
+  ): Promise<LocalEmbeddingGeneration> {
+    if (signal?.aborted) {
+      this.terminate(abortError())
+      return Promise.reject(abortError())
+    }
     const child = this.child
     if (!child) return Promise.reject(new Error('Local EmbeddingGemma helper is unavailable'))
     const id = this.nextId++
@@ -374,13 +611,17 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
       }
       this.pending.set(id, { resolve, reject, cleanup, timer })
       signal?.addEventListener('abort', onAbort, { once: true })
-      child.stdin.write(`${JSON.stringify({ id, op: 'text', inputs: [text] })}\n`, (error) => {
-        if (!error) return
-        this.pending.delete(id)
-        clearTimeout(timer)
-        cleanup()
-        reject(error)
-      })
+      child.stdin.write(
+        `${JSON.stringify({ id, op, inputs: [input], ...(op === 'image' ? { budget: 280 } : {}) })}\n`,
+        (error) => {
+          if (!error) return
+          this.pending.delete(id)
+          clearTimeout(timer)
+          cleanup()
+          this.terminate(error)
+          reject(error)
+        }
+      )
     })
   }
 
@@ -403,6 +644,7 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
           reject(error)
         }
       )
+      if (signal.aborted) onAbort()
     })
   }
 
@@ -428,11 +670,20 @@ class DigUpEmbeddingRuntime implements LocalEmbeddingRuntime {
       pending.reject(error)
     }
     if (!child) return
-    child.kill('SIGTERM')
-    clearTimeout(this.shutdownTimer)
-    this.shutdownTimer = setTimeout(() => {
-      if (child.exitCode === null) child.kill('SIGKILL')
-    }, 1_000)
+    const stopping = new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+      }, 1_000)
+      child.once('close', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
+    })
+    this.stopping = stopping
+    void stopping.then(() => {
+      if (this.stopping === stopping) this.stopping = null
+    })
   }
 }
 

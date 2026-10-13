@@ -110,6 +110,8 @@ export interface IndexedWriteFlushExecutorDeps<
   getBatchSize: () => number;
   isAvailable: () => boolean;
   ensureReady: () => Promise<boolean>;
+  /** Runs against the exact batch, including a retained durable batch on resume. */
+  prepareBatch?: (entries: TEntry[]) => Promise<boolean>;
   buildPersistEntries: (entries: TEntry[]) => TPersistEntry[];
   persist: (entries: TPersistEntry[]) => Promise<TPersistResult>;
   waitForCapacity: () => Promise<void>;
@@ -123,6 +125,8 @@ export interface IndexedWriteFlushExecutorDeps<
     result: TPersistResult,
     entries: TPersistEntry[],
   ) => Record<string, unknown> | undefined;
+  /** Retain the exact batch and durable stage for a caller-owned lifecycle deferral. */
+  shouldRetainBatch?: (error: unknown) => boolean;
   afterPersist?: (input: {
     entries: TEntry[];
     persistEntries: TPersistEntry[];
@@ -214,6 +218,21 @@ export class IndexedWriteFlushExecutorService<
     TPersistEntry,
     TPersistResult
   >["afterPersist"];
+  private generation = 0;
+  private retainedBatch: {
+    entries: TEntry[];
+    keys: TKey[];
+    metadata: Record<string, unknown> | undefined;
+    persistEntries: TPersistEntry[] | undefined;
+    persisted: boolean;
+    persistResult: TPersistResult | undefined;
+  } | null = null;
+  private readonly shouldRetainBatch: IndexedWriteFlushExecutorDeps<
+    TKey, TEntry, TPersistEntry, TPersistResult
+  >["shouldRetainBatch"];
+  private readonly prepareBatch: IndexedWriteFlushExecutorDeps<
+    TKey, TEntry, TPersistEntry, TPersistResult
+  >["prepareBatch"];
 
   constructor(
     deps: IndexedWriteFlushExecutorDeps<
@@ -236,40 +255,84 @@ export class IndexedWriteFlushExecutorService<
     this.resolveBatchMetadata = deps.resolveBatchMetadata;
     this.resolvePersistMetadata = deps.resolvePersistMetadata;
     this.afterPersist = deps.afterPersist;
+    this.shouldRetainBatch = deps.shouldRetainBatch;
+    this.prepareBatch = deps.prepareBatch;
+  }
+
+  get retainedEntries(): TEntry[] {
+    return this.retainedBatch?.entries ?? [];
+  }
+
+  discardRetainedBatch(): void {
+    this.generation += 1;
+    if (!this.retainedBatch) return;
+    this.buffer.commit(this.retainedBatch.keys);
+    this.retainedBatch = null;
   }
 
   async execute(): Promise<IndexedWriteFlushExecutorResult> {
-    if (!this.isAvailable() || this.buffer.pendingSize === 0) {
+    const generation = this.generation;
+    const assertCurrent = (): void => {
+      if (generation !== this.generation || !this.isAvailable()) {
+        throw new Error("INDEXED_WRITE_FLUSH_CANCELLED");
+      }
+    };
+    if (!this.isAvailable() || (!this.retainedBatch && this.buffer.pendingSize === 0)) {
       return this.buildIdleResult();
     }
 
-    const { entries, keys } = this.buffer.take(this.getBatchSize());
-    if (entries.length === 0) {
-      return this.buildIdleResult();
-    }
-
-    this.onBatchTaken?.(entries);
-    const metadata = this.resolveBatchMetadata?.(entries);
+    const taken = this.retainedBatch ?? this.buffer.take(this.getBatchSize());
+    const { entries, keys } = taken;
+    if (entries.length === 0) return this.buildIdleResult();
+    const batch = this.retainedBatch ?? {
+      entries,
+      keys,
+      metadata: this.resolveBatchMetadata?.(entries),
+      persistEntries: undefined as TPersistEntry[] | undefined,
+      persisted: false,
+      persistResult: undefined as TPersistResult | undefined,
+    };
+    const metadata = batch.metadata;
+    if (!this.retainedBatch) this.onBatchTaken?.(entries);
 
     try {
       const ready = await this.ensureReady();
+      assertCurrent();
       if (!ready) {
-        this.buffer.rollback(keys);
+        if (!this.retainedBatch) this.buffer.rollback(keys);
         return this.buildNotReadyResult(entries.length, metadata);
       }
 
       await this.waitForCapacity();
-      const persistEntries = this.buildPersistEntries(entries);
+      assertCurrent();
+      if (this.prepareBatch) {
+        const valid = await this.prepareBatch(entries);
+        assertCurrent();
+        if (!valid) {
+          this.buffer.commit(keys);
+          this.retainedBatch = null;
+          return { ...this.buildIdleResult(), entries: entries.length, reason: "invalidated-batch" };
+        }
+      }
+      const persistEntries = batch.persistEntries ?? this.buildPersistEntries(entries);
+      batch.persistEntries = persistEntries;
       const flushStart = this.now();
-      const persistResult = await this.persist(persistEntries);
+      if (!batch.persisted) {
+        batch.persistResult = await this.persist(persistEntries);
+        batch.persisted = true;
+      }
+      assertCurrent();
+      const persistResult = batch.persistResult as TPersistResult;
       const afterPersistMetadata = await this.afterPersist?.({
         entries,
         persistEntries,
         result: persistResult,
       });
+      assertCurrent();
       const durationMs = calculateDurationMs(flushStart, this.now());
       this.recordDuration(durationMs);
       this.buffer.commit(keys);
+      this.retainedBatch = null;
       const persistMetadata = this.resolvePersistMetadata?.(
         persistResult,
         persistEntries,
@@ -292,6 +355,30 @@ export class IndexedWriteFlushExecutorService<
         durationMs,
       };
     } catch (error) {
+      if (generation !== this.generation || !this.isAvailable()) {
+        this.buffer.commit(keys);
+        this.retainedBatch = null;
+        throw error;
+      }
+      if (this.shouldRetainBatch && (batch.persisted || this.shouldRetainBatch(error))) {
+        this.retainedBatch = batch
+        const flushError = error instanceof Error ? error.message : String(error)
+        throw Object.assign(
+          error instanceof Error ? error : new Error(flushError),
+          {
+            flushResult: {
+              status: "idle",
+              entries: entries.length,
+              pending: this.buffer.pendingSize,
+              inflight: this.buffer.inflightSize,
+              reason: "persist-failed",
+              error: flushError,
+              metadata,
+            } satisfies IndexedWriteFlushExecutorResult,
+          },
+        )
+      }
+      this.retainedBatch = null;
       this.buffer.rollback(keys);
       const flushError = error instanceof Error ? error.message : String(error);
       throw Object.assign(

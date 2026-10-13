@@ -12,11 +12,10 @@ import type {
   WorkerMetricsRequest,
   WorkerMetricsResponse
 } from './worker-status'
-import { getWorkerMemorySnapshot } from './worker-status'
+import { getWorkerMemorySnapshot, readWorkerThreadCpuUsage } from './worker-status'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import process from 'node:process'
 import { parentPort } from 'node:worker_threads'
 import { createHash } from 'node:crypto'
 import { fileParserRegistry } from '@talex-touch/utils/electron/file-parsers'
@@ -24,6 +23,7 @@ import {
   CONTENT_INDEXABLE_EXTENSIONS,
   getContentSizeLimitMB,
   getTypeTagsForExtension,
+  IMAGE_EMBEDDING_EXTENSIONS,
   KEYWORD_MAP
 } from '../constants'
 import {
@@ -120,7 +120,7 @@ function buildMetricsPayload(): WorkerMetricsPayload {
   return {
     timestamp: Date.now(),
     memory: getWorkerMemorySnapshot(),
-    cpuUsage: process.cpuUsage(),
+    cpuUsage: readWorkerThreadCpuUsage(),
     eventLoop: eventLoop
       ? {
           active: eventLoop.active,
@@ -219,8 +219,34 @@ async function handleIndexTask(
     }
     const extension = (file.extension || path.extname(file.name) || '').toLowerCase()
     const indexable = CONTENT_INDEXABLE_EXTENSIONS.has(extension)
+    const imageEmbeddingCandidate = IMAGE_EMBEDDING_EXTENSIONS.has(extension)
     const size = await ensureFileSize(file)
     if (cancelledTaskIds.has(task.taskId)) break
+
+    // Image vectors are generated in the main process by the authorized local
+    // media encoder. The worker must never parse pixels or invent text content:
+    // retain a durable pending task until that encoder publishes the vector.
+    if (imageEmbeddingCandidate) {
+      emitFileResult(version, {
+        type: 'file',
+        taskId: task.taskId,
+        fileId: file.id,
+        progress: {
+          status: 'pending',
+          progress: 0,
+          processedBytes: 0,
+          totalBytes: size ?? null,
+          lastError: 'image-embedding-pending',
+          updatedAt: new Date().toISOString()
+        },
+        fileUpdate: {
+          content: null,
+          embeddingStatus: 'pending'
+        },
+        indexItem: buildSearchIndexItem(file, task.providerId, task.providerType)
+      })
+      continue
+    }
 
     if (!indexable) {
       emitFileResult(version, {
