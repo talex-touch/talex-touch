@@ -1,7 +1,8 @@
+import type { D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1, type SqliteD1Database } from '../../test/helpers/d1-sqlite'
 import { getPlatformGovernanceAnalytics, listPlatformGovernanceEvents } from './platformGovernanceStore'
-import { setTelemetryDailyRollupEnabledForTest } from './telemetryDailyRollup'
+import { rollupTelemetryDay, setTelemetryDailyRollupEnabledForTest } from './telemetryDailyRollup'
 import {
   buildTelemetryBatchReceiptStatement,
   commitTelemetryWrite,
@@ -664,6 +665,177 @@ describe('telemetryStore search provider metrics', () => {
     expect(analytics.visits.byTimezone).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'America/Los_Angeles', events: 1 }),
     ]))
+  })
+})
+
+describe('telemetryStore performance summaries from daily SQL rollups', () => {
+  let db: SqliteD1Database
+  let eventIndex: number
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-12T12:00:00.000Z'))
+    db = createSqliteD1()
+    state.db = db
+    eventIndex = 0
+    setTelemetryDailyRollupEnabledForTest(false)
+    // Match the real-SQL rollup fixture; do not depend on another test initializing the store.
+    db.sqlite.exec(`
+      CREATE TABLE telemetry_events (
+        id TEXT PRIMARY KEY, event_type TEXT NOT NULL, user_id TEXT, client_id TEXT, device_fingerprint TEXT,
+        platform TEXT, version TEXT, region TEXT, country_code TEXT, region_code TEXT, region_name TEXT,
+        city TEXT, latitude REAL, longitude REAL, timezone TEXT, geo_source TEXT, ip TEXT, search_query TEXT,
+        search_duration_ms INTEGER, search_result_count INTEGER, provider_timings TEXT, input_types TEXT,
+        metadata TEXT, is_anonymous INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_telemetry_event_geo ON telemetry_events(event_type, created_at, country_code, region_code);
+      CREATE TABLE daily_stats (
+        date TEXT NOT NULL, stat_type TEXT NOT NULL, stat_key TEXT NOT NULL DEFAULT '',
+        value INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (date, stat_type, stat_key)
+      );
+    `)
+  })
+
+  afterEach(() => {
+    db.close()
+    state.db = null
+    setTelemetryDailyRollupEnabledForTest(false)
+    vi.useRealTimers()
+  })
+
+  function seedPerformance(date: string, clientId: string, metadata: Record<string, unknown>) {
+    db.sqlite.prepare(`
+      INSERT INTO telemetry_events (id, event_type, client_id, metadata, created_at)
+      VALUES (?, 'performance', ?, ?, ?);
+    `).run(`performance-${eventIndex++}`, clientId, JSON.stringify(metadata), `${date}T12:00:00.000Z`)
+  }
+
+  async function readPerformance() {
+    // The SQLite shim implements the D1 methods exercised by the rollup, not its unused APIs.
+    const binding = db as unknown as D1Database
+    await rollupTelemetryDay(binding, '2026-10-10')
+    await rollupTelemetryDay(binding, '2026-10-11')
+    return (await getAnalyticsSummary(makeEvent(), { days: 7 })).performance
+  }
+
+  it('weights lag ratios and means by samples across clients and days, taking the largest event maximum', async () => {
+    const reports = [
+      { date: '2026-10-10', client: 'a', samples: 3000, over100: 30, over250: 6, total: 15000, max: 400 },
+      { date: '2026-10-10', client: 'b', samples: 1000, over100: 90, over250: 20, total: 25000, max: 1250 },
+      { date: '2026-10-11', client: 'a', samples: 500, over100: 80, over250: 45, total: 30000, max: 700 },
+      { date: '2026-10-11', client: 'b', samples: 1500, over100: 20, over250: 4, total: 20000, max: 300 },
+    ]
+    for (const report of reports) {
+      seedPerformance(report.date, report.client, {
+        perfSource: 'main',
+        perfSchema: 2,
+        windowMs: report.samples * 100,
+        eventLoopLagSamples: report.samples,
+        eventLoopLagOver50Count: report.over100,
+        eventLoopLagOver100Count: report.over100,
+        eventLoopLagOver250Count: report.over250,
+        eventLoopLagOver1000Count: report.max >= 1000 ? 1 : 0,
+        eventLoopLagTotalMs: report.total,
+        eventLoopLagMaxMs: report.max,
+      })
+    }
+
+    const performance = await readPerformance()
+    expect(performance.eventLoopSamples).toBe(6000)
+    expect(performance.eventLoopLagOver100Ratio).toBeCloseTo(220 / 6000, 10)
+    expect(performance.eventLoopLagOver250Ratio).toBeCloseTo(75 / 6000, 10)
+    expect(performance.eventLoopLagMeanMs).toBe(15)
+    expect(performance.eventLoopLagMaxMs).toBe(1250)
+    expect(performance.eventLoopLagOver1000Count).toBe(1)
+  })
+
+  it('weights CPU by only windows carrying CPU measurements, including a measured zero', async () => {
+    const reports = [
+      { date: '2026-10-10', client: 'a', cpu: 4000, window: 10000 },
+      { date: '2026-10-10', client: 'b', cpu: 1000, window: 20000 },
+      { date: '2026-10-11', client: 'a', cpu: 2000, window: 10000 },
+      { date: '2026-10-11', client: 'b', cpu: 0, window: 10000 },
+    ]
+    for (const report of reports) {
+      seedPerformance(report.date, report.client, {
+        perfSource: 'main', perfSchema: 2, mainThreadCpuMs: report.cpu, windowMs: report.window,
+      })
+    }
+    seedPerformance('2026-10-10', 'recommendations', { kind: 'recommendation.aggregate', windowMs: 600000 })
+    seedPerformance('2026-10-11', 'without-cpu', { perfSource: 'main', perfSchema: 2, windowMs: 150000 })
+
+    expect((await readPerformance()).mainThreadCpuPercent).toBe(14)
+  })
+
+  it('reports unavailable CPU when performance events have windows but no CPU measurements', async () => {
+    seedPerformance('2026-10-10', 'recommendations', { kind: 'recommendation.aggregate', windowMs: 600000 })
+    seedPerformance('2026-10-11', 'main-without-cpu', {
+      perfSource: 'main', perfSchema: 2, windowMs: 300000,
+      eventLoopLagSamples: 3000, eventLoopLagTotalMs: 15000,
+    })
+
+    expect((await readPerformance()).mainThreadCpuPercent).toBeNull()
+  })
+
+  it('merges renderer long animation frame counts and durations across clients and days', async () => {
+    const reports = [
+      { date: '2026-10-10', client: 'a', count: 2, total: 150, max: 100 },
+      { date: '2026-10-10', client: 'b', count: 3, total: 360, max: 180 },
+      { date: '2026-10-11', client: 'a', count: 1, total: 420, max: 420 },
+      { date: '2026-10-11', client: 'b', count: 4, total: 280, max: 90 },
+    ]
+    for (const report of reports) {
+      seedPerformance(report.date, report.client, {
+        perfSource: 'renderer', perfSchema: 2, windowMs: 30000,
+        longAnimationFrameCount: report.count,
+        longAnimationFrameTotalMs: report.total,
+        longAnimationFrameMaxMs: report.max,
+      })
+    }
+
+    const performance = await readPerformance()
+    expect(performance.longAnimationFrameCount).toBe(10)
+    expect(performance.longAnimationFrameTotalMs).toBe(1210)
+    expect(performance.longAnimationFrameMaxMs).toBe(420)
+    expect(performance.longAnimationFrameAvgMs).toBe(121)
+  })
+
+  it('ignores legacy lag percentiles and rAF jank fields in every new performance figure', async () => {
+    seedPerformance('2026-10-10', 'modern-main', {
+      perfSource: 'main', perfSchema: 2, windowMs: 10000, mainThreadCpuMs: 2500,
+      eventLoopLagSamples: 100, eventLoopLagOver50Count: 10,
+      eventLoopLagOver100Count: 8, eventLoopLagOver250Count: 3, eventLoopLagOver1000Count: 1,
+      eventLoopLagTotalMs: 3000, eventLoopLagMaxMs: 1200,
+      unresponsiveCount: 2, unresponsiveTotalMs: 900, unresponsiveMaxMs: 600,
+      eventLoopDelayP95Ms: 60000,
+    })
+    seedPerformance('2026-10-11', 'modern-renderer', {
+      perfSource: 'renderer', perfSchema: 2, windowMs: 10000,
+      longTaskCount: 2, longTaskTotalMs: 300, longTaskMaxMs: 200,
+      longAnimationFrameCount: 3, longAnimationFrameTotalMs: 600, longAnimationFrameMaxMs: 300,
+      rafJankCount: 10000,
+    })
+    const beforeLegacy = await readPerformance()
+    expect(beforeLegacy).toEqual({
+      longTaskCount: 2, longTaskTotalMs: 300, longTaskMaxMs: 200, longTaskAvgMs: 150,
+      longAnimationFrameCount: 3, longAnimationFrameTotalMs: 600,
+      longAnimationFrameMaxMs: 300, longAnimationFrameAvgMs: 200,
+      eventLoopSamples: 100, eventLoopLagOver100Ratio: 0.08, eventLoopLagOver250Ratio: 0.03,
+      eventLoopLagOver1000Count: 1, eventLoopLagMeanMs: 30, eventLoopLagMaxMs: 1200,
+      mainThreadCpuPercent: 25,
+      unresponsiveCount: 2, unresponsiveTotalMs: 900, unresponsiveMaxMs: 600, unresponsiveAvgMs: 450,
+    })
+
+    seedPerformance('2026-10-10', 'legacy-main', {
+      windowMs: 600000,
+      eventLoopDelayP95Ms: 60000, eventLoopDelayP99Ms: 90000,
+      eventLoopDelayMeanMs: 50000, eventLoopDelayMaxMs: 120000,
+    })
+    seedPerformance('2026-10-11', 'legacy-renderer', {
+      windowMs: 600000, rafJankCount: 10000, rafJankTotalMs: 500000, rafJankMaxMs: 60000,
+    })
+
+    expect(await readPerformance()).toEqual(beforeLegacy)
   })
 })
 

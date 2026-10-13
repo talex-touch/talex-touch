@@ -13,7 +13,7 @@ import type { NativeOcrBlock, NativeOcrOptions, NativeOcrResult } from '@talex-t
  */
 const DEFAULT_OCR_PROCESS_TIMEOUT_MS = 30_000
 const OCR_PROCESS_CHILD_FILENAME = 'ocr-process.js'
-const OCR_PROCESS_SERVICE_NAME = 'Tuff OCR Runtime'
+export const OCR_PROCESS_SERVICE_NAME = 'Tuff OCR Runtime'
 
 export interface OcrProcessRequest {
   type: 'ocr.request'

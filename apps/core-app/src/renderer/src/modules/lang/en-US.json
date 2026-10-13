@@ -242,6 +242,177 @@
     "title": "Storage",
     "description": "View app storage details"
   },
+  "settingPerformance": {
+    "description": "Inspect Tuff’s own CPU, memory, processes and threads.",
+    "samplingNote": "This page samples every 2 seconds only while open and visible. Sampling stops when you leave or hide the window.",
+    "sampleCost": "Last collection {collectMs} ms · Measurement window {windowMs} ms",
+    "capturedAt": "Last sample: {time}",
+    "running": "Sampling",
+    "inactive": "Page not visible; sampling stopped",
+    "paused": "Sampling paused",
+    "pause": "Pause",
+    "resume": "Resume",
+    "reportError": "Sampling failed. The last good result is retained; retry or wait for the next sample.",
+    "retry": "Retry",
+    "overview": "Overview",
+    "trends": "Trends",
+    "historyNote": "Keeps the latest 60 samples. CPU is a percentage of one core; the time axis preserves gaps while paused or hidden.",
+    "trendEmpty": "Waiting for a valid sample",
+    "cpuShare": "One-core percentage · {share} of {cores} logical cores",
+    "cpuNote": "CPU is a percentage of one core and can exceed 100%.",
+    "metrics": {
+      "cpu": "CPU",
+      "memory": "Working-set memory",
+      "wakeups": "Idle wakeups / second",
+      "mainThreadCpu": "Main thread CPU",
+      "processCount": "Processes",
+      "workerCount": "Node workers"
+    },
+    "processes": "Processes",
+    "processRole": "Role and purpose",
+    "processNote": "Sorted by CPU, highest first. CPU bars show each process's share of what all Tuff processes use. Unavailable wakeup counts display —.",
+    "processEmpty": "No process data available",
+    "pid": "PID",
+    "unknownPlugin": "Unnamed plugin",
+    "processRoles": {
+      "browser": {
+        "name": "Main process",
+        "description": "Windows, modules, databases and plugin scheduling."
+      },
+      "gpu": {
+        "name": "GPU process",
+        "description": "Window composition, blur and other graphics rendering."
+      },
+      "renderer": {
+        "name": "Renderer",
+        "description": "User interface rendering."
+      },
+      "network-service": {
+        "name": "Network service",
+        "description": "Chromium network sandbox."
+      },
+      "plugin-runtime": {
+        "name": "Plugin runtime",
+        "description": "Executes plugin background logic."
+      },
+      "pi-agent-runtime": {
+        "name": "Pi Agent runtime",
+        "description": "Sandbox for Pi Agent tool execution."
+      },
+      "ocr-runtime": {
+        "name": "OCR process",
+        "description": "One-shot system OCR process."
+      },
+      "utility": {
+        "name": "Utility service",
+        "description": "Other Chromium services."
+      },
+      "other": {
+        "name": "Other process",
+        "description": "Unclassified application process."
+      }
+    },
+    "surfaces": {
+      "corebox": "CoreBox search",
+      "main-window": "Main window",
+      "meta-overlay": "Action panel",
+      "plugin-view": "Plugin {pluginName}",
+      "devtools": "Developer tools",
+      "other": "Other surface"
+    },
+    "threads": "Threads",
+    "nodeWorkers": "Node worker threads",
+    "workerRole": "Role and task",
+    "threadId": "Thread ID",
+    "workerElu": "Event-loop utilization",
+    "heap": "Heap used / limit",
+    "uptime": "Uptime",
+    "workerNote": "File workers start on demand and exit when idle. Their absence is normal. — indicates a first sample or an unavailable metric.",
+    "workerEmpty": "No active Node workers",
+    "workerRoles": {
+      "file-scan": {
+        "name": "File scan",
+        "description": "Traverses watched directories and yields file entries in batches."
+      },
+      "file-index": {
+        "name": "File index",
+        "description": "Extracts file features and writes the index."
+      },
+      "file-reconcile": {
+        "name": "File reconciliation",
+        "description": "Compares disk contents with the index."
+      },
+      "file-icon": {
+        "name": "File icons",
+        "description": "Extracts file and application icons."
+      },
+      "file-thumbnail": {
+        "name": "File thumbnails",
+        "description": "Generates image thumbnails."
+      },
+      "search-index-writer": {
+        "name": "Search index writer",
+        "description": "The sole search-index writer (libSQL / FTS)."
+      },
+      "search-index-reader": {
+        "name": "Search index reader",
+        "description": "Read-only search queries; the instance identifies the query lane."
+      },
+      "plugin-sqlite": {
+        "name": "Plugin database",
+        "description": "Private plugin SQLite database."
+      },
+      "plugin-image-tools": {
+        "name": "Plugin image tools",
+        "description": "Processes plugin images, then exits."
+      }
+    },
+    "readerLanes": {
+      "fast": "Fast interactive lane",
+      "deferred": "Background lane",
+      "default": "Background lane",
+      "semantic": "Semantic retrieval lane"
+    },
+    "nativeRuntimes": "Native runtimes",
+    "tokioBudget": "Each Tokio runtime has {workerThreads} worker threads.",
+    "budgetSources": {
+      "host-budget": "Tuff limit",
+      "environment": "From TOKIO_WORKER_THREADS"
+    },
+    "tokioDefault": "Without a limit, each runtime creates one thread per CPU core ({logicalCpuCount} on this machine).",
+    "builtRuntimes": "Built runtimes",
+    "runtimeEmpty": "No corresponding native module loaded yet.",
+    "runtimeNames": {
+      "libsql": "libSQL: database driver",
+      "clipboard": "Clipboard: clipboard monitoring",
+      "screenshot": "Screenshot: native screenshot module"
+    },
+    "threadComposition": "Main-process thread composition",
+    "compositionNote": "Structural explanation, not a live thread count. Use deep sampling to inspect actual counts.",
+    "threadKinds": {
+      "chromium": "Chromium thread pool (ThreadPool*): browser background tasks.",
+      "io": "IO thread: Chromium inter-process communication and I/O scheduling.",
+      "v8": "V8 platform threads: garbage collection and compilation.",
+      "libuv": "libuv thread pool: asynchronous file and DNS I/O.",
+      "node": "Node workers: application tasks listed above.",
+      "tokio": "Tokio runtimes: native asynchronous tasks in the card above.",
+      "actor": "Screenshot / accessibility actor threads: serialized native platform operations."
+    },
+    "deepSampling": "Deep sampling",
+    "sampleTree": "Deep sample",
+    "samplingTree": "Taking deep sample…",
+    "treeNote": "Queries the full process tree only on click, never automatically. CPU is an OS process-tree snapshot, not the measurement window above.",
+    "treeEmpty": "Take a deep sample to see thread totals and child processes.",
+    "treeUnsupported": "Process-tree thread queries are not supported on this platform. Regular sampling remains available.",
+    "treeError": "Deep sampling failed. The previous result is retained; click Deep sample to retry.",
+    "treeCapturedAt": "Deep sample: {time} · Collection {collectMs} ms",
+    "totalThreads": "Known thread total: {count}",
+    "unknownThreadCounts": "Another {count} processes have no thread count and are excluded from the total.",
+    "command": "Command",
+    "threadCount": "Threads",
+    "rss": "Resident memory (RSS)",
+    "electronManaged": "Electron managed"
+  },
   "privacyData": {
     "title": "Privacy & Data",
     "description": "Review local retention, export or delete selected data, and manage encrypted credential backups.",
@@ -1987,6 +2158,7 @@
       "network": "Network",
       "download": "Downloads",
       "storage": "Storage",
+      "performance": "Performance",
       "about": "About"
     }
   },
@@ -4512,8 +4684,8 @@
       "groupTitle": "File Index",
       "groupDesc": "Manage the file search index",
       "contentIndexTitle": "Index File Contents",
-      "contentIndexDesc": "Off by default. When enabled, Tuff reads supported local file contents and uses more CPU, memory, disk I/O, and index space.",
-      "contentIndexingDesc": "Adding content from existing file metadata without rescanning disk folders.",
+      "contentIndexDesc": "Off by default. Reads supported local text and images when enabled. Image semantic search requires a configured local image encoder and uses extra CPU, memory, disk I/O, and index space.",
+      "contentIndexingDesc": "Adding text and image semantic indexes from existing file metadata without rescanning disk folders.",
       "contentIndexPausedDesc": "Content and vector indexing are paused: {reason}. Your enabled setting and existing index data are preserved.",
       "contentIndexStorageLow": "Insufficient free disk space",
       "contentIndexStorageUnavailable": "Disk space check failed",
@@ -4528,8 +4700,8 @@
       "contentIndexStorageSaveBlocked": "The disk ran out of writable space. The setting was not saved and content or vector indexing was not started.",
       "contentIndexStorageSaveRecovery": "Free disk space, then save the setting again. The previously saved setting and existing index data remain unchanged.",
       "contentIndexConfirmTitle": "Enable File Content Indexing",
-      "contentIndexConfirmDesc": "This is a high-resource feature that reads local file contents. Enable it only when you need full-text file search.",
-      "contentIndexPrivacy": "Tuff reads supported local file contents and stores searchable text in the on-device index.",
+      "contentIndexConfirmDesc": "This high-resource feature reads local file contents. Enable it only when you need to search text or image content.",
+      "contentIndexPrivacy": "Tuff reads supported text and images within indexed directories and stores text or image embeddings. Images use only a configured local image encoder; no automatic model downloads or image uploads.",
       "contentIndexResources": "The first pass continuously uses CPU, memory, and disk I/O and may slow lower-spec devices.",
       "contentIndexCleanup": "Turning it off removes content, file embeddings, and content progress while keeping names, paths, and other metadata.",
       "contentIndexConfirmAction": "Enable Content Indexing",
@@ -5879,16 +6051,10 @@
     "later": "Later",
     "dontRemindAgain": "Don't remind me again"
   },
-  "previewHistory": {
-    "copyResult": "Copy Result",
-    "resultLabel": "Result",
-    "recentTitle": "Recent",
-    "countSummary": "{count} total",
-    "noRecords": "No records yet"
-  },
   "previewCard": {
     "common": {
       "result": "Result",
+      "copyResult": "Copy Result",
       "expression": "Expression",
       "details": "Details",
       "conversion": "{from} → {to}"

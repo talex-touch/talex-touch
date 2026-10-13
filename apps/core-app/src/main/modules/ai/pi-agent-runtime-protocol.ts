@@ -9,6 +9,9 @@ import type {
 
 export const PI_RUNTIME_PROTOCOL_VERSION = 1 as const
 
+/** The utility process name Electron reports for the Pi runtime (Settings › Performance reads it). */
+export const PI_RUNTIME_SERVICE_NAME = 'Tuff Pi Agent Runtime'
+
 export interface PiRuntimeToolSpec {
   id: string
   name: string

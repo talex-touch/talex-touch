@@ -45,6 +45,7 @@ import {
   markPerfEventLoopLag
 } from './perf-context'
 import { appendWorkflowDebugLog } from './workflow-debug'
+import { recordEventLoopLagSample } from './event-loop-lag-window'
 import { getHeapStatistics } from 'node:v8'
 
 export interface RendererPerfReport {
@@ -388,7 +389,7 @@ export class PerfMonitor {
         ) {
           return
         }
-
+        recordEventLoopLagSample(lag)
         if (lag >= LOOP_LAG_WARN_MS) {
           const severity = lag >= LOOP_LAG_ERROR_MS ? 'error' : 'warn'
           this.recordEventLoopLag(lag, severity)

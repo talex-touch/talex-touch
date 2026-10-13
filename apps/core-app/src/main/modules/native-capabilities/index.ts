@@ -18,6 +18,7 @@ import type {
 import { isAuthoritativePluginContext } from '@talex-touch/utils/transport/security/plugin-identity'
 import { NativeEvents } from '@talex-touch/utils/transport/events'
 import { performance } from 'node:perf_hooks'
+import { withNativeRuntimeThreadBudget } from '../../core/native-runtime-threads'
 import type { TalexEvents } from '../../core/eventbus/touch-event'
 import { resolveMainRuntime } from '../../core/runtime-accessor'
 import { createLogger } from '../../utils/logger'
@@ -33,10 +34,15 @@ import { NativeTransport } from './native-transport'
 const nativeLog = createLogger('NativeCapabilities')
 
 function createNativeProtocolTransport(): NativeTransport {
-  const screenshot = loadScreenshotCarrier({
-    clientName: 'core-app',
-    clientVersion: process.env.npm_package_version ?? '0.0.0'
-  })
+  const screenshot = withNativeRuntimeThreadBudget(
+    'screenshot',
+    () =>
+      loadScreenshotCarrier({
+        clientName: 'core-app',
+        clientVersion: process.env.npm_package_version ?? '0.0.0'
+      }),
+    (loaded) => loaded.carrier !== null
+  )
   if (!screenshot.carrier) {
     nativeLog.warn('Native screenshot protocol carrier unavailable', {
       meta: { reason: screenshot.reason }

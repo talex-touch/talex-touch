@@ -209,6 +209,13 @@ export const SETTING_CATEGORIES: SettingCategory[] = [
     advanced: true
   },
   {
+    key: 'performance',
+    path: '/setting/performance',
+    icon: 'i-ri-pulse-line',
+    labelKey: 'performance',
+    group: 'system'
+  },
+  {
     key: 'about',
     path: '/setting/about',
     icon: 'i-ri-information-line',

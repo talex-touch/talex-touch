@@ -115,6 +115,8 @@ import type {
   SearchProviderConfigUpdateResult,
 } from './types/indexed-source'
 
+import type { PerformanceProcessTreeReport, PerformanceResourceReport } from './types/performance'
+
 /**
  * Application-level events for window management, system info, and analytics.
  */
@@ -426,7 +428,7 @@ export const AppEvents = {
       .define<void, FileIndexFailedFilesResult>(),
 
     /**
-     * Issue a short-lived grant for previewing one indexed file.
+     * Issue a short-lived grant for one indexed file or proven host-captured clipboard file.
      */
     previewResource: defineEvent('app')
       .module('file-index')
@@ -701,6 +703,24 @@ export const AppEvents = {
      * Open developer tools.
      */
     openDevTools: defineEvent('app').module('debug').event('open-devtools').define<DevToolsOptions | void, void>(),
+  },
+
+  /**
+   * Settings › Performance. Host-only; computed per request, with no sampler behind it.
+   */
+  performance: {
+    /**
+     * Process, thread and event-loop figures since the previous request.
+     */
+    getReport: defineEvent('app').module('performance').event('get-report').define<void, PerformanceResourceReport>(),
+
+    /**
+     * One-shot process tree with per-process thread counts; spawns `ps` once on macOS and Linux.
+     */
+    getProcessTree: defineEvent('app')
+      .module('performance')
+      .event('get-process-tree')
+      .define<void, PerformanceProcessTreeReport>(),
   },
 
   /**

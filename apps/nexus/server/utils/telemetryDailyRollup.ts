@@ -318,18 +318,30 @@ const DAILY_AGGREGATES: readonly string[] = [
     UNION ALL
     SELECT 'search_provider_timeout', provider, COUNT(*) FROM provider_status WHERE state = 'timeout' GROUP BY provider
   `,
+  // Only additive measures: sums of counts and durations, and max. A per-client percentile cannot
+  // be merged across clients or days, which is why clients send threshold counts instead of p95.
+  // The CPU denominator sums windowMs only over events that carry mainThreadCpuMs: other
+  // performance kinds report a windowMs of their own.
+  // D1 caps a SQL function at 32 arguments, so the measures unpivot through two json_object calls.
   `
-    WITH perf AS (
+    WITH perf AS MATERIALIZED (
       SELECT
         SUM(${jsonNumber('metadata', 'longTaskTotalMs', MAX_SEARCH_DURATION_MS)}) AS longtask_total,
         SUM(${jsonNumber('metadata', 'longTaskCount', MAX_SEARCH_RESULT_COUNT)}) AS longtask_count,
         MAX(${jsonNumber('metadata', 'longTaskMaxMs', MAX_SEARCH_DURATION_MS)}) AS longtask_max,
-        SUM(${jsonNumber('metadata', 'rafJankTotalMs', MAX_SEARCH_DURATION_MS)}) AS raf_jank_total,
-        SUM(${jsonNumber('metadata', 'rafJankCount', MAX_SEARCH_RESULT_COUNT)}) AS raf_jank_count,
-        MAX(${jsonNumber('metadata', 'rafJankMaxMs', MAX_SEARCH_DURATION_MS)}) AS raf_jank_max,
-        SUM(${jsonNumber('metadata', 'eventLoopDelayP95Ms', MAX_SEARCH_DURATION_MS)}) AS event_loop_p95_total,
-        COUNT(${jsonNumber('metadata', 'eventLoopDelayP95Ms', MAX_SEARCH_DURATION_MS)}) AS event_loop_p95_count,
-        MAX(${jsonNumber('metadata', 'eventLoopDelayMaxMs', MAX_SEARCH_DURATION_MS)}) AS event_loop_max,
+        SUM(${jsonNumber('metadata', 'longAnimationFrameTotalMs', MAX_SEARCH_DURATION_MS)}) AS loaf_total,
+        SUM(${jsonNumber('metadata', 'longAnimationFrameCount', MAX_SEARCH_RESULT_COUNT)}) AS loaf_count,
+        MAX(${jsonNumber('metadata', 'longAnimationFrameMaxMs', MAX_SEARCH_DURATION_MS)}) AS loaf_max,
+        SUM(${jsonNumber('metadata', 'eventLoopLagSamples', MAX_SEARCH_RESULT_COUNT)}) AS lag_samples,
+        SUM(${jsonNumber('metadata', 'eventLoopLagOver50Count', MAX_SEARCH_RESULT_COUNT)}) AS lag_over_50,
+        SUM(${jsonNumber('metadata', 'eventLoopLagOver100Count', MAX_SEARCH_RESULT_COUNT)}) AS lag_over_100,
+        SUM(${jsonNumber('metadata', 'eventLoopLagOver250Count', MAX_SEARCH_RESULT_COUNT)}) AS lag_over_250,
+        SUM(${jsonNumber('metadata', 'eventLoopLagOver1000Count', MAX_SEARCH_RESULT_COUNT)}) AS lag_over_1000,
+        SUM(${jsonNumber('metadata', 'eventLoopLagTotalMs', MAX_SEARCH_DURATION_MS)}) AS lag_total,
+        MAX(${jsonNumber('metadata', 'eventLoopLagMaxMs', MAX_SEARCH_DURATION_MS)}) AS lag_max,
+        SUM(${jsonNumber('metadata', 'mainThreadCpuMs', MAX_SEARCH_DURATION_MS)}) AS main_cpu,
+        SUM(CASE WHEN ${jsonNumber('metadata', 'mainThreadCpuMs', MAX_SEARCH_DURATION_MS)} IS NOT NULL
+          THEN ${jsonNumber('metadata', 'windowMs', MAX_SEARCH_DURATION_MS)} END) AS main_window,
         SUM(${jsonNumber('metadata', 'unresponsiveTotalMs', MAX_SEARCH_DURATION_MS)}) AS unresponsive_total,
         SUM(${jsonNumber('metadata', 'unresponsiveCount', MAX_SEARCH_RESULT_COUNT)}) AS unresponsive_count,
         MAX(${jsonNumber('metadata', 'unresponsiveMaxMs', MAX_SEARCH_DURATION_MS)}) AS unresponsive_max
@@ -341,15 +353,25 @@ const DAILY_AGGREGATES: readonly string[] = [
       'perf_longtask_total_ms', longtask_total,
       'perf_longtask_count', longtask_count,
       'perf_longtask_max_ms', longtask_max,
-      'perf_raf_jank_total_ms', raf_jank_total,
-      'perf_raf_jank_count', raf_jank_count,
-      'perf_raf_jank_max_ms', raf_jank_max,
-      'perf_event_loop_delay_p95_total_ms', event_loop_p95_total,
-      'perf_event_loop_delay_p95_count', NULLIF(event_loop_p95_count, 0),
-      'perf_event_loop_delay_max_ms', event_loop_max,
+      'perf_long_animation_frame_total_ms', loaf_total,
+      'perf_long_animation_frame_count', loaf_count,
+      'perf_long_animation_frame_max_ms', loaf_max,
       'perf_unresponsive_total_ms', unresponsive_total,
       'perf_unresponsive_count', unresponsive_count,
       'perf_unresponsive_max_ms', unresponsive_max
+    )) AS measure
+    UNION ALL
+    SELECT measure.key, '', measure.value
+    FROM perf, json_each(json_object(
+      'perf_event_loop_samples', lag_samples,
+      'perf_event_loop_over_50', lag_over_50,
+      'perf_event_loop_over_100', lag_over_100,
+      'perf_event_loop_over_250', lag_over_250,
+      'perf_event_loop_over_1000', lag_over_1000,
+      'perf_event_loop_lag_total_ms', lag_total,
+      'perf_event_loop_lag_max_ms', lag_max,
+      'perf_main_thread_cpu_ms', main_cpu,
+      'perf_main_thread_window_ms', main_window
     )) AS measure
   `,
 ]
@@ -403,12 +425,18 @@ export const TELEMETRY_ROLLUP_STAT_TYPES: ReadonlySet<string> = new Set([
   'perf_longtask_total_ms',
   'perf_longtask_count',
   'perf_longtask_max_ms',
-  'perf_raf_jank_total_ms',
-  'perf_raf_jank_count',
-  'perf_raf_jank_max_ms',
-  'perf_event_loop_delay_p95_total_ms',
-  'perf_event_loop_delay_p95_count',
-  'perf_event_loop_delay_max_ms',
+  'perf_long_animation_frame_total_ms',
+  'perf_long_animation_frame_count',
+  'perf_long_animation_frame_max_ms',
+  'perf_event_loop_samples',
+  'perf_event_loop_over_50',
+  'perf_event_loop_over_100',
+  'perf_event_loop_over_250',
+  'perf_event_loop_over_1000',
+  'perf_event_loop_lag_total_ms',
+  'perf_event_loop_lag_max_ms',
+  'perf_main_thread_cpu_ms',
+  'perf_main_thread_window_ms',
   'perf_unresponsive_total_ms',
   'perf_unresponsive_count',
   'perf_unresponsive_max_ms',

@@ -92,6 +92,7 @@ function createSettingCategoryRoutes(withPerf: typeof withRouteComponentPerf): R
     network: () => import('../views/base/settings/categories/SettingNetworkPage.vue'),
     download: () => import('../views/base/settings/categories/SettingDownloadPage.vue'),
     'storage-usage': () => import('../views/base/settings/categories/SettingStoragePage.vue'),
+    performance: () => import('../views/base/settings/categories/SettingPerformancePage.vue'),
     about: () => import('../views/base/settings/categories/SettingAboutPage.vue')
   }
 

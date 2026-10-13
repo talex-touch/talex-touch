@@ -16,6 +16,7 @@ import { genTouchApp } from './core'
 import { isStartupBenchmarkMode } from './core/acceptance-mode'
 import { configureAboutPanel, installApplicationMenu } from './core/application-menu'
 import { AllModulesLoadedEvent, TalexEvents, touchEventBus } from './core/eventbus/touch-event'
+import { prepareDatabaseRuntime } from './core/native-runtime-threads'
 import { innerRootPath, isDuplicateInstance } from './core/precore'
 import { setQuitIntent } from './core/quit-intent'
 import { loadStartupModules, resolveStartupModuleName } from './core/startup-module-loader'
@@ -57,6 +58,7 @@ import { readStartupAppConfig } from './modules/storage/app-config-repository'
 import { syncModule } from './modules/sync'
 import { systemUpdateModule } from './modules/system-update'
 import { platformPermissionModule } from './modules/system/platform-permission-service'
+import { performanceReportModule } from './modules/system/performance-report'
 import { tuffDashboardModule } from './modules/system/tuff-dashboard'
 import { terminalModule } from './modules/terminal'
 import { toolGatewayModule } from './modules/tool-gateway'
@@ -74,6 +76,9 @@ import './polyfills'
 // 设置环境变量禁用 ws 模块的可选依赖
 process.env.WS_NO_UTF_8_VALIDATE = 'true'
 process.env.WS_NO_BUFFER_UTIL = 'true'
+
+// Before any module opens a database: libSQL builds its Tokio runtime on the first open.
+prepareDatabaseRuntime()
 
 // No bypassCSP: renderer/index.html already names `tfile:` in default-src, connect-src,
 // img-src and media-src, so the capability is granted by the policy rather than exempted from
@@ -251,6 +256,7 @@ const foregroundModulesToLoad = [
   addonOpenerModule,
   privacyLifecycleModule,
   tuffDashboardModule,
+  performanceReportModule,
   terminalModule,
   downloadCenterModule
 ]

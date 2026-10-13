@@ -2,6 +2,8 @@ import type { ClipboardCaptureSource } from '@talex-touch/utils/transport/events
 import type { LogOptions } from '../../utils/logger'
 import type { ClipboardReader, NativeClipboardReaderModule } from './clipboard-reader'
 import { NativeClipboardReader, hasNativeReaderApi } from './clipboard-reader'
+import { createRequire } from 'node:module'
+import { withNativeRuntimeThreadBudget } from '../../core/native-runtime-threads'
 
 /**
  * ClipboardService owns the single seam between the app and the OS clipboard's
@@ -131,6 +133,16 @@ export function resolveClipboardWatcherModule(value: unknown): ClipboardWatcherM
   return null
 }
 
+const requireFromModule = createRequire(import.meta.url)
+
+/**
+ * Loading the addon builds its Tokio runtime, so it loads synchronously inside the thread budget
+ * rather than through a dynamic import that would evaluate it outside the budget's span.
+ */
+function loadClipboardWatcherModule(): unknown {
+  return withNativeRuntimeThreadBudget('clipboard', () => requireFromModule('@crosscopy/clipboard'))
+}
+
 export class ClipboardService {
   private watcher: ClipboardWatcherHandle | null = null
   private readerModule: ClipboardWatcherModule | null = null
@@ -218,8 +230,7 @@ export class ClipboardService {
     }
 
     try {
-      const rawModule = await (this.options.importWatcherModule?.() ??
-        import('@crosscopy/clipboard'))
+      const rawModule = await (this.options.importWatcherModule?.() ?? loadClipboardWatcherModule())
       const watcherModule = resolveClipboardWatcherModule(rawModule)
       if (!watcherModule || typeof watcherModule.startWatch !== 'function') {
         const exportKeys =

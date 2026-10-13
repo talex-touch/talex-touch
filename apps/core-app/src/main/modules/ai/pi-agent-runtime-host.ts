@@ -35,7 +35,7 @@ import { agentManager, toolRegistry } from './agents'
 import { tuffIntelligence } from './intelligence-sdk'
 import { intelligenceMcpRegistry } from './intelligence-mcp-registry'
 import { CLI_PROFILE_PROVIDER_MAP } from './providers/pi-cli-runtime'
-import { PI_RUNTIME_PROTOCOL_VERSION } from './pi-agent-runtime-protocol'
+import { PI_RUNTIME_PROTOCOL_VERSION, PI_RUNTIME_SERVICE_NAME } from './pi-agent-runtime-protocol'
 import {
   createApprovalRequiredError,
   createInterruptedToolCallError,
@@ -539,7 +539,7 @@ export class PiAgentRuntimeHost {
       cwd: app.getPath('userData'),
       env: createRestrictedEnvironment(),
       stdio: 'pipe',
-      serviceName: 'Tuff Pi Agent Runtime'
+      serviceName: PI_RUNTIME_SERVICE_NAME
     })
     this.child = child
     child.on('message', (message) => {

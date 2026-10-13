@@ -4,34 +4,44 @@ import { useTuffTransport } from '@talex-touch/utils/transport'
 import { SentryEvents } from '@talex-touch/utils/transport/events'
 import { subscribeRendererActivity } from './renderer-activity'
 
+/**
+ * Renderer responsiveness, observed passively.
+ *
+ * Both sources are `PerformanceObserver` entry types the browser records anyway: `longtask`
+ * (main-thread tasks of 50 ms or more) and `long-animation-frame` (frames that took 50 ms or
+ * more, the Long Animation Frames API). Jank used to come from a requestAnimationFrame loop
+ * re-armed every 33 ms for as long as a window was visible; requesting a frame is what makes
+ * Chromium produce one, so the probe kept the compositor and GPU process working on an idle page
+ * it was only meant to watch.
+ */
 interface RendererPerformanceBuffer {
   longTaskCount: number
   longTaskTotalMs: number
   longTaskMaxMs: number
-  rafJankCount: number
-  rafJankTotalMs: number
-  rafJankMaxMs: number
+  longAnimationFrameCount: number
+  longAnimationFrameTotalMs: number
+  longAnimationFrameMaxMs: number
 }
 
-const buffer: RendererPerformanceBuffer = {
-  longTaskCount: 0,
-  longTaskTotalMs: 0,
-  longTaskMaxMs: 0,
-  rafJankCount: 0,
-  rafJankTotalMs: 0,
-  rafJankMaxMs: 0
+function emptyBuffer(): RendererPerformanceBuffer {
+  return {
+    longTaskCount: 0,
+    longTaskTotalMs: 0,
+    longTaskMaxMs: 0,
+    longAnimationFrameCount: 0,
+    longAnimationFrameTotalMs: 0,
+    longAnimationFrameMaxMs: 0
+  }
 }
+
+let buffer = emptyBuffer()
 
 const transport = useTuffTransport()
 let started = false
 const pollingService = PollingService.getInstance()
 const flushTaskId = 'renderer.performance.flush'
-const RAF_SAMPLE_INTERVAL_MS = 1000 / 30
-let rafId: number | null = null
-let rafTimerId: number | null = null
-let lastFrameTime: number | null = null
-let monitoringEnabled = false
-let rendererActive = true
+/** Matches the main process's performance window; a hidden or closing window flushes early. */
+const DEFAULT_FLUSH_INTERVAL_MS = 5 * 60_000
 
 export async function startRendererPerformanceTelemetry(options?: {
   flushIntervalMs?: number
@@ -47,14 +57,19 @@ export async function startRendererPerformanceTelemetry(options?: {
   } catch {
     return
   }
-  monitoringEnabled = true
 
-  const flushIntervalMs = options?.flushIntervalMs ?? 60_000
+  observe('longtask', (duration) => {
+    buffer.longTaskCount += 1
+    buffer.longTaskTotalMs += duration
+    buffer.longTaskMaxMs = Math.max(buffer.longTaskMaxMs, duration)
+  })
+  observe('long-animation-frame', (duration) => {
+    buffer.longAnimationFrameCount += 1
+    buffer.longAnimationFrameTotalMs += duration
+    buffer.longAnimationFrameMaxMs = Math.max(buffer.longAnimationFrameMaxMs, duration)
+  })
 
-  startLongTaskObserver()
   subscribeRendererActivity((active) => {
-    rendererActive = active
-    syncRafJankMonitor()
     if (!active) void flush()
   })
 
@@ -62,7 +77,7 @@ export async function startRendererPerformanceTelemetry(options?: {
     pollingService.unregister(flushTaskId)
   }
   pollingService.register(flushTaskId, () => flush(), {
-    interval: flushIntervalMs,
+    interval: options?.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS,
     unit: 'milliseconds'
   })
   pollingService.start()
@@ -72,120 +87,42 @@ export async function startRendererPerformanceTelemetry(options?: {
   })
 
   document.addEventListener('visibilitychange', () => {
-    syncRafJankMonitor()
     if (document.hidden) void flush()
   })
 }
 
-function startLongTaskObserver(): void {
-  const Observer = typeof PerformanceObserver !== 'undefined' ? PerformanceObserver : undefined
-  if (!Observer) return
+/** Observes one entry type if this Chromium records it; an unsupported type is skipped. */
+function observe(entryType: string, record: (duration: number) => void): void {
+  if (typeof PerformanceObserver === 'undefined') return
+  if (!PerformanceObserver.supportedEntryTypes?.includes(entryType)) return
 
   try {
-    const observer = new Observer((list) => {
+    const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         const duration = typeof entry.duration === 'number' ? entry.duration : 0
-        if (!Number.isFinite(duration) || duration <= 0) continue
-        buffer.longTaskCount += 1
-        buffer.longTaskTotalMs += duration
-        buffer.longTaskMaxMs = Math.max(buffer.longTaskMaxMs, duration)
+        if (Number.isFinite(duration) && duration > 0) record(duration)
       }
     })
-
-    observer.observe({ entryTypes: ['longtask'] })
+    observer.observe({ type: entryType })
   } catch {
-    // LongTask API may be unavailable; ignore.
+    // Telemetry must never disturb the page it observes.
   }
-}
-
-function startRafJankMonitor(): void {
-  if (
-    !monitoringEnabled ||
-    !rendererActive ||
-    document.hidden ||
-    rafId !== null ||
-    rafTimerId !== null
-  ) {
-    return
-  }
-  lastFrameTime = performance.now()
-
-  const scheduleNextSample = () => {
-    if (!monitoringEnabled || !rendererActive || document.hidden) return
-    if (typeof window.setTimeout !== 'function') {
-      rafId = requestAnimationFrame(onFrame)
-      return
-    }
-    rafTimerId = window.setTimeout(() => {
-      rafTimerId = null
-      if (monitoringEnabled && rendererActive && !document.hidden && rafId === null) {
-        rafId = requestAnimationFrame(onFrame)
-      }
-    }, RAF_SAMPLE_INTERVAL_MS)
-  }
-
-  const onFrame = (now: number) => {
-    rafId = null
-    if (!monitoringEnabled || !rendererActive || document.hidden) {
-      lastFrameTime = null
-      return
-    }
-
-    const previousFrameTime = lastFrameTime
-    lastFrameTime = now
-    if (previousFrameTime !== null) {
-      const delta = now - previousFrameTime
-      if (delta > 50) {
-        buffer.rafJankCount += 1
-        buffer.rafJankTotalMs += delta
-        buffer.rafJankMaxMs = Math.max(buffer.rafJankMaxMs, delta)
-      }
-    }
-
-    scheduleNextSample()
-  }
-
-  rafId = requestAnimationFrame(onFrame)
-}
-
-function stopRafJankMonitor(): void {
-  if (rafTimerId !== null && typeof window.clearTimeout === 'function') {
-    window.clearTimeout(rafTimerId)
-  }
-  rafTimerId = null
-  if (rafId !== null) cancelAnimationFrame(rafId)
-  rafId = null
-  lastFrameTime = null
-}
-
-function syncRafJankMonitor(): void {
-  if (!monitoringEnabled || !rendererActive || document.hidden) {
-    stopRafJankMonitor()
-    return
-  }
-  startRafJankMonitor()
 }
 
 async function flush(): Promise<void> {
-  const hasPayload = buffer.longTaskCount > 0 || buffer.rafJankCount > 0
-  if (!hasPayload) return
+  if (buffer.longTaskCount === 0 && buffer.longAnimationFrameCount === 0) return
 
+  const flushed = buffer
+  buffer = emptyBuffer()
   const payload = {
-    longTaskCount: buffer.longTaskCount,
-    longTaskTotalMs: Math.round(buffer.longTaskTotalMs),
-    longTaskMaxMs: Math.round(buffer.longTaskMaxMs),
-    rafJankCount: buffer.rafJankCount,
-    rafJankTotalMs: Math.round(buffer.rafJankTotalMs),
-    rafJankMaxMs: Math.round(buffer.rafJankMaxMs),
+    longTaskCount: flushed.longTaskCount,
+    longTaskTotalMs: Math.round(flushed.longTaskTotalMs),
+    longTaskMaxMs: Math.round(flushed.longTaskMaxMs),
+    longAnimationFrameCount: flushed.longAnimationFrameCount,
+    longAnimationFrameTotalMs: Math.round(flushed.longAnimationFrameTotalMs),
+    longAnimationFrameMaxMs: Math.round(flushed.longAnimationFrameMaxMs),
     windowType: isCoreBox() ? 'corebox' : 'main'
   }
-
-  buffer.longTaskCount = 0
-  buffer.longTaskTotalMs = 0
-  buffer.longTaskMaxMs = 0
-  buffer.rafJankCount = 0
-  buffer.rafJankTotalMs = 0
-  buffer.rafJankMaxMs = 0
 
   try {
     await transport.send(SentryEvents.api.recordPerformance, payload)
