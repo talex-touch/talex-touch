@@ -3,8 +3,13 @@ import type { BrowserWindow, WebContents } from 'electron'
 import type { AppDestinationId } from '../../../shared/app-destinations'
 import { AppEvents } from '@talex-touch/utils/transport/events'
 import { getTuffTransportMain } from '@talex-touch/utils/transport/main'
+import { isSafePathSegment } from '@talex-touch/utils/common/utils/safe-path'
 import { getAppDestination, isAppDestinationId } from '../../../shared/app-destinations'
-import { conversationRoute, applicationRoute } from '../../../shared/app-surface-routes'
+import {
+  applicationRoute,
+  conversationRoute,
+  pluginRoute
+} from '../../../shared/app-surface-routes'
 
 /**
  * The runtime surface the destination navigation service needs.
@@ -29,6 +34,7 @@ export type AppDestinationUnavailableReason =
   | 'destination-unavailable'
   | 'conversation-unavailable'
   | 'application-unavailable'
+  | 'plugin-unavailable'
 
 export interface AppDestinationOpenResult {
   readonly status: AppDestinationOpenStatus
@@ -46,6 +52,13 @@ export interface AppApplicationOpenResult {
   readonly status: AppDestinationOpenStatus
   /** The path the page is asked to select, already normalized; empty when it was refused. */
   readonly applicationPath: string
+  readonly reason?: AppDestinationUnavailableReason
+}
+
+export interface AppPluginOpenResult {
+  readonly status: AppDestinationOpenStatus
+  /** The plugin the detail page is asked to show, already normalized; empty when refused. */
+  readonly pluginName: string
   readonly reason?: AppDestinationUnavailableReason
 }
 
@@ -102,6 +115,22 @@ export function normalizeApplicationPath(value: unknown): string | null {
   const trimmed = value.trim()
   if (!trimmed || trimmed.length > APPLICATION_PATH_MAX_LENGTH) return null
   return hasControlCharacter(trimmed) ? null : trimmed
+}
+
+/** Longest plugin name a route accepts; npm's package-name ceiling. */
+const PLUGIN_NAME_MAX_LENGTH = 214
+
+/**
+ * `null` when `value` may not name a plugin in a route: a plugin name is its folder name, so it is
+ * one path segment — no separator, no `.`/`..`, no control character.
+ */
+export function normalizePluginName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > PLUGIN_NAME_MAX_LENGTH || hasControlCharacter(trimmed)) {
+    return null
+  }
+  return isSafePathSegment(trimmed) ? trimmed : null
 }
 
 /**
@@ -187,6 +216,22 @@ export class AppDestinationNavigationService {
     }
 
     return { applicationPath: target, ...this.reveal(applicationRoute(target), options) }
+  }
+
+  /**
+   * Reveal the window on one installed plugin's detail page.
+   *
+   * A third destination a catalog row cannot name: the plugin is whichever one the user managed in
+   * CoreBox. Its name is validated here and turned into the plugin route by the shared surface
+   * table, never handed in as a path.
+   */
+  openPlugin(pluginName: string, options?: AppDestinationOpenOptions): AppPluginOpenResult {
+    const name = normalizePluginName(pluginName)
+    if (!name) {
+      return { status: 'unavailable', pluginName: '', reason: 'plugin-unavailable' }
+    }
+
+    return { pluginName: name, ...this.reveal(pluginRoute(name), options) }
   }
 
   /**

@@ -697,7 +697,7 @@ async function warnUnusedWidgets(plugin: TouchPlugin): Promise<void> {
   }
 }
 
-type IPluginManagerWithInternals = IPluginManager & {
+export type IPluginManagerWithInternals = IPluginManager & {
   __installQueue?: PluginInstallQueue
   pendingPermissionPlugins?: Map<string, { pluginName: string; autoRetry: boolean }>
   emitIssueDelta?: (plugin: ITouchPlugin) => boolean

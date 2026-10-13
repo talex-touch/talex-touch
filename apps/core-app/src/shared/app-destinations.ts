@@ -217,9 +217,11 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
         'installed extensions',
         'my plugins',
         'local plugins',
-        'manage plugins'
+        'manage plugins',
+        'plugin list',
+        'plugins list'
       ],
-      zh: ['已安装插件', '已装插件', '我的插件', '本地插件', '插件管理', '管理插件'],
+      zh: ['已安装插件', '已装插件', '我的插件', '本地插件', '插件管理', '管理插件', '插件列表'],
       pinyin: [
         'yianzhuangchajian',
         'yazcj',
@@ -228,7 +230,9 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
         'wodechajian',
         'wdchajian',
         'bendichajian',
-        'bdchajian'
+        'bdchajian',
+        'chajianliebiao',
+        'cjlb'
       ]
     },
     searchable: true,

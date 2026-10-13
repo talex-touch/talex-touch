@@ -7081,6 +7081,39 @@
       "updateSubtitle": "Version, update channel and release notes",
       "aboutSubtitle": "Version, credits and open-source licenses"
     },
+    "pluginEntity": {
+      "subtitle": "Plugin · {state} · v{version}",
+      "state": {
+        "enabled": "Running",
+        "disabled": "Disabled",
+        "loading": "Loading",
+        "failed": "Failed to load",
+        "crashed": "Crashed",
+        "dev-disconnected": "Dev server disconnected"
+      },
+      "actions": {
+        "runFeature": "Open “{name}”",
+        "enable": "Enable plugin",
+        "disable": "Disable plugin",
+        "reload": "Reload plugin",
+        "openFolder": "Open plugin folder",
+        "openDetail": "Show details in the main window",
+        "run": "Run"
+      },
+      "manage": "Plugin management",
+      "features": "Features · {count}",
+      "noFeatures": "This plugin has no feature that runs in CoreBox.",
+      "featuresNeedEnable": "Enable the plugin to run these features.",
+      "dev": "Dev mode",
+      "feedback": {
+        "enabled": "Enabled “{name}”",
+        "disabled": "Disabled “{name}”",
+        "reloaded": "Reloaded “{name}”",
+        "folderOpened": "Opened the folder of “{name}”",
+        "permissionRequired": "Confirm the permissions “{name}” needs in the main window; it enables once you do",
+        "failed": "The action on “{name}” did not complete"
+      }
+    },
     "reason": {
       "pinned": "Pinned",
       "frequent": "Frequently used",

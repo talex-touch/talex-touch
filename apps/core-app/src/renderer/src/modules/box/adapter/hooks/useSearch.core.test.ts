@@ -8,6 +8,7 @@ import { nextTick, reactive, ref, watch } from 'vue'
 import { setRendererActivity } from '~/modules/telemetry/renderer-activity'
 import { BoxMode } from '..'
 import { useSearch } from './useSearch'
+import { PLUGIN_ENTITY_ACTION_IDS as pluginActions } from '../../../../../../shared/plugin-entity'
 
 const state = vi.hoisted(() => ({
   listeners: new Map<string, (payload?: unknown) => void>(),
@@ -339,6 +340,100 @@ describe('useSearch CoreBox reopen behavior', () => {
         configurable: true
       })
     }
+  })
+
+  it('Enter on an installed plugin starts its first runnable feature session instead of navigating to detail', async () => {
+    const options = createBoxOptions()
+    const hook = useSearch(options, createClipboardOptions())
+    await flushPromises()
+    state.send.mockImplementation(async (event: unknown) => {
+      if (String(event) === 'core-box:item:execute')
+        return { activeProviders: ['plugin-features:notes'] }
+      if (String(event).includes('provider')) return []
+      return undefined
+    })
+    const runnable = {
+      id: 'notes/write',
+      kind: 'feature',
+      source: { id: 'plugin-features', type: 'plugin' },
+      render: { mode: 'default', basic: { title: 'Write' } },
+      meta: {
+        pluginName: 'notes',
+        featureId: 'write',
+        interaction: { type: 'webcontent', showInput: false }
+      }
+    } as TuffItem
+    const entity = {
+      id: 'plugin-entity:notes',
+      kind: 'plugin',
+      source: { id: 'plugin-entities', type: 'system' },
+      render: { mode: 'default', basic: { title: 'Notes' } },
+      meta: {
+        extension: {
+          pluginEntity: {
+            name: 'notes',
+            displayName: 'Notes',
+            version: '1.0.0',
+            description: '',
+            dev: false,
+            state: 'enabled',
+            primaryAction: pluginActions.runFeature,
+            features: [
+              { id: 'unavailable', name: 'Unavailable', desc: '' },
+              { id: 'write', name: 'Write', desc: '', item: runnable }
+            ]
+          }
+        }
+      }
+    } as TuffItem
+    await hook.handleExecute(entity)
+    await flushPromises()
+    expect(options.mode).toBe(BoxMode.FEATURE)
+    expect(hook.activeActivations.value?.[0]).toMatchObject({
+      id: 'plugin-features',
+      showInput: false,
+      meta: { pluginName: 'notes', featureId: 'write', feature: { id: 'notes/write' } }
+    })
+    const executed = state.send.mock.calls.filter(
+      ([event]) => String(event) === 'core-box:item:execute'
+    )
+    expect(executed.map(([, payload]) => payload.item.id)).toEqual(['notes/write'])
+  })
+
+  it.each([
+    ['disabled', pluginActions.enable],
+    ['failed', pluginActions.reload]
+  ])('keeps CoreBox visible while Enter manages a %s plugin', async (status, primaryAction) => {
+    const options = createBoxOptions()
+    const hook = useSearch(options, createClipboardOptions())
+    await flushPromises()
+    state.send.mockClear()
+    const entity = {
+      id: 'plugin-entity:notes',
+      kind: 'plugin',
+      source: { id: 'plugin-entities', type: 'system' },
+      render: { mode: 'default', basic: { title: 'Notes' } },
+      meta: {
+        keepCoreBoxOpen: true,
+        extension: {
+          pluginEntity: {
+            name: 'notes',
+            state: status,
+            primaryAction,
+            features: []
+          }
+        }
+      }
+    } as TuffItem
+    await hook.handleExecute(entity)
+    expect(state.send.mock.calls.some(([event]) => String(event) === 'core-box:ui:hide')).toBe(
+      false
+    )
+    const executed = state.send.mock.calls.filter(
+      ([event]) => String(event) === 'core-box:item:execute'
+    )
+    expect(executed.map(([, payload]) => payload.item.id)).toEqual(['plugin-entity:notes'])
+    expect(options.mode).not.toBe(BoxMode.FEATURE)
   })
 
   it('runs a typed Context Actions query without re-reading clipboard state', async () => {

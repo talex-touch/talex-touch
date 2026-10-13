@@ -1037,8 +1037,8 @@ const dy = before.top + (origin.top - entry.origin.top) - after.top
 ```ts
 // box/CoreBox.vue
 const PREVIEW_CLOSE_DELAY_MS = 200
-const addonType = ref<'preview' | undefined>(undefined)
-const addonItem = shallowRef<TuffItem | undefined>(undefined) // the file the pane shows
+const addonType = ref<'preview' | 'plugin' | undefined>(undefined)
+const addonItem = shallowRef<TuffItem | undefined>(undefined) // the file or plugin row the pane shows
 let addonQuery = '' // the query addonItem was selected under
 let rowsQuery = searchVal.value // the query the rows on screen answer
 watch(res, () => (rowsQuery = searchVal.value), { flush: 'sync' })
@@ -1052,6 +1052,15 @@ watch(activeItem, (item) => { /* open, hold or close */ }, { immediate: true })
 
 - **Open at once.** Selecting a file opens the pane on it, or switches the open pane to it, and
   cancels a pending close.
+- **A plugin row is a pane row too (2026-10-13).** An installed plugin's row (`kind: 'plugin'`, a
+  snapshot readable by `readPluginEntitySnapshot`) opens `TuffItemAddon type="plugin"` —
+  `PluginEntityPanel` — under the same open/hold/close rules; "off files" below reads "off pane
+  rows". The pane draws only the row (`meta.extension.pluginEntity` and `actions`), runs its
+  buttons through `useActionPanel.executeAction` (the ⌘K path), and keeps the input focused
+  (`mousedown.prevent`) so Enter stays the list's. After a management step the query is re-run with
+  `{ force: true, preserveSelection: true }`, and the pane redraws from the new row; it never holds
+  state of its own. `previewVisible` stays `addonType === 'preview'`: on a plugin row Enter is still
+  the row's own action (run its first feature, or enable/reload it), so its hint stays.
 - **Close after a rest.** Off files, the pane stays open showing the last file, not the row selected
   now, until the selection has rested off files for 200ms. Every off-file step restarts the wait.
   The results column flips at most once per rest.

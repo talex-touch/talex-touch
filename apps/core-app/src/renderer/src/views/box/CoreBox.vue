@@ -69,6 +69,8 @@ import { resolveCoreBoxCompletionDisplay } from './completion-display'
 import TagSection from './tag/TagSection.vue'
 import { devLog } from '~/utils/dev-log'
 import { useI18n } from 'vue-i18n'
+import type { PluginEntityActionId } from '../../../../shared/plugin-entity'
+import { readPluginEntitySnapshot } from '../../../../shared/plugin-entity'
 
 declare global {
   interface Window {
@@ -789,15 +791,16 @@ function handleItemTrigger(index: number, item: TuffItem): void {
 /**
  * The preview pane follows the selection with hysteresis, so arrowing through a list that mixes
  * files with apps does not flip the results column between full and 40% width on every step.
- * - A file opens the pane at once, or switches the open pane to it.
- * - Off files, the pane closes only once the selection has rested on other rows for
- *   PREVIEW_CLOSE_DELAY_MS; until then it keeps showing the last file, not the row selected now.
- *   That also covers a refresh of the same query whose fast snapshot drops the file for a moment.
+ * - A file opens the pane at once, or switches the open pane to it. An installed plugin's row does
+ *   the same with its management pane.
+ * - Off those rows, the pane closes only once the selection has rested on other rows for
+ *   PREVIEW_CLOSE_DELAY_MS; until then it keeps showing the last one, not the row selected now.
+ *   That also covers a refresh of the same query whose fast snapshot drops the row for a moment.
  * - It closes at once when there is nothing to go back to: no row is selected, or a new or cleared
- *   query has replaced the results and the file is not among them.
+ *   query has replaced the results and the shown row is not among them.
  */
 const PREVIEW_CLOSE_DELAY_MS = 200
-const addonType = ref<'preview' | undefined>(undefined)
+const addonType = ref<'preview' | 'plugin' | undefined>(undefined)
 /** What the pane shows: the selected file, or the last one while the pane waits to close. */
 const addonItem = shallowRef<TuffItem | undefined>(undefined)
 /** The query of the rows the shown file was selected from. */
@@ -829,11 +832,13 @@ watch(
     // cleared one keeps them up until the grid lands. None of them is the new query's: the pane
     // stays as it is until its rows replace them, instead of previewing a file from the old ones.
     if (loading.value && searchVal.value !== rowsQuery) return
-    if (item?.kind === 'file') {
+    const paneType =
+      item?.kind === 'file' ? 'preview' : readPluginEntitySnapshot(item) ? 'plugin' : undefined
+    if (paneType) {
       cancelAddonClose()
       addonItem.value = item
       addonQuery = rowsQuery
-      addonType.value = 'preview'
+      addonType.value = paneType
       return
     }
     if (!addonType.value) return
@@ -872,6 +877,13 @@ function handleGridSelect(index: number, item: TuffItem): void {
 function handlePreviewOpen(): void {
   if (!addonItem.value) return
   handleExecute(addonItem.value)
+}
+
+/** A management step on the plugin the pane shows, through the same path as its ⌘K row. */
+async function handlePluginEntityAction(actionId: PluginEntityActionId): Promise<void> {
+  const item = addonItem.value
+  if (!item) return
+  await actionPanel.executeAction(actionId, item)
 }
 
 /**
@@ -1460,9 +1472,11 @@ const customCss = computed(() => {
           :type="addonType"
           :item="addonItem"
           :search-query="searchVal"
+          :run-plugin-action="handlePluginEntityAction"
           :style="getCanvasAreaStyle('addon')"
           @open-item="handlePreviewOpen"
           @open-with="handlePreviewOpenWith"
+          @run-feature="handleExecute"
         />
       </template>
 

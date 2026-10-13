@@ -164,6 +164,17 @@ function mapIconType(type: string): TuffIconType {
   }
 }
 
+/** A manifest icon as a CoreBox row draws it; shared by feature rows and plugin rows. */
+export function toCoreBoxIcon(icon: ITuffIcon): ITuffIcon {
+  const type = mapIconType(icon.type)
+  return {
+    type,
+    value: type === 'class' ? normalizeClassIconValue(icon.value) : icon.value,
+    color: icon.color,
+    colorful: icon.colorful
+  }
+}
+
 function resolveFeatureShowInput(feature: IPluginFeature): boolean {
   if (feature.interaction?.showInput === false) {
     return false
@@ -567,7 +578,8 @@ export class PluginFeaturesAdapter implements ISearchProvider<ProviderContext> {
     return plugin.status === PluginStatus.ENABLED || plugin.status === PluginStatus.ACTIVE
   }
 
-  private isFeatureVisible(plugin: ITouchPlugin, feature: IPluginFeature): boolean {
+  /** Experimental features show only while the plugin runs in dev mode. */
+  public isFeatureVisible(plugin: ITouchPlugin, feature: IPluginFeature): boolean {
     if (!feature.experimental) {
       return true
     }
@@ -583,8 +595,7 @@ export class PluginFeaturesAdapter implements ISearchProvider<ProviderContext> {
   ): TuffItem {
     const searchTokens = feature.searchTokens ?? buildFeatureSearchTokens(feature)
     feature.searchTokens = searchTokens
-    const iconType = mapIconType((feature.icon as ITuffIcon).type)
-    const iconValue = (feature.icon as ITuffIcon).value
+    const icon = toCoreBoxIcon(feature.icon as ITuffIcon)
 
     return {
       id: `${plugin.name}/${feature.id}`,
@@ -599,12 +610,7 @@ export class PluginFeaturesAdapter implements ISearchProvider<ProviderContext> {
         basic: {
           title: feature.name,
           subtitle: feature.desc,
-          icon: {
-            type: iconType,
-            value: iconType === 'class' ? normalizeClassIconValue(iconValue) : iconValue,
-            color: (feature.icon as ITuffIcon).color,
-            colorful: (feature.icon as ITuffIcon).colorful
-          }
+          icon
         }
       },
       actions: [

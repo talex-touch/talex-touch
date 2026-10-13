@@ -16,6 +16,7 @@ import {
   COREBOX_SCREENSHOT_TRANSLATE_PIN_ACTION_ID
 } from '../../../../../shared/events/corebox-scenes'
 import { estimateMetaPanelHeight } from '../../../../../shared/meta-overlay-geometry'
+import { PLUGIN_ENTITY_ACTION_IDS } from '../../../../../shared/plugin-entity'
 import { CLIPBOARD_HISTORY_SOURCE_ID } from '../adapter/hooks/clipboard-history-item'
 
 /**
@@ -71,6 +72,8 @@ export type MetaActionGlyph =
   | 'share'
   | 'plugin'
   | 'info'
+  | 'stop'
+  | 'refresh'
 /** Host actions draw a fixed glyph; a plugin's own action may bring its own icon. */
 export type MetaActionIcon = { glyph: MetaActionGlyph } | { icon: ITuffIcon }
 
@@ -342,6 +345,38 @@ const PROVIDER_ACTION_SPECS: Readonly<Record<string, HostActionSpec>> = {
     rank: 100,
     label: key('corebox.actions.copyWslPath'),
     glyph: glyph('copy-path')
+  },
+  // An installed plugin's management steps (`PluginEntityProvider`). Enable and disable never
+  // appear together, so they share a rank.
+  [PLUGIN_ENTITY_ACTION_IDS.enable]: {
+    slot: 'open',
+    rank: 20,
+    label: key('corebox.pluginEntity.actions.enable'),
+    glyph: glyph('play')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.disable]: {
+    slot: 'open',
+    rank: 20,
+    label: key('corebox.pluginEntity.actions.disable'),
+    glyph: glyph('stop')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.reload]: {
+    slot: 'open',
+    rank: 25,
+    label: key('corebox.pluginEntity.actions.reload'),
+    glyph: glyph('refresh')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.openFolder]: {
+    slot: 'open',
+    rank: 30,
+    label: key('corebox.pluginEntity.actions.openFolder'),
+    glyph: glyph('folder')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.openDetail]: {
+    slot: 'open',
+    rank: 35,
+    label: key('corebox.pluginEntity.actions.openDetail'),
+    glyph: glyph('info')
   }
 }
 

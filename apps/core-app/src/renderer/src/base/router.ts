@@ -302,10 +302,10 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/plugin/:name?',
+    path: APP_SURFACE_ROUTES.plugin,
     name: '$I18n:router.plugin',
     component: withRouteComponentPerf(
-      '/plugin/:name?',
+      APP_SURFACE_ROUTES.plugin,
       () => import('../views/base/PluginDetail.vue')
     ),
     meta: {

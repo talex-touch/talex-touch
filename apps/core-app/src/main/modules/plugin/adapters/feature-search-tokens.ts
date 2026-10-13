@@ -1,4 +1,4 @@
-import type { IPluginFeature } from '@talex-touch/utils/plugin'
+import type { IPluginFeature, ITouchPlugin } from '@talex-touch/utils/plugin'
 import type { FeatureSearchToken } from '@talex-touch/utils/search'
 import {
   addSimpleTextSearchTokens,
@@ -46,6 +46,28 @@ export function buildFeatureSearchTokens(feature: IPluginFeature): FeatureSearch
   collectCommandTokens(feature.commands).forEach((cmd) =>
     addSimpleTextSearchTokens(tokens, cmd, 'command', cmd)
   )
+
+  return tokens
+}
+
+/**
+ * Tokens for a plugin row: what a user calls the plugin, not what it does. The folder name and the
+ * display name (with its pinyin) match; the description is a weak token so a word from it still
+ * finds the plugin, below any name hit.
+ */
+export function buildPluginEntitySearchTokens(
+  plugin: Pick<ITouchPlugin, 'name' | 'displayName' | 'desc'>
+): FeatureSearchToken[] {
+  const tokens: FeatureSearchToken[] = []
+  const displayName = plugin.displayName?.trim() || plugin.name
+
+  addSimpleTextSearchTokens(tokens, plugin.name, 'id', plugin.name)
+  addTitleSearchTokens(tokens, displayName)
+  addTitlePinyinSearchTokens(tokens, displayName, {
+    getSyllables: getPinyinSyllables,
+    onError: (error) => featureSearchTokensLog.warn('Failed to generate pinyin tokens', { error })
+  })
+  addSimpleTextSearchTokens(tokens, plugin.desc, 'description', plugin.desc)
 
   return tokens
 }

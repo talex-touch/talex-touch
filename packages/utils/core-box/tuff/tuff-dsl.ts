@@ -227,6 +227,7 @@ export type TuffItemKind
     | 'action' // 功能操作，触发特定行为
     | 'setting' // 设置项，配置选项
     | 'feature' // 系统功能，内置能力
+    | 'plugin' // 已安装的插件本体，可在 CoreBox 内管理
 
   // 通信与人员
     | 'contact' // 联系人，人员信息

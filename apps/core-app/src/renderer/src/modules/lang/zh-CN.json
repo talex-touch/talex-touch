@@ -7081,6 +7081,39 @@
       "updateSubtitle": "版本、更新通道与更新日志",
       "aboutSubtitle": "版本、致谢与开源许可"
     },
+    "pluginEntity": {
+      "subtitle": "插件 · {state} · v{version}",
+      "state": {
+        "enabled": "运行中",
+        "disabled": "已停用",
+        "loading": "加载中",
+        "failed": "加载失败",
+        "crashed": "已崩溃",
+        "dev-disconnected": "开发服务器已断开"
+      },
+      "actions": {
+        "runFeature": "打开「{name}」",
+        "enable": "启用插件",
+        "disable": "停用插件",
+        "reload": "重新加载插件",
+        "openFolder": "打开插件目录",
+        "openDetail": "在主窗口查看详情",
+        "run": "运行"
+      },
+      "manage": "插件管理",
+      "features": "功能 · {count}",
+      "noFeatures": "这个插件没有能在 CoreBox 里运行的功能。",
+      "featuresNeedEnable": "启用插件后才能运行这些功能。",
+      "dev": "开发模式",
+      "feedback": {
+        "enabled": "已启用「{name}」",
+        "disabled": "已停用「{name}」",
+        "reloaded": "已重新加载「{name}」",
+        "folderOpened": "已打开「{name}」的插件目录",
+        "permissionRequired": "请在主窗口确认「{name}」需要的权限，确认后会自动启用",
+        "failed": "「{name}」的操作没有完成"
+      }
+    },
     "reason": {
       "pinned": "已固定",
       "frequent": "常用",

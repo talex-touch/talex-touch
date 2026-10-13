@@ -13,6 +13,10 @@ import {
 } from '../../meta-actions/footer-feedback'
 import { COREBOX_META_ACTION_EVENT } from '../../meta-actions/meta-action-model'
 import { useActionPanel } from './useActionPanel'
+import {
+  PLUGIN_ENTITY_ACTION_IDS as pluginActions,
+  PLUGIN_ENTITY_PERMISSION_REQUIRED
+} from '../../../../../../shared/plugin-entity'
 
 const state = vi.hoisted(() => ({
   listeners: new Map<string, (payload?: unknown) => void>(),
@@ -126,6 +130,77 @@ describe('useActionPanel MetaOverlay item action bridge', () => {
 
   afterEach(() => {
     unmountActionPanels()
+  })
+
+  function pluginItem(): TuffItem {
+    return createItem({
+      id: 'plugin-entity:notes',
+      kind: 'plugin',
+      source: { id: 'plugin-entities', type: 'system' },
+      meta: {
+        extension: {
+          pluginEntity: {
+            name: 'notes',
+            displayName: 'Notes',
+            version: '1.0.0',
+            description: '',
+            state: 'disabled',
+            primaryAction: pluginActions.enable,
+            dev: false,
+            features: []
+          }
+        }
+      }
+    })
+  }
+
+  it.each([
+    pluginActions.enable,
+    pluginActions.disable,
+    pluginActions.reload,
+    pluginActions.openFolder
+  ])('refreshes the selected plugin only after %s completes successfully', async (actionId) => {
+    const step = Promise.withResolvers<void>()
+    state.send.mockImplementation((event: unknown) =>
+      event === CoreBoxEvents.item.execute ? step.promise : Promise.resolve()
+    )
+    const panel = useActionPanel({ refreshSearch: state.refreshSearch })
+    const pending = panel.executeAction(actionId, pluginItem())
+    expect(state.refreshSearch).not.toHaveBeenCalled()
+    expect(footerFeedback.value).toBeNull()
+    step.resolve()
+    await pending
+    expect(state.refreshSearch).toHaveBeenCalledExactlyOnceWith({
+      force: true,
+      preserveSelection: true
+    })
+    expect(footerFeedback.value?.tone).toBe('success')
+    expect(state.send.mock.calls.some(([event]) => event === CoreBoxEvents.ui.hide)).toBe(false)
+  })
+
+  it('leaves CoreBox for the detail page without refreshing the search', async () => {
+    const panel = useActionPanel({ refreshSearch: state.refreshSearch })
+    await panel.executeAction(pluginActions.openDetail, pluginItem())
+    expect(state.send.mock.calls.map(([event]) => event)).toEqual([
+      CoreBoxEvents.item.execute,
+      CoreBoxEvents.ui.hide
+    ])
+    expect(state.refreshSearch).not.toHaveBeenCalled()
+    expect(footerFeedback.value).toBeNull()
+  })
+
+  it.each([
+    [PLUGIN_ENTITY_PERMISSION_REQUIRED, 'success', true],
+    ['PLUGIN_ENTITY_ACTION_FAILED', 'error', false]
+  ] as const)('handles %s without refreshing an unchanged plugin', async (message, tone, hide) => {
+    state.send.mockImplementation(async (event: unknown) => {
+      if (event === CoreBoxEvents.item.execute) throw new Error(message)
+    })
+    const panel = useActionPanel({ refreshSearch: state.refreshSearch })
+    await panel.executeAction(pluginActions.enable, pluginItem())
+    expect(footerFeedback.value?.tone).toBe(tone)
+    expect(state.send.mock.calls.some(([event]) => event === CoreBoxEvents.ui.hide)).toBe(hide)
+    expect(state.refreshSearch).not.toHaveBeenCalled()
   })
 
   it('copies the selected item title with the clipboard write payload shape', async () => {

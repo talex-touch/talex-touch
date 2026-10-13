@@ -15,6 +15,13 @@ import {
   COREBOX_SCREENSHOT_TRANSLATE_PIN_ACTION_ID,
   coreBoxImageTranslateEvent
 } from '../../../../../../shared/events/corebox-scenes'
+import type { PluginEntityActionId } from '../../../../../../shared/plugin-entity'
+import {
+  isPluginEntityActionId,
+  PLUGIN_ENTITY_ACTION_IDS,
+  PLUGIN_ENTITY_PERMISSION_REQUIRED,
+  readPluginEntitySnapshot
+} from '../../../../../../shared/plugin-entity'
 import {
   CLIPBOARD_HISTORY_SOURCE_ID,
   resolveClipboardHistoryRecordId
@@ -50,13 +57,30 @@ function readFlowSelection(value: unknown): MetaFlowSelection | undefined {
   return typeof targetId === 'string' && targetId ? (value as MetaFlowSelection) : undefined
 }
 
+/** What a finished management step says in the footer; open-detail leaves CoreBox instead. */
+const PLUGIN_ENTITY_FEEDBACK_KEYS: Readonly<Partial<Record<PluginEntityActionId, string>>> = {
+  [PLUGIN_ENTITY_ACTION_IDS.enable]: 'corebox.pluginEntity.feedback.enabled',
+  [PLUGIN_ENTITY_ACTION_IDS.disable]: 'corebox.pluginEntity.feedback.disabled',
+  [PLUGIN_ENTITY_ACTION_IDS.reload]: 'corebox.pluginEntity.feedback.reloaded',
+  [PLUGIN_ENTITY_ACTION_IDS.openFolder]: 'corebox.pluginEntity.feedback.folderOpened'
+}
+
+export interface CoreBoxRefreshOptions {
+  force?: boolean
+  preserveSelection?: boolean
+}
+
 interface UseActionPanelOptions {
   /**
    * Sends the item to the target picked on the ⌘K card's Flow page (`useDetach.dispatchFlow`). The
    * card picks and relays; CoreBox builds the payload and dispatches it.
    */
   dispatchFlow?: (item: TuffItem, selection: MetaFlowSelection) => Promise<void>
-  refreshSearch?: () => void
+  /**
+   * Re-runs the current query. Management actions force it: the row's state, actions and pane
+   * come from the provider, so the row is stale until the query runs again.
+   */
+  refreshSearch?: (options?: CoreBoxRefreshOptions) => void | Promise<void>
   navigate?: (path: string) => void
   onActivationState?: (activations: IProviderActivate[] | null) => void
   /**
@@ -97,6 +121,53 @@ export function useActionPanel(options: UseActionPanelOptions = {}) {
       devLog('[useActionPanel] Failed to toggle pin:', error)
       showCoreBoxFooterFeedback(t('corebox.pinFailed', '固定失败'), 'error')
     }
+  }
+
+  /**
+   * A plugin row's management step. Main owns the step (`PluginEntityProvider.onExecute`) and
+   * throws when it did not happen; the row is then searched again so its state is the real one.
+   */
+  async function runPluginEntityAction(
+    actionId: PluginEntityActionId,
+    targetItem: TuffItem
+  ): Promise<void> {
+    // Running a feature is the Enter path; its row is a plugin feature, not this provider's.
+    if (actionId === PLUGIN_ENTITY_ACTION_IDS.runFeature) {
+      await onPrimaryExecute?.(targetItem)
+      return
+    }
+
+    const name =
+      readPluginEntitySnapshot(targetItem)?.displayName ?? targetItem.render?.basic?.title ?? ''
+    try {
+      await transport.send(CoreBoxEvents.item.execute, {
+        item: JSON.parse(JSON.stringify(targetItem)),
+        actionId
+      })
+    } catch (error) {
+      // Enabling can wait on the plugin's permission card, which main has brought forward in the
+      // main window. CoreBox steps aside so the card is what the user sees.
+      if (error instanceof Error && error.message === PLUGIN_ENTITY_PERMISSION_REQUIRED) {
+        showCoreBoxFooterFeedback(t('corebox.pluginEntity.feedback.permissionRequired', { name }))
+        await transport.send(CoreBoxEvents.ui.hide, undefined).catch(() => {})
+        return
+      }
+      actionPanelLog.warn('Plugin management action failed', {
+        meta: { actionId, code: resolveErrorCode(error) }
+      })
+      showCoreBoxFooterFeedback(t('corebox.pluginEntity.feedback.failed', { name }), 'error')
+      return
+    }
+
+    if (actionId === PLUGIN_ENTITY_ACTION_IDS.openDetail) {
+      // The detail page is in the main window, which main has revealed; CoreBox steps aside.
+      await transport.send(CoreBoxEvents.ui.hide, undefined).catch(() => {})
+      return
+    }
+
+    const feedbackKey = PLUGIN_ENTITY_FEEDBACK_KEYS[actionId]
+    if (feedbackKey) showCoreBoxFooterFeedback(t(feedbackKey, { name }))
+    await refreshSearch?.({ force: true, preserveSelection: true })
   }
 
   /**
@@ -143,6 +214,11 @@ export function useActionPanel(options: UseActionPanelOptions = {}) {
     // Primary action mirrors pressing Enter on the item in the main list.
     if (actionId === COREBOX_PRIMARY_ACTION_ID) {
       await onPrimaryExecute?.(targetItem)
+      return
+    }
+
+    if (isPluginEntityActionId(actionId) && readPluginEntitySnapshot(targetItem)) {
+      await runPluginEntityAction(actionId, targetItem)
       return
     }
 

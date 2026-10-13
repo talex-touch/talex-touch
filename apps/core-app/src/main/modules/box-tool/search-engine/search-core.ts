@@ -35,6 +35,7 @@ import { appTaskGate } from '../../../service/app-task-gate'
 import { enterPerfContext } from '../../../utils/perf-context'
 import { perfMonitor } from '../../../utils/perf-monitor'
 import { databaseModule } from '../../database'
+import { pluginEntityProvider } from '../../plugin/adapters/plugin-entity-provider'
 import PluginFeaturesAdapter from '../../plugin/adapters/plugin-features-adapter'
 import { getSentryService } from '../../sentry'
 import {
@@ -456,6 +457,7 @@ export class SearchEngineCore
 
     PluginFeaturesAdapter.attach(this)
     this.registerProvider(PluginFeaturesAdapter)
+    this.registerProvider(pluginEntityProvider)
     this.registerProvider(previewProvider)
   }
 

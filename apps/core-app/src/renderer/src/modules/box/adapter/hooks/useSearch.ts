@@ -52,6 +52,11 @@ import {
 import { alignItemsToSections } from './section-order'
 import { getLatestClipboard } from './useClipboardChannel'
 import { useResize } from './useResize'
+import {
+  PLUGIN_ENTITY_ACTION_IDS,
+  readPluginEntitySnapshot,
+  resolvePluginEntityRunnableFeature
+} from '../../../../../../shared/plugin-entity'
 
 interface SearchEndData {
   searchId: string
@@ -1896,6 +1901,13 @@ export function useSearch(
     const itemToExecute = item || activeItem.value
     if (!itemToExecute) {
       return
+    }
+    // Enter on an installed plugin's row means "run it": the row hands over its first runnable
+    // feature row, which then takes the ordinary plugin-feature path (feature mode, input, view).
+    const pluginEntity = readPluginEntitySnapshot(itemToExecute)
+    if (pluginEntity?.primaryAction === PLUGIN_ENTITY_ACTION_IDS.runFeature) {
+      const feature = resolvePluginEntityRunnableFeature(pluginEntity)
+      if (feature) return handleExecute(feature)
     }
     const eventId = crypto.randomUUID()
 

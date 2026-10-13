@@ -15,6 +15,8 @@ export const APP_SURFACE_ROUTES = Object.freeze({
   store: '/store',
   storeInstalled: '/store/installed',
   downloads: '/downloads',
+  /** One installed plugin's detail page, exactly as the router registers it. */
+  plugin: '/plugin/:name?',
   /** The applications category, whose split page selects whatever {@link applicationRoute} names. */
   applications: '/setting/applications'
 })
@@ -43,4 +45,14 @@ export const APPLICATION_ROUTE_ENTRY_PARAM = 'entry'
  */
 export function applicationRoute(path: string): string {
   return `${APP_SURFACE_ROUTES.applications}?${APPLICATION_ROUTE_ENTRY_PARAM}=${encodeURIComponent(path)}`
+}
+
+/**
+ * The detail page of one installed plugin.
+ *
+ * Percent-encoded like the other built routes: the name is a plugin folder name, and this is the
+ * one function that decides how it becomes a path segment. Callers validate it first.
+ */
+export function pluginRoute(name: string): string {
+  return `/plugin/${encodeURIComponent(name)}`
 }
