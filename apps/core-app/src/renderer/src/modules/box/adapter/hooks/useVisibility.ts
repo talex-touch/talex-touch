@@ -113,11 +113,22 @@ export function useVisibility(options: UseVisibilityOptions) {
   async function onShow(): Promise<void> {
     checkAutoClear()
 
-    if (wasTriggeredByShortcut.value && clipboardOptions.activeClipboardSource !== 'manual') {
-      clearImplicitClipboardState(clipboardOptions)
+    if (clipboardOptions.activeClipboardSource !== 'manual') {
       const clipboard = await getLatestClipboard({ refresh: true })
-      if (isClipboardFreshForAutoPaste(clipboard, appSetting.tools.autoPaste)) {
-        handlePaste({ triggerSearch: true, attemptAutoFill: true })
+      if (clipboard?.content || clipboard?.thumbnail || clipboard?.type === 'files') {
+        const canAutoPaste =
+          wasTriggeredByShortcut.value &&
+          isClipboardFreshForAutoPaste(clipboard, appSetting.tools.autoPaste)
+
+        if (canAutoPaste) {
+          handlePaste({ triggerSearch: true, attemptAutoFill: true })
+        } else {
+          clipboardOptions.last = clipboard
+          clipboardOptions.detectedAt = Date.now()
+          clipboardOptions.activeClipboardSource = 'auto'
+        }
+      } else {
+        clearImplicitClipboardState(clipboardOptions)
       }
     }
     wasTriggeredByShortcut.value = false
