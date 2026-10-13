@@ -13,6 +13,16 @@
 - 🔄 **重试机制**: 失败的翻译可以单独重试
 - 🌙 **暗色模式**: 支持明暗主题切换
 
+
+## 交互形态与 SDK 规范说明
+
+- **交互模式：Web content 独占形态**
+  - 翻译插件主功能 `touch-translate` 采用 `webcontent` 交互形态（路径 `/`），进入时撑大视窗（`forceMax: true`）提供沉浸式多源对比与字典翻译体验。
+  - 实时输入同步：CoreBox 输入框的按键通过 `onCoreBoxInputChange` 自动输入并防抖触发翻译。
+- **`push` 与 `webcontent` 互斥规范及 SDK 演进**：
+  - `webcontent` 独占视窗形态与 `push: true`（根搜索结果流模式）在架构上严格互斥，不能在同一 Feature 中混用。
+  - **当前 SDK 版本（`sdkapi <= 261011`）**：宿主允许加载并给出警告提示，自动优先以独占视图呈现，**不会阻断插件加载**。
+  - **下一个 SDK 版本（`sdkapi >= 261015` / 2026-10-15）**：宿主将正式启用硬门禁拦截（`PLUGIN_PACKAGE_MANIFEST_INTERACTION_CONFLICT`），任何同时声明 `push: true` 与独占视图 `webcontent` 的插件将**直接报错并无法加载**。
 ## 架构设计
 
 ### 核心 Hooks

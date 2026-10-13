@@ -112,8 +112,17 @@ function saveProviderConfig(providerId: string, config: Record<string, any>) {
   updateProviderConfig(providerId, config)
 }
 
-watch(query, () => {
+const debouncedTranslate = useDebounceFn(() => {
+  if (query.value.trim()) {
+    translate()
+  }
+}, 350)
+
+watch(query, (val) => {
   clearError()
+  if (val && typeof val === 'string' && val.trim().length > 0) {
+    debouncedTranslate()
+  }
 })
 
 // 检查提供者是否已配置
