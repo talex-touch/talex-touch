@@ -76,8 +76,21 @@ export function isCommandMatch(command: IFeatureCommand, queryText: string): boo
   }
 
   switch (command.type) {
-    case 'over':
-      return true
+    case 'over': {
+      if (!command.value || (Array.isArray(command.value) && command.value.length === 0)) {
+        return true
+      }
+      const trimmedQuery = queryText.trim().toLowerCase()
+      if (!trimmedQuery) {
+        return false
+      }
+      const values = Array.isArray(command.value) ? command.value : [command.value]
+      return values.some((val) => {
+        if (typeof val !== 'string') return false
+        const target = val.trim().toLowerCase()
+        return target ? trimmedQuery === target || trimmedQuery.startsWith(`${target} `) : false
+      })
+    }
     case 'match':
       if (Array.isArray(command.value)) {
         return command.value.some((value) => queryText.startsWith(value))

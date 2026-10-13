@@ -224,6 +224,49 @@ function createWidgetFallbackItem(feature: PluginFeatureItem, queryText: string)
   } as TuffItem
 }
 
+function itemMatchesCommandPrefix(item: TuffItem, prefix: string): boolean {
+  if (item.kind !== 'feature') return false
+  const target = prefix.trim().toLowerCase()
+  if (!target) return false
+
+  const extension = (item.meta as { extension?: Record<string, unknown> } | undefined)?.extension
+  const commands = extension?.commands as
+    | Array<{ type?: string; value?: string | string[] }>
+    | undefined
+  if (Array.isArray(commands)) {
+    for (const cmd of commands) {
+      const values = Array.isArray(cmd.value) ? cmd.value : [cmd.value]
+      for (const val of values) {
+        if (typeof val === 'string' && val.trim().toLowerCase() === target) {
+          return true
+        }
+      }
+    }
+  }
+
+  const featureId = (item.meta as { featureId?: string } | undefined)?.featureId
+  if (featureId && featureId.toLowerCase() === target) {
+    return true
+  }
+
+  const searchTokens = extension?.searchTokens as
+    | Array<{ value?: string; source?: string }>
+    | undefined
+  if (Array.isArray(searchTokens)) {
+    for (const token of searchTokens) {
+      if (
+        (token.source === 'command' || token.source === 'keyword' || token.source === 'id') &&
+        typeof token.value === 'string' &&
+        token.value.trim().toLowerCase() === target
+      ) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
 function hasPluginWidgetRenderItem(items: TuffItem[]): boolean {
   return items.some((item) => {
     const custom = item.render?.mode === 'custom' ? item.render.custom : null
@@ -1086,6 +1129,9 @@ export function useSearch(
   function setSearchResults(items: TuffItem[]): void {
     if (renderedTextQuery?.items === searchResults.value) renderedTextQuery.items = items
     searchResults.value = items
+    if (items.length > 0 && searchVal.value) {
+      checkAndTriggerCommandPrefix(searchVal.value)
+    }
   }
 
   function isRenderedTextQuery(queryKey: string): boolean {
@@ -1202,6 +1248,9 @@ export function useSearch(
       : initialResult
     searchResults.value = filteredItems
     hasFreshResults.value = searchResults.value.length > 0
+    if (filteredItems.length > 0 && searchVal.value) {
+      checkAndTriggerCommandPrefix(searchVal.value)
+    }
     // Items and layout land in one update: executeSearch left the previous pair on screen, and
     // swapping only one of them renders a grid's items as a list for a frame.
     boxOptions.layout = layout
@@ -2186,6 +2235,26 @@ export function useSearch(
     }
   })
 
+  function checkAndTriggerCommandPrefix(val: string): boolean {
+    if (activeActivations.value && activeActivations.value.length > 0) return false
+    if (boxOptions.mode === BoxMode.FEATURE) return false
+
+    const match = val.match(/^([a-zA-Z0-9_\u4e00-\u9fa5]+)\s+(.*)$/)
+    if (!match) return false
+
+    const prefix = match[1]
+    const rest = match[2]
+
+    const candidateItems = searchResults.value.length > 0 ? searchResults.value : res.value
+    const matchedItem = candidateItems.find((item) => itemMatchesCommandPrefix(item, prefix))
+    if (!matchedItem) return false
+
+    programmaticQueryValue = rest
+    searchVal.value = rest
+    void handleExecute(matchedItem)
+    return true
+  }
+
   watch(searchVal, (val) => {
     // A new query reads the index as it is now; the commit backoff starts over with it.
     resetIndexCommitRefresh()
@@ -2195,6 +2264,9 @@ export function useSearch(
       if (shouldSkipReactiveSearch) return
     }
     oneShotQueryContext = undefined
+    if (checkAndTriggerCommandPrefix(val)) {
+      return
+    }
     if (hasSendModePluginFeatureActivation(activeActivations.value)) {
       const cancelable = debouncedSearch as unknown as { cancel?: () => void }
       cancelable.cancel?.()

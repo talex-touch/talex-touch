@@ -508,7 +508,8 @@ export function useKeyboard(
   clearClipboard: (options?: { remember?: boolean }) => void,
   activeActivations: Ref<IProviderActivate[] | null>,
   handlePaste: (options?: { overrideDismissed?: boolean }) => void,
-  itemRefs: Ref<ItemRef[]>
+  itemRefs: Ref<ItemRef[]>,
+  deactivateProvider?: (id?: string) => Promise<unknown>
 ) {
   const transport = useTuffTransport()
   const keyTransport = createCoreBoxKeyTransport(transport)
@@ -945,6 +946,24 @@ export function useKeyboard(
           event.preventDefault()
           return
         }
+      }
+    } else if (event.key === 'Backspace') {
+      if (
+        !searchVal.value &&
+        activeActivations.value &&
+        activeActivations.value.length > 0 &&
+        deactivateProvider
+      ) {
+        event.preventDefault()
+        const last = activeActivations.value[activeActivations.value.length - 1]
+        const key =
+          last?.id === 'plugin-features' && last?.meta?.pluginName
+            ? `${last.id}:${last.meta.pluginName}`
+            : last?.id
+        if (key) {
+          void deactivateProvider(key)
+        }
+        return
       }
     } else if (event.key === 'Tab') {
       if (res.value[boxOptions.focus]) {

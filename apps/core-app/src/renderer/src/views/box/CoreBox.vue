@@ -646,7 +646,8 @@ const { scrollActiveItemIntoView } = useKeyboard(
   clearClipboard,
   activeActivations,
   handlePaste,
-  itemRefs
+  itemRefs,
+  handleDeactivateProvider
 )
 useChannel(boxOptions, searchVal)
 

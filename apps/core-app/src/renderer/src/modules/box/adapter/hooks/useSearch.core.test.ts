@@ -2502,4 +2502,53 @@ describe('useSearch CoreBox reopen behavior', () => {
       await flushPromises()
     })
   })
+
+  describe('prefix command auto-recognition', () => {
+    it('activates feature provider when user types command prefix followed by space', async () => {
+      const featureItem = {
+        id: 'touch-translation/touch-translate',
+        kind: 'feature',
+        source: { id: 'plugin-features', type: 'plugin', name: 'touch-translation' },
+        render: { mode: 'default', basic: { title: '翻译' } },
+        meta: {
+          pluginName: 'touch-translation',
+          featureId: 'touch-translate',
+          interaction: { type: 'webcontent', path: '/', showInput: true, allowInput: true },
+          extension: {
+            commands: [{ type: 'over', value: ['fy', '翻译', 'translate'] }]
+          }
+        }
+      } as unknown as TuffItem
+
+      state.send.mockImplementation(async (event: unknown) => {
+        const eventName = typeof event === 'string' ? event : String(event)
+        if (eventName === 'core-box:item:execute') {
+          return { activeProviders: ['plugin-features:touch-translation'] }
+        }
+        return undefined
+      })
+      const hook = useSearch(createBoxOptions(), createClipboardOptions())
+      await flushPromises()
+
+      hook.replaceSearchResults([featureItem])
+      await flushPromises()
+
+      hook.searchVal.value = 'fy hello'
+      await nextTick()
+      await flushPromises()
+
+      expect(hook.searchVal.value).toBe('hello')
+      expect(hook.activeActivations.value).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'plugin-features',
+            meta: expect.objectContaining({
+              pluginName: 'touch-translation',
+              featureId: 'touch-translate'
+            })
+          })
+        ])
+      )
+    })
+  })
 })
