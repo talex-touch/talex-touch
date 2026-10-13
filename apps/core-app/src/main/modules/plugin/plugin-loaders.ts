@@ -33,6 +33,7 @@ import {
 import {
   CATEGORY_REQUIRED_MIN_VERSION,
   CURRENT_SDK_VERSION,
+  INTERACTION_EXCLUSIVITY_STRICT_MIN_VERSION,
   OMNI_TRANSFER_DECLARATIVE_MIN_VERSION,
   resolveSdkApiVersion
 } from '@talex-touch/utils/plugin'
@@ -467,6 +468,33 @@ abstract class BasePluginLoader {
             timestamp: Date.now()
           })
           return
+        }
+
+        // Validate mutual exclusivity: push: true cannot coexist with exclusive interaction (webcontent)
+        const isExclusiveInteraction = feature.interaction?.type === 'webcontent'
+        const isPush = feature.push === true
+        if (isPush && isExclusiveInteraction) {
+          const sdkapi = this.touchPlugin.sdkapi
+          if (sdkapi && sdkapi >= INTERACTION_EXCLUSIVITY_STRICT_MIN_VERSION) {
+            this.touchPlugin.issues.push({
+              type: 'error',
+              message: `Feature '${feature.name || feature.id}' declares both 'push: true' and 'interaction.type: "webcontent"'. Starting from sdkapi ${INTERACTION_EXCLUSIVITY_STRICT_MIN_VERSION}, these modes are strictly mutually exclusive.`,
+              source: `feature:${feature.id}`,
+              code: 'PLUGIN_MANIFEST_INTERACTION_CONFLICT',
+              meta: { featureId: feature.id, interactionType: feature.interaction?.type },
+              timestamp: Date.now()
+            })
+            return
+          } else {
+            this.touchPlugin.issues.push({
+              type: 'warning',
+              message: `Feature '${feature.name || feature.id}' declares both 'push: true' and 'interaction.type: "webcontent"'. These modes are mutually exclusive; future sdkapi ${INTERACTION_EXCLUSIVITY_STRICT_MIN_VERSION} will reject this.`,
+              source: `feature:${feature.id}`,
+              code: 'PLUGIN_MANIFEST_INTERACTION_CONFLICT_WARN',
+              meta: { featureId: feature.id, interactionType: feature.interaction?.type },
+              timestamp: Date.now()
+            })
+          }
         }
 
         // C.2: Validate feature commands structure

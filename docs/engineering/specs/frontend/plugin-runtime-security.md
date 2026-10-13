@@ -3795,3 +3795,34 @@ const response = await networkService.requestStreamManualRedirect({
   validateStatus: allowedDownloadStatuses
 })
 ```
+
+## Scenario: Feature Interaction Modes Mutual Exclusivity & sdkapi 20261015 Gate
+
+### 1. Context
+
+A feature in `manifest.json` declares how it presents itself to the user inside CoreBox. Three distinct interaction modes exist:
+1. `webcontent`: An exclusive web application loaded via `PluginViewLoader` (`hideResults: true`).
+2. `widget`: An exclusive Vue component panel loaded via `WidgetRegistry` (`hideResults: true`).
+3. `push`: A search provider pushing candidate `TuffItem` rows into the shared CoreBox root search results (`hideResults: false`).
+
+Historically, plugins like `touch-translation` declared conflicting flags such as `push: true` alongside `interaction: { type: "webcontent" }` or `interaction: { type: "widget", forceMax: true }`. This causes dual lifecycle activation, search stream contention, and UI rendering ambiguity.
+
+### 2. Contracts & Mutual Exclusivity Rules
+
+- **Strict Mutual Exclusivity**:
+  - If `interaction.type === 'webcontent'`, the feature MUST declare `push: false` (or omit `push`). It controls the whole viewport upon execution.
+  - If a feature has an exclusive `widget` interaction (`interaction.type === 'widget'` designed to occupy the panel), it MUST declare `push: false`.
+  - If a feature declares `push: true`, its interaction mode cannot be `webcontent`. Pushed items can optionally embed inline custom preview cards, but the feature itself is a search results provider, not an exclusive viewport.
+- **Gradual Deprecation Policy**:
+  - **Current SDK API (`sdkapi <= 261011`)**: The host allows existing plugins for backwards compatibility. It logs a deprecation warning (`PLUGIN_MANIFEST_INTERACTION_CONFLICT_WARN`) and prioritizes the explicit `interaction` viewport over search stream pushing. The plugin will NOT fail to load.
+  - **Next SDK API (`sdkapi >= 261015`, starting 2026-10-15)**: The manifest validator and runtime loader enforce mutual exclusivity as a hard gate. Declaring `push: true` together with `interaction.type: 'webcontent'` or standalone viewport `widget` triggers a fatal validation error (`PLUGIN_PACKAGE_MANIFEST_INTERACTION_CONFLICT`), and CoreApp will refuse to load the plugin.
+
+### 3. Validation Matrix
+
+| sdkapi | Interaction Declaration | Host Behavior |
+| --- | --- | --- |
+| `<= 261011` | `interaction.type: 'webcontent'` + `push: true` | Warns; loads plugin; prioritizes webcontent viewport |
+| `<= 261011` | `interaction.type: 'widget'` + `push: true` | Warns; loads plugin |
+| `>= 261015` | `interaction.type: 'webcontent'` + `push: true` | **Fatal Error**: `PLUGIN_PACKAGE_MANIFEST_INTERACTION_CONFLICT`; plugin fails to load |
+| `>= 261015` | `interaction.type: 'webcontent'` + `push: false` | Allowed; loads as exclusive webcontent |
+| `>= 261015` | `push: true` + no exclusive viewport interaction | Allowed; loads as search results provider |
