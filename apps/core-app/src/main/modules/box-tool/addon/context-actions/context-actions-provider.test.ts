@@ -238,6 +238,50 @@ describe('ContextActionsProvider matching', () => {
     expect(ids.some((id) => id.includes(CONTEXT_ACTION_IDS.QuickReview))).toBe(false)
     expect(mocks.pluginSearch).not.toHaveBeenCalled()
   })
+  it('matches image actions for regular queries containing an image input', async () => {
+    const provider = new ContextActionsProvider()
+    const query = {
+      text: '',
+      inputs: [
+        {
+          type: 'image',
+          content: 'data:image/png;base64,aW1hZ2U='
+        }
+      ]
+    } as unknown as Parameters<typeof provider.onSearch>[0]
+
+    const result = await provider.onSearch(query, signal)
+    const ids = result.items.map((item) => item.id)
+
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        `context-actions:corebox-image-action:${CONTEXT_ACTION_IDS.Ocr}`,
+        `context-actions:corebox-image-action:${CONTEXT_ACTION_IDS.TranslateImageText}`,
+        `context-actions:corebox-image-action:${CONTEXT_ACTION_IDS.ExplainImage}`
+      ])
+    )
+  })
+
+  it('filters image actions by query text when user types in search box', async () => {
+    const provider = new ContextActionsProvider()
+    const query = {
+      text: 'ocr',
+      inputs: [
+        {
+          type: 'image',
+          content: 'data:image/png;base64,aW1hZ2U='
+        }
+      ]
+    } as unknown as Parameters<typeof provider.onSearch>[0]
+
+    const result = await provider.onSearch(query, signal)
+    const ids = result.items.map((item) => item.id)
+
+    expect(ids).toContain(`context-actions:corebox-image-action:${CONTEXT_ACTION_IDS.Ocr}`)
+    expect(ids).not.toContain(
+      `context-actions:corebox-image-action:${CONTEXT_ACTION_IDS.ExplainImage}`
+    )
+  })
 
   it('renders one diagnostic item and never matches actions for unavailable context', async () => {
     const provider = new ContextActionsProvider()

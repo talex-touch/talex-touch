@@ -19,14 +19,11 @@ import {
 } from '@talex-touch/utils'
 import { DEFAULT_WIDGET_RENDERERS } from '@talex-touch/utils/plugin'
 import { clipboard } from 'electron'
-import { clipboardModule } from '../../../clipboard'
-import { createLogger } from '../../../../utils/logger'
 import { getLocale, t } from '../../../../utils/i18n-helper'
 
 const PREVIEW_COMPONENT_NAME = DEFAULT_WIDGET_RENDERERS.CORE_PREVIEW_CARD
 const SOURCE_ID = 'preview-provider'
 const PREVIEW_COPY_PRIMARY_ACTION_ID = 'preview-copy-primary'
-const previewLog = createLogger('PreviewProvider')
 
 interface PreparedPreviewQuery {
   originalQuery: TuffQuery
@@ -108,15 +105,10 @@ export class PreviewProvider implements ISearchProvider<ProviderContext> {
     // Preview provider does not keep activation state.
   }
 
-  async onExecute({ item, searchResult }: IExecuteArgs): Promise<null> {
+  async onExecute({ item }: IExecuteArgs): Promise<null> {
     const payload = this.extractPayload(item)
     if (payload?.primaryValue) {
       clipboard.writeText(payload.primaryValue)
-      try {
-        await this.recordHistory(payload, this.resolveHistoryExpression(item, searchResult?.query))
-      } catch (error) {
-        previewLog.error('Failed to record history', { error })
-      }
     }
     return null
   }
@@ -210,49 +202,5 @@ export class PreviewProvider implements ISearchProvider<ProviderContext> {
     const custom = item.render.custom
     if (custom?.type !== 'vue') return undefined
     return custom.data as PreviewCardPayload | undefined
-  }
-
-  private resolveHistoryExpression(item: TuffItem, query?: TuffQuery): string {
-    const payload = this.extractPayload(item)
-    const candidates = [
-      query?.text,
-      item.meta?.preview?.expression,
-      payload?.meta?.rawQuery,
-      payload?.title
-    ]
-    for (const candidate of candidates) {
-      if (typeof candidate === 'string' && candidate.trim()) return candidate
-    }
-    return ''
-  }
-
-  private async recordHistory(payload: PreviewCardPayload, expression: string): Promise<void> {
-    if (!payload?.primaryValue) return
-    previewLog.debug('Saving preview history', {
-      meta: {
-        expressionLength: expression.length,
-        valueLength: payload.primaryValue.length,
-        abilityId: payload.abilityId
-      }
-    })
-    const result = await clipboardModule.saveCustomEntry({
-      content: payload.primaryValue,
-      rawContent: expression,
-      category: 'preview',
-      meta: {
-        expression,
-        abilityId: payload.abilityId,
-        payload
-      }
-    })
-    if (result?.id) {
-      previewLog.debug('Preview history saved', {
-        meta: {
-          entryId: result.id
-        }
-      })
-    } else {
-      previewLog.warn('Preview history save returned null')
-    }
   }
 }

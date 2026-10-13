@@ -6,7 +6,6 @@ import { useI18n } from 'vue-i18n'
 import { isElectronRenderer } from '@talex-touch/utils/env'
 import { useTuffTransport } from '@talex-touch/utils/transport'
 import { AppEvents } from '@talex-touch/utils/transport/events'
-import { toTfileUrl } from '@talex-touch/utils/network'
 import { FileType, getFileTypeFromPath } from '@talex-touch/utils'
 import { TxScroll } from '@talex-touch/tuffex/scroll'
 import { TxDropdownItem, TxDropdownMenu } from '@talex-touch/tuffex/dropdown-menu'
@@ -159,7 +158,7 @@ watch(
     }
 
     if (!isElectronRenderer() || !transport) {
-      previewResourceUrl.value = toTfileUrl(filePath)
+      // Browser-only surfaces cannot authorize an original local resource.
       previewResourceReady.value = true
       return
     }

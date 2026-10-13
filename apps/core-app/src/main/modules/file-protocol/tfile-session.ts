@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises'
 import url from 'node:url'
 import { normalizeAbsolutePath } from '@talex-touch/utils/common/utils/safe-path'
 import { net } from 'electron'
@@ -10,7 +11,7 @@ import {
   normalizeDarwinUsersPath
 } from '../../utils/local-file-policy'
 import { createLogger } from '../../utils/logger'
-import { isTfilePreviewGrantAuthorized } from './tfile-preview-grant'
+import { hasTfilePreviewGrant, isTfilePreviewGrantAuthorized } from './tfile-preview-grant'
 
 /**
  * Deduplicate error logs -- only log each failing path once, up to a bound.
@@ -139,10 +140,24 @@ export function registerTfileProtocolForSession(
     }
     const filePath = normalizeDarwinUsersPath(extractedPath)
     const normalizedPath = normalizeAbsolutePath(filePath)
-    const previewGrantAuthorized =
+    let previewGrantAuthorized =
       normalizedPath !== null && isTfilePreviewGrantAuthorized(request.url, normalizedPath)
+    if (previewGrantAuthorized && normalizedPath) {
+      try {
+        // A canonical grant must not start following a replacement file/directory symlink.
+        const stat = await fs.lstat(normalizedPath)
+        const canonical = normalizeAbsolutePath(await fs.realpath(normalizedPath))
+        previewGrantAuthorized =
+          stat.isFile() &&
+          canonical === normalizedPath &&
+          isTfilePreviewGrantAuthorized(request.url, normalizedPath)
+      } catch {
+        previewGrantAuthorized = false
+      }
+    }
     if (
       !normalizedPath ||
+      (hasTfilePreviewGrant(request.url) && !previewGrantAuthorized) ||
       (!isAllowedLocalFilePath(normalizedPath, allowedRoots) && !previewGrantAuthorized)
     ) {
       if (shouldLogPathOnce(filePath)) {

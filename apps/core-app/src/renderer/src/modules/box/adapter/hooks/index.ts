@@ -10,6 +10,5 @@ export {
 } from './useClipboardState'
 export { useDetach } from './useDetach'
 export { useKeyboard } from './useKeyboard'
-export { type CalculationHistoryEntry, usePreviewHistory } from './usePreviewHistory'
 export { useSearch } from './useSearch'
 export { useVisibility } from './useVisibility'

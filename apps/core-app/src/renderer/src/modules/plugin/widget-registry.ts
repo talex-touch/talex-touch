@@ -988,7 +988,6 @@ const WIDGET_HOST_PROP_NAMES = [
   'preview',
   'widgetId',
   'hostKeyEvent',
-  'onShowHistory',
   'onCopyPrimary',
   'onHostAction'
 ] as const
@@ -1004,7 +1003,6 @@ type WidgetHostProps = {
   preview?: boolean
   widgetId?: string
   hostKeyEvent?: unknown
-  onShowHistory?: () => void
   onCopyPrimary?: () => void
   onHostAction?: (payload: WidgetHostActionPayload) => void
 }

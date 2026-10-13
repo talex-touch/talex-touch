@@ -1445,21 +1445,6 @@ export const CoreBoxEvents = {
   },
 
   /**
-   * Preview history events.
-   */
-  previewHistory: {
-    /**
-     * Show preview history.
-     */
-    show: defineEvent('core-box').module('preview-history').event('show').define<void, void>(),
-
-    /**
-     * Hide preview history.
-     */
-    hide: defineEvent('core-box').module('preview-history').event('hide').define<void, void>(),
-  },
-
-  /**
    * Preview card events.
    */
   preview: {

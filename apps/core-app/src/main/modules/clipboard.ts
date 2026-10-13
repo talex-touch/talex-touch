@@ -25,6 +25,7 @@ import type {
 } from '@talex-touch/utils/transport/events/types'
 import type { HandlerContext, ITuffTransportMain } from '@talex-touch/utils/transport/main'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
+import { eq } from 'drizzle-orm'
 import type { NativeImage } from 'electron'
 import type * as schema from '../db/schema'
 import path from 'node:path'
@@ -46,6 +47,8 @@ import {
 import { resolvePreviousAppContext } from './box-tool/search-engine/app-launch-recorder'
 import { APP_TASK_GATE_STARTUP_WAIT_MS, appTaskGate } from '../service/app-task-gate'
 import { normalizeRenderableSource } from '../utils/local-renderable-assets'
+import { normalizeAbsolutePath } from '@talex-touch/utils/common/utils/safe-path'
+import { normalizeDarwinUsersPath } from '../utils/local-file-policy'
 import { createLogger, type LogOptions } from '../utils/logger'
 import { perfMonitor } from '../utils/perf-monitor'
 import { BaseModule } from './abstract-base-module'
@@ -87,17 +90,13 @@ import {
 } from './clipboard/clipboard-transport-handlers'
 import {
   ClipboardHistoryPersistence,
-  mergeClipboardMetadataString,
   type IClipboardItem
 } from './clipboard/clipboard-history-persistence'
 import { ClipboardImagePersistence } from './clipboard/clipboard-image-persistence'
 import { ClipboardAutopasteAutomation } from './clipboard/clipboard-autopaste-automation'
 import { ClipboardService, type ClipboardServiceHealth } from './clipboard/clipboard-service'
 import { ElectronClipboardReader, type ClipboardReader } from './clipboard/clipboard-reader'
-import {
-  ClipboardMetaPersistence,
-  type ClipboardMetaEntry
-} from './clipboard/clipboard-meta-persistence'
+import { ClipboardMetaPersistence } from './clipboard/clipboard-meta-persistence'
 import {
   resolveClipboardPollingSettings,
   resolveClipboardTargetPollingIntervalMs,
@@ -146,7 +145,6 @@ function isOnBatteryPowerSafe(): boolean {
   }
 }
 
-const CLIPBOARD_META_QUEUE_LIMIT = 6
 const CLIPBOARD_META_LOG_THROTTLE_MS = 5_000
 const CLIPBOARD_STAGE_B_LOG_THROTTLE_MS = 5_000
 
@@ -637,6 +635,35 @@ export class ClipboardModule extends BaseModule {
     return await this.historyPersistence.getItemById(id)
   }
 
+  /** A DB row or renderer path alone cannot authorize an external clipboard file. */
+  public async resolveCapturedFilePreviewPath(id: number, rawPath: string): Promise<string | null> {
+    if (!this.db || !Number.isSafeInteger(id) || id <= 0 || typeof rawPath !== 'string') return null
+    const capturedContent = this.clipboardFreshness.getCapturedFilesContent(id)
+    if (!capturedContent) return null
+
+    try {
+      const files: unknown = JSON.parse(capturedContent)
+      if (!Array.isArray(files) || !files.some((entry) => entry === rawPath)) return null
+      const candidate = normalizeAbsolutePath(normalizeDarwinUsersPath(rawPath))
+      if (!candidate || !(await fs.promises.lstat(candidate)).isFile()) return null
+      const canonical = normalizeAbsolutePath(await fs.promises.realpath(candidate))
+      if (canonical !== candidate) return null
+      // Bypass the history cache: a deleted or changed DB record must not mint a grant.
+      const [item] = await this.db
+        .select({ type: clipboardHistory.type, content: clipboardHistory.content })
+        .from(clipboardHistory)
+        .where(eq(clipboardHistory.id, id))
+        .limit(1)
+      if (!item || item.type !== 'files' || item.content !== capturedContent) return null
+      // Ownership may be forgotten while filesystem/database validation is pending.
+      return this.clipboardFreshness.getCapturedFilesContent(id) === capturedContent
+        ? canonical
+        : null
+    } catch {
+      return null
+    }
+  }
+
   public async queryHistoryByMeta(
     request: ClipboardMetaQueryRequest = {}
   ): Promise<IClipboardItem[]> {
@@ -900,88 +927,6 @@ export class ClipboardModule extends BaseModule {
     for (const resolve of waiters) {
       resolve()
     }
-  }
-
-  /**
-   * Save custom (non-clipboard) entry to clipboard history
-   * Used by AI chat, preview, and other features
-   * @param category - Entry category: 'ai-chat' | 'preview' | 'custom'
-   */
-  public async saveCustomEntry({
-    content,
-    rawContent,
-    category = 'custom',
-    meta
-  }: {
-    content: string
-    rawContent?: string | null
-    category?: 'ai-chat' | 'preview' | 'custom'
-    meta?: Record<string, unknown>
-  }): Promise<IClipboardItem | null> {
-    if (!this.db) return null
-
-    const metaEntries: ClipboardMetaEntry[] = [
-      { key: 'source', value: 'custom' },
-      { key: 'category', value: category }
-    ]
-    if (meta) {
-      for (const [key, value] of Object.entries(meta)) {
-        metaEntries.push({ key, value })
-      }
-    }
-
-    const mergedMeta: Record<string, unknown> = {}
-    for (const entry of metaEntries) {
-      mergedMeta[entry.key] = entry.value
-    }
-
-    const metadata = mergeClipboardMetadataString(null, mergedMeta)
-    const record = {
-      type: 'text' as const,
-      content,
-      rawContent: rawContent ?? null,
-      thumbnail: null,
-      timestamp: new Date(),
-      sourceApp: 'Talex Touch',
-      isFavorite: false,
-      metadata
-    }
-
-    const inserted = await this.metaPersistence.withDbWrite('clipboard.custom.persist', (db) =>
-      db.insert(clipboardHistory).values(record).returning()
-    )
-    if (inserted.length === 0) {
-      return null
-    }
-
-    const persisted = inserted[0] as IClipboardItem
-    persisted.meta = mergedMeta
-    this.rememberClipboardFreshness(
-      persisted,
-      createIneligibleClipboardFreshnessState('manual-write')
-    )
-
-    if (persisted.id) {
-      const queueStats = dbWriteScheduler.getStats()
-      if (queueStats.queued >= CLIPBOARD_META_QUEUE_LIMIT) {
-        const now = Date.now()
-        if (this.shouldLogMetaQueuePressure(now)) {
-          clipboardLog.warn('Clipboard meta skipped (queue pressure)', {
-            meta: { queued: queueStats.queued }
-          })
-        }
-      } else {
-        this.metaPersistence.persistMetaEntriesSafely(persisted.id, mergedMeta, undefined, {
-          dropPolicy: 'drop',
-          maxQueueWaitMs: 10_000
-        })
-      }
-    }
-
-    this.updateMemoryCache(persisted)
-    this.notifyTransportChange()
-
-    return persisted
   }
 
   private startClipboardMonitoring(): void {

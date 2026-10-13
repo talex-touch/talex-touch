@@ -47,22 +47,42 @@ export function includesAnyClipboardFormat(formats: string[], candidates: Set<st
 
 interface ClipboardFreshnessItem {
   id?: number
+  type?: string
+  content?: string
 }
 
 export class ClipboardFreshnessStore {
-  private readonly states = new Map<number, ClipboardFreshnessState>()
+  private readonly states = new Map<
+    number,
+    { freshness: ClipboardFreshnessState; capturedFilesContent?: string }
+  >()
 
   public remember(item: ClipboardFreshnessItem, freshness: ClipboardFreshnessState): void {
     if (typeof item.id !== 'number') return
-    this.states.set(item.id, freshness)
+    const captured =
+      freshness.captureSource === 'native-watch' ||
+      freshness.captureSource === 'background-poll' ||
+      freshness.captureSource === 'visible-poll' ||
+      freshness.captureSource === 'corebox-show-baseline'
+    this.states.set(item.id, {
+      freshness,
+      capturedFilesContent:
+        captured && item.type === 'files' && typeof item.content === 'string'
+          ? item.content
+          : undefined
+    })
   }
 
   public resolve(item: ClipboardFreshnessItem): ClipboardFreshnessState {
     if (typeof item.id === 'number') {
       const state = this.states.get(item.id)
-      if (state) return state
+      if (state) return state.freshness
     }
     return createIneligibleClipboardFreshnessState('startup-bootstrap')
+  }
+
+  public getCapturedFilesContent(id: number): string | undefined {
+    return this.states.get(id)?.capturedFilesContent
   }
 
   public delete(id: number): void {

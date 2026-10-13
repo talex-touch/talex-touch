@@ -1,11 +1,12 @@
 <script setup lang="ts" name="CoreBox">
 // import EmptySearchStatus from '~/assets/svg/EmptySearchStatus.svg'
 import type { IProviderActivate, ITuffIcon, TuffItem } from '@talex-touch/utils'
+import type { CoreBoxPreviewCopyRequest } from '@talex-touch/utils/transport/events/types'
 import type { ComponentPublicInstance } from 'vue'
 import type { IBoxOptions } from '../../modules/box/adapter'
 import type { IClipboardOptions } from '../../modules/box/adapter/hooks/types'
 import { useTuffTransport } from '@talex-touch/utils/transport'
-import { AppEvents, CoreBoxEvents } from '@talex-touch/utils/transport/events'
+import { AppEvents, ClipboardEvents, CoreBoxEvents } from '@talex-touch/utils/transport/events'
 import { useElementSize } from '@vueuse/core'
 import {
   computed,
@@ -18,6 +19,7 @@ import {
   watch
 } from 'vue'
 import { useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
 import { TxScroll } from '@talex-touch/tuffex/scroll'
 import { useDeferredLoading } from '@talex-touch/tuffex/skeleton'
 import { getStaggerDelay } from './stagger-delay'
@@ -32,7 +34,6 @@ import CoreBoxActionFeedback from '~/components/render/CoreBoxActionFeedback.vue
 import CoreBoxFooter from '~/components/render/CoreBoxFooter.vue'
 import CoreBoxRender from '~/components/render/CoreBoxRender.vue'
 import CoreBoxSelectionBlock from '~/components/render/CoreBoxSelectionBlock.vue'
-import PreviewHistoryPanel from '~/components/render/custom/PreviewHistoryPanel.vue'
 import { appSetting } from '~/modules/storage/app-storage'
 import { isDefaultWidgetRenderer } from '@talex-touch/utils/plugin/widget'
 import { isDivisionBoxMode, windowState } from '~/modules/hooks/core-box'
@@ -46,7 +47,6 @@ import { useFocus } from '../../modules/box/adapter/hooks/useFocus'
 import { useKeyboard } from '../../modules/box/adapter/hooks/useKeyboard'
 import { useListFlip } from '../../modules/box/adapter/hooks/useListFlip'
 import { useMotionGate } from '../../modules/box/adapter/hooks/useMotionGate'
-import { usePreviewHistory } from '../../modules/box/adapter/hooks/usePreviewHistory'
 import {
   captureFlipSnapshot,
   playFlip,
@@ -71,12 +71,6 @@ import { devLog } from '~/utils/dev-log'
 import { useI18n } from 'vue-i18n'
 import type { PluginEntityActionId } from '../../../../shared/plugin-entity'
 import { readPluginEntitySnapshot } from '../../../../shared/plugin-entity'
-
-declare global {
-  interface Window {
-    __coreboxHistoryVisible?: boolean
-  }
-}
 
 const scrollbar = ref()
 const boxInputRef = ref()
@@ -655,14 +649,7 @@ useChannel(boxOptions, searchVal)
 
 const { focusWindowAndInput, focusInput, getSummonId } = useFocus({
   boxInputRef,
-  getExpectedTarget: () =>
-    previewHistory.visible
-      ? 'history'
-      : shouldShowInput.value
-        ? 'input'
-        : isUIMode.value
-          ? 'plugin'
-          : 'none'
+  getExpectedTarget: () => (shouldShowInput.value ? 'input' : isUIMode.value ? 'plugin' : 'none')
 })
 
 function focusCoreBoxInput(): void {
@@ -682,13 +669,26 @@ function handleCoreBoxWindowFocus(): void {
   focusCoreBoxInput()
 }
 
-// Preview History hook
-const historyPanelRef = ref<InstanceType<typeof PreviewHistoryPanel> | null>(null)
-const previewHistory = usePreviewHistory({
-  searchVal,
-  focusInput,
-  panelRef: historyPanelRef
-})
+const copyPreviewHandler = async (payload: CoreBoxPreviewCopyRequest) => {
+  if (payload.item) {
+    try {
+      await transport.send(CoreBoxEvents.item.execute, { item: payload.item })
+      toast.success('结果已复制')
+    } catch {
+      toast.error('复制失败')
+    }
+    return
+  }
+
+  if (!payload.value) return
+  try {
+    await transport.send(ClipboardEvents.write, { text: payload.value })
+    toast.success('结果已复制')
+  } catch {
+    toast.error('复制失败')
+  }
+}
+const unregCopyPreview = transport.on(CoreBoxEvents.preview.copy, copyPreviewHandler)
 
 // Handle UI mode exit event from main process (ESC pressed in plugin UI view)
 const handleUIModeExited = (payload?: { resetInput?: boolean }) => {
@@ -754,6 +754,7 @@ onBeforeUnmount(() => {
   cleanupVisibility()
   unregUIModeExited()
   unregFocusInput()
+  unregCopyPreview()
   window.removeEventListener('corebox:shown', focusCoreBoxInput)
   window.removeEventListener('focus', handleCoreBoxWindowFocus)
   if (resWatchTimerId !== null) {
@@ -1368,7 +1369,6 @@ const customCss = computed(() => {
         'CoreBoxRes--visible': shouldShowResultArea
       }"
       :aria-busy="loading ? 'true' : undefined"
-      @contextmenu="previewHistory.handleContextMenu"
     >
       <!-- Hide result area when plugin UI view is attached -->
       <template v-if="shouldShowResultArea">
@@ -1479,16 +1479,6 @@ const customCss = computed(() => {
           @run-feature="handleExecute"
         />
       </template>
-
-      <!-- Preview History Panel - Always mounted to listen to events -->
-      <PreviewHistoryPanel
-        ref="historyPanelRef"
-        :visible="previewHistory.visible"
-        :loading="previewHistory.loading"
-        :items="previewHistory.items"
-        :active-index="previewHistory.activeIndex"
-        @apply="previewHistory.apply"
-      />
     </div>
   </div>
 </template>

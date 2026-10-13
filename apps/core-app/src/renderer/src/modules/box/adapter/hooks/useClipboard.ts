@@ -132,7 +132,12 @@ export function useClipboard(
       const pathList = JSON.parse(data.content)
       if (!pathList[0]) return false
 
-      boxOptions.file = { iconPath: pathList[0], paths: pathList }
+      boxOptions.file = {
+        iconPath: pathList[0],
+        paths: pathList,
+        clipboardId: data.id,
+        thumbnail: data.thumbnail
+      }
       boxOptions.mode = BoxMode.FILE
       markAsAutoPasted(data)
       return true

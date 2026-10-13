@@ -112,6 +112,7 @@ import { BaseModule } from '../modules/abstract-base-module'
 import { getStartupAnalytics } from '../modules/analytics'
 import { appProvider } from '../modules/box-tool/addon/apps/app-provider'
 import { fileProvider } from '../modules/box-tool/addon/files/file-provider'
+import { clipboardModule } from '../modules/clipboard'
 import {
   reportFileIndexTransportFailure,
   reportIndexedSourceTransportFailure,
@@ -1827,7 +1828,11 @@ export class CommonChannelModule extends BaseModule {
             return { success: false, errorCode: 'FILE_INDEX_PREVIEW_PATH_INVALID' }
           }
           try {
-            const previewPath = await fileProvider.resolvePreviewResourcePath(inputPath)
+            const clipboardId = payload?.clipboardId
+            const previewPath =
+              clipboardId === undefined
+                ? await fileProvider.resolvePreviewResourcePath(inputPath)
+                : await clipboardModule.resolveCapturedFilePreviewPath(clipboardId, inputPath)
             if (!previewPath) {
               return { success: false, errorCode: 'FILE_INDEX_PREVIEW_NOT_AVAILABLE' }
             }

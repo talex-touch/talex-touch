@@ -707,7 +707,7 @@ export function guardWidgetDomNavigation(widgetId: string, event: Event): boolea
 
 export function runWidgetHostAction(
   widgetId: string,
-  operation: 'clipboard.hostAction' | 'history.hostAction' | 'hostAction.invoke',
+  operation: 'clipboard.hostAction' | 'hostAction.invoke',
   callback: () => void
 ): boolean {
   const policy = policies.get(widgetId)

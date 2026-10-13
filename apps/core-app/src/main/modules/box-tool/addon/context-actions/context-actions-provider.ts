@@ -601,23 +601,63 @@ export class ContextActionsProvider implements ISearchProvider<ProviderContext> 
 
   private readonly builtinProvider = new BuiltinContextActionProvider()
   private readonly executionStates = new Map<string, ContextActionExecutionState>()
+  private resolveContextInput(
+    query: TuffQuery
+  ): { input: ContextActionInput; sessionId: string; isContextAction: boolean } | null {
+    if (isContextActionQuery(query)) {
+      const input = getContextActionInput(query)
+      if (input) {
+        return { input, sessionId: query.context.contextAction.sessionId, isContextAction: true }
+      }
+    }
+    const imageInput = query.inputs?.find((i) => i.type === TuffInputType.Image)
+    if (imageInput && typeof imageInput.content === 'string' && imageInput.content.trim()) {
+      return {
+        input: {
+          type: 'image',
+          source: 'clipboard-image',
+          content: imageInput.content,
+          mimeType: 'image/png',
+          capturedAt: Date.now(),
+          available: true
+        },
+        sessionId: 'corebox-image-action',
+        isContextAction: false
+      }
+    }
+    return null
+  }
 
   async onSearch(query: TuffQuery, signal: AbortSignal): Promise<TuffSearchResult> {
     const startedAt = performance.now()
-    const input = getContextActionInput(query)
-    if (!input || !isContextActionQuery(query) || signal.aborted) {
+    const resolved = this.resolveContextInput(query)
+    if (!resolved || signal.aborted) {
       return this.createResult(query, startedAt, [])
     }
 
-    const sessionId = query.context.contextAction.sessionId
+    const { input, sessionId, isContextAction } = resolved
     if (!input.available) {
       return this.createResult(query, startedAt, [this.buildContextItem(sessionId, input)])
     }
 
-    const matches = await this.builtinProvider.match(input)
+    let matches = await this.builtinProvider.match(input)
+    const rawQueryText = query.text?.trim()
+    if (rawQueryText) {
+      const target = rawQueryText.toLowerCase()
+      matches = matches.filter((match) => {
+        const title = match.title.toLowerCase()
+        const desc = match.description.toLowerCase()
+        return (
+          title.includes(target) ||
+          desc.includes(target) ||
+          match.actionId.toLowerCase().includes(target)
+        )
+      })
+    }
+
     const pluginItems = await this.buildPluginItems(query, input, signal)
     const items = [
-      this.buildContextItem(sessionId, input),
+      ...(isContextAction ? [this.buildContextItem(sessionId, input)] : []),
       ...this.buildExecutionResultItems(sessionId),
       ...matches.map((match) => this.buildActionItem(sessionId, match)),
       ...pluginItems
@@ -638,10 +678,11 @@ export class ContextActionsProvider implements ISearchProvider<ProviderContext> 
 
     const meta = getContextActionMeta(args.item)
     const query = args.searchResult?.query
-    const input = query ? getContextActionInput(query) : null
-    if (!meta || !input || !query || !isContextActionQuery(query)) {
+    const resolved = query ? this.resolveContextInput(query) : null
+    if (!meta || !resolved) {
       return null
     }
+    const { input } = resolved
 
     const match = (await this.builtinProvider.match(input)).find(
       (candidate) => candidate.actionId === meta.actionId
@@ -664,6 +705,9 @@ export class ContextActionsProvider implements ISearchProvider<ProviderContext> 
       result
     })
     this.trimExecutionStates()
+    if (result.status === 'success' && result.output?.type === 'text') {
+      clipboard.writeText(result.output.text)
+    }
 
     // A context action the provider actually ran (not the `ACTION_UNAVAILABLE` fallback) is a use;
     // an error result means the action failed and must not count.

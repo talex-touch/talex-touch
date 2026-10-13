@@ -2,8 +2,7 @@
 import type { TuffItem } from '@talex-touch/utils'
 import type { PreviewCardPayload } from '@talex-touch/utils/core-box'
 import { TxButton } from '@talex-touch/tuffex/button'
-import { hasWindow } from '@talex-touch/utils/env'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -14,29 +13,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'show-history'): void
   (e: 'copy-primary'): void
 }>()
-
-const historyVisible = ref(hasWindow() ? !!window.__coreboxHistoryVisible : false)
-const HISTORY_VISIBILITY_EVENT = 'corebox:history-visibility-change'
-
-function handleHistoryVisibility(event: Event): void {
-  const detail = (event as CustomEvent<{ visible: boolean }>).detail
-  historyVisible.value = !!detail?.visible
-}
-
-onMounted(() => {
-  if (hasWindow()) {
-    window.addEventListener(HISTORY_VISIBILITY_EVENT, handleHistoryVisibility)
-  }
-})
-
-onBeforeUnmount(() => {
-  if (hasWindow()) {
-    window.removeEventListener(HISTORY_VISIBILITY_EVENT, handleHistoryVisibility)
-  }
-})
 
 const resolvedPayload = computed<PreviewCardPayload | undefined>(() => {
   if (props.payload) return props.payload
@@ -80,18 +58,14 @@ const accentStyle = computed(() => {
       <div class="card-actions">
         <TxButton variant="bare" class="hint" native-type="button" @click="emit('copy-primary')">
           <span class="hint-key">↵</span>
-          {{ t('previewHistory.copyResult', '复制结果') }}
-        </TxButton>
-        <TxButton variant="bare" class="hint" native-type="button" @click="emit('show-history')">
-          <span class="hint-key">{{ historyVisible ? '⌘→' : '⌘←' }}</span>
-          {{ t('previewHistory.recentTitle', '最近处理') }}
+          {{ t('previewCard.common.copyResult', '复制结果') }}
         </TxButton>
       </div>
     </div>
     <div class="card-body">
       <div class="primary">
         <div class="primary-label">
-          {{ resolvedPayload?.primaryLabel || t('previewHistory.resultLabel', '结果') }}
+          {{ resolvedPayload?.primaryLabel || t('previewCard.common.result', '结果') }}
         </div>
         <div v-if="qrCodeSrc" class="qr-preview">
           <img :src="qrCodeSrc" alt="QR Code" />

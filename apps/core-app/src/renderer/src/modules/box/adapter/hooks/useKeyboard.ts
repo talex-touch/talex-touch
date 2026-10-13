@@ -183,12 +183,6 @@ function navigateGridUp(
   return currentIndex
 }
 
-declare global {
-  interface Window {
-    __coreboxHistoryVisible?: boolean
-  }
-}
-
 /**
  * Keys that should always be forwarded to plugin UI view when in UI mode.
  * ArrowLeft/ArrowRight are NOT forwarded unless meta/ctrl is pressed,
@@ -438,14 +432,6 @@ export function shouldForwardKey(event: KeyboardEvent, inputHidden = false): boo
     return false
   }
 
-  // Never forward ⌘←/⌘→ - reserved for CoreBox history panel
-  if (
-    (event.metaKey || event.ctrlKey) &&
-    (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
-  ) {
-    return false
-  }
-
   // Never forward ⌘K/Ctrl+K - reserved for MetaOverlay panel
   if ((event.metaKey || event.ctrlKey) && (event.key === 'k' || event.key === 'K')) {
     return false
@@ -639,8 +625,6 @@ export function useKeyboard(
   function runResultListActionShortcut(event: KeyboardEvent): boolean {
     if (!event.metaKey && !event.ctrlKey) return false
     if (isImeComposing(event)) return false
-    // An in-page layer that owns the keyboard: the calculation history.
-    if (window.__coreboxHistoryVisible) return false
 
     const item = resolveQuickActionsItem(res.value, boxOptions.focus, activeActivations.value)
     if (!item) return false
@@ -768,22 +752,8 @@ export function useKeyboard(
       return
     }
 
-    // Debug: log ⌘← events
-    if (event.metaKey && event.key === 'ArrowLeft') {
-      devLog(
-        '[useKeyboard] ⌘← after class check, uiMode:',
-        uiMode,
-        'shouldForward:',
-        shouldForwardKey(event, inputHidden)
-      )
-    }
-
-    // ⌘/Ctrl+←/→ stay reserved for the CoreBox calculation-history panel while results are on
-    // screen (`shouldForwardKey` blocks them), but an attached plugin view owns the surface: it
-    // advertises these keys for its own category/step navigation, and there are no results to
-    // browse. Without this the key died in the host input and never reached the plugin view,
-    // which is a separate webContents with its own keydown listener.
-    //
+    // An attached plugin view owns modified horizontal arrows for category/step navigation;
+    // these keys must reach its separate webContents even with a visible host input.
     // A detached DivisionBox window is the same situation without CoreBox's activations: its
     // plugin view is attached by the division-box session (the core-box module adds the
     // `division-box` body class), and the main process routes the forwarded key to that session.
@@ -913,16 +883,9 @@ export function useKeyboard(
       }
       event.preventDefault()
     } else if (event.key === 'ArrowLeft') {
-      // Meta+Left: show calculation history (check first to ensure it works in all modes)
-      if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
-        devLog('[useKeyboard] Dispatching corebox:show-calculation-history event')
-        window.dispatchEvent(new CustomEvent('corebox:show-calculation-history'))
-        event.preventDefault()
-        return
-      }
       const isGrid = boxOptions.layout?.mode === 'grid'
       // Grid mode: move left
-      if (isGrid) {
+      if (isGrid && !event.metaKey) {
         if (boxOptions.focus > 0) {
           boxOptions.focus -= 1
         }
@@ -938,14 +901,6 @@ export function useKeyboard(
         }
         event.preventDefault()
         return
-      }
-      // Meta+Right: hide calculation history
-      if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
-        if (window.__coreboxHistoryVisible) {
-          window.dispatchEvent(new CustomEvent('corebox:hide-calculation-history'))
-          event.preventDefault()
-          return
-        }
       }
     } else if (event.key === 'Backspace') {
       if (
