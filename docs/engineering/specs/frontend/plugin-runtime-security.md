@@ -1335,7 +1335,7 @@ interface WidgetSandboxQuotaEvidence {
 
 runWidgetHostAction(
   widgetId: string,
-  operation: "clipboard.hostAction" | "history.hostAction" | "hostAction.invoke",
+  operation: "clipboard.hostAction" | "hostAction.invoke",
   callback: () => void,
 ): boolean;
 ```

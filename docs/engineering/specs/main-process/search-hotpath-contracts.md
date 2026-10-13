@@ -62,6 +62,10 @@ worker replies or times out. Failure, premature exit, timeout and close settle
 every pending caller without replay or a synchronous main-thread fallback. Core
 closes both readers from its shutdown finally path, after normal writer drains.
 
+File semantic recall owns a separate `semantic` reader lane over the same worker script and physical read home. The host sends the query vector, model identity and top-K limit; the worker keyset-pages 128 embeddings at a time, rejects invalid/wrong-space vectors and retains only the best chunk per top-K file. Full vector rows and cosine loops never cross to Electron main or renderer. A shared cancellation flag stops page/row work after caller cancellation; retire/shutdown still waits for native reads instead of terminating a libSQL thread. `EmbeddingService.close()` prevents a late query embedding from reopening a reader, and provider shutdown closes this lane. File-vector counts also use the reader.
+
+Canonical keyword mappings are lowercase. Prefix lookup combines escaped literal LIKE with an explicit BINARY keyword range so the provider/keyword index bounds the scan; compute the exclusive Unicode successor rather than appending U+FFFF, which would omit astral continuations. FTS reads use the native `rank` cursor with explicit `rank MATCH 'bm25()'`, preserving BM25 scores without an external SQL sort. Never extend provider deadlines to hide query or queue latency. The existing fast-layer snapshot is published even when empty; deferred SQL, native Spotlight and semantic inference do not hold that snapshot.
+
 ### 5. Measure input delivery separately from SQL wall time
 
 Short-lived search sessions use typed IPC by default, not a fresh MessagePort

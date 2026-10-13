@@ -288,12 +288,13 @@ let pendingRefreshReconcile: RefreshReconcile | null
 - Only `setSearchResults` carries `renderedTextQuery` along with the rows (and `applySearchSnapshot`,
   which sets it); any other assignment to `searchResults.value` ends the match on purpose, so a run
   never merges into rows another query left.
-- Constraint: `mergeRenderedItems` is append-only (session talex-touch-51, user decision
-  2026-09-26). A row on screen keeps its index and takes the newer data; arrivals are ranked among
-  themselves and appended, pinned arrivals join the pinned block, and the focused row (`keepItemId`)
-  is never quota-evicted. The reconcile may remove rows that were not delivered again; it must never
-  re-rank the survivors by the new snapshot. Focus follows its item only when `focus > 0`; an
-  untouched selection stays on row 0.
+- Constraint: ordinary `mergeRenderedItems` arrivals remain append-only (session talex-touch-51,
+  2026-09-26). Existing rows keep their relative order and take newer data; pinned arrivals join
+  the pinned block, and the focused row (`keepItemId`) is never quota-evicted. The user's default
+  semantic-priority correction (2026-10-12) allows new semantic rows to insert after every stronger
+  or equal-scoring row and pin, only when `keepItemId` is absent. With focus > 0 they append too.
+  Reconcile may remove undelivered rows but never re-ranks survivors. Focus follows its item only
+  when `focus > 0`; the untouched selection stays on row 0. See frontend CoreBox results contracts.
 
 ### 4. Validation & Error Matrix
 
@@ -788,6 +789,13 @@ export function pushIndexWorkerFailureSample(samples: string[], lastError: strin
 
 - **Content indexing is opt-in.** `contentIndexingEnabled` has one shared default, `false`; missing or invalid historical values normalize to that value. A fresh config records the current `contentIndexCleanupVersion`; a non-empty historical config without the field normalizes to 0, performs one fenced cleanup, then records the current version. This avoids scanning the FTS content column on every disabled startup while retaining retry-after-failure. While disabled, fullScan/watch acknowledgements do not mark progress, schedule the parser or generate file embeddings. File FTS queries exclude the `content` column, so stale pre-policy text cannot match before cleanup finishes.
 - **Base scan and enrichment are separate phases.** While a file scan owns `isInitializing`, base writes may leave durable pending work but cannot dispatch content batches. `drainIndexedSourceMutations` requests resume only after the base snapshot and its ordered publication finish; the resume lease cannot overtake the scan lease.
+- **Image completion belongs to the embedding transaction (2026-10-12).** The parser emits an image
+  as `pending` until the local encoder commits its vector, file embedding state and completed
+  progress together. Flush's final confirmation only persists original terminal worker outcomes
+  (`completed`, `skipped`, `failed`); it never replays an original `pending` / `processing` image
+  after that transaction. Without this guard, completed images return to the recovery queue and
+  repeatedly occupy the head of a partially admitted page. Failed or unavailable image encoding
+  remains durably pending, not falsely completed.
 - **Disable is a fenced cleanup.** The main process suppresses intake, stops resume timers, cancels queued enrichment and drains committed work. Inside one source mutation lease and one Writer admission, it clears `files.content`, file embeddings, `file_index_progress` and `search_index.content` without deleting file metadata. The SourceScoped writer then crosses the reader visibility barrier and publishes one file-source commit. Only after that succeeds does `saveMainConfigDurable` persist `false`; enabling likewise durably saves `true` before resume starts. Cleanup or durable-save failure leaves the prior setting in memory and on disk, and re-arms resume when that prior setting is enabled, so the UI cannot claim a transition succeeded.
 
 - **No self-excitation.** Each page runs inside `withMutationLease`: `scheduleIndexing(rows, label,
@@ -799,10 +807,18 @@ leaseId)`, then `waitForSearchIndexDrain(label, leaseId)`. A leased `applySource
   (`scheduleFollowUp` arms at most one, `unref`'d). A round that ends `paused` or `wrapped`, or with a
   rerun requested, schedules one follow-up. The wait is `min(45s, lastRoundEndedAt + 45s −
 Date.now())`, so a wall clock set back never holds recovery longer than one cooldown.
-- **Cursor.** A keyset cursor on `files.id` survives across rounds. It advances only over a page the
-  scheduler admitted entirely (`deferred === 0`); a partly admitted page is queried again. At the end
-  of the table it resets to 0, and a round that began mid-table ends `wrapped`, so the head gets its
-  pass in the follow-up.
+- **Independent fresh / retry / legacy cursors (2026-10-12).** Missing progress forms the fresh
+  lane; `pending` / `processing` forms retry; previously skipped images with
+  `lastError: 'content-indexing-disabled'` form legacy only while the media model is ready.
+  Each round starts fresh and rotates one page opportunity through fresh → retry → legacy.
+  Empty lanes are skipped; other admitted work or a stuck-page advance permits another probe.
+  Legacy's whole-page pending marker may move its unadmitted suffix into retry, never into fresh:
+  new files cannot wait for all historic retries, and neither retries nor legacy backfill starve
+  under continuous fresh arrivals. All lanes retain 200-row pages and the bounded scheduler.
+  Each keyset cursor advances only on full admission; partial suffixes remain recoverable while
+  peers get a turn. At exhaustion the persistent cursor wraps to 0, but the current round keeps
+  its last scanned position to check newly arrived higher ids. The next cooldown round recovers
+  lower-id re-armed work. No new timers, schema markers or in-memory file queue.
 - **Failures.** A chunk failure (`INDEXED_WORKER_SCHEDULER_DISPATCH_FAILED` from the page's drain)
   fails only that page: `drainPage` settles the flush and the round moves on, because per-file
   failures are terminal. Stuck-page guard: a partly admitted page whose dispatch failed and that comes
@@ -811,9 +827,9 @@ Date.now())`, so a wall clock set back never holds recovery longer than one cool
 enrichment recovery paused`), as do five consecutive iterations that admit nothing; the follow-up
   retries after the cooldown.
 - **Read-failure classes.** `TextFileParser` returns the errno as `errorCode`, and the worker
-  classifies it before counting a failure. Resume selects only rows with no progress or with
-  `pending` / `processing`, so a skipped row is not retried until a write marks its file pending
-  again.
+  classifies it before counting a failure. Fresh / retry recovery selects only missing progress or
+  `pending` / `processing`; the legacy lane only re-arms old disabled-image skips. Other skipped
+  rows are not retried until a later write marks the file pending again.
   - ENOENT / ENOTDIR → `skipped` with `lastError: 'file-missing'`, not counted. Not published:
     `publishCommittedWorkerRecords` drops it, and a flush of only missing files applies no batch and
     commits nothing. The stale search row goes lazily, through `cleanupStaleSearchCandidates` when a

@@ -55,15 +55,20 @@
 
 ### 🔴 已证实缺陷（代码级验证过）
 
-- [x] **B1 — 本地 Provider 页级写入与召回已验收** ✅（2026-10-11 隔离真实模型与数据库；packaged helper 单独验收）
+- [x] **B1 — 本地 Provider 页级及图片写入与召回已验收** ✅（2026-10-11 PDF；2026-10-12 隔离模型及正式 dev 原图闭环；packaged helper 单独验收）
   - 位置：`addon/files/services/file-provider-search-result-service.ts:450-493`（hash 对应 chunk 生成真实 deepMatch 与 semanticScore）、`addon/files/embedding-service.ts:242-306`（chunk 生成、模型空间校验、版本 fence、单写者事务写入）。
   - 已交付（读侧，`cbbd6ba7a`）：`FileProvider.semanticRecall` + search-core `scheduleDeferredSemanticRecall`（`search-core.ts:875-912`，调用点 `:1413-1420`），首帧后异步召回并写入真实 `semanticScore`。这部分确实存在且可用。
   - **已接通（写侧，`09-29-bounded-fd-fzf-file-indexing` 工作树）**：`FileProviderEmbeddingIndexService.indexCommittedEntries` 在主进程 flush 后调用 `EmbeddingService.indexFiles`，能够访问 tuffIntelligence SDK；正文索引关闭时不调用，开启后只处理实际提取到正文的文件。
     - `contentIndexingEnabled` 默认 `false`。用户确认开启后，已有 metadata 通过 durable `file_index_progress` 分页补齐；关闭会清除 `files.content`、文件 embeddings、progress 和 FTS content，保留 metadata。
     - 2026-09-29 隔离 Electron 实测：开启后已有 `.txt` metadata 在不重扫目录的情况下达到 `content_length=97 / status=completed / FTS 正文命中=1`；关闭后 `content/embeddings/progress/FTS 正文命中` 均为 0，metadata 与标题 FTS 仍在。
   - **本轮端到端证据（2026-10-11 补证）**：从真实四页 FlateDecode PDF 经 `fileParserRegistry` 解码，再由 mapper/repository 将正文与页级 chunks 写入独立 SQLite 文件。真实 `LocalProvider` 调用固定版本 EmbeddingGemma 2，生成每页 768 维向量；`EmbeddingService` 经 split 单写者批事务落库，primary 向量表为空，文件状态为 `completed`。关闭并重开 search 库后，`semanticSearch` 断言胜出 hash 等于真实第 4 页 hash；`FileProviderSearchResultService.semanticRecall` 断言返回第 4 页和完整宠物条款。关闭正文开关的 public policy 经真实 repository 清掉正文、chunks 与向量，文件目录和无关图标元数据保留。真实模型 smoke 1/1 通过；未启动第二 Electron，未写正式 profile。SDK quota/audit 与禁止本地失败回云另由回归覆盖；正式 packaged helper 未验收。
+  - **图片补证（2026-10-12）**：PNG／JPEG／WebP／GIF／TIFF 由显式开启的内容索引及既有目录／容量门禁准入；host-only 本地模型使用固定 media 权重、无符号链接的有界规范快照，文字与图片同空间，不调用云 fallback。真实 PNG 经 worker → repository → SDK → split 单写者 → 数据库关闭重开 → 实际 `semanticRecall`，`猫`／`宠物`／`一只猫`／`a pet cat` 均首位返回原图；正文保持 NULL，primary 无向量，无手工描述。补齐汉字短词门禁、官方查询任务提示词，以及首帧后推理在会话完成前发布的生命周期；此证据不代表旧 dev 主进程热替换或 packaged helper 已验收。
+  - **正式实例前提与线程隔离（2026-10-12）**：用户当前 dev 未配置图像 helper、hash 或模型目录，目标图片的正式向量仍为 0，不能把隔离验收当成正式搜索已可用。向量扫描及评分已移入独立 semantic 读线程，只返回 top-K 文件和胜出分段 hash；正式库只读扫描 290 ms，隔离 Node 宿主心跳最大间隔 16 ms。实际 CoreBox 图片召回等待明确授权配置并重启后验收，不扩大正文授权、不自动下载模型。12 个套件／211 项相关回归及 Node 类型检查通过。
+  - **正常启动接线（2026-10-12 后续）**：用户明确授权稳定安装和重启当前 dev，已有权重与 helper 已无重复副本迁入 Tuff 应用数据目录。固定位置的安装记录严格验证平台、架构、版本、绝对路径和 helper SHA；显式 helper 不能借用记录的 SHA。清空模型环境变量后，真实原 PNG 编码及 `cat` 向量对比通过（0.7299），正式实例已开始按原 opt-in 和目录规则发布图片向量。旧原图的 CoreBox 召回仍需等实际后台发布后取证；不扩大目录、不绕单写者、不手工填向量。Node／Web 类型、CoreApp 212 项及 Utils 51 项回归通过。
+  - **正式原图闭环（2026-10-12 最终）**：用户授权的手动局部刷新保留元数据，在同一 mutation lease 内按原内容授权恢复旧 skipped 任务，再经正常 writer ack／worker／SDK／单写者生成正式向量。原图为 completed、正文 NULL、向量 1 行；正式语义读线程对 `cat` 排名第 1（0.7299）。移除 20 条字面候选关闭语义召回的门槛后，真实 CoreBox 当次 854 ms 追加原文件名，未重排已有结果。窗口临时固定以防协议验收被自动失焦隐藏取消，已恢复，不冒充原生全局键盘焦点验收。最终 Node 类型检查及 4 套件／105 项回归通过，正式发布资源仍未验收。
   - **历史取证保留**（2026-09-18，本机 4 个真实库）：当时 `embeddings` 表 0 行；`files` 合计 155,716 行，`embedding_status` 仅有 `none`/`pending`。该数据是修复前基线，不再表述当前工作树的写侧为零调用。
-  - **约束 carve-out**：渲染端 `search.update` 合并为 append-only（`mergeRenderedItems`）且 `useSearch.ts`/`CoreBox.vue` 为受保护用户改动，故延迟 pass **无法重排已渲染项**，仅能召回追加。"重排已渲染项"另记入下方 backlog。
+  - **默认排序补正（2026-10-12）**：用户反馈 `a pet cat` 的原图低于 `deploy.sh`。语义候选原先直接发布 0–1 相似度且一律追加，现经既有 full enrichment 和 sorter 发布同量纲 final；文件语义贡献最高 400 match 分，低于 stem exact 420 和完整名字 1000。未选择结果时，新语义项可插入弱项前，但保留所有已有更强／同分项、置顶项和已有相对次序；选择后仍追加。普通晚到结果和已有项重排不扩范围。
+  - **新狗图正常入库闭环（2026-10-13）**：新 PNG 文件已存在，但无 progress／向量。真实库还出现 111 张已生成向量的图片被旧 pending 进度覆盖；flush 尾阶段现只确认原始终态，图片完成归向量事务所有。另有约 9,865 张旧 disabled-image skips 与普通任务混排，整页预标 pending 的溢出继续污染普通队列；最终分 fresh／retry／legacy 独立游标公平轮转，新文件不再等全库旧图补完。正常队列将原狗图写为 embedding completed／progress completed=100／向量 1／正文 NULL；真实 CoreBox 的 `dog` 默认第 1，当次 2026 ms。无手动重加或伪向量，原文件不改；临时固定窗口已恢复，不冒充全局键盘焦点与 packaged 验收。
 
 - [x] **B2 — 补全权重被绕过** ✅ 已修（`07-13-fix-ranking-dead-features`）
   - 位置：`search-engine/query-completion-service.ts:191`（写 `item.scoring.match *= boost`）vs `search-engine/sort/tuff-sorter.ts:254`（排序用 `calculateMatchScore` 重算，只读 `scoring.recency/frequency`，**不读 `scoring.match` 或 `meta.completion`**）
@@ -251,7 +256,7 @@
 
 ### 遗留 carve-out（B1 派生，未做）
 
-- [ ] **延迟语义"重排"已渲染项**：当前只做召回追加。要让语义分改变已渲染项顺序，需改渲染端 `useSearch.ts` 合并语义或加 replace-mid-session 事件——属受保护用户改动，暂缓。
+- [ ] **延迟语义重排已有项目**：2026-10-12 已按用户反馈支持未选择时的新语义项目插入，并统一评分；已有项目仍不互相重排，已选择时仍追加。全列表重排或 replace-mid-session 不属于本轮范围。
 
 ## 验收标准
 
