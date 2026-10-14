@@ -230,8 +230,9 @@ describe('speech catalog failure projection', () => {
 
   it('reuses in-memory cached catalog on consecutive calls within TTL', async () => {
     const fakeCatalog: ParsedSpeechModelCatalog = {
-      catalog: { generatedAt: '2026-10-14T00:00:00Z', models: [], runtimes: [] },
+      catalog: { schemaVersion: 1, generatedAt: '2026-10-14T00:00:00Z', models: [], runtimes: [] },
       items: [],
+      runtimes: [],
       recommended: null
     }
     vi.mocked(parseSpeechModelCatalog).mockReturnValueOnce(fakeCatalog)
