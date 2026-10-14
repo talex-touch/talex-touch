@@ -10,7 +10,11 @@ import { appSetting } from '~/modules/storage/app-storage'
 import { BoxMode } from '..'
 import { getLatestClipboard } from './useClipboardChannel'
 import { setRendererActivity } from '~/modules/telemetry/renderer-activity'
-import { clearImplicitClipboardState, isClipboardFreshForAutoPaste } from './clipboard-autopaste'
+import {
+  clearImplicitClipboardState,
+  isClipboardDismissed,
+  isClipboardFreshForAutoPaste
+} from './clipboard-autopaste'
 
 interface UseVisibilityOptions {
   boxOptions: IBoxOptions
@@ -117,15 +121,14 @@ export function useVisibility(options: UseVisibilityOptions) {
       const clipboard = await getLatestClipboard({ refresh: true })
       if (clipboard?.content || clipboard?.thumbnail || clipboard?.type === 'files') {
         const canAutoPaste =
+          !isClipboardDismissed(clipboard, clipboardOptions) &&
           wasTriggeredByShortcut.value &&
           isClipboardFreshForAutoPaste(clipboard, appSetting.tools.autoPaste)
 
         if (canAutoPaste) {
           handlePaste({ triggerSearch: true, attemptAutoFill: true })
         } else {
-          clipboardOptions.last = clipboard
-          clipboardOptions.detectedAt = Date.now()
-          clipboardOptions.activeClipboardSource = 'auto'
+          clearImplicitClipboardState(clipboardOptions)
         }
       } else {
         clearImplicitClipboardState(clipboardOptions)

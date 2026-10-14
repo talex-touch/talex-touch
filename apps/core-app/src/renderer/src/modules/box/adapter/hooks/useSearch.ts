@@ -46,8 +46,8 @@ import { isBackgroundAppLaunchItem } from './app-launch-item'
 import { buildClipboardQueryInputs } from './clipboard-query-inputs'
 import {
   clearImplicitClipboardState,
-  isClipboardFreshForAutoPaste,
-  normalizeClipboardTimestamp
+  isClipboardDismissed,
+  isClipboardFreshForAutoPaste
 } from './clipboard-autopaste'
 import { alignItemsToSections } from './section-order'
 import { getLatestClipboard } from './useClipboardChannel'
@@ -1024,13 +1024,7 @@ export function useSearch(
         return
       }
 
-      const latestTimestamp = normalizeClipboardTimestamp(latest.timestamp)
-      const dismissedTimestamp = normalizeClipboardTimestamp(clipboardOptions.lastClearedTimestamp)
-      if (
-        latestTimestamp !== null &&
-        dismissedTimestamp !== null &&
-        latestTimestamp === dismissedTimestamp
-      ) {
+      if (isClipboardDismissed(latest, clipboardOptions)) {
         clearImplicitClipboardState(clipboardOptions)
         return
       }

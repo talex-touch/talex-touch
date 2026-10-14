@@ -12,6 +12,7 @@ import {
 } from './clipboard-text-utils'
 import {
   clearImplicitClipboardState,
+  isClipboardDismissed,
   isClipboardFreshForAutoPaste,
   isSameClipboardItem,
   normalizeClipboardTimestamp,
@@ -268,9 +269,8 @@ export function useClipboard(
       return
     }
 
-    const dismissedTimestamp = normalizeClipboardTimestamp(clipboardOptions.lastClearedTimestamp)
     const isSameClipboard = isSameClipboardItem(clipboardOptions.last, clipboard)
-    const isDismissed = !overrideDismissed && dismissedTimestamp === clipboardTimestamp
+    const isDismissed = !overrideDismissed && isClipboardDismissed(clipboard, clipboardOptions)
 
     if (isDismissed) {
       autoPasteActive.value = false
@@ -390,12 +390,7 @@ export function useClipboard(
         onNewItem: (item) => {
           if (!item?.type) return
 
-          const dismissedTimestamp = normalizeClipboardTimestamp(
-            clipboardOptions.lastClearedTimestamp
-          )
-
-          const incomingTimestamp = normalizeClipboardTimestamp(item.timestamp)
-          if (incomingTimestamp && dismissedTimestamp && incomingTimestamp === dismissedTimestamp) {
+          if (isClipboardDismissed(item, clipboardOptions)) {
             return
           }
 
