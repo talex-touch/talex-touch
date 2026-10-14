@@ -505,8 +505,11 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
                 v-model="filterOpenState[column.key]"
                 placement="bottom-start"
                 :offset="6"
+                :match-reference-width="false"
+                :min-width="130"
                 panel-background="pure"
                 :panel-radius="12"
+                :panel-padding="4"
                 panel-shadow="soft"
                 class="tx-data-table__filter-popover"
               >

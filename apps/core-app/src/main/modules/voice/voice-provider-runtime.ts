@@ -35,6 +35,7 @@ import {
   createNodeVoiceSocketFactory,
   DashscopeQwenAsrRealtimeVoiceProvider,
   DoubaoVoiceProvider,
+  DoubaoImeVoiceProvider,
   DynamicScriptVoiceProvider,
   loadInstalledModelSync,
   LocalOfflineVoiceProvider,
@@ -640,13 +641,32 @@ export function getConfiguredAsrProvider(): ConfiguredAsrProvider {
         })
       }
     }
+    case 'doubao-ime':
+      return {
+        model: model || 'bigmodel',
+        location: 'cloud',
+        mode: 'realtime',
+        provider: new DoubaoImeVoiceProvider({
+          socketFactory: createNodeVoiceSocketFactory()
+        })
+      }
     case 'doubao':
+      if (!metadata.resourceId || !credential) {
+        return {
+          model: model || 'bigmodel',
+          location: 'cloud',
+          mode: 'realtime',
+          provider: new DoubaoImeVoiceProvider({
+            socketFactory: createNodeVoiceSocketFactory()
+          })
+        }
+      }
       return {
         model,
         location: 'cloud',
         mode: 'realtime',
         provider: new DoubaoVoiceProvider({
-          credentials: { apiKey: credential, resourceId: metadata.resourceId! },
+          credentials: { apiKey: credential, resourceId: metadata.resourceId },
           socketFactory: createNodeVoiceSocketFactory(),
           httpClient: createFetchHttpClient(),
           streamOptions: { model }
