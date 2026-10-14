@@ -27,9 +27,13 @@ vi.mock('@talex-touch/tuff-voice', () => ({
   resolveInstalledRuntime: vi.fn(async () => null),
   resolveModelStoreRoot: () => '/models'
 }))
-
-import { fetchSpeechCatalog, projectSpeechCatalogApiError } from './speech-model-service'
-
+import type { ParsedSpeechModelCatalog } from '@talex-touch/tuff-voice'
+import { parseSpeechModelCatalog } from '@talex-touch/tuff-voice'
+import {
+  clearSpeechCatalogCache,
+  fetchSpeechCatalog,
+  projectSpeechCatalogApiError
+} from './speech-model-service'
 const VALID_CATALOG_BODY = '{"schemaVersion":1,"models":[],"runtimes":[]}'
 const MALFORMED_CATALOG_BODY = '{"schemaVersion":'
 // The digest verifyServedDigest recomputes for each body, so those cases clear the integrity
@@ -191,6 +195,7 @@ async function catalogFailure(): Promise<unknown> {
 describe('speech catalog failure projection', () => {
   beforeEach(() => {
     auth.performNexusRequestWithAuth.mockReset()
+    clearSpeechCatalogCache()
   })
 
   it.each(cases)('maps $name to $code', async ({ arrange, code, retryable }) => {
@@ -221,5 +226,29 @@ describe('speech catalog failure projection', () => {
     expect(projectSpeechCatalogApiError(new Error('raw upstream detail'))).toBeUndefined()
     expect(projectSpeechCatalogApiError('raw upstream detail')).toBeUndefined()
     expect(projectSpeechCatalogApiError(undefined)).toBeUndefined()
+  })
+
+  it('reuses in-memory cached catalog on consecutive calls within TTL', async () => {
+    const fakeCatalog: ParsedSpeechModelCatalog = {
+      catalog: { generatedAt: '2026-10-14T00:00:00Z', models: [], runtimes: [] },
+      items: [],
+      recommended: null
+    }
+    vi.mocked(parseSpeechModelCatalog).mockReturnValueOnce(fakeCatalog)
+
+    auth.performNexusRequestWithAuth.mockResolvedValueOnce(
+      nexusResponse({
+        headers: { 'x-content-sha256': VALID_CATALOG_DIGEST },
+        body: VALID_CATALOG_BODY
+      })
+    )
+
+    const first = await fetchSpeechCatalog()
+    expect(first.catalog.generatedAt).toBe('2026-10-14T00:00:00Z')
+    expect(auth.performNexusRequestWithAuth).toHaveBeenCalledTimes(1)
+
+    const second = await fetchSpeechCatalog()
+    expect(second).toBe(first)
+    expect(auth.performNexusRequestWithAuth).toHaveBeenCalledTimes(1)
   })
 })
