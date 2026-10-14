@@ -764,7 +764,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     })
     this.indexingProgressService = new FileProviderIndexingProgressService(() => this.dbUtils)
     this.writeSideEffectService = new FileProviderWriteSideEffectService({
-      processFileExtensions: (files) => this.extensionService.processFileExtensions(files),
+      processFileExtensions: (files) => this.processFileExtensions(files),
       scheduleIndexing: (files, reason, mutationLeaseId) =>
         this.scheduleIndexing(files, reason, mutationLeaseId),
       logWarn: (message, error, meta) => this.logWarn(message, error, meta)
@@ -3927,6 +3927,10 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       .select()
       .from(filesSchema)
       .where(inArray(filesSchema.id, ids))
+  }
+
+  private async processFileExtensions(files: (typeof filesSchema.$inferSelect)[]): Promise<void> {
+    return this.extensionService.processFileExtensions(files)
   }
 
   private createFileSearchItem(
