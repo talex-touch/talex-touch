@@ -39,6 +39,8 @@ interface TriggerOptions {
   triggeredByShortcut?: boolean
   /** Hide the CoreBox window synchronously before continuing follow-up work. */
   immediate?: boolean
+  /** Target screen for positioning */
+  screen?: Electron.Display
 }
 
 export class CoreBoxManager {
@@ -191,7 +193,7 @@ export class CoreBoxManager {
     if (show) {
       this.applyActivePressure()
       this.applyExpandState()
-      windowManager.show(options?.triggeredByShortcut ?? false)
+      windowManager.show(options?.triggeredByShortcut ?? false, undefined, options?.screen)
     } else {
       if (!this._isUIMode) {
         this._isCollapsed = true

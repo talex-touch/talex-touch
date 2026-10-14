@@ -12,11 +12,10 @@ import type {
   WorkerMetricsRequest,
   WorkerMetricsResponse
 } from './worker-status'
-import { getWorkerMemorySnapshot } from './worker-status'
+import { getWorkerMemorySnapshot, readWorkerThreadCpuUsage } from './worker-status'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import process from 'node:process'
 import { parentPort } from 'node:worker_threads'
 import { createHash } from 'node:crypto'
 import { fileParserRegistry } from '@talex-touch/utils/electron/file-parsers'
@@ -24,6 +23,7 @@ import {
   CONTENT_INDEXABLE_EXTENSIONS,
   getContentSizeLimitMB,
   getTypeTagsForExtension,
+  IMAGE_EMBEDDING_EXTENSIONS,
   KEYWORD_MAP
 } from '../constants'
 import {
@@ -120,7 +120,7 @@ function buildMetricsPayload(): WorkerMetricsPayload {
   return {
     timestamp: Date.now(),
     memory: getWorkerMemorySnapshot(),
-    cpuUsage: process.cpuUsage(),
+    cpuUsage: readWorkerThreadCpuUsage(),
     eventLoop: eventLoop
       ? {
           active: eventLoop.active,
@@ -137,6 +137,7 @@ const queue: IndexRequest[] = []
 const cancelledTaskIds = new Set<string>()
 let running = false
 let activeTaskId: string | null = null
+let activeParseController: AbortController | null = null
 function buildContentHash(content: string): string | null {
   if (!content) return null
   return createHash('sha256').update(content).digest('hex')
@@ -218,8 +219,34 @@ async function handleIndexTask(
     }
     const extension = (file.extension || path.extname(file.name) || '').toLowerCase()
     const indexable = CONTENT_INDEXABLE_EXTENSIONS.has(extension)
+    const imageEmbeddingCandidate = IMAGE_EMBEDDING_EXTENSIONS.has(extension)
     const size = await ensureFileSize(file)
     if (cancelledTaskIds.has(task.taskId)) break
+
+    // Image vectors are generated in the main process by the authorized local
+    // media encoder. The worker must never parse pixels or invent text content:
+    // retain a durable pending task until that encoder publishes the vector.
+    if (imageEmbeddingCandidate) {
+      emitFileResult(version, {
+        type: 'file',
+        taskId: task.taskId,
+        fileId: file.id,
+        progress: {
+          status: 'pending',
+          progress: 0,
+          processedBytes: 0,
+          totalBytes: size ?? null,
+          lastError: 'image-embedding-pending',
+          updatedAt: new Date().toISOString()
+        },
+        fileUpdate: {
+          content: null,
+          embeddingStatus: 'pending'
+        },
+        indexItem: buildSearchIndexItem(file, task.providerId, task.providerType)
+      })
+      continue
+    }
 
     if (!indexable) {
       emitFileResult(version, {
@@ -277,12 +304,17 @@ async function handleIndexTask(
     })
 
     let result: FileParserResult | null = null
+    const parseController = new AbortController()
+    activeParseController = parseController
     try {
       result = await fileParserRegistry.parseWithBestParser({
         filePath: file.path,
         extension,
         size: size ?? 0,
-        maxBytes
+        maxBytes,
+        maxOutputBytes: 200_000,
+        maxChunks: 1024,
+        signal: parseController.signal
       })
     } catch (error) {
       failed += 1
@@ -304,6 +336,8 @@ async function handleIndexTask(
         indexItem: buildSearchIndexItem(file, task.providerId, task.providerType)
       })
       continue
+    } finally {
+      if (activeParseController === parseController) activeParseController = null
     }
 
     if (cancelledTaskIds.has(task.taskId)) break
@@ -517,6 +551,7 @@ parentPort?.on('message', (payload: IndexRequest | CancelRequest | WorkerMetrics
   }
   if (payload.type === 'cancel') {
     cancelledTaskIds.add(payload.taskId)
+    if (activeTaskId === payload.taskId) activeParseController?.abort()
     const queuedIndex = queue.findIndex((task) => task.taskId === payload.taskId)
     if (queuedIndex >= 0) queue.splice(queuedIndex, 1)
     if (activeTaskId !== payload.taskId) cancelledTaskIds.delete(payload.taskId)

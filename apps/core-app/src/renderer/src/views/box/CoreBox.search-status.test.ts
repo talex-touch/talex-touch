@@ -196,17 +196,6 @@ vi.mock('../../modules/box/adapter/hooks/useKeyboard', () => ({
   useKeyboard: () => ({ scrollActiveItemIntoView: () => {} })
 }))
 
-vi.mock('../../modules/box/adapter/hooks/usePreviewHistory', () => ({
-  usePreviewHistory: () => ({
-    visible: false,
-    loading: false,
-    items: [],
-    activeIndex: 0,
-    handleContextMenu: () => {},
-    apply: () => {}
-  })
-}))
-
 vi.mock('../../modules/box/adapter/hooks/useVisibility', () => ({
   useVisibility: () => ({ cleanup: () => {}, checkAutoClear: () => {} })
 }))
@@ -264,7 +253,6 @@ const stubs = {
   },
   DivisionBoxHeader: { template: '<div />' },
   PrefixPart: { template: '<div />' },
-  PreviewHistoryPanel: { template: '<div />' },
   TagSection: { template: '<div />' },
   TuffIcon: { template: '<i />' },
   teleport: true

@@ -22,6 +22,8 @@ type ActiveTag =
       iconPath: string | null
       paths: string[] | null
       clipboardData: ClipboardItem | null
+      clipboardId?: number
+      thumbnail?: string | null
     }
   | { type: 'clipboard-text'; data: ClipboardItem }
   | { type: 'command' }
@@ -66,7 +68,9 @@ const activeTag = computed<ActiveTag>(() => {
       type: 'file',
       iconPath: props.boxOptions.file.iconPath ?? null,
       paths: props.boxOptions.file.paths,
-      clipboardData: null
+      clipboardData: null,
+      clipboardId: props.boxOptions.file.clipboardId,
+      thumbnail: props.boxOptions.file.thumbnail
     }
   }
   if (props.clipboardOptions.last?.type === 'files') {
@@ -107,6 +111,8 @@ const activeTag = computed<ActiveTag>(() => {
       :icon-path="activeTag.iconPath"
       :paths="activeTag.paths"
       :clipboard-data="activeTag.clipboardData"
+      :clipboard-id="activeTag.clipboardId"
+      :prepared-thumbnail="activeTag.thumbnail"
     />
 
     <!-- Text/HTML clipboard -->

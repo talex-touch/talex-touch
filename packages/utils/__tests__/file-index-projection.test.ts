@@ -3,6 +3,7 @@ import { AppEvents } from '../transport/events'
 import {
   projectFileIndexAddPathResult,
   projectFileIndexBatteryStatus,
+  projectFileIndexContentSettings,
   projectFileIndexFailedFile,
   projectFileIndexFailedFiles,
   projectFileIndexRebuildResult,
@@ -306,27 +307,52 @@ describe('file index public projection', () => {
     expectNoCanary(addPath)
   })
 
-  it('returns safe defaults for malformed status payloads', () => {
-    expect(projectFileIndexStatus(undefined)).toEqual({
-      isInitializing: false,
-      initializationFailed: false,
-      errorCode: null,
-      retryable: undefined,
-      reportId: null,
-      startupReady: undefined,
-      startupPending: undefined,
-      startupErrorCode: null,
-      progress: { stage: null, current: 0, total: 0 },
-      startTime: null,
-      estimatedCompletion: null,
-      estimatedRemainingMs: null,
-      averageItemsPerSecond: 0,
-      estimateStatus: undefined,
-      speedSampleCount: undefined,
-      estimateBasis: undefined,
+})
+
+describe('file index capacity public projection', () => {
+  const storage = {
+    status: 'low-space', availableBytes: 1024 ** 3, requiredBytes: 3 * 1024 ** 3, checkedAt: 1234,
+  }
+
+  it('retains paused opt-in and only the safe capacity fields at both transport surfaces', () => {
+    const rawStorage = { ...storage, path: POSIX_PATH_CANARY, error: SQL_CANARY, cause: CAUSE_CANARY }
+    const settings = projectFileIndexContentSettings({
+      contentIndexingEnabled: true, state: 'paused', storage: rawStorage, path: WINDOWS_PATH_CANARY,
     })
-    expect(projectFileIndexRebuildResult(null)).toEqual({ success: false })
-    expect(projectFileIndexFailedFiles(undefined)).toEqual({ files: [] })
+    const status = projectFileIndexStatus({
+      ...rawStatusPayload(), contentIndexingEnabled: true, contentIndexingState: 'paused', contentIndexStorage: rawStorage,
+    })
+    expect(settings).toEqual({ contentIndexingEnabled: true, state: 'paused', storage })
+    expect(status).toMatchObject({ contentIndexingEnabled: true, contentIndexingState: 'paused', contentIndexStorage: storage })
+    expect(status.contentIndexStorage).toEqual(storage)
+    expectNoCanary(settings)
+    expectNoCanary(status)
+  })
+
+  it.each([
+    { name: 'negative', value: -1 },
+    { name: 'fractional', value: 1.5 },
+    { name: 'infinite', value: Infinity },
+    { name: 'NaN', value: NaN },
+    { name: 'unsafe integer', value: Number.MAX_SAFE_INTEGER + 1 },
+    { name: 'numeric string', value: '1073741824' },
+    { name: 'private string', value: POSIX_PATH_CANARY },
+  ])('does not trust $name capacity amounts', ({ value }) => {
+    expect(projectFileIndexContentSettings({
+      contentIndexingEnabled: true, state: 'paused', storage: { ...storage, requiredBytes: value },
+    })).not.toHaveProperty('storage')
+    const status = projectFileIndexStatus({ contentIndexStorage: { ...storage, requiredBytes: value } })
+    expect(status).not.toHaveProperty('contentIndexStorage')
+    expect(projectFileIndexContentSettings({
+      contentIndexingEnabled: true, state: 'paused', storage: { ...storage, availableBytes: value },
+    }).storage).toEqual({ ...storage, availableBytes: null })
+  })
+
+  it('drops unknown capacity reasons and preserves legacy settings without invented storage evidence', () => {
+    const legacy = { contentIndexingEnabled: true, state: 'indexing' }
+    expect(projectFileIndexContentSettings(legacy)).toEqual(legacy)
+    expect(projectFileIndexContentSettings({ ...legacy, storage: { ...storage, status: POSIX_PATH_CANARY } })).toEqual(legacy)
+    expect(projectFileIndexStatus({ contentIndexingEnabled: true, contentIndexingState: 'indexing' })).not.toHaveProperty('contentIndexStorage')
   })
 })
 

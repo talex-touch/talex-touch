@@ -43,7 +43,7 @@
 
 ## Version-planned work
 
-- [ ] **2.5.1：文件搜索与文件动作融合。** P0（目录结果与 `.app` 去重、⌘K 打开方式与 7 组文件动作、应用版本与真实创建时间摘要、权限/删除错误反馈）代码与 209 项单测已落地；P1–P4（原生 Scanner 对比、按瓶颈评估名字加速、文件移动/复制/废纸篓、显式源码正文检索）待实施。方案、依赖、风险与验收见 [调研报告](../engineering/reports/file-search-integration-2.5.1-2026-10-11.md)。保留现有 Windows Everything、正文授权与单写者边界；技术采用须满足报告中的验证条件，本条不改变前述全局执行顺序。
+- [ ] **2.5.1：文件搜索与文件动作融合。** P0 与本轮正文语义穿透已落地：目录结果与 `.app` 去重、⌘K 打开方式与 7 组文件动作、应用版本与真实创建时间摘要、权限/删除错误反馈；B9 文件名错字 n-gram；PDF/code 分段、页码/行号片段和受控 EmbeddingGemma 2 本地 runtime contract 已接入，209 项既有单测及本轮分段/向量/预览回归通过。仍待实施的是 P1 原生 Scanner 对比、P3 文件移动/复制/废纸篓、P4 显式源码正文检索，以及签名 helper 的 packaged release 验收；模型与运行边界见 [调研报告](../engineering/reports/file-search-integration-2.5.1-2026-10-11.md)。本条不改变前述全局执行顺序。
 
 ## Release follow-ups
 

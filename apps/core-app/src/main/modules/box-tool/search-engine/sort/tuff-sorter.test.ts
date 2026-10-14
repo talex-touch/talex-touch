@@ -537,6 +537,70 @@ describe('tuff-sorter ranking strategy', () => {
     const sorted = tuffSorter.sort([first, second], { text: 'clip' } as TuffQuery, signal)
     expect(sorted[0]?.id).toBe('feature-first')
   })
+  it('搜 sz 或 设置 或 tuff sz 时 Tuff 设置应该排在最前', () => {
+    const destinationItem = createItem({
+      id: 'app-destination:settings-overview',
+      kind: 'command',
+      title: 'Tuff 设置',
+      sourceId: 'app-destination-provider',
+      searchTokens: [
+        'settings',
+        'preferences',
+        '设置',
+        '偏好设置',
+        'shezhi',
+        'sz',
+        'tuff sz',
+        'tuffsz'
+      ]
+    })
+    destinationItem.meta = {
+      ...destinationItem.meta,
+      extension: {
+        destinationId: 'settings-overview',
+        matchResult: [{ start: 5, end: 7 }],
+        searchTokens: [
+          'settings',
+          'preferences',
+          '设置',
+          '偏好设置',
+          'shezhi',
+          'sz',
+          'tuff sz',
+          'tuffsz'
+        ]
+      }
+    }
+
+    const otherAppItem = createItem({
+      id: 'app-shenzhen-pass',
+      kind: 'app',
+      title: '深圳通',
+      sourceId: 'app-provider',
+      searchTokens: ['sz', 'shenzhentong']
+    })
+
+    const sortedSz = tuffSorter.sort(
+      [otherAppItem, destinationItem],
+      { text: 'sz' } as TuffQuery,
+      signal
+    )
+    expect(sortedSz[0]?.id).toBe('app-destination:settings-overview')
+
+    const sortedShezhi = tuffSorter.sort(
+      [otherAppItem, destinationItem],
+      { text: '设置' } as TuffQuery,
+      signal
+    )
+    expect(sortedShezhi[0]?.id).toBe('app-destination:settings-overview')
+
+    const sortedTuffSz = tuffSorter.sort(
+      [otherAppItem, destinationItem],
+      { text: 'tuff sz' } as TuffQuery,
+      signal
+    )
+    expect(sortedTuffSz[0]?.id).toBe('app-destination:settings-overview')
+  })
 })
 
 describe('manifest priority is a bias, not an override', () => {
@@ -616,6 +680,148 @@ describe('files rank on their stem, below app and feature title matches', () => 
   function rank(items: TuffItem[], text: string): string[] {
     return tuffSorter.sort(items, { text } as TuffQuery, signal).map((item) => item.id)
   }
+
+  function createSemanticFile(id: string, similarity: number, name = 'IMG_9f3a2048.png'): TuffItem {
+    const item = createFileItem(id, name)
+    item.scoring = {
+      match_details: { type: 'semantic', query: 'a pet cat', confidence: similarity }
+    }
+    item.meta!.extension = { search: { semanticScore: similarity } }
+    return item
+  }
+
+  it('ranks a semantic cat with an unrelated filename above history-only and weak literal files', () => {
+    const semantic = createSemanticFile('semantic-cat', 0.73)
+    const history = createFileItem('history-deploy', 'deploy.sh')
+    history.scoring = { frequency: 30, recency: 1 }
+    const literal = createFileItem('literal-notes', 'notes-about-a pet cat.txt')
+
+    expect(rank([history, literal, semantic], 'a pet cat')).toEqual([
+      'semantic-cat',
+      'literal-notes',
+      'history-deploy'
+    ])
+  })
+
+  it.each([
+    { name: 'full filename', text: 'a pet cat.png', filename: 'a pet cat.png' },
+    { name: 'exact stem', text: 'a pet cat', filename: 'a pet cat.png' }
+  ])('keeps $name intent above the maximum semantic similarity', ({ text, filename }) => {
+    const exact = createFileItem('exact-file', filename)
+    const semantic = createSemanticFile('semantic-cat', 1)
+
+    expect(rank([semantic, exact], text)).toEqual(['exact-file', 'semantic-cat'])
+  })
+
+  it('ranks increasing valid similarities monotonically on the shared file score scale', () => {
+    const similarities = [0, 0.2, 0.5, 0.73, 1]
+    const items = similarities.map((similarity, index) =>
+      createSemanticFile(`semantic-${index}`, similarity)
+    )
+    const scores = items.map((item) => calculateSortScore(item, 'a pet cat'))
+
+    for (let index = 1; index < scores.length; index += 1) {
+      expect(scores[index], `similarity ${similarities[index]}`).toBeGreaterThan(scores[index - 1])
+    }
+    expect(rank(items, 'a pet cat')).toEqual([
+      'semantic-4',
+      'semantic-3',
+      'semantic-2',
+      'semantic-1',
+      'semantic-0'
+    ])
+  })
+
+  it.each([
+    { name: 'negative similarity', input: -0.4, boundary: 0 },
+    { name: 'similarity above one', input: 1.4, boundary: 1 }
+  ])('saturates $name at the valid similarity boundary', ({ input, boundary }) => {
+    expect(calculateSortScore(createSemanticFile('outside', input), 'a pet cat')).toBe(
+      calculateSortScore(createSemanticFile('boundary', boundary), 'a pet cat')
+    )
+  })
+
+  it.each([
+    { name: 'NaN', similarity: Number.NaN },
+    { name: 'positive infinity', similarity: Number.POSITIVE_INFINITY },
+    { name: 'negative infinity', similarity: Number.NEGATIVE_INFINITY }
+  ])('does not let $name poison final scores or outrank a valid semantic hit', ({ similarity }) => {
+    const invalid = createSemanticFile('invalid', similarity)
+    const valid = createSemanticFile('valid', 0.73)
+    const literal = createFileItem('literal', 'notes-about-a pet cat.txt')
+
+    expect(calculateSortScore(invalid, 'a pet cat')).toBe(
+      calculateSortScore(createFileItem('unmatched', 'IMG_9f3a2048.png'), 'a pet cat')
+    )
+    expect(rank([invalid, literal, valid], 'a pet cat')).toEqual(['valid', 'literal', 'invalid'])
+  })
+
+  it.each([
+    { name: 'missing metadata', semanticScore: undefined },
+    { name: 'NaN metadata', semanticScore: Number.NaN },
+    { name: 'infinite metadata', semanticScore: Number.POSITIVE_INFINITY },
+    { name: 'numeric string metadata', semanticScore: '0.99' }
+  ])('uses valid confidence when $name cannot supply similarity', ({ semanticScore }) => {
+    const semantic = createSemanticFile('confidence', 0.73)
+    semantic.meta!.extension = { search: { semanticScore } }
+
+    expect(calculateSortScore(semantic, 'a pet cat')).toBe(
+      calculateSortScore(createSemanticFile('reference', 0.73), 'a pet cat')
+    )
+    expect(rank([createFileItem('history', 'deploy.sh'), semantic], 'a pet cat')).toEqual([
+      'confidence',
+      'history'
+    ])
+  })
+
+  it('uses finite semantic metadata ahead of a conflicting confidence', () => {
+    const semantic = createSemanticFile('metadata', 0.73)
+    semantic.scoring!.match_details!.confidence = 0.1
+
+    expect(calculateSortScore(semantic, 'a pet cat')).toBeGreaterThan(
+      calculateSortScore(createSemanticFile('middle', 0.5), 'a pet cat')
+    )
+  })
+
+  it('keeps the stronger filename match instead of adding semantic and literal evidence', () => {
+    const exact = createFileItem('exact', 'a pet cat.png')
+    const semanticExact = createSemanticFile('semantic-exact', 1, 'a pet cat.png')
+
+    expect(calculateSortScore(semanticExact, 'a pet cat')).toBe(
+      calculateSortScore(exact, 'a pet cat')
+    )
+    const semanticPrefix = createSemanticFile('semantic-prefix', 0.73, 'a pet cat-notes.png')
+    expect(calculateSortScore(semanticPrefix, 'a pet cat')).toBe(
+      calculateSortScore(createSemanticFile('semantic-only', 0.73), 'a pet cat')
+    )
+  })
+
+  it('does not treat literal file metadata or non-file semantic rows as semantic file recall', () => {
+    const literal = createSemanticFile('literal', 1)
+    literal.scoring!.match_details!.type = 'exact'
+    const app = createSemanticFile('app', 1)
+    app.kind = 'app'
+    app.source = { type: 'application', id: 'app-provider' }
+
+    expect(calculateSortScore(literal, 'a pet cat')).toBe(
+      calculateSortScore(createFileItem('unmatched-file', 'IMG_9f3a2048.png'), 'a pet cat')
+    )
+    expect(calculateSortScore(app, 'a pet cat')).toBe(
+      calculateSortScore(createAppItem('unmatched-app', 'IMG_9f3a2048.png'), 'a pet cat')
+    )
+  })
+
+  it('keeps a pinned history-only file above exact and semantic files', () => {
+    const pinned = createFileItem('pinned-deploy', 'deploy.sh')
+    pinned.meta!.pinned = { isPinned: true }
+
+    expect(
+      rank(
+        [createSemanticFile('semantic-cat', 1), createFileItem('exact', 'a pet cat.png'), pinned],
+        'a pet cat'
+      )
+    ).toEqual(['pinned-deploy', 'exact', 'semantic-cat'])
+  })
 
   it('a file recalled only by its extension ranks below an app whose title contains the query', () => {
     // "key" is the .key extension: before, README.key split on "." into a word-prefix hit (500)

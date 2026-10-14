@@ -597,8 +597,6 @@ describe('useKeyboard grid navigation', () => {
   })
 })
 
-const CALCULATION_HISTORY_EVENT = 'corebox:show-calculation-history'
-
 function createUIModeActivation(): IProviderActivate {
   return { id: 'plugin-features', hideResults: true }
 }
@@ -619,42 +617,15 @@ describe('useKeyboard plugin UI-mode arrow forwarding', () => {
   it.each([
     { name: '⌘+ArrowRight', key: 'ArrowRight', init: { metaKey: true }, modifier: 'metaKey' },
     { name: 'Ctrl+ArrowLeft', key: 'ArrowLeft', init: { ctrlKey: true }, modifier: 'ctrlKey' }
-  ])(
-    'forwards $name to the attached plugin view instead of the host history panel',
-    ({ key, init, modifier }) => {
-      activeGridKeyboardHarness = mountGridKeyboardHarness(0, undefined, [createUIModeActivation()])
-      const historyListener = vi.fn()
-      window.addEventListener(CALCULATION_HISTORY_EVENT, historyListener)
+  ])('forwards $name to the attached plugin view', ({ key, init, modifier }) => {
+    activeGridKeyboardHarness = mountGridKeyboardHarness(0, undefined, [createUIModeActivation()])
+    const event = dispatchGridKey(key, init)
 
-      try {
-        const event = dispatchGridKey(key, init)
-
-        expect(event.defaultPrevented).toBe(true)
-        expect(keyTransportMock.forwardKeyEvent).toHaveBeenCalledTimes(1)
-        expect(keyTransportMock.forwardKeyEvent).toHaveBeenCalledWith(
-          expect.objectContaining({ key, [modifier]: true })
-        )
-        expect(historyListener).not.toHaveBeenCalled()
-      } finally {
-        window.removeEventListener(CALCULATION_HISTORY_EVENT, historyListener)
-      }
-    }
-  )
-
-  it('keeps ⌘+ArrowLeft with the host history panel when no plugin UI view is attached', () => {
-    activeGridKeyboardHarness = mountGridKeyboardHarness(0)
-    const historyListener = vi.fn()
-    window.addEventListener(CALCULATION_HISTORY_EVENT, historyListener)
-
-    try {
-      const event = dispatchGridKey('ArrowLeft', { metaKey: true })
-
-      expect(keyTransportMock.forwardKeyEvent).not.toHaveBeenCalled()
-      expect(historyListener).toHaveBeenCalledTimes(1)
-      expect(event.defaultPrevented).toBe(true)
-    } finally {
-      window.removeEventListener(CALCULATION_HISTORY_EVENT, historyListener)
-    }
+    expect(event.defaultPrevented).toBe(true)
+    expect(keyTransportMock.forwardKeyEvent).toHaveBeenCalledTimes(1)
+    expect(keyTransportMock.forwardKeyEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ key, [modifier]: true })
+    )
   })
 })
 
@@ -685,14 +656,14 @@ describe('useKeyboard detached DivisionBox arrow forwarding', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
-  it('leaves ⌘+ArrowLeft host-owned once the DivisionBox body class is removed', () => {
+  it('leaves ⌘+ArrowLeft to the host input once the DivisionBox body class is removed', () => {
     activeGridKeyboardHarness = mountGridKeyboardHarness(0)
     document.body.classList.remove('division-box')
 
     const event = dispatchGridKey('ArrowLeft', { metaKey: true })
 
     expect(keyTransportMock.forwardKeyEvent).not.toHaveBeenCalled()
-    expect(event.defaultPrevented).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
   })
 })
 
@@ -845,8 +816,8 @@ describe('useKeyboard ⌘K request', () => {
     expect(event.defaultPrevented).toBe(true)
     const request = lastShowRequest()
     expect(request.anchor).toBe('footer')
-    // Seven rows in three sections, two titled.
-    expect(request.desiredPanelHeight).toBe(372)
+    // Seven rows in four sections, three titled.
+    expect(request.desiredPanelHeight).toBe(400)
     expect((request.builtinActions as Array<{ id: string }>).map((action) => action.id)).toEqual([
       '__corebox_primary__',
       'reveal-in-finder',
@@ -954,8 +925,8 @@ describe('buildCoreBoxMetaShowRequest Flow page', () => {
     const actions = buildCoreBoxMetaShowRequest(ACTION_APP_ITEM, { footerShown: false })
     expect(actions.page).toBeUndefined()
     expect(actions.flowTargets).toBeUndefined()
-    // Seven rows in three sections, two titled, as the ⌘K request above.
-    expect(actions.desiredPanelHeight).toBe(372)
+    // Seven rows in four sections, three titled, as the ⌘K request above.
+    expect(actions.desiredPanelHeight).toBe(400)
   })
 })
 
@@ -969,7 +940,6 @@ describe('useKeyboard action shortcuts on the selected result', () => {
     activeActionKeyHarness?.cleanup()
     activeActionKeyHarness = undefined
     document.body.classList.remove('core-box')
-    window.__coreboxHistoryVisible = undefined
     vi.unstubAllGlobals()
   })
 
@@ -1074,15 +1044,6 @@ describe('useKeyboard action shortcuts on the selected result', () => {
     } finally {
       window.removeEventListener('corebox:flow-item', flowListener)
     }
-  })
-
-  it('stays out of the way of the calculation history', () => {
-    activeActionKeyHarness = mountActionKeyHarness([ACTION_FILE_ITEM])
-
-    window.__coreboxHistoryVisible = true
-    pressActionKey('KeyO')
-
-    expect(activeActionKeyHarness.dispatched).toEqual([])
   })
 })
 

@@ -132,6 +132,19 @@ const FILE_INDEX_PROGRESS_DDL = `
   )
 `
 
+const FILE_EXTENSIONS_DDL = `CREATE TABLE file_extensions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL
+)`
+
+const EMBEDDINGS_DDL = `CREATE TABLE embeddings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL,
+  source_type TEXT NOT NULL, embedding TEXT NOT NULL, model TEXT NOT NULL,
+  content_hash TEXT, created_at INTEGER NOT NULL DEFAULT 0
+)`
+
 function metadataUpdateRecord(
   overrides: Partial<FileMetadataUpdateRecord> = {}
 ): FileMetadataUpdateRecord {
@@ -167,6 +180,8 @@ describe('SqliteFileIndexPersistenceRepository.updateFileMetadata', () => {
     // updateFileMetadata flips dirty rows in file_index_progress inside its transaction, so the
     // fixture must carry the real production table instead of relying on a missing-table no-op.
     await client.execute(FILE_INDEX_PROGRESS_DDL)
+    await client.execute(FILE_EXTENSIONS_DDL)
+    await client.execute(EMBEDDINGS_DDL)
     await client.execute(`
       INSERT INTO files (id, path, name, extension, size, mtime, ctime, last_indexed_at, is_dir, type)
       VALUES (1, '/synthetic/canary-alpha.txt', 'canary-alpha.txt', '.txt', 16, 1, 1, 1, 0, 'file')
@@ -346,6 +361,8 @@ describe('SqliteFileIndexPersistenceRepository fileVersion fencing', () => {
     await client.execute('PRAGMA foreign_keys = ON')
     await client.execute(FILES_TABLE_DDL)
     await client.execute(FILE_INDEX_PROGRESS_DDL)
+    await client.execute(FILE_EXTENSIONS_DDL)
+    await client.execute(EMBEDDINGS_DDL)
     await client.execute(`
       INSERT INTO files (id, path, name, size, mtime, ctime, last_indexed_at, is_dir, type, content, embedding_status)
       VALUES (1, '/synthetic/fenced.txt', 'fenced.txt', ${size === null ? 'NULL' : size}, ${mtimeSeconds}, ${mtimeSeconds}, 0, 0, 'file', ${
@@ -679,5 +696,105 @@ describe('SqliteFileIndexPersistenceRepository fileVersion fencing', () => {
 
     const progress = await db.select().from(schema.fileIndexProgress)
     expect(progress).toEqual([expect.objectContaining({ fileId: 1, status: 'pending' })])
+  })
+})
+
+describe('SqliteFileIndexPersistenceRepository durable content locators', () => {
+  let client: Client | undefined
+  let directory: string | undefined
+
+  afterEach(async () => {
+    client?.close()
+    client = undefined
+    if (directory) await rm(directory, { recursive: true, force: true })
+    directory = undefined
+  })
+
+  it('survives reopen, replaces removed chunks, rejects stale writes, and erases locators with content', async () => {
+    directory = await mkdtemp(join(tmpdir(), 'file-content-locators-'))
+    const url = `file:${join(directory, 'index.sqlite')}`
+    client = createClient({ url })
+    await client.execute('PRAGMA foreign_keys = ON')
+    await client.execute(FILES_TABLE_DDL)
+    await client.execute(FILE_INDEX_PROGRESS_DDL)
+    await client.execute(FILE_EXTENSIONS_DDL)
+    await client.execute(EMBEDDINGS_DDL)
+    await client.execute(
+      "INSERT INTO files (id, path, name, mtime, ctime, size) VALUES (1, '/lease.pdf', 'lease.pdf', 2, 2, 64)"
+    )
+    await client.execute(
+      "INSERT INTO file_extensions (file_id, key, value) VALUES (1, 'author', 'Tenant')"
+    )
+    let db = drizzle(client, { schema })
+    let repository = new SqliteFileIndexPersistenceRepository(db)
+    const chunks = [
+      { text: 'Lease cover.', pageNumber: 1 },
+      { text: 'Tenant shall not keep any pets without written consent.', pageNumber: 4 }
+    ]
+    const update: FilePersistenceEntry = {
+      ...completedEntry(1),
+      fileVersion: 2_000,
+      fileSize: 64,
+      fileUpdate: {
+        content: chunks.map((chunk) => chunk.text).join('\n\n'),
+        embeddingStatus: 'pending',
+        contentHash: null,
+        chunks
+      }
+    }
+    await repository.persistEntries([update])
+    await client.execute(
+      "INSERT INTO embeddings (source_id, source_type, embedding, model, content_hash) VALUES ('1', 'file', '[1,0]', 'lease-space', 'old-page')"
+    )
+    client.close()
+    client = createClient({ url })
+    await client.execute('PRAGMA foreign_keys = ON')
+    db = drizzle(client, { schema })
+    repository = new SqliteFileIndexPersistenceRepository(db)
+    const reopened = await db
+      .select()
+      .from(schema.fileExtensions)
+      .where(eq(schema.fileExtensions.key, 'content_chunks'))
+    const reopenedChunks = reopened.flatMap((row) => (row.value ? [JSON.parse(row.value)] : []))
+    expect(reopenedChunks).toEqual([chunks])
+    expect((await db.select().from(schema.files))[0]?.content).toBe(update.fileUpdate!.content)
+    expect((await db.select().from(schema.embeddings)).map((row) => row.contentHash)).toEqual([
+      'old-page'
+    ])
+
+    const replacement = [{ text: 'Revised policy: pets are permitted.', pageNumber: 2 }]
+    await client.execute('UPDATE files SET mtime = 3 WHERE id = 1')
+    await repository.persistEntries([
+      {
+        ...update,
+        fileVersion: 3_000,
+        fileUpdate: { ...update.fileUpdate!, content: replacement[0]!.text, chunks: replacement }
+      }
+    ])
+    const stale = await repository.persistEntries([update])
+    expect(stale.supersededFileIds).toEqual([1])
+    const afterStale = await db
+      .select()
+      .from(schema.fileExtensions)
+      .where(eq(schema.fileExtensions.key, 'content_chunks'))
+    const afterStaleChunks = afterStale.flatMap((row) => (row.value ? [JSON.parse(row.value)] : []))
+    expect(afterStaleChunks).toEqual([replacement])
+    expect((await db.select().from(schema.files))[0]?.content).toBe(replacement[0]!.text)
+    expect(await db.select().from(schema.embeddings)).toEqual([])
+
+    await repository.persistEntries([
+      {
+        ...update,
+        fileVersion: 3_000,
+        fileUpdate: { content: null, embeddingStatus: 'none', contentHash: null, chunks }
+      }
+    ])
+    expect((await db.select().from(schema.files))[0]?.content).toBeNull()
+    expect(
+      (await db.select().from(schema.fileExtensions)).map((row) => ({
+        key: row.key,
+        value: row.value
+      }))
+    ).toEqual([{ key: 'author', value: 'Tenant' }])
   })
 })

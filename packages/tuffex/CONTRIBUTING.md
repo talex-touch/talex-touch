@@ -67,12 +67,14 @@ pnpm -C "apps/nexus" run dev
 ## Component changes
 
 - Keep public component names in the established `Tx*` convention.
+- **Box Model Principle**: All components and their structural wrappers/fields MUST explicitly declare `box-sizing: border-box`.
+  TuffEx does not enforce a global wildcard CSS reset on consuming applications, so any component root, input field,
+  dropdown trigger, or panel with width/padding/border must declare `box-sizing: border-box` to prevent 100% width overflow.
 - Add or update colocated Vitest coverage for behavior changes.
 - Preserve keyboard, focus, ARIA, and reduced-motion behavior.
 - Export public components and types through the owning entry and inventory.
 - Update the matching Nexus page when public usage or behavior changes.
 - Reuse an existing primitive when it can own the required behavior.
-
 ## Documentation changes
 
 Keep package build guidance in [README.md](README.md) and public component usage

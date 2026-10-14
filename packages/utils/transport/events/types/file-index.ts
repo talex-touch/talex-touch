@@ -48,11 +48,23 @@ export type FileContentIndexingState =
   | "disabled"
   | "idle"
   | "indexing"
+  | "paused"
   | "clearing";
+
+export const FILE_CONTENT_INDEX_MIN_FREE_BYTES = 2 * 1024 ** 3;
+export const FILE_CONTENT_INDEX_RESUME_FREE_BYTES = 3 * 1024 ** 3;
+
+export interface FileIndexContentStorage {
+  status: "ready" | "low-space" | "unavailable";
+  availableBytes: number | null;
+  requiredBytes: number;
+  checkedAt: number | null;
+}
 
 export interface FileIndexContentSettings {
   contentIndexingEnabled: boolean;
   state: FileContentIndexingState;
+  storage?: FileIndexContentStorage;
 }
 
 export interface FileIndexContentSettingsUpdate {
@@ -94,6 +106,7 @@ export interface FileIndexStatus {
   estimateBasis?: FileIndexEstimateBasis;
   contentIndexingEnabled?: boolean;
   contentIndexingState?: FileContentIndexingState;
+  contentIndexStorage?: FileIndexContentStorage;
 }
 
 export interface FileIndexStats {
@@ -123,6 +136,8 @@ export interface FileIndexAddPathResult {
 
 export interface FileIndexPreviewResourceRequest {
   path: string;
+  /** Host-captured clipboard-files record; the host verifies its exact path membership. */
+  clipboardId?: number;
 }
 
 export interface FileIndexPreviewResourceResult {
@@ -165,9 +180,9 @@ export interface FileIndexOpenWithRequest {
    * for this file and never an arbitrary application the caller supplies.
    */
   applicationId: string;
-  /** Optional line number to navigate to in supported editors (e.g. VS Code, Cursor). */
+  /** Positive, safe, one-based integer; unsupported editor jumps fail without a plain-open fallback. */
   lineNumber?: number;
-  /** Optional page number to navigate to in supported PDF viewers. */
+  /** Positive, safe, one-based physical PDF page. Takes precedence over lineNumber; unsupported viewers fail. */
   pageNumber?: number;
 }
 

@@ -76,7 +76,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { StorageList, isLocalhostUrl } from '@talex-touch/utils'
 import { appSettingOriginData } from '@talex-touch/utils/common/storage/entity/app-settings'
@@ -112,6 +112,7 @@ import { BaseModule } from '../modules/abstract-base-module'
 import { getStartupAnalytics } from '../modules/analytics'
 import { appProvider } from '../modules/box-tool/addon/apps/app-provider'
 import { fileProvider } from '../modules/box-tool/addon/files/file-provider'
+import { clipboardModule } from '../modules/clipboard'
 import {
   reportFileIndexTransportFailure,
   reportIndexedSourceTransportFailure,
@@ -1782,9 +1783,9 @@ export class CommonChannelModule extends BaseModule {
       }),
       transport.on<void, FileIndexContentSettings>(
         AppEvents.fileIndex.settingsGet,
-        (_payload, context) => {
+        async (_payload, context) => {
           this.assertHostOnly(context, 'fileIndex.settingsGet')
-          return fileProvider.getContentIndexSettings()
+          return await fileProvider.getContentIndexSettings()
         }
       ),
       transport.on<FileIndexContentSettingsUpdate, FileIndexContentSettings>(
@@ -1827,7 +1828,11 @@ export class CommonChannelModule extends BaseModule {
             return { success: false, errorCode: 'FILE_INDEX_PREVIEW_PATH_INVALID' }
           }
           try {
-            const previewPath = await fileProvider.resolvePreviewResourcePath(inputPath)
+            const clipboardId = payload?.clipboardId
+            const previewPath =
+              clipboardId === undefined
+                ? await fileProvider.resolvePreviewResourcePath(inputPath)
+                : await clipboardModule.resolveCapturedFilePreviewPath(clipboardId, inputPath)
             if (!previewPath) {
               return { success: false, errorCode: 'FILE_INDEX_PREVIEW_NOT_AVAILABLE' }
             }
@@ -1894,6 +1899,18 @@ export class CommonChannelModule extends BaseModule {
           if (!inputPath || !applicationId) {
             return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_REQUEST_INVALID' }
           }
+          if (process.platform !== 'darwin') {
+            return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_UNSUPPORTED' }
+          }
+          if (
+            [payload.lineNumber, payload.pageNumber].some(
+              (position) =>
+                position !== undefined &&
+                (typeof position !== 'number' || !Number.isSafeInteger(position) || position <= 0)
+            )
+          ) {
+            return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_NAVIGATION_INVALID' }
+          }
           try {
             const indexedPath = await fileProvider.resolvePreviewResourcePath(inputPath)
             if (!indexedPath) {
@@ -1920,17 +1937,10 @@ export class CommonChannelModule extends BaseModule {
               return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_APPLICATION_REJECTED' }
             }
 
-            const lineNumber =
-              typeof payload?.lineNumber === 'number' && Number.isFinite(payload.lineNumber)
-                ? Math.floor(payload.lineNumber)
-                : undefined
-            const pageNumber =
-              typeof payload?.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
-                ? Math.floor(payload.pageNumber)
-                : undefined
-
-            await openPathWithApplication(indexedPath, chosen.path, { lineNumber, pageNumber })
-            return { success: true }
+            return await openPathWithApplication(indexedPath, chosen, {
+              lineNumber: payload.lineNumber,
+              pageNumber: payload.pageNumber
+            })
           } catch (error) {
             const report = reportFileIndexTransportFailure('OPEN_WITH', error)
             return {
@@ -2688,40 +2698,82 @@ async function projectApplicationTarget(
 }
 
 /**
- * Hand a file to one specific application.
- *
- * `open -a` rather than `shell.openPath`, which has no "with this app" form at all: it consults
- * the association and would silently launch the default, turning every menu choice into the same
- * action. `-a` takes the bundle as its own argv entry, and both paths arrive as argv rather than
- * through a shell, so neither can inject arguments.
+ * Dispatch through the OS-resolved bundle, never a renderer-supplied executable or app-name match.
+ * A requested location is a contract: unsupported apps must not quietly become plain opens.
  */
 async function openPathWithApplication(
   filePath: string,
-  applicationPath: string,
-  options?: { lineNumber?: number; pageNumber?: number }
-): Promise<void> {
-  const args = ['-a', applicationPath]
-  const lowerApp = applicationPath.toLowerCase()
-
-  if (
-    options?.lineNumber != null &&
-    options.lineNumber > 0 &&
-    (lowerApp.includes('visual studio code') ||
-      lowerApp.includes('cursor') ||
-      lowerApp.includes('vscodium') ||
-      lowerApp.includes('windsurf') ||
-      lowerApp.includes('zed') ||
-      lowerApp.includes('sublime text') ||
-      lowerApp.includes('code.app'))
-  ) {
-    args.push('--args', '-g', `${filePath}:${options.lineNumber}`)
-  } else {
-    args.push(filePath)
+  application: DefaultApplicationTarget,
+  options: { lineNumber?: number; pageNumber?: number }
+): Promise<FileIndexOpenWithResult> {
+  const bundleId = application.bundleId
+  if (options.pageNumber !== undefined) {
+    if (
+      bundleId !== 'net.sourceforge.skim-app.skim' ||
+      path.extname(filePath).toLowerCase() !== '.pdf'
+    ) {
+      // Preview's Spotlight search event lists matches but does not navigate to a page (DigUp).
+      return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_NAVIGATION_UNSUPPORTED' }
+    }
+    // Skim's documented URL protocol uses one-based physical pages and percent-encoded file paths.
+    // https://sourceforge.net/p/skim-app/wiki/Interaction_with_Skim/#deep-links-using-skim-urls
+    const targetUrl = `${pathToFileURL(filePath).href.replace(/^file:/, 'skim:')}#page=${options.pageNumber}`
+    await execFileAsync('/usr/bin/open', ['-a', application.path, targetUrl], {
+      timeout: OPEN_WITH_TIMEOUT_MS
+    })
+    return { success: true }
   }
 
-  await execFileAsync('/usr/bin/open', args, {
+  if (options.lineNumber !== undefined) {
+    let relativeCli: string
+    let args: string[]
+    const location = `${filePath}:${options.lineNumber}`
+    switch (bundleId) {
+      case 'com.microsoft.VSCode':
+        relativeCli = 'Contents/Resources/app/bin/code'
+        args = ['--goto', location]
+        break
+      case 'com.microsoft.VSCodeInsiders':
+        relativeCli = 'Contents/Resources/app/bin/code-insiders'
+        args = ['--goto', location]
+        break
+      case 'com.vscodium':
+      case 'com.vscodium.VSCodium':
+        relativeCli = 'Contents/Resources/app/bin/codium'
+        args = ['--goto', location]
+        break
+      case 'com.todesktop.230313mzl4w4u92':
+        relativeCli = 'Contents/Resources/app/bin/cursor'
+        args = ['--goto', location]
+        break
+      case 'com.exafunction.windsurf':
+        relativeCli = 'Contents/Resources/app/bin/windsurf'
+        args = ['--goto', location]
+        break
+      case 'dev.zed.Zed':
+      case 'dev.zed.Zed-Preview':
+      case 'dev.zed.Zed-Nightly':
+        relativeCli = 'Contents/MacOS/cli'
+        args = ['--zed', application.path, location]
+        break
+      case 'com.sublimetext.3':
+      case 'com.sublimetext.4':
+        relativeCli = 'Contents/SharedSupport/bin/subl'
+        args = [location]
+        break
+      default:
+        return { success: false, errorCode: 'FILE_INDEX_OPEN_WITH_NAVIGATION_UNSUPPORTED' }
+    }
+    await execFileAsync(path.join(application.path, relativeCli), args, {
+      timeout: OPEN_WITH_TIMEOUT_MS
+    })
+    return { success: true }
+  }
+
+  await execFileAsync('/usr/bin/open', ['-a', application.path, filePath], {
     timeout: OPEN_WITH_TIMEOUT_MS
   })
+  return { success: true }
 }
 
 async function safeGetBatteryPercent(): Promise<number | null> {

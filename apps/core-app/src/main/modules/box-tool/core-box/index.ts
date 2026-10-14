@@ -126,7 +126,7 @@ export class CoreBoxModule extends BaseModule {
 
         if (isWindowVisible && currentWindow) {
           if (Date.now() - lastShortcutOpenAt < COREBOX_SHORTCUT_CLOSE_GRACE_MS) {
-            coreBoxManager.trigger(true, { triggeredByShortcut: true })
+            coreBoxManager.trigger(true, { triggeredByShortcut: true, screen: curScreen })
             lastScreenId = curScreen.id
             return
           }
@@ -136,10 +136,12 @@ export class CoreBoxModule extends BaseModule {
           } else {
             windowManager.updatePosition(currentWindow, curScreen)
             lastScreenId = curScreen.id
+            lastShortcutOpenAt = Date.now()
+            coreBoxManager.trigger(true, { triggeredByShortcut: true, screen: curScreen })
           }
         } else {
           // Pass triggeredByShortcut flag when opening CoreBox via shortcut
-          coreBoxManager.trigger(true, { triggeredByShortcut: true })
+          coreBoxManager.trigger(true, { triggeredByShortcut: true, screen: curScreen })
           lastShortcutOpenAt = Date.now()
           lastScreenId = curScreen.id
         }

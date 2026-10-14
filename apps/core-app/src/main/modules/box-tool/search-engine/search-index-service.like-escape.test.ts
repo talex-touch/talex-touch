@@ -118,6 +118,51 @@ describe('lookupByKeywordPrefix LIKE escaping', () => {
       expect(prefixOf(rows)).toEqual(['chrome', 'chromium'])
     })
   })
+
+  it.each([
+    {
+      name: 'uppercase query over canonical lowercase keywords',
+      query: 'CAT',
+      matches: ['cat', 'cat猫', 'cat😀', 'cat\ufffftail'],
+      neighbors: ['cas\uffff', 'cau', 'bobcat']
+    },
+    {
+      name: 'Chinese prefix with non-ASCII suffixes',
+      query: '猫',
+      matches: ['猫', '猫咪', '猫😀', '猫\ufffftail'],
+      neighbors: ['狗', '猬', '小猫']
+    },
+    {
+      name: 'astral prefix without splitting its surrogate pair',
+      query: '🐈',
+      matches: ['🐈', '🐈猫', '🐈😀', '🐈\ufffftail'],
+      neighbors: ['🐇', '🐉', 'a🐈']
+    },
+    {
+      name: 'BMP terminal prefix whose upper bound crosses into astral scalars',
+      query: '\uffff',
+      matches: ['\uffff', '\uffff猫', '\uffff😀', '\uffff\ufffftail'],
+      neighbors: ['\ufffe', '𐀀', 'a\uffff']
+    }
+  ])(
+    'preserves literal prefix matches for $name and excludes neighboring/provider rows',
+    async ({ query, matches, neighbors }) => {
+      await withIndexService(async (service, client) => {
+        await seed(client, [...matches, ...neighbors])
+        await client.execute({
+          sql: 'INSERT INTO keyword_mappings (keyword, item_id, provider_id, priority) VALUES (?, ?, ?, 9.0)',
+          args: [matches[0]!, 'foreign-item', 'other-provider']
+        })
+
+        const rows = await service.lookupByKeywordPrefix(PROVIDER, query)
+
+        expect(prefixOf(rows)).toEqual([...matches].sort())
+        expect(rows.map((row) => row.itemId).sort()).toEqual(
+          matches.map((keyword) => `item:${keyword}`).sort()
+        )
+      })
+    }
+  )
 })
 
 /**

@@ -1,3 +1,5 @@
+import type * as NodeFs from 'node:fs'
+import { clipboard } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ClipboardEvents } from '@talex-touch/utils/transport/events'
 import type {
@@ -8,9 +10,16 @@ import type { HandlerContext } from '@talex-touch/utils/transport/main'
 import type { ActiveAppInfo } from './system/active-app'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
-import { readFile } from 'node:fs/promises'
+import fs from 'node:fs'
+import { mkdtemp, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { ClipboardFreshnessStore } from './clipboard/clipboard-capture-freshness'
+import { createClipboardFreshnessState } from './clipboard/clipboard-freshness'
+import type { ClipboardCaptureSource } from '@talex-touch/utils/transport/events/types'
 import * as schema from '../db/schema'
 import { createDbUtils } from '../db/utils'
+import type { CoreDatabase } from '../db/utils'
 import { SearchUsageService } from './box-tool/search-engine/search-usage-service'
 import * as executeRecorder from './box-tool/search-engine/execute-recorder'
 import { resolveUsageIdentity } from './box-tool/search-engine/usage-identity'
@@ -154,7 +163,8 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('node:fs', async () => {
-  const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
+  // This module-load fake must obtain the unmocked filesystem behind the vi.mock boundary.
+  const actual = await vi.importActual<typeof NodeFs>('node:fs')
   const existsSync = vi.fn((filePath: string) => filePath.startsWith('/tmp/clipboard/images/'))
   const promises = {
     ...actual.promises,
@@ -659,7 +669,6 @@ describe('ClipboardModule transport registration', () => {
     })
 
     expect(enforcePermission).toHaveBeenCalledWith('touch-translation', 'clipboard:write', 260428)
-    const { clipboard } = await import('electron')
     expect(clipboard.write).not.toHaveBeenCalled()
   })
 })
@@ -1129,5 +1138,218 @@ describe('ClipboardModule bounds the app-task wait on the search path', () => {
 
     // A slightly stale clipboard beats hanging the search.
     expect(module.capturePipeline.process).not.toHaveBeenCalled()
+  })
+})
+
+describe('ClipboardModule exact captured file preview authorization', () => {
+  async function fixture(source?: ClipboardCaptureSource) {
+    const directory = await realpath(
+      await mkdtemp(path.join(os.tmpdir(), 'clipboard-preview-contract-'))
+    )
+    const larkDirectory = path.join(
+      directory,
+      'Library/Containers/com.lark.Lark/Data/Library/Application Support/Lark/Downloads'
+    )
+    await fs.promises.mkdir(larkDirectory, { recursive: true })
+    const captured = path.join(larkDirectory, '截图 中文.png')
+    const other = path.join(larkDirectory, 'uncaptured.png')
+    await writeFile(captured, 'captured image')
+    await writeFile(other, 'uncaptured image')
+    const client = createClient({ url: `file:${path.join(directory, 'history.db')}` })
+    await client.execute(
+      'CREATE TABLE clipboard_history (id INTEGER PRIMARY KEY, type TEXT, content TEXT, capture_source TEXT, metadata TEXT)'
+    )
+    const content = JSON.stringify([captured])
+    await client.execute({
+      sql: 'INSERT INTO clipboard_history VALUES (?, ?, ?, ?, ?)',
+      args: [
+        41,
+        'files',
+        content,
+        'native-watch',
+        JSON.stringify({ captureSource: 'native-watch', autoPasteEligible: true })
+      ]
+    })
+    const proof = new ClipboardFreshnessStore()
+    if (source)
+      proof.remember(
+        { id: 41, type: 'files', content },
+        createClipboardFreshnessState({ source, observedAt: 100, previousScanAt: 90 })
+      )
+    // Inject only the existing database/proof dependency seams, never the resolver itself.
+    const module = new ClipboardModule()
+    const dependencies = module as unknown as {
+      db: CoreDatabase
+      clipboardFreshness: ClipboardFreshnessStore
+    }
+    dependencies.db = drizzle(client, { schema })
+    dependencies.clipboardFreshness = proof
+    return {
+      module,
+      proof,
+      client,
+      captured,
+      other,
+      content,
+      cleanup: async () => {
+        client.close()
+        await rm(directory, { recursive: true, force: true })
+      }
+    }
+  }
+
+  it.each(['native-watch', 'background-poll', 'visible-poll', 'corebox-show-baseline'] as const)(
+    'allows the exact real Lark-style captured path from %s',
+    async (source) => {
+      const state = await fixture(source)
+      try {
+        await expect(state.module.resolveCapturedFilePreviewPath(41, state.captured)).resolves.toBe(
+          state.captured
+        )
+        await expect(
+          state.module.resolveCapturedFilePreviewPath(41, state.other)
+        ).resolves.toBeNull()
+        await expect(
+          state.module.resolveCapturedFilePreviewPath(404, state.captured)
+        ).resolves.toBeNull()
+      } finally {
+        await state.cleanup()
+      }
+    }
+  )
+
+  it.each([undefined, 'manual-write', 'history-apply', 'startup-bootstrap'] as const)(
+    'does not authorize fabricated DB capture_source without genuine proof (%s)',
+    async (source) => {
+      const state = await fixture(source)
+      try {
+        await expect(
+          state.module.resolveCapturedFilePreviewPath(41, state.captured)
+        ).resolves.toBeNull()
+      } finally {
+        await state.cleanup()
+      }
+    }
+  )
+
+  it.each(['delete', 'change-content', 'change-type'] as const)(
+    'denies a previously captured item after live DB %s',
+    async (change) => {
+      const state = await fixture('native-watch')
+      try {
+        // A successful request before the mutation must not turn into an authorization cache.
+        await expect(state.module.resolveCapturedFilePreviewPath(41, state.captured)).resolves.toBe(
+          state.captured
+        )
+        if (change === 'delete')
+          await state.client.execute('DELETE FROM clipboard_history WHERE id = 41')
+        else if (change === 'change-content')
+          await state.client.execute({
+            sql: 'UPDATE clipboard_history SET content = ? WHERE id = 41',
+            args: [JSON.stringify([state.other])]
+          })
+        else await state.client.execute("UPDATE clipboard_history SET type = 'text' WHERE id = 41")
+        await expect(
+          state.module.resolveCapturedFilePreviewPath(41, state.captured)
+        ).resolves.toBeNull()
+      } finally {
+        await state.cleanup()
+      }
+    }
+  )
+
+  it('denies proof forgotten while filesystem validation is pending', async () => {
+    const state = await fixture('native-watch')
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const actualLstat = fs.promises.lstat.bind(fs.promises)
+    const spy = vi.spyOn(fs.promises, 'lstat').mockImplementationOnce(async (target) => {
+      const stat = await actualLstat(target)
+      entered.resolve()
+      await release.promise
+      return stat
+    })
+    try {
+      const pending = state.module.resolveCapturedFilePreviewPath(41, state.captured)
+      await entered.promise
+      state.proof.delete(41)
+      release.resolve()
+      await expect(pending).resolves.toBeNull()
+    } finally {
+      release.resolve()
+      spy.mockRestore()
+      await state.cleanup()
+    }
+  })
+
+  it('denies a captured path replaced by a symlink', async () => {
+    const state = await fixture('native-watch')
+    try {
+      await unlink(state.captured)
+      await symlink(state.other, state.captured)
+      await expect(
+        state.module.resolveCapturedFilePreviewPath(41, state.captured)
+      ).resolves.toBeNull()
+    } finally {
+      await state.cleanup()
+    }
+  })
+
+  it.each(['delete', 'change-content'] as const)(
+    'rechecks live DB %s while canonical filesystem validation is awaiting',
+    async (change) => {
+      const state = await fixture('native-watch')
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const actualLstat = fs.promises.lstat.bind(fs.promises)
+      const spy = vi.spyOn(fs.promises, 'lstat').mockImplementationOnce(async (target) => {
+        const stat = await actualLstat(target)
+        entered.resolve()
+        await release.promise
+        return stat
+      })
+      try {
+        const pending = state.module.resolveCapturedFilePreviewPath(41, state.captured)
+        await entered.promise
+        if (change === 'delete')
+          await state.client.execute('DELETE FROM clipboard_history WHERE id = 41')
+        else
+          await state.client.execute({
+            sql: 'UPDATE clipboard_history SET content = ? WHERE id = 41',
+            args: [JSON.stringify([state.other])]
+          })
+        release.resolve()
+        await expect(pending).resolves.toBeNull()
+      } finally {
+        release.resolve()
+        spy.mockRestore()
+        await state.cleanup()
+      }
+    }
+  )
+
+  it('keeps the original immutable capture when a caller later mutates its item and freshness objects', async () => {
+    const state = await fixture()
+    try {
+      const item = { id: 41, type: 'files', content: state.content }
+      const freshness = createClipboardFreshnessState({
+        source: 'native-watch',
+        observedAt: 100,
+        previousScanAt: 90
+      })
+      state.proof.remember(item, freshness)
+      item.content = JSON.stringify([state.other])
+      freshness.captureSource = 'manual-write'
+      await expect(state.module.resolveCapturedFilePreviewPath(41, state.captured)).resolves.toBe(
+        state.captured
+      )
+      await expect(state.module.resolveCapturedFilePreviewPath(41, state.other)).resolves.toBeNull()
+      state.proof.clear()
+      await expect(
+        state.module.resolveCapturedFilePreviewPath(41, state.captured)
+      ).resolves.toBeNull()
+    } finally {
+      await state.cleanup()
+    }
   })
 })

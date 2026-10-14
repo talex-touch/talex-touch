@@ -41,7 +41,6 @@ const props = withDefaults(
 )
 
 const emits = defineEmits<{
-  (e: 'show-history'): void
   (e: 'copy-primary'): void
   (e: 'host-action', payload: { actionId: string; payload?: Record<string, unknown> }): void
   (e: 'render-error', error: Error): void
@@ -63,16 +62,11 @@ const shadowProps = reactive({
   preview: props.preview,
   widgetId: props.rendererId,
   hostKeyEvent: null as unknown,
-  onShowHistory: handleShowHistory,
   onCopyPrimary: handleCopyPrimary,
   onHostAction: handleHostAction
 })
 
 const isDev = import.meta.env?.DEV ?? false
-
-function handleShowHistory(): void {
-  runWidgetHostAction(props.rendererId, 'history.hostAction', () => emits('show-history'))
-}
 
 function handleCopyPrimary(): void {
   runWidgetHostAction(props.rendererId, 'clipboard.hostAction', () => emits('copy-primary'))
@@ -364,7 +358,6 @@ function mountShadowApp(): void {
         preview: shadowProps.preview,
         'widget-id': shadowProps.widgetId,
         'host-key-event': shadowProps.hostKeyEvent,
-        onShowHistory: shadowProps.onShowHistory,
         onCopyPrimary: shadowProps.onCopyPrimary,
         onHostAction: shadowProps.onHostAction
       })
@@ -449,7 +442,6 @@ onBeforeUnmount(() => {
       :on-vnode-mounted="handleVnodeMounted"
       :on-vnode-updated="handleVnodeUpdated"
       :on-vnode-unmounted="handleVnodeUnmounted"
-      @show-history="handleShowHistory"
       @copy-primary="handleCopyPrimary"
       @host-action="handleHostAction"
     />

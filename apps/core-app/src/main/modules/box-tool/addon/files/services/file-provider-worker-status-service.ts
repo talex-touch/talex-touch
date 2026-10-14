@@ -9,6 +9,22 @@ import { createLogger } from '../../../../../utils/logger'
 import { getWorkerMemorySnapshot } from '../workers/worker-status'
 
 const MEMORY_DIAGNOSTIC_TASK_ID = 'file-index.memory-snapshot'
+/**
+ * How often the journal still writes while nothing changes. Without the gate an idle app paid the
+ * 30 s cadence forever: every live worker was messaged for metrics and an identical info line
+ * written, long after indexing finished. Ten minutes still shows memory creeping up at rest.
+ */
+const MEMORY_DIAGNOSTIC_IDLE_INTERVAL_MS = 10 * 60_000
+/** Workload counters that are not cumulative: all zero means no indexing work is queued or running. */
+const ACTIVE_WORKLOAD_KEYS = [
+  'schedulerActiveBatches',
+  'schedulerQueuedBatches',
+  'schedulerPendingRecords',
+  'schedulerDeferredRecords',
+  'bufferPendingResults',
+  'bufferInflightResults',
+  'iconInflight'
+] as const
 const memoryLog = createLogger('FileProvider').child('Memory')
 
 export const WORKER_STATUS_SNAPSHOT_CACHE_TTL_MS = INDEXED_WORKER_STATUS_SNAPSHOT_CACHE_TTL_MS
@@ -34,11 +50,21 @@ export class FileProviderWorkerStatusService {
   ): void {
     this.stopDiagnostics()
     const generation = this.diagnosticGeneration
+    let previousWorkload: string | null = null
+    let lastJournalAt = 0
     PollingService.getInstance().register(
       MEMORY_DIAGNOSTIC_TASK_ID,
       async () => {
+        const workloadCounts = loadWorkload()
+        const workload = JSON.stringify(workloadCounts)
+        const quiet =
+          workload === previousWorkload && ACTIVE_WORKLOAD_KEYS.every((key) => !workloadCounts[key])
+        previousWorkload = workload
+        if (quiet && Date.now() - lastJournalAt < MEMORY_DIAGNOSTIC_IDLE_INTERVAL_MS) return
+
         const snapshot = await loadSnapshot()
         if (generation !== this.diagnosticGeneration) return
+        lastJournalAt = Date.now()
         const main = getWorkerMemorySnapshot()
         memoryLog.info('Indexing memory snapshot', {
           meta: {
@@ -48,7 +74,7 @@ export class FileProviderWorkerStatusService {
             mainHeapLimitBytes: main.heapLimit,
             mainExternalBytes: main.external,
             mainArrayBufferBytes: main.arrayBuffers,
-            workload: JSON.stringify(loadWorkload()),
+            workload,
             workers: JSON.stringify(
               snapshot.workers.map((worker) => ({
                 name: worker.name,

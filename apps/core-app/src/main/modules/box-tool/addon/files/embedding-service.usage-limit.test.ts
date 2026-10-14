@@ -1,10 +1,13 @@
 /**
  * File embedding under the global AI usage limit (usage-limits task C5, AC-C4): the refusal stops
  * the batch, nothing is retried or re-probed until the limit's reset time, and the pause is
- * readable for the file-index diagnostics. Real libsql in memory, the SDK mocked.
+ * readable for the file-index diagnostics. Real temporary libsql file, the SDK mocked.
  */
-import { createClient } from '@libsql/client'
+import { createClient, type Client } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '../../../../db/schema'
 import { tuffIntelligence } from '../../../ai/intelligence-sdk'
@@ -13,6 +16,7 @@ import {
   notifyUsageLimitsChanged
 } from '../../../ai/usage-ledger/usage-limits'
 import { EmbeddingService } from './embedding-service'
+import { getSearchIndexReadWorkerTestPath } from '../../search-engine/workers/search-index-read-worker.test-harness'
 
 vi.mock('../../../ai/intelligence-sdk', () => ({
   tuffIntelligence: {
@@ -58,21 +62,57 @@ function refusal() {
   })
 }
 
+const clients: Client[] = []
+const services: EmbeddingService[] = []
+const directories: string[] = []
 async function createService(): Promise<EmbeddingService> {
-  const client = createClient({ url: ':memory:' })
+  const workerPath = await getSearchIndexReadWorkerTestPath()
+  const directory = await mkdtemp(join(tmpdir(), 'embedding-usage-limit-'))
+  directories.push(directory)
+  const databasePath = join(directory, 'index.sqlite')
+  const client = createClient({ url: `file:${databasePath}` })
   await client.execute(EMBEDDINGS_DDL)
+  clients.push(client)
+  await client.execute(`CREATE TABLE files (
+    id INTEGER PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL,
+    mtime INTEGER NOT NULL, ctime INTEGER NOT NULL, content TEXT,
+    embedding_status TEXT NOT NULL
+  )`)
+  await client.batch(
+    Array.from({ length: 12 }, (_, index) => ({
+      sql: 'INSERT INTO files (id, path, name, mtime, ctime, content, embedding_status) VALUES (?, ?, ?, 0, 0, ?, ?)',
+      args: [
+        index + 1,
+        `/file-${index + 1}.txt`,
+        `file-${index + 1}.txt`,
+        `distinct content of file ${index + 1}`,
+        'pending'
+      ]
+    })),
+    'write'
+  )
+  await client.execute(
+    "INSERT INTO files (id, path, name, mtime, ctime, content, embedding_status) VALUES (99, '/after.txt', 'after.txt', 0, 0, 'after the reset', 'pending')"
+  )
   const db = drizzle(client, { schema })
-  return new EmbeddingService({
-    isSplitEnabled: () => false,
-    getReadDb: () => db,
-    getPrimaryDb: () => db,
-    execWrite: vi.fn()
-  })
+  const service = new EmbeddingService(
+    {
+      isSplitEnabled: () => false,
+      getReadDb: () => db,
+      getDatabasePath: () => databasePath,
+      getPrimaryDb: () => db,
+      execWrite: vi.fn()
+    },
+    undefined,
+    { workerPath }
+  )
+  services.push(service)
+  return service
 }
 
 function files(count: number) {
   return Array.from({ length: count }, (_, index) => ({
-    fileId: `file-${index + 1}`,
+    fileId: String(index + 1),
     content: `distinct content of file ${index + 1}`
   }))
 }
@@ -83,14 +123,18 @@ beforeEach(() => {
   generate.mockReset()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  for (const service of services.splice(0)) await service.close()
+  for (const client of clients.splice(0)) client.close()
+  for (const directory of directories.splice(0))
+    await rm(directory, { recursive: true, force: true })
   vi.useRealTimers()
 })
 
 describe('EmbeddingService under the global usage limit', () => {
   it('stops the batch at the refusal and sends nothing more until the limit resets', async () => {
     const service = await createService()
-    // Call 0 is the availability probe; calls 1–5 are the first batch, where file 4 is refused.
+    // Probe then files one at a time: file four's refusal stops all later inference.
     let call = 0
     generate.mockImplementation(async () => {
       const index = call++
@@ -100,9 +144,9 @@ describe('EmbeddingService under the global usage limit', () => {
 
     const first = await service.indexFiles(files(12))
 
-    // Files 1, 2, 3 and 5 were embedded, file 4 was refused, files 6–12 were never sent.
-    expect(first).toEqual({ indexed: 4, skipped: 8, failed: 0 })
-    expect(generate).toHaveBeenCalledTimes(6)
+    // Only files one through three commit before file four reaches the usage limit.
+    expect(first).toEqual({ indexed: 3, skipped: 9, failed: 0 })
+    expect(generate).toHaveBeenCalledTimes(5)
     expect(service.getUsageLimitPause()).toEqual({
       reason: 'USAGE_LIMIT_REACHED',
       limitKey: 'requestsPerDay',
@@ -118,15 +162,15 @@ describe('EmbeddingService under the global usage limit', () => {
     await expect(service.isAvailable()).resolves.toBe(false)
     await expect(service.semanticSearch('anything semantic')).resolves.toEqual([])
     await service.indexFile('file-42', 'more content')
-    expect(generate).toHaveBeenCalledTimes(6)
+    expect(generate).toHaveBeenCalledTimes(5)
 
     // After the local reset time the pause lifts by itself and embedding resumes.
     vi.setSystemTime(RESETS_AT)
     expect(service.getUsageLimitPause()).toBeNull()
     await expect(
-      service.indexFiles([{ fileId: 'file-99', content: 'after the reset' }])
+      service.indexFiles([{ fileId: '99', content: 'after the reset' }])
     ).resolves.toEqual({ indexed: 1, skipped: 0, failed: 0 })
-    expect(generate).toHaveBeenCalledTimes(7)
+    expect(generate).toHaveBeenCalledTimes(6)
   })
 
   it('does not remember a probe refused by the limit as "embedding unavailable"', async () => {
@@ -175,7 +219,7 @@ describe('EmbeddingService under the global usage limit', () => {
     })
     expect(generate).toHaveBeenCalledTimes(4)
   })
-  it('keeps other failures on their old path: logged per file, not a pause', async () => {
+  it('counts a genuine inference failure as failed without pausing later files', async () => {
     const service = await createService()
     generate
       .mockResolvedValueOnce(vector())
@@ -183,9 +227,9 @@ describe('EmbeddingService under the global usage limit', () => {
       .mockResolvedValue(vector())
 
     await expect(service.indexFiles(files(2))).resolves.toEqual({
-      indexed: 2,
+      indexed: 1,
       skipped: 0,
-      failed: 0
+      failed: 1
     })
     expect(service.getUsageLimitPause()).toBeNull()
     expect(generate).toHaveBeenCalledTimes(3)

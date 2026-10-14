@@ -1,4 +1,4 @@
-export * from "../electron/file-parsers";
+export type * from "../electron/file-parsers/types";
 export * from "./battery-policy";
 export * from "./file-filter-service";
 export * from "./file-scan-constants";

@@ -1,6 +1,6 @@
 # Engineering Reports Hygiene
 
-> 更新时间：2026-10-11
+> 更新时间：2026-10-12
 > 定位：工程报告、审计输出与 evidence 产物的提交边界。
 
 ## 提交边界
@@ -43,6 +43,7 @@
 - [`file-search-integration-2.5.1-2026-10-11.md`](./file-search-integration-2.5.1-2026-10-11.md)：everyfiles、fsearch 与文件动作体验融合调研；目标版本 **2.5.1**，状态 **待实施**，含现状差距、接入边界、隔离样本验证、实施清单与验收条件。
 - [`tinycast-competitive-analysis-2026-10-11.md`](./tinycast-competitive-analysis-2026-10-11.md)：Tinycast 近三个月功能演进与用户口碑，含 Tuff 高频体验、窄迁移、按需 AI／语音及未来方向建议；调研完成，优化建议未实施，不改变现有版本范围。
 - [`pulse-system-monitor-extension-analysis-2026-10-11.md`](./pulse-system-monitor-extension-analysis-2026-10-11.md)：Pulse 产品与平台边界调研，后续作为独立外置系统监控扩展；含 SDK 261011 现状、监控接口缺口、权限与生命周期设计及验收矩阵，建议未实施，未实测竞品性能。
+- [`betterwispr-competitive-analysis-2026-10-12.md`](./betterwispr-competitive-analysis-2026-10-12.md)：BetterWispr 0.1.5 听写产品与源码调研，含中文后处理、隐私与跨应用输入边界、Tuff 现有能力对照及清理／纠错学习规则实测；优化建议未实施，未安装竞品或实测语音识别性能。
 
 ## 活报告
 

@@ -34,6 +34,17 @@ async function withDatabase(
   }
 }
 
+async function createEmbeddings(writer: Client): Promise<void> {
+  await writer.execute(`CREATE TABLE embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    embedding TEXT NOT NULL,
+    model TEXT NOT NULL,
+    content_hash TEXT
+  )`)
+}
+
 describe('search-index read worker artifact', () => {
   it('requires the bundled worker before its integration contracts run', () => {
     if (!workerBuilt) {
@@ -110,6 +121,83 @@ describeBuiltWorker('bundled search-index read worker', () => {
         await new Promise<void>((resolve) => setImmediate(resolve))
         expect(settled).toBe(false)
         await expect(expensiveRead).resolves.toEqual([{ total: 4500001500000 }])
+      } finally {
+        await reader.close()
+      }
+    })
+  })
+
+  it('ranks distinct files by their best valid chunk and isolates the requested model and source type', async () => {
+    await withDatabase(async (databasePath, writer) => {
+      await createEmbeddings(writer)
+      const model = 'semantic-contract/dim3'
+      await writer.batch(
+        [
+          ['bad-json', 'file', '{broken', model, 'bad-json-hash'],
+          ['nonfinite', 'file', '[1e309,0,0]', model, 'nonfinite-hash'],
+          ['wrong-dimension', 'file', '[1,0]', model, 'wrong-dimension-hash'],
+          ['zero', 'file', '[0,0,0]', model, 'zero-hash'],
+          ['non-array', 'file', 'null', model, 'non-array-hash'],
+          ['foreign-model', 'file', '[1,0,0]', 'another-model/dim3', 'foreign-model-hash'],
+          ['foreign-source', 'note', '[1,0,0]', model, 'foreign-source-hash'],
+          ['best', 'file', '[0.6,0.8,0]', model, 'best-weak-chunk'],
+          ['runner-up', 'file', '[0.8,0.6,0]', model, 'runner-up-hash'],
+          ['third', 'file', '[0.6,0.8,0]', model, 'third-hash'],
+          ['best', 'file', '[1,0,0]', model, 'best-winning-chunk'],
+          ['best', 'file', '[0,1,0]', model, 'best-last-chunk'],
+          ['runner-up', 'file', '[1,0,0]', 'another-model/dim3', 'wrong-model-chunk'],
+          ['third', 'note', '[1,0,0]', model, 'wrong-source-chunk']
+        ].map((args) => ({
+          sql: 'INSERT INTO embeddings (source_id, source_type, embedding, model, content_hash) VALUES (?, ?, ?, ?, ?)',
+          args
+        })),
+        'write'
+      )
+      const reader = new SearchIndexReadWorkerClient(databasePath, { workerPath })
+      try {
+        const expected = [
+          { sourceId: 'best', score: 1, contentHash: 'best-winning-chunk' },
+          { sourceId: 'runner-up', score: 0.8, contentHash: 'runner-up-hash' },
+          { sourceId: 'third', score: 0.6, contentHash: 'third-hash' }
+        ]
+        await expect(reader.semanticSearch([1, 0, 0], model, 2)).resolves.toEqual(
+          expected.slice(0, 2)
+        )
+        await expect(reader.semanticSearch([1, 0, 0], model, 10)).resolves.toEqual(expected)
+      } finally {
+        await reader.close()
+      }
+    })
+  })
+
+  it('finds the best file and its winning chunk after more than a thousand persisted vectors', async () => {
+    await withDatabase(async (databasePath, writer) => {
+      await createEmbeddings(writer)
+      const model = 'paged-semantic-contract/dim3'
+      await writer.batch(
+        Array.from({ length: 1001 }, (_, index) => ({
+          sql: 'INSERT INTO embeddings (source_id, source_type, embedding, model, content_hash) VALUES (?, ?, ?, ?, ?)',
+          args: [`file-${index}`, 'file', '[0,1,0]', model, `chunk-${index}`]
+        })),
+        'write'
+      )
+      await writer.batch(
+        [
+          ['late-best', '[1,0,0]', 'late-winning-chunk'],
+          ['late-runner-up', '[0.8,0.6,0]', 'late-runner-up-hash'],
+          ['late-best', '[0.6,0.8,0]', 'late-weaker-chunk']
+        ].map(([sourceId, embedding, contentHash]) => ({
+          sql: 'INSERT INTO embeddings (source_id, source_type, embedding, model, content_hash) VALUES (?, ?, ?, ?, ?)',
+          args: [sourceId!, 'file', embedding!, model, contentHash!]
+        })),
+        'write'
+      )
+      const reader = new SearchIndexReadWorkerClient(databasePath, { workerPath })
+      try {
+        await expect(reader.semanticSearch([1, 0, 0], model, 2)).resolves.toEqual([
+          { sourceId: 'late-best', score: 1, contentHash: 'late-winning-chunk' },
+          { sourceId: 'late-runner-up', score: 0.8, contentHash: 'late-runner-up-hash' }
+        ])
       } finally {
         await reader.close()
       }

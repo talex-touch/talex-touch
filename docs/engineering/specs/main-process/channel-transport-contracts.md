@@ -148,8 +148,8 @@ Convert to broadcast on next touch of that file.
 
 ## Scenario: Register Main Stream Handlers Before Creating Their Renderer
 
-- A renderer may start a typed stream as soon as its component mounts. For CoreBox,
-  `usePreviewHistory()` starts `ClipboardEvents.change` immediately.
+- A renderer may start a typed stream as soon as its component mounts. Clipboard monitoring
+  consumers use `clipboardTransport.onClipboardChange()` to start `ClipboardEvents.change`.
 - The owning main module must therefore register the base event's `onStream` handler before the
   module that creates/prewarms that renderer. `app-ready`, `dom-ready`, and `did-finish-load` do
   not prove handler readiness.

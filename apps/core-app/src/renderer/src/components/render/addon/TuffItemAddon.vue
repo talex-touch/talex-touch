@@ -1,15 +1,21 @@
 <script lang="ts" name="TuffItemAddon" setup>
 import type { TuffItem } from '@talex-touch/utils'
+import type { PluginEntityActionId } from '../../../../../shared/plugin-entity'
+import PluginEntityPanel from './PluginEntityPanel.vue'
 
 defineProps<{
-  type?: 'preview'
+  /** `preview` for a file, `plugin` for an installed plugin's management pane. */
+  type?: 'preview' | 'plugin'
   item?: TuffItem
   searchQuery?: string
+  /** Runs one of the shown plugin row's management actions; resolves once it settled. */
+  runPluginAction?: (actionId: PluginEntityActionId) => Promise<void>
 }>()
 
 const emit = defineEmits<{
   (event: 'openItem'): void
   (event: 'openWith', applicationId: string): void
+  (event: 'runFeature', item: TuffItem): void
 }>()
 </script>
 
@@ -21,6 +27,13 @@ const emit = defineEmits<{
         :search-query="searchQuery"
         @open-item="emit('openItem')"
         @open-with="emit('openWith', $event)"
+      />
+    </template>
+    <template v-else-if="type === 'plugin' && item && runPluginAction">
+      <PluginEntityPanel
+        :item="item"
+        :run-action="runPluginAction"
+        @run-feature="emit('runFeature', $event)"
       />
     </template>
   </div>

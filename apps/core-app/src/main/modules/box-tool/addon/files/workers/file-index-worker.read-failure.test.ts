@@ -1,8 +1,9 @@
 import type { FileParser } from '@talex-touch/utils/electron/file-parsers'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
+import sharp from 'sharp'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { fileParserRegistry, textFileParser } from '@talex-touch/utils/electron/file-parsers'
 
@@ -53,7 +54,16 @@ const tccParser: FileParser = {
 let directory = ''
 let taskSequence = 0
 
-async function runIndexTask(files: Array<{ id: number; path: string; name: string }>): Promise<{
+async function runIndexTask(
+  files: Array<{
+    id: number
+    path: string
+    name: string
+    extension?: string
+    size?: number
+    mtime?: number
+  }>
+): Promise<{
   done: WorkerMessage
   finalResults: Map<number, WorkerMessage>
 }> {
@@ -162,5 +172,50 @@ describe('file-index worker read-failure classification', () => {
     const samples = done.failureSamples as string[]
     expect(samples).toHaveLength(3)
     for (const sample of samples) expect(sample).toMatch(/^EISDIR/)
+  })
+
+  it('hands real PNG identity to local image indexing without running a text or OCR parser', async () => {
+    const imagePath = join(directory, 'IMG_2048.png')
+    await sharp({ create: { width: 2, height: 2, channels: 3, background: '#996633' } })
+      .png()
+      .toFile(imagePath)
+    const details = await stat(imagePath)
+    const forbiddenParser: FileParser = {
+      id: 'test-image-body-must-not-be-text',
+      priority: 10_000,
+      supportedExtensions: ['.png'],
+      canParse: () => true,
+      parse: async () => {
+        throw new Error('IMAGE_ROUTED_THROUGH_TEXT_OR_OCR')
+      }
+    }
+    fileParserRegistry.register(forbiddenParser)
+    try {
+      const { done, finalResults } = await runIndexTask([
+        {
+          id: 71,
+          path: imagePath,
+          name: 'IMG_2048.png',
+          extension: '.png',
+          size: details.size,
+          mtime: details.mtimeMs
+        }
+      ])
+      expect(done).toMatchObject({ processed: 1, failed: 0 })
+      expect(finalResults.get(71)).toMatchObject({
+        fileId: 71,
+        fileVersion: details.mtimeMs,
+        fileSize: details.size,
+        progress: { status: 'pending', lastError: 'image-embedding-pending' },
+        fileUpdate: { content: null, embeddingStatus: 'pending' },
+        indexItem: { itemId: imagePath, path: imagePath, name: 'IMG_2048.png' }
+      })
+      const update = finalResults.get(71)!.fileUpdate as Record<string, unknown>
+      expect(update.chunks).toBeUndefined()
+      expect(update.embeddings).toBeUndefined()
+      expect((finalResults.get(71)!.indexItem as Record<string, unknown>).content).toBeUndefined()
+    } finally {
+      fileParserRegistry.unregister(forbiddenParser.id)
+    }
   })
 })

@@ -178,7 +178,7 @@ describe('native-file-search-provider', () => {
     expect(execFileMock).toHaveBeenCalledWith(
       'mdfind',
       expect.arrayContaining(['-onlyin', '/Users/demo']),
-      expect.objectContaining({ timeout: 1200 }),
+      expect.objectContaining({ timeout: 500, killSignal: 'SIGKILL' }),
       expect.any(Function)
     )
     // The display-name clause tripled mdfind's wall time on a real library (900-1245ms vs
@@ -190,6 +190,17 @@ describe('native-file-search-provider', () => {
     expect(statMock).not.toHaveBeenCalledWith(
       '/Users/demo/Music/Music Library.musiclibrary/Genius.itdb'
     )
+  })
+
+  it('gracefully returns empty results when mdfind times out without throwing', async () => {
+    execFileMock.mockImplementation((_command, _args, _options, callback) => {
+      const error = Object.assign(new Error('timed out'), { code: 'ETIMEDOUT', killed: true })
+      callback(error)
+    })
+
+    const provider = macSpotlightFileProvider as unknown as SearchableSpotlightProvider
+    const results = await provider.searchNative('slow-query', new AbortController().signal)
+    expect(results).toEqual([])
   })
 
   it('answers from the deferred layer so an ~900ms mdfind never holds the fast-layer budget', () => {

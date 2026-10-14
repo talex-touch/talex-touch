@@ -46,12 +46,17 @@ import { isBackgroundAppLaunchItem } from './app-launch-item'
 import { buildClipboardQueryInputs } from './clipboard-query-inputs'
 import {
   clearImplicitClipboardState,
-  isClipboardFreshForAutoPaste,
-  normalizeClipboardTimestamp
+  isClipboardDismissed,
+  isClipboardFreshForAutoPaste
 } from './clipboard-autopaste'
 import { alignItemsToSections } from './section-order'
 import { getLatestClipboard } from './useClipboardChannel'
 import { useResize } from './useResize'
+import {
+  PLUGIN_ENTITY_ACTION_IDS,
+  readPluginEntitySnapshot,
+  resolvePluginEntityRunnableFeature
+} from '../../../../../../shared/plugin-entity'
 
 interface SearchEndData {
   searchId: string
@@ -222,6 +227,49 @@ function createWidgetFallbackItem(feature: PluginFeatureItem, queryText: string)
         : {})
     }
   } as TuffItem
+}
+
+function itemMatchesCommandPrefix(item: TuffItem, prefix: string): boolean {
+  if (item.kind !== 'feature') return false
+  const target = prefix.trim().toLowerCase()
+  if (!target) return false
+
+  const extension = (item.meta as { extension?: Record<string, unknown> } | undefined)?.extension
+  const commands = extension?.commands as
+    | Array<{ type?: string; value?: string | string[] }>
+    | undefined
+  if (Array.isArray(commands)) {
+    for (const cmd of commands) {
+      const values = Array.isArray(cmd.value) ? cmd.value : [cmd.value]
+      for (const val of values) {
+        if (typeof val === 'string' && val.trim().toLowerCase() === target) {
+          return true
+        }
+      }
+    }
+  }
+
+  const featureId = (item.meta as { featureId?: string } | undefined)?.featureId
+  if (featureId && featureId.toLowerCase() === target) {
+    return true
+  }
+
+  const searchTokens = extension?.searchTokens as
+    | Array<{ value?: string; source?: string }>
+    | undefined
+  if (Array.isArray(searchTokens)) {
+    for (const token of searchTokens) {
+      if (
+        (token.source === 'command' || token.source === 'keyword' || token.source === 'id') &&
+        typeof token.value === 'string' &&
+        token.value.trim().toLowerCase() === target
+      ) {
+        return true
+      }
+    }
+  }
+
+  return false
 }
 
 function hasPluginWidgetRenderItem(items: TuffItem[]): boolean {
@@ -627,13 +675,10 @@ export function useSearch(
   }
 
   /**
-   * Merge a later batch into what is on screen without moving a row the user is
-   * already looking at. A row that is on screen keeps its position and takes the
-   * newer item data; rows new to the screen are ranked among themselves and
-   * appended below everything, so the deferred layer (the files) never
-   * reshuffles the fast results or the selection. Pinned arrivals are the one
-   * exception: they join the pinned block at the top, after the pinned rows
-   * already there.
+   * Keep rendered rows in their relative order and refresh their data. Ordinary
+   * arrivals append; pinned arrivals join the pinned block. Before the user picks
+   * a row, semantic arrivals may insert ahead of lower-scoring unpinned rows.
+   * Once a row is selected, semantic arrivals append too, preserving its place.
    */
   function mergeRenderedItems(
     current: TuffItem[],
@@ -701,7 +746,36 @@ export function useSearch(
       }
       merged.splice(pinnedEnd, 0, ...pinnedArrivals)
     }
-    merged.push(...unpinnedArrivals)
+    for (const item of unpinnedArrivals) {
+      const score = item.scoring?.final
+      if (
+        !keepItemId &&
+        item.scoring?.match_details?.type === 'semantic' &&
+        typeof score === 'number' &&
+        Number.isFinite(score) &&
+        score > 0
+      ) {
+        // Current rows need not be score-sorted across batches. Insert after
+        // every stronger/equal row and pin without changing their relative order.
+        let insertAt = 0
+        for (let index = merged.length - 1; index >= 0; index -= 1) {
+          const existing = merged[index]
+          const existingScore = existing.scoring?.final
+          if (
+            existing.scoring?.pinned === true ||
+            score <= (typeof existingScore === 'number' ? existingScore : 0)
+          ) {
+            insertAt = index + 1
+            break
+          }
+        }
+        if (insertAt < merged.length) {
+          merged.splice(insertAt, 0, item)
+          continue
+        }
+      }
+      merged.push(item)
+    }
 
     return applyRenderedItemQuota(merged, keepItemId)
   }
@@ -905,7 +979,11 @@ export function useSearch(
       allowPendingTextClipboard: options?.allowPendingTextClipboard ?? false,
       includeClipboardImage:
         options?.includeClipboardImage ??
-        (!queryText.trim() || hasPluginFeatureActivation(activeActivations.value)),
+        Boolean(
+          clipboardOptions?.last?.type === 'image' ||
+          !queryText.trim() ||
+          hasPluginFeatureActivation(activeActivations.value)
+        ),
       filePaths: boxOptions.file?.paths,
       useFileMode: boxOptions.mode === BoxMode.FILE
     })
@@ -946,13 +1024,7 @@ export function useSearch(
         return
       }
 
-      const latestTimestamp = normalizeClipboardTimestamp(latest.timestamp)
-      const dismissedTimestamp = normalizeClipboardTimestamp(clipboardOptions.lastClearedTimestamp)
-      if (
-        latestTimestamp !== null &&
-        dismissedTimestamp !== null &&
-        latestTimestamp === dismissedTimestamp
-      ) {
+      if (isClipboardDismissed(latest, clipboardOptions)) {
         clearImplicitClipboardState(clipboardOptions)
         return
       }
@@ -1086,6 +1158,9 @@ export function useSearch(
   function setSearchResults(items: TuffItem[]): void {
     if (renderedTextQuery?.items === searchResults.value) renderedTextQuery.items = items
     searchResults.value = items
+    if (items.length > 0 && searchVal.value) {
+      checkAndTriggerCommandPrefix(searchVal.value)
+    }
   }
 
   function isRenderedTextQuery(queryKey: string): boolean {
@@ -1202,6 +1277,9 @@ export function useSearch(
       : initialResult
     searchResults.value = filteredItems
     hasFreshResults.value = searchResults.value.length > 0
+    if (filteredItems.length > 0 && searchVal.value) {
+      checkAndTriggerCommandPrefix(searchVal.value)
+    }
     // Items and layout land in one update: executeSearch left the previous pair on screen, and
     // swapping only one of them renders a grid's items as a list for a frame.
     boxOptions.layout = layout
@@ -1326,9 +1404,9 @@ export function useSearch(
                   if (currentSearchId.value !== chunk.sessionId) return
                   const items = limitIncomingBatchItems(filterDetachedItems(chunk.items))
                   if (items.length === 0) return
-                  // Arrivals append below the rows on screen, so a row keeps its index unless a
-                  // pinned arrival lands above it or the quota drops it. Only a row the user
-                  // moved to (focus > 0) follows its item; the untouched default stays on row 0.
+                  // Only a row the user moved to follows its item. With no
+                  // choice yet, semantic arrivals can become the new row 0;
+                  // once chosen, semantic arrivals append without moving it.
                   const focusedItemId =
                     boxOptions.focus > 0 ? (res.value[boxOptions.focus]?.id ?? null) : null
                   if (
@@ -1848,6 +1926,13 @@ export function useSearch(
     if (!itemToExecute) {
       return
     }
+    // Enter on an installed plugin's row means "run it": the row hands over its first runnable
+    // feature row, which then takes the ordinary plugin-feature path (feature mode, input, view).
+    const pluginEntity = readPluginEntitySnapshot(itemToExecute)
+    if (pluginEntity?.primaryAction === PLUGIN_ENTITY_ACTION_IDS.runFeature) {
+      const feature = resolvePluginEntityRunnableFeature(pluginEntity)
+      if (feature) return handleExecute(feature)
+    }
     const eventId = crypto.randomUUID()
 
     // Clipboard-history recommendation items have no execute provider in the
@@ -2186,6 +2271,26 @@ export function useSearch(
     }
   })
 
+  function checkAndTriggerCommandPrefix(val: string): boolean {
+    if (activeActivations.value && activeActivations.value.length > 0) return false
+    if (boxOptions.mode === BoxMode.FEATURE) return false
+
+    const match = val.match(/^([a-zA-Z0-9_\u4e00-\u9fa5]+)\s+(.*)$/)
+    if (!match) return false
+
+    const prefix = match[1]
+    const rest = match[2]
+
+    const candidateItems = searchResults.value.length > 0 ? searchResults.value : res.value
+    const matchedItem = candidateItems.find((item) => itemMatchesCommandPrefix(item, prefix))
+    if (!matchedItem) return false
+
+    programmaticQueryValue = rest
+    searchVal.value = rest
+    void handleExecute(matchedItem)
+    return true
+  }
+
   watch(searchVal, (val) => {
     // A new query reads the index as it is now; the commit backoff starts over with it.
     resetIndexCommitRefresh()
@@ -2195,6 +2300,9 @@ export function useSearch(
       if (shouldSkipReactiveSearch) return
     }
     oneShotQueryContext = undefined
+    if (checkAndTriggerCommandPrefix(val)) {
+      return
+    }
     if (hasSendModePluginFeatureActivation(activeActivations.value)) {
       const cancelable = debouncedSearch as unknown as { cancel?: () => void }
       cancelable.cancel?.()

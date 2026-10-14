@@ -1,11 +1,12 @@
 <script setup lang="ts" name="CoreBox">
 // import EmptySearchStatus from '~/assets/svg/EmptySearchStatus.svg'
 import type { IProviderActivate, ITuffIcon, TuffItem } from '@talex-touch/utils'
+import type { CoreBoxPreviewCopyRequest } from '@talex-touch/utils/transport/events/types'
 import type { ComponentPublicInstance } from 'vue'
 import type { IBoxOptions } from '../../modules/box/adapter'
 import type { IClipboardOptions } from '../../modules/box/adapter/hooks/types'
 import { useTuffTransport } from '@talex-touch/utils/transport'
-import { AppEvents, CoreBoxEvents } from '@talex-touch/utils/transport/events'
+import { AppEvents, ClipboardEvents, CoreBoxEvents } from '@talex-touch/utils/transport/events'
 import { useElementSize } from '@vueuse/core'
 import {
   computed,
@@ -18,6 +19,7 @@ import {
   watch
 } from 'vue'
 import { useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
 import { TxScroll } from '@talex-touch/tuffex/scroll'
 import { useDeferredLoading } from '@talex-touch/tuffex/skeleton'
 import { getStaggerDelay } from './stagger-delay'
@@ -32,7 +34,6 @@ import CoreBoxActionFeedback from '~/components/render/CoreBoxActionFeedback.vue
 import CoreBoxFooter from '~/components/render/CoreBoxFooter.vue'
 import CoreBoxRender from '~/components/render/CoreBoxRender.vue'
 import CoreBoxSelectionBlock from '~/components/render/CoreBoxSelectionBlock.vue'
-import PreviewHistoryPanel from '~/components/render/custom/PreviewHistoryPanel.vue'
 import { appSetting } from '~/modules/storage/app-storage'
 import { isDefaultWidgetRenderer } from '@talex-touch/utils/plugin/widget'
 import { isDivisionBoxMode, windowState } from '~/modules/hooks/core-box'
@@ -46,7 +47,6 @@ import { useFocus } from '../../modules/box/adapter/hooks/useFocus'
 import { useKeyboard } from '../../modules/box/adapter/hooks/useKeyboard'
 import { useListFlip } from '../../modules/box/adapter/hooks/useListFlip'
 import { useMotionGate } from '../../modules/box/adapter/hooks/useMotionGate'
-import { usePreviewHistory } from '../../modules/box/adapter/hooks/usePreviewHistory'
 import {
   captureFlipSnapshot,
   playFlip,
@@ -56,7 +56,10 @@ import { useSearch } from '../../modules/box/adapter/hooks/useSearch'
 import { useResultExposure } from '../../modules/box/adapter/hooks/useResultExposure'
 import { useSelectionBlock } from '../../modules/box/adapter/hooks/useSelectionBlock'
 import { useVisibility } from '../../modules/box/adapter/hooks/useVisibility'
-import { useCoreBoxFooterFeedback } from '../../modules/box/meta-actions/footer-feedback'
+import {
+  useCoreBoxFooterFeedback,
+  showCoreBoxFooterFeedback
+} from '../../modules/box/meta-actions/footer-feedback'
 import { useMetaPanelState } from '../../modules/box/meta-actions/meta-panel-fill'
 import { useCoreBoxTheme } from './theme'
 import BoxInput from './BoxInput.vue'
@@ -66,12 +69,8 @@ import { resolveCoreBoxCompletionDisplay } from './completion-display'
 import TagSection from './tag/TagSection.vue'
 import { devLog } from '~/utils/dev-log'
 import { useI18n } from 'vue-i18n'
-
-declare global {
-  interface Window {
-    __coreboxHistoryVisible?: boolean
-  }
-}
+import type { PluginEntityActionId } from '../../../../shared/plugin-entity'
+import { readPluginEntitySnapshot } from '../../../../shared/plugin-entity'
 
 const scrollbar = ref()
 const boxInputRef = ref()
@@ -643,20 +642,14 @@ const { scrollActiveItemIntoView } = useKeyboard(
   clearClipboard,
   activeActivations,
   handlePaste,
-  itemRefs
+  itemRefs,
+  handleDeactivateProvider
 )
 useChannel(boxOptions, searchVal)
 
 const { focusWindowAndInput, focusInput, getSummonId } = useFocus({
   boxInputRef,
-  getExpectedTarget: () =>
-    previewHistory.visible
-      ? 'history'
-      : shouldShowInput.value
-        ? 'input'
-        : isUIMode.value
-          ? 'plugin'
-          : 'none'
+  getExpectedTarget: () => (shouldShowInput.value ? 'input' : isUIMode.value ? 'plugin' : 'none')
 })
 
 function focusCoreBoxInput(): void {
@@ -676,13 +669,26 @@ function handleCoreBoxWindowFocus(): void {
   focusCoreBoxInput()
 }
 
-// Preview History hook
-const historyPanelRef = ref<InstanceType<typeof PreviewHistoryPanel> | null>(null)
-const previewHistory = usePreviewHistory({
-  searchVal,
-  focusInput,
-  panelRef: historyPanelRef
-})
+const copyPreviewHandler = async (payload: CoreBoxPreviewCopyRequest) => {
+  if (payload.item) {
+    try {
+      await transport.send(CoreBoxEvents.item.execute, { item: payload.item })
+      toast.success('结果已复制')
+    } catch {
+      toast.error('复制失败')
+    }
+    return
+  }
+
+  if (!payload.value) return
+  try {
+    await transport.send(ClipboardEvents.write, { text: payload.value })
+    toast.success('结果已复制')
+  } catch {
+    toast.error('复制失败')
+  }
+}
+const unregCopyPreview = transport.on(CoreBoxEvents.preview.copy, copyPreviewHandler)
 
 // Handle UI mode exit event from main process (ESC pressed in plugin UI view)
 const handleUIModeExited = (payload?: { resetInput?: boolean }) => {
@@ -748,6 +754,7 @@ onBeforeUnmount(() => {
   cleanupVisibility()
   unregUIModeExited()
   unregFocusInput()
+  unregCopyPreview()
   window.removeEventListener('corebox:shown', focusCoreBoxInput)
   window.removeEventListener('focus', handleCoreBoxWindowFocus)
   if (resWatchTimerId !== null) {
@@ -785,15 +792,16 @@ function handleItemTrigger(index: number, item: TuffItem): void {
 /**
  * The preview pane follows the selection with hysteresis, so arrowing through a list that mixes
  * files with apps does not flip the results column between full and 40% width on every step.
- * - A file opens the pane at once, or switches the open pane to it.
- * - Off files, the pane closes only once the selection has rested on other rows for
- *   PREVIEW_CLOSE_DELAY_MS; until then it keeps showing the last file, not the row selected now.
- *   That also covers a refresh of the same query whose fast snapshot drops the file for a moment.
+ * - A file opens the pane at once, or switches the open pane to it. An installed plugin's row does
+ *   the same with its management pane.
+ * - Off those rows, the pane closes only once the selection has rested on other rows for
+ *   PREVIEW_CLOSE_DELAY_MS; until then it keeps showing the last one, not the row selected now.
+ *   That also covers a refresh of the same query whose fast snapshot drops the row for a moment.
  * - It closes at once when there is nothing to go back to: no row is selected, or a new or cleared
- *   query has replaced the results and the file is not among them.
+ *   query has replaced the results and the shown row is not among them.
  */
 const PREVIEW_CLOSE_DELAY_MS = 200
-const addonType = ref<'preview' | undefined>(undefined)
+const addonType = ref<'preview' | 'plugin' | undefined>(undefined)
 /** What the pane shows: the selected file, or the last one while the pane waits to close. */
 const addonItem = shallowRef<TuffItem | undefined>(undefined)
 /** The query of the rows the shown file was selected from. */
@@ -825,11 +833,13 @@ watch(
     // cleared one keeps them up until the grid lands. None of them is the new query's: the pane
     // stays as it is until its rows replace them, instead of previewing a file from the old ones.
     if (loading.value && searchVal.value !== rowsQuery) return
-    if (item?.kind === 'file') {
+    const paneType =
+      item?.kind === 'file' ? 'preview' : readPluginEntitySnapshot(item) ? 'plugin' : undefined
+    if (paneType) {
       cancelAddonClose()
       addonItem.value = item
       addonQuery = rowsQuery
-      addonType.value = 'preview'
+      addonType.value = paneType
       return
     }
     if (!addonType.value) return
@@ -870,6 +880,13 @@ function handlePreviewOpen(): void {
   handleExecute(addonItem.value)
 }
 
+/** A management step on the plugin the pane shows, through the same path as its ⌘K row. */
+async function handlePluginEntityAction(actionId: PluginEntityActionId): Promise<void> {
+  const item = addonItem.value
+  if (!item) return
+  await actionPanel.executeAction(actionId, item)
+}
+
 /**
  * Opening with a non-default application.
  *
@@ -881,10 +898,32 @@ async function handlePreviewOpenWith(applicationId: string): Promise<void> {
   const filePath = addonItem.value?.meta?.file?.path
   if (!filePath) return
 
+  if (!applicationId) {
+    showCoreBoxFooterFeedback(t('fileInfo.deepMatchNavigationUnsupported'), 'error')
+    return
+  }
   try {
-    await transport.send(AppEvents.fileIndex.openWith, { path: filePath, applicationId })
+    const match = addonItem.value?.meta?.deepMatch
+    const result = await transport.send(AppEvents.fileIndex.openWith, {
+      path: filePath,
+      applicationId,
+      lineNumber: match?.lineNumber,
+      pageNumber: match?.pageNumber
+    })
+    if (!result.success) {
+      showCoreBoxFooterFeedback(
+        t(
+          result.errorCode === 'FILE_INDEX_OPEN_WITH_NAVIGATION_UNSUPPORTED'
+            ? 'fileInfo.deepMatchNavigationUnsupported'
+            : 'corebox.actions.failed'
+        ),
+        'error'
+      )
+      return
+    }
   } catch (error) {
-    devLog('[CoreBox] Failed to open the file with the chosen application:', error)
+    devLog('[CoreBox] Preview open-with failed')
+    showCoreBoxFooterFeedback(t('corebox.actions.failed'), 'error')
     return
   }
 
@@ -1330,7 +1369,6 @@ const customCss = computed(() => {
         'CoreBoxRes--visible': shouldShowResultArea
       }"
       :aria-busy="loading ? 'true' : undefined"
-      @contextmenu="previewHistory.handleContextMenu"
     >
       <!-- Hide result area when plugin UI view is attached -->
       <template v-if="shouldShowResultArea">
@@ -1434,21 +1472,13 @@ const customCss = computed(() => {
           :type="addonType"
           :item="addonItem"
           :search-query="searchVal"
+          :run-plugin-action="handlePluginEntityAction"
           :style="getCanvasAreaStyle('addon')"
           @open-item="handlePreviewOpen"
           @open-with="handlePreviewOpenWith"
+          @run-feature="handleExecute"
         />
       </template>
-
-      <!-- Preview History Panel - Always mounted to listen to events -->
-      <PreviewHistoryPanel
-        ref="historyPanelRef"
-        :visible="previewHistory.visible"
-        :loading="previewHistory.loading"
-        :items="previewHistory.items"
-        :active-index="previewHistory.activeIndex"
-        @apply="previewHistory.apply"
-      />
     </div>
   </div>
 </template>

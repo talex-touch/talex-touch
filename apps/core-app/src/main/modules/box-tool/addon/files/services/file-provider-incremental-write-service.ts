@@ -14,9 +14,10 @@ export type FileProviderIncrementalChangeEntry = [
   { action: 'add' | 'change'; rawPath: string; manual?: boolean }
 ]
 
-export interface FileProviderIncrementalWriteResult<TInserted, TUpdated> {
+export interface FileProviderIncrementalWriteResult<TInserted, TUpdated, TRefreshed = TUpdated> {
   inserted: TInserted[]
   updated: TUpdated[]
+  refreshed: TRefreshed[]
   unchangedCount: number
   manual: {
     total: number
@@ -124,7 +125,7 @@ export class FileProviderIncrementalWriteService<
   async execute(
     entries: FileProviderIncrementalChangeEntry[],
     options: FileProviderIncrementalWriteOptions = {}
-  ): Promise<FileProviderIncrementalWriteResult<TInserted, TUpdated>> {
+  ): Promise<FileProviderIncrementalWriteResult<TInserted, TUpdated, TExisting>> {
     const manualContext = buildIndexedWriteManualContext(entries, this.normalizePath)
 
     const recordMap = new Map<string, TRecord>()
@@ -140,7 +141,7 @@ export class FileProviderIncrementalWriteService<
     if (recordMap.size === 0) {
       const manual = buildEmptyIndexedWriteManualSummary(manualContext.manualTotal)
       this.logManualSummary(manual)
-      return { inserted: [], updated: [], unchangedCount: 0, manual }
+      return { inserted: [], updated: [], refreshed: [], unchangedCount: 0, manual }
     }
 
     const targetPaths = Array.from(recordMap.keys())
@@ -174,11 +175,27 @@ export class FileProviderIncrementalWriteService<
       )
     }
 
+    // A manual re-add refreshes enrichment even when file metadata is unchanged.
+    // Keep the existing identity and metadata: the indexed runtime owns the worker and writer.
+    const refreshed: TExisting[] = []
+    if (manualContext.manualTotal > 0 && writePlan.unchangedCount > 0) {
+      const updatedIds = new Set(writePlan.filesToUpdate.map((record) => record.id))
+      for (const existing of existingRows) {
+        if (
+          recordMap.has(existing.path) &&
+          manualContext.manualPaths.has(this.normalizePath(existing.path)) &&
+          !updatedIds.has(existing.id)
+        )
+          refreshed.push(existing)
+      }
+    }
+
     this.logManualSummary(writePlan.manual)
 
     return {
       inserted,
       updated,
+      refreshed,
       unchangedCount: writePlan.unchangedCount,
       manual: writePlan.manual
     }

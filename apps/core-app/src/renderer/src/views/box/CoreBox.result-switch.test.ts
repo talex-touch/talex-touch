@@ -183,17 +183,6 @@ vi.mock('../../modules/box/adapter/hooks/useKeyboard', () => ({
   useKeyboard: () => ({ scrollActiveItemIntoView: state.scrollActiveItemIntoView })
 }))
 
-vi.mock('../../modules/box/adapter/hooks/usePreviewHistory', () => ({
-  usePreviewHistory: () => ({
-    visible: false,
-    loading: false,
-    items: [],
-    activeIndex: 0,
-    handleContextMenu: () => {},
-    apply: () => {}
-  })
-}))
-
 vi.mock('../../modules/box/adapter/hooks/useVisibility', () => ({
   useVisibility: () => ({ cleanup: () => {}, checkAutoClear: () => {} })
 }))
@@ -275,7 +264,6 @@ const stubs = {
   },
   DivisionBoxHeader: { template: '<div />' },
   PrefixPart: { template: '<div />' },
-  PreviewHistoryPanel: { template: '<div />' },
   TagSection: { template: '<div />' },
   TuffIcon: { template: '<i />' },
   teleport: true
@@ -587,6 +575,53 @@ describe('CoreBox preview pane', () => {
   }
 
   const closed = { compressed: false, type: 'none', item: 'none' }
+
+  it('opens the plugin pane and switches to file preview without collapsing during a mixed selection sweep', async () => {
+    vi.useFakeTimers()
+    const plugin = {
+      id: 'plugin-entity:notes',
+      kind: 'plugin',
+      source: { id: 'plugin-entities', type: 'system' },
+      render: { mode: 'default', basic: { title: 'Notes' } },
+      meta: {
+        extension: {
+          pluginEntity: {
+            name: 'notes',
+            state: 'disabled',
+            primaryAction: 'plugin-entity:enable',
+            features: []
+          }
+        }
+      }
+    } as TuffItem
+    const coreBox = await mountMixedList([plugin, item('app', 'App'), fileItem('report')])
+    expect(paneState(coreBox)).toEqual({
+      compressed: true,
+      type: 'plugin',
+      item: 'plugin-entity:notes'
+    })
+    await select(1)
+    vi.advanceTimersByTime(100)
+    await nextTick()
+    expect(paneState(coreBox)).toEqual({
+      compressed: true,
+      type: 'plugin',
+      item: 'plugin-entity:notes'
+    })
+    await select(2)
+    expect(paneState(coreBox)).toEqual({ compressed: true, type: 'preview', item: 'report' })
+    await select(0)
+    expect(paneState(coreBox)).toEqual({
+      compressed: true,
+      type: 'plugin',
+      item: 'plugin-entity:notes'
+    })
+    expect(state.addonOpens).toBe(1)
+    await select(1)
+    vi.advanceTimersByTime(250)
+    await nextTick()
+    expect(paneState(coreBox)).toEqual(closed)
+  })
 
   it('previews a top-five file tile and keeps file selection coherent across the overflow-list boundary', async () => {
     vi.useFakeTimers()

@@ -73,7 +73,14 @@ describe('settings category table', () => {
       (category) => category.key
     )
 
-    expect(system).toEqual(['update', 'network', 'download', 'storage-usage', 'about'])
+    expect(system).toEqual([
+      'update',
+      'network',
+      'download',
+      'storage-usage',
+      'performance',
+      'about'
+    ])
   })
 
   it('opens the two advanced pages only in Developer Mode', () => {

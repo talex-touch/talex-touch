@@ -1,4 +1,4 @@
-import type { TuffItem, TuffSearchResult } from '@talex-touch/utils'
+import type { TuffItem, TuffQuery, TuffSearchResult } from '@talex-touch/utils'
 import type { Ref } from 'vue'
 import type { IBoxOptions } from '..'
 import type { IClipboardItem, IClipboardOptions } from './types'
@@ -8,6 +8,7 @@ import { nextTick, reactive, ref, watch } from 'vue'
 import { setRendererActivity } from '~/modules/telemetry/renderer-activity'
 import { BoxMode } from '..'
 import { useSearch } from './useSearch'
+import { PLUGIN_ENTITY_ACTION_IDS as pluginActions } from '../../../../../../shared/plugin-entity'
 
 const state = vi.hoisted(() => ({
   listeners: new Map<string, (payload?: unknown) => void>(),
@@ -339,6 +340,100 @@ describe('useSearch CoreBox reopen behavior', () => {
         configurable: true
       })
     }
+  })
+
+  it('Enter on an installed plugin starts its first runnable feature session instead of navigating to detail', async () => {
+    const options = createBoxOptions()
+    const hook = useSearch(options, createClipboardOptions())
+    await flushPromises()
+    state.send.mockImplementation(async (event: unknown) => {
+      if (String(event) === 'core-box:item:execute')
+        return { activeProviders: ['plugin-features:notes'] }
+      if (String(event).includes('provider')) return []
+      return undefined
+    })
+    const runnable = {
+      id: 'notes/write',
+      kind: 'feature',
+      source: { id: 'plugin-features', type: 'plugin' },
+      render: { mode: 'default', basic: { title: 'Write' } },
+      meta: {
+        pluginName: 'notes',
+        featureId: 'write',
+        interaction: { type: 'webcontent', showInput: false }
+      }
+    } as TuffItem
+    const entity = {
+      id: 'plugin-entity:notes',
+      kind: 'plugin',
+      source: { id: 'plugin-entities', type: 'system' },
+      render: { mode: 'default', basic: { title: 'Notes' } },
+      meta: {
+        extension: {
+          pluginEntity: {
+            name: 'notes',
+            displayName: 'Notes',
+            version: '1.0.0',
+            description: '',
+            dev: false,
+            state: 'enabled',
+            primaryAction: pluginActions.runFeature,
+            features: [
+              { id: 'unavailable', name: 'Unavailable', desc: '' },
+              { id: 'write', name: 'Write', desc: '', item: runnable }
+            ]
+          }
+        }
+      }
+    } as TuffItem
+    await hook.handleExecute(entity)
+    await flushPromises()
+    expect(options.mode).toBe(BoxMode.FEATURE)
+    expect(hook.activeActivations.value?.[0]).toMatchObject({
+      id: 'plugin-features',
+      showInput: false,
+      meta: { pluginName: 'notes', featureId: 'write', feature: { id: 'notes/write' } }
+    })
+    const executed = state.send.mock.calls.filter(
+      ([event]) => String(event) === 'core-box:item:execute'
+    )
+    expect(executed.map(([, payload]) => payload.item.id)).toEqual(['notes/write'])
+  })
+
+  it.each([
+    ['disabled', pluginActions.enable],
+    ['failed', pluginActions.reload]
+  ])('keeps CoreBox visible while Enter manages a %s plugin', async (status, primaryAction) => {
+    const options = createBoxOptions()
+    const hook = useSearch(options, createClipboardOptions())
+    await flushPromises()
+    state.send.mockClear()
+    const entity = {
+      id: 'plugin-entity:notes',
+      kind: 'plugin',
+      source: { id: 'plugin-entities', type: 'system' },
+      render: { mode: 'default', basic: { title: 'Notes' } },
+      meta: {
+        keepCoreBoxOpen: true,
+        extension: {
+          pluginEntity: {
+            name: 'notes',
+            state: status,
+            primaryAction,
+            features: []
+          }
+        }
+      }
+    } as TuffItem
+    await hook.handleExecute(entity)
+    expect(state.send.mock.calls.some(([event]) => String(event) === 'core-box:ui:hide')).toBe(
+      false
+    )
+    const executed = state.send.mock.calls.filter(
+      ([event]) => String(event) === 'core-box:item:execute'
+    )
+    expect(executed.map(([, payload]) => payload.item.id)).toEqual(['plugin-entity:notes'])
+    expect(options.mode).not.toBe(BoxMode.FEATURE)
   })
 
   it('runs a typed Context Actions query without re-reading clipboard state', async () => {
@@ -1306,6 +1401,35 @@ describe('useSearch CoreBox reopen behavior', () => {
 
     expect(state.latestClipboardRequests).toContainEqual({ refresh: true })
     expect(clipboardOptions.last).toBeNull()
+  })
+  it('keeps clipboard image attached in inputs when typing query text', async () => {
+    const timestamp = new Date().toISOString()
+    const clipboardOptions = createClipboardOptions()
+    clipboardOptions.last = {
+      id: 95,
+      type: 'image',
+      content: 'tfile:///tmp/tuff/clipboard/images/original.png',
+      thumbnail: 'data:image/png;base64,thumb',
+      timestamp,
+      captureSource: 'native-watch',
+      autoPasteEligible: true
+    }
+    clipboardOptions.activeClipboardSource = 'manual'
+    const hook = useSearch(createBoxOptions(), clipboardOptions)
+    await flushPromises()
+
+    hook.searchVal.value = 'hdjsq'
+    await hook.handleSearchImmediate({ force: true })
+    await flushPromises()
+
+    const lastRequest = state.searchRequests[state.searchRequests.length - 1]
+    const payload = lastRequest?.payload as { query?: TuffQuery }
+    expect(payload?.query?.text).toBe('hdjsq')
+    expect(payload?.query?.inputs).toEqual([
+      expect.objectContaining({
+        type: TuffInputType.Image
+      })
+    ])
   })
 
   it('runs a forced search when the main process sets the query', async () => {
@@ -2500,6 +2624,55 @@ describe('useSearch CoreBox reopen behavior', () => {
       expect(hook.res.value.some((item) => item.id === 'late-item')).toBe(true)
       state.releaseCompletion?.()
       await flushPromises()
+    })
+  })
+
+  describe('prefix command auto-recognition', () => {
+    it('activates feature provider when user types command prefix followed by space', async () => {
+      const featureItem = {
+        id: 'touch-translation/touch-translate',
+        kind: 'feature',
+        source: { id: 'plugin-features', type: 'plugin', name: 'touch-translation' },
+        render: { mode: 'default', basic: { title: '翻译' } },
+        meta: {
+          pluginName: 'touch-translation',
+          featureId: 'touch-translate',
+          interaction: { type: 'webcontent', path: '/', showInput: true, allowInput: true },
+          extension: {
+            commands: [{ type: 'over', value: ['fy', '翻译', 'translate'] }]
+          }
+        }
+      } as unknown as TuffItem
+
+      state.send.mockImplementation(async (event: unknown) => {
+        const eventName = typeof event === 'string' ? event : String(event)
+        if (eventName === 'core-box:item:execute') {
+          return { activeProviders: ['plugin-features:touch-translation'] }
+        }
+        return undefined
+      })
+      const hook = useSearch(createBoxOptions(), createClipboardOptions())
+      await flushPromises()
+
+      hook.replaceSearchResults([featureItem])
+      await flushPromises()
+
+      hook.searchVal.value = 'fy hello'
+      await nextTick()
+      await flushPromises()
+
+      expect(hook.searchVal.value).toBe('hello')
+      expect(hook.activeActivations.value).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'plugin-features',
+            meta: expect.objectContaining({
+              pluginName: 'touch-translation',
+              featureId: 'touch-translate'
+            })
+          })
+        ])
+      )
     })
   })
 })

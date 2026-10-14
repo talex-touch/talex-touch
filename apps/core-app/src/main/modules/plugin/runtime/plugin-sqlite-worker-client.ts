@@ -9,6 +9,7 @@ import type {
 } from './plugin-sqlite-worker-protocol'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { trackWorkerThread } from '../../../core/worker-thread-registry'
 import { PLUGIN_STORAGE_ERROR_CODES } from '@talex-touch/utils/transport/events/types'
 import {
   PLUGIN_SQLITE_MAX_QUEUE_DEPTH,
@@ -205,6 +206,7 @@ export class PluginSqliteWorkerClient {
         stackSizeMb: 4
       }
     })
+    trackWorkerThread(worker, 'plugin-sqlite')
     worker.on('message', (message: PluginSqliteWorkerResponse) => this.handleMessage(message))
     worker.on('error', () => this.handleWorkerFailure())
     worker.on('exit', (code) => {

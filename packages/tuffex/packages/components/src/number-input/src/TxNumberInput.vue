@@ -207,6 +207,7 @@ defineExpose({
 .tx-number-input {
   display: inline-flex;
   align-items: stretch;
+  box-sizing: border-box;
   width: 100%;
   min-width: 120px;
   height: 34px;
@@ -230,6 +231,7 @@ defineExpose({
   flex: 1;
   min-width: 0;
   width: 100%;
+  box-sizing: border-box;
   padding: 0 10px;
   border: 0;
   outline: 0;

@@ -21,6 +21,9 @@ export interface IBoxOptions {
   file: {
     buffer?: Uint8Array | null
     iconPath?: string
+    /** Host-captured clipboard record carried across FILE-mode autofill. */
+    clipboardId?: number
+    thumbnail?: string | null
     paths: string[]
   }
   data: unknown

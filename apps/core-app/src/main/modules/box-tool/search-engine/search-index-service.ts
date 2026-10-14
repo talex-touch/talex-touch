@@ -122,6 +122,12 @@ export interface SearchIndexProviderReplacementSummary {
   indexedItems: number
 }
 
+export interface LoadedFileCandidateRow {
+  file: typeof schema.files.$inferSelect
+  extensionKey: string | null
+  extensionValue: string | null
+}
+
 interface PreparedIndexDocument extends SearchIndexDocument {
   keywordEntries: SearchIndexKeyword[]
 }
@@ -918,7 +924,7 @@ export class SearchIndexService {
     const ftsMatchExpr = this.buildFtsMatchExpr(trimmed, options.includeContent !== false)
     searchLogger.indexSearchExecuting()
     const rows = await this.readAll<{ item_id: string; score: number }>(
-      sql`SELECT item_id, bm25(search_index) as score FROM search_index WHERE provider = ${providerId} AND search_index MATCH ${ftsMatchExpr} ORDER BY score LIMIT ${limit}`,
+      sql`SELECT item_id, rank as score FROM search_index WHERE provider = ${providerId} AND search_index MATCH ${ftsMatchExpr} AND rank MATCH 'bm25()' ORDER BY rank LIMIT ${limit}`,
       signal
     )
     signal?.throwIfAborted()
@@ -954,6 +960,163 @@ export class SearchIndexService {
     }
     this.zeroResultDiagnosticAt.set(providerId, now)
     return true
+  }
+
+  /**
+   * Offload candidate file row hydration from Electron main thread to read worker.
+   * Performs LEFT JOIN on files and file_extensions within the search database read home.
+   */
+  async loadFileCandidatesByPaths(
+    paths: string[],
+    signal?: AbortSignal
+  ): Promise<LoadedFileCandidateRow[]> {
+    const uniquePaths = Array.from(new Set(paths.map((p) => p.trim()).filter(Boolean)))
+    if (uniquePaths.length === 0) return []
+    signal?.throwIfAborted()
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+
+    const query = sql`
+      SELECT
+        f.id AS id,
+        f.path AS path,
+        f.name AS name,
+        f.display_name AS displayName,
+        f.extension AS extension,
+        f.size AS size,
+        f.mtime AS mtime,
+        f.ctime AS ctime,
+        f.last_indexed_at AS lastIndexedAt,
+        f.is_dir AS isDir,
+        f.type AS type,
+        f.content AS content,
+        f.embedding_status AS embeddingStatus,
+        fe.key AS extensionKey,
+        fe.value AS extensionValue
+      FROM files f
+      LEFT JOIN file_extensions fe ON f.id = fe.file_id
+      WHERE (+f.type = 'file' OR +f.type = 'directory')
+        AND f.path IN (${sql.join(
+          uniquePaths.map((p) => sql`${p}`),
+          sql`, `
+        )})
+    `
+    const rows = await this.readAll<{
+      id: number
+      path: string
+      name: string
+      displayName: string | null
+      extension: string | null
+      size: number | null
+      mtime: number | string
+      ctime: number | string
+      lastIndexedAt: number | string
+      isDir: number | boolean
+      type: string
+      content: string | null
+      embeddingStatus: string
+      extensionKey: string | null
+      extensionValue: string | null
+    }>(query, signal)
+
+    signal?.throwIfAborted()
+    return rows.map((row) => ({
+      file: {
+        id: row.id,
+        path: row.path,
+        name: row.name,
+        displayName: row.displayName ?? null,
+        extension: row.extension ?? null,
+        size: row.size ?? null,
+        mtime: new Date(row.mtime || 0),
+        ctime: new Date(row.ctime || 0),
+        lastIndexedAt: new Date(row.lastIndexedAt || 0),
+        isDir: Boolean(row.isDir),
+        type: row.type,
+        content: row.content ?? null,
+        embeddingStatus: (row.embeddingStatus as 'none' | 'pending' | 'completed') || 'none'
+      },
+      extensionKey: row.extensionKey ?? null,
+      extensionValue: row.extensionValue ?? null
+    }))
+  }
+
+  /**
+   * Offload semantic recall candidate row hydration from Electron main thread to read worker.
+   */
+  async loadFileCandidatesByIds(
+    ids: number[],
+    signal?: AbortSignal
+  ): Promise<LoadedFileCandidateRow[]> {
+    const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id))))
+    if (uniqueIds.length === 0) return []
+    signal?.throwIfAborted()
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+
+    const query = sql`
+      SELECT
+        f.id AS id,
+        f.path AS path,
+        f.name AS name,
+        f.display_name AS displayName,
+        f.extension AS extension,
+        f.size AS size,
+        f.mtime AS mtime,
+        f.ctime AS ctime,
+        f.last_indexed_at AS lastIndexedAt,
+        f.is_dir AS isDir,
+        f.type AS type,
+        f.content AS content,
+        f.embedding_status AS embeddingStatus,
+        fe.key AS extensionKey,
+        fe.value AS extensionValue
+      FROM files f
+      LEFT JOIN file_extensions fe ON f.id = fe.file_id
+      WHERE +f.type = 'file'
+        AND f.id IN (${sql.join(
+          uniqueIds.map((id) => sql`${id}`),
+          sql`, `
+        )})
+    `
+    const rows = await this.readAll<{
+      id: number
+      path: string
+      name: string
+      displayName: string | null
+      extension: string | null
+      size: number | null
+      mtime: number | string
+      ctime: number | string
+      lastIndexedAt: number | string
+      isDir: number | boolean
+      type: string
+      content: string | null
+      embeddingStatus: string
+      extensionKey: string | null
+      extensionValue: string | null
+    }>(query, signal)
+
+    signal?.throwIfAborted()
+    return rows.map((row) => ({
+      file: {
+        id: row.id,
+        path: row.path,
+        name: row.name,
+        displayName: row.displayName ?? null,
+        extension: row.extension ?? null,
+        size: row.size ?? null,
+        mtime: new Date(row.mtime || 0),
+        ctime: new Date(row.ctime || 0),
+        lastIndexedAt: new Date(row.lastIndexedAt || 0),
+        isDir: Boolean(row.isDir),
+        type: row.type,
+        content: row.content ?? null,
+        embeddingStatus: (row.embeddingStatus as 'none' | 'pending' | 'completed') || 'none'
+      },
+      extensionKey: row.extensionKey ?? null,
+      extensionValue: row.extensionValue ?? null
+    }))
   }
 
   /**
@@ -1017,12 +1180,21 @@ export class SearchIndexService {
     // Escaped like the subsequence sibling below. Concatenating raw user text let
     // '%' and '_' through as wildcards: typing '%' produced '%%' and matched every
     // keyword row for the provider (#663).
-    const likePattern = `${escapeLikeWildcards(prefix)}%`
+    // All writer paths persist lowercase keywords. LIKE alone cannot use the
+    // BINARY index for its case-insensitive prefix and scans the entire provider.
+    const normalizedPrefix = prefix.toLowerCase()
+    const upperBound = prefixSuccessor(normalizedPrefix)
+    const prefixRange =
+      upperBound === null
+        ? sql`km.keyword >= ${normalizedPrefix}`
+        : sql`km.keyword >= ${normalizedPrefix} AND km.keyword < ${upperBound}`
+    const likePattern = `${escapeLikeWildcards(normalizedPrefix)}%`
     const rows = await this.readAll<{ itemId: string; keyword: string; priority: number }>(
       sql`SELECT km.item_id AS itemId, km.keyword AS keyword, km.priority AS priority
           FROM keyword_mappings km
           WHERE km.keyword LIKE ${likePattern} ESCAPE ${SUBSEQUENCE_LIKE_ESCAPE_CHAR}
             AND km.provider_id = ${providerId}
+            AND ${prefixRange}
             AND km.keyword NOT LIKE 'ng:%'
           LIMIT ${limit}`,
       signal
@@ -1878,6 +2050,18 @@ function subsequenceScore(query: string, target: string): number {
   const coverage = qLen / tLen
   const consecutiveBonus = maxConsecutive / qLen
   return coverage * 0.5 + consecutiveBonus * 0.5
+}
+
+/** Exclusive UTF-8/BINARY upper bound; unlike a U+FFFF suffix, includes astral continuations. */
+function prefixSuccessor(prefix: string): string | null {
+  const characters = Array.from(prefix)
+  for (let index = characters.length - 1; index >= 0; index--) {
+    const codePoint = characters[index].codePointAt(0)!
+    if (codePoint < 0x10ffff) {
+      return characters.slice(0, index).join('') + String.fromCodePoint(codePoint + 1)
+    }
+  }
+  return null
 }
 
 /**

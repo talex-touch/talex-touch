@@ -26,9 +26,8 @@ const APP_TITLE_PREFIX_INTENT_BONUS = 480_000
 const APP_TITLE_SUBSTRING_INTENT_BONUS = 180_000
 const APP_EXACT_TOKEN_INTENT_BONUS = 6_200_000
 const APP_PREFIX_TOKEN_INTENT_BONUS = 5_700_000
-// A cold-start preference below the smallest app-intent bonus (180,000).
-// It applies only to the host-owned destination matching the current query.
-const APP_DESTINATION_INTENT_BONUS = 90_000
+// When query matches a host-owned destination alias, boost it to the top.
+const APP_DESTINATION_INTENT_BONUS = 6_500_000
 /**
  * Ceiling for the plugin-supplied `feature.priority` from a manifest.
  *
@@ -65,6 +64,8 @@ const FILE_STEM_EXACT_MATCH_SCORE = 420
 const FILE_STEM_PREFIX_MATCH_SCORE = 250
 const FILE_STEM_SUBSTRING_MATCH_SCORE = 150
 const FILE_EXTENSION_ONLY_MATCH_SCORE = 40
+// Semantic similarity shares the file match ladder, below exact stem/full-name intent.
+const FILE_SEMANTIC_MATCH_SCORE_CAP = 400
 
 /**
  * Path actions — open this folder in a terminal, reveal it in the file manager — outrank ordinary
@@ -76,9 +77,9 @@ const FILE_EXTENSION_ONLY_MATCH_SCORE = 40
  * The band sits far above the largest real score (an exact app-token match is 6.2e6, and the whole
  * ladder stays under 3e7) while still ordering the rows among themselves by the action's own ordinal:
  * default terminal, then the other terminals, then the file manager. Emitting it as a real
- * `scoring.final` preserves that order within each arriving batch. A late unpinned batch still
- * appends below rows already on screen, regardless of score; this band cannot guarantee global
- * first-row placement. Pin, which the caller applies as a partition above all scores, is untouched.
+ * `scoring.final` preserves that order within each arriving batch. Ordinary late unpinned rows
+ * append; semantic rows may insert by score only before the user selects a result. This band
+ * cannot guarantee global first-row placement. Pin remains a partition above all scores.
  */
 const PATH_ACTION_SCORE_BASE = 1_000_000_000
 const PATH_ACTION_MAX_ORDINAL = 99
@@ -147,6 +148,19 @@ function calculateFileMatchScore(
   }
 
   return 0
+}
+
+function calculateFileSemanticMatchScore(item: TuffItem): number {
+  if (item.scoring?.match_details?.type !== 'semantic') return 0
+
+  const search = item.meta?.extension?.search as { semanticScore?: unknown } | undefined
+  const semanticScore = search?.semanticScore
+  const confidence = item.scoring.match_details.confidence
+  const similarity =
+    typeof semanticScore === 'number' && Number.isFinite(semanticScore) ? semanticScore : confidence
+  if (typeof similarity !== 'number' || !Number.isFinite(similarity)) return 0
+
+  return Math.min(Math.max(similarity, 0), 1) * FILE_SEMANTIC_MATCH_SCORE_CAP
 }
 
 function getKindBias(item: TuffItem): number {
@@ -330,7 +344,10 @@ function calculateMatchScore(item: TuffItem, searchKey?: string): number {
   if (titleLower === normalizedKey) return 1000
 
   if (isFileItem(item)) {
-    return calculateFileMatchScore(item, titleLower, normalizedKey)
+    return Math.max(
+      calculateFileMatchScore(item, titleLower, normalizedKey),
+      calculateFileSemanticMatchScore(item)
+    )
   }
 
   const matchRanges = item.meta?.extension?.matchResult as
@@ -347,12 +364,20 @@ function calculateMatchScore(item: TuffItem, searchKey?: string): number {
     score += (matchLength / titleLength) * 100 // Match length reward
 
     // 2. Beginning match reward
-    if (start === 0) {
+    const isDestinationItem =
+      item.source?.type === 'system' && item.source?.id === APP_DESTINATION_PROVIDER_ID
+    const isTuffPrefixedDestination =
+      isDestinationItem && titleLower.startsWith('tuff ') && start === 5
+
+    if (start === 0 || isTuffPrefixedDestination) {
       const isInitialsMatch = matchSource === 'initials'
-      if (titleLower.startsWith(normalizedKey)) {
+      if (
+        titleLower.startsWith(normalizedKey) ||
+        (isTuffPrefixedDestination && titleLower.slice(5).startsWith(normalizedKey))
+      ) {
         score += 300 // 标题真实开头匹配，大幅加分
-      } else if (isInitialsMatch) {
-        score += 140 // 缩写命中给适度奖励，避免被别名伪高亮压制
+      } else if (isInitialsMatch || isDestinationItem) {
+        score += 140 // 缩写或目标别名命中给适度奖励，避免被别名伪高亮压制
       }
     }
 
@@ -485,11 +510,11 @@ export const tuffSorter: ISortMiddleware = {
     })
 
     // Undecorate: publish the rank score and the pin partition on the item. The
-    // renderer orders the rows of a later batch among themselves by this score
-    // before appending them below what is already on screen (it never re-ranks
-    // rendered rows), and the completion cache reads it too. Items are
-    // shallow-copied because providers reuse the objects they hand in across
-    // queries.
+    // renderer orders each arriving batch by this score. Late semantic rows may
+    // insert before weaker rows only while no result is selected; other late
+    // rows append, and existing rows keep their relative order. The completion
+    // cache reads it too. Items are shallow-copied because providers reuse the
+    // objects they hand in across queries.
     return decoratedItems.map((decorated) => ({
       ...decorated.item,
       scoring: {

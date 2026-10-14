@@ -475,12 +475,22 @@ export class TouchApp implements TalexTouch.TouchApp {
     }
   }
 
+  /**
+   * Install the official plugin seeds before the plugin module scans its root.
+   *
+   * A packaged build reads the immutable `Resources/bundled-plugins`. A dev build reads the same
+   * generated projection from `apps/core-app/resources/bundled-plugins`: without it the dev profile
+   * never received a privileged plugin at all, because the store refuses to install those names
+   * ("随客户端更新") and nothing else put them there. Same installer, same replacement policy.
+   */
   private prepareBundledOfficialPluginSeeds(): void {
-    if (!app.isPackaged) return
+    const seedRoot = app.isPackaged
+      ? path.join(process.resourcesPath, 'bundled-plugins')
+      : path.join(app.getAppPath(), 'resources', 'bundled-plugins')
 
     try {
       const results = installBundledOfficialPluginSeeds({
-        seedRoot: path.join(process.resourcesPath, 'bundled-plugins'),
+        seedRoot,
         runtimePluginRoot: path.join(this.rootPath, 'modules', 'plugins')
       })
       for (const result of results) {

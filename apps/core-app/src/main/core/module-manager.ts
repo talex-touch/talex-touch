@@ -762,9 +762,10 @@ export class ModuleManager implements TalexTouch.IModuleManager<TalexEvents> {
   ): void {
     // Only failures leave the machine. A successful phase used to be uploaded too, which came to
     // about 120 `performance` events per launch (41 modules × created/init/start) that no Nexus
-    // reader ever aggregated: the store only folds longTask/rafJank/eventLoop/unresponsive fields
-    // into daily stats, and per-module startup timing already arrives with the startup report
-    // (2026-10-08 telemetry audit). The structured log above keeps the local record.
+    // reader ever aggregated: the store only folds longTask/longAnimationFrame/eventLoop/
+    // unresponsive fields into daily stats, and per-module startup timing already arrives with
+    // the startup report (2026-10-08 telemetry audit). The structured log above keeps the local
+    // record.
     if (status !== 'failed') return
     try {
       const sentryService = getSentryService()

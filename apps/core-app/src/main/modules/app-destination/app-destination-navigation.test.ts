@@ -104,6 +104,62 @@ function createService() {
   return { service, runtime, transport, ...renderer }
 }
 
+describe('installed plugin detail navigation', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it.each([
+    ['touch-notes', '/plugin/touch-notes'],
+    ['  笔记 #1?  ', '/plugin/%E7%AC%94%E8%AE%B0%20%231%3F'],
+    ['p'.repeat(214), `/plugin/${'p'.repeat(214)}`]
+  ])('opens %s as one encoded plugin path segment', (name, path) => {
+    const { service, transport, window } = createService()
+    service.markPrimaryRendererReady(PRIMARY_WEB_CONTENTS_ID)
+    expect(service.openPlugin(name)).toEqual({ status: 'opened', pluginName: name.trim() })
+    expect(transport.broadcastToWindow).toHaveBeenCalledExactlyOnceWith(
+      window.id,
+      AppEvents.window.navigate,
+      { path }
+    )
+    expect(window.show).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    '',
+    '   ',
+    '.',
+    '..',
+    'nested/plugin',
+    'nested\\plugin',
+    'bad\u0000name',
+    'bad\u007fname',
+    'p'.repeat(215)
+  ])('rejects unsafe plugin name %j without revealing the window or navigating', (name) => {
+    const { service, transport, window } = createService()
+    expect(service.openPlugin(name)).toEqual({
+      status: 'unavailable',
+      pluginName: '',
+      reason: 'plugin-unavailable'
+    })
+    expect(window.show).not.toHaveBeenCalled()
+    expect(window.focus).not.toHaveBeenCalled()
+    expect(transport.broadcastToWindow).not.toHaveBeenCalled()
+  })
+
+  it('holds the latest plugin route until the primary renderer handshakes', () => {
+    const { service, transport, window } = createService()
+    expect(service.openPlugin('older')).toEqual({ status: 'queued', pluginName: 'older' })
+    expect(service.openPlugin('notes #1')).toEqual({ status: 'queued', pluginName: 'notes #1' })
+    service.markPrimaryRendererReady(REPLACEMENT_WEB_CONTENTS_ID)
+    expect(transport.broadcastToWindow).not.toHaveBeenCalled()
+    service.markPrimaryRendererReady(PRIMARY_WEB_CONTENTS_ID)
+    expect(transport.broadcastToWindow).toHaveBeenCalledExactlyOnceWith(
+      window.id,
+      AppEvents.window.navigate,
+      { path: '/plugin/notes%20%231' }
+    )
+  })
+})
+
 /**
  * The service is the single place that reveals Tuff and delivers an allowlisted route. The
  * regressions that matter are the ones a caller cannot see: a queued route dropped during the

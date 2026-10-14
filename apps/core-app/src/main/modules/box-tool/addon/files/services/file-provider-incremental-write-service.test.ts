@@ -16,6 +16,7 @@ interface TestRecord {
 
 interface TestExistingRecord extends TestRecord {
   id: number
+  content?: string | null
 }
 
 function createService(options?: {
@@ -102,6 +103,11 @@ describe('file-provider-incremental-write-service', () => {
         }
       ]
     ])
+    const unchangedRow: TestExistingRecord = {
+      id: 2,
+      ...records.get('/tmp/same.txt')!,
+      content: 'Previously indexed content retained for downstream refresh'
+    }
     const { inserted, logInfo, service, updated } = createService({
       records,
       existingRows: [
@@ -114,22 +120,14 @@ describe('file-provider-incremental-write-service', () => {
           ctime: now,
           mtime: now
         },
-        {
-          id: 2,
-          path: '/tmp/same.txt',
-          name: 'same.txt',
-          extension: '.txt',
-          size: 3,
-          ctime: now,
-          mtime: now
-        }
+        unchangedRow
       ]
     })
 
     const result = await service.execute([
       ['', { action: 'add', rawPath: '/tmp/new.txt', manual: true }],
       ['', { action: 'change', rawPath: '/tmp/changed.txt', manual: true }],
-      ['', { action: 'change', rawPath: '/tmp/same.txt', manual: true }]
+      ['', { action: 'add', rawPath: '/tmp/same.txt', manual: true }]
     ])
 
     expect(inserted[0]).toEqual([records.get('/tmp/new.txt')])
@@ -141,6 +139,8 @@ describe('file-provider-incremental-write-service', () => {
       })
     ])
     expect(result.unchangedCount).toBe(1)
+    expect(result.refreshed).toEqual([unchangedRow])
+    expect(result.refreshed[0]).toBe(unchangedRow)
     expect(result.manual).toEqual({
       total: 3,
       accepted: 3,
@@ -151,11 +151,55 @@ describe('file-provider-incremental-write-service', () => {
     expect(logInfo).toHaveBeenCalledWith('Incremental manual summary', result.manual)
   })
 
-  it('logs a zero accepted manual summary when all manual records are filtered', async () => {
+  it.each(['add', 'change'] as const)(
+    'does not request content refresh for an unchanged watch %s',
+    async (action) => {
+      const now = new Date('2026-05-30T00:00:00.000Z')
+      const record: TestRecord = {
+        path: '/tmp/watch.txt',
+        name: 'watch.txt',
+        extension: '.txt',
+        size: 4,
+        ctime: now,
+        mtime: now
+      }
+      const records = new Map<string, TestRecord | null>()
+      records.set(record.path, record)
+      const { service, inserted, updated } = createService({
+        records,
+        existingRows: [{ id: 3, ...record }]
+      })
+
+      const result = await service.execute([['', { action, rawPath: record.path }]])
+
+      expect(result.refreshed).toEqual([])
+      expect(result.unchangedCount).toBe(1)
+      expect(inserted).toEqual([])
+      expect(updated).toEqual([])
+    }
+  )
+
+  it('does not refresh missing or filtered manual files even when old rows exist', async () => {
+    const now = new Date('2026-05-30T00:00:00.000Z')
+    const existingRows: TestExistingRecord[] = ['/tmp/missing.txt', '/tmp/ignored.bin'].map(
+      (path, index) => ({
+        id: index + 1,
+        path,
+        name: path.slice(path.lastIndexOf('/') + 1),
+        extension: null,
+        size: 8,
+        ctime: now,
+        mtime: now
+      })
+    )
+    const records = new Map<string, TestRecord | null>()
+    records.set(existingRows[1]!.path, null)
     const { inserted, logInfo, service, updated } = createService({
-      records: new Map<string, TestRecord | null>([['/tmp/ignored.bin', null]])
+      records,
+      existingRows
     })
     const entries: FileProviderIncrementalChangeEntry[] = [
+      ['', { action: 'add', rawPath: '/tmp/missing.txt', manual: true }],
       ['', { action: 'add', rawPath: '/tmp/ignored.bin', manual: true }]
     ]
 
@@ -163,8 +207,9 @@ describe('file-provider-incremental-write-service', () => {
 
     expect(inserted).toEqual([])
     expect(updated).toEqual([])
+    expect(result.refreshed).toEqual([])
     expect(result.manual).toEqual({
-      total: 1,
+      total: 2,
       accepted: 0,
       inserted: 0,
       updated: 0,

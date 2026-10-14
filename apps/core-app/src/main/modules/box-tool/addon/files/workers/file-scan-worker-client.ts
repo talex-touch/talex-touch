@@ -9,6 +9,7 @@ import type {
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { getLogger } from '@talex-touch/utils/common/logger'
+import { trackWorkerThread } from '../../../../../core/worker-thread-registry'
 import { FILE_WORKER_IDLE_SHUTDOWN_MS, IdleWorkerShutdownController } from './idle-worker-shutdown'
 
 interface PendingScan {
@@ -184,6 +185,7 @@ export class FileScanWorkerClient {
 
     const workerPath = path.join(__dirname, 'file-scan-worker.js')
     const worker = new Worker(workerPath)
+    trackWorkerThread(worker, 'file-scan')
 
     worker.on('message', (message: WorkerMessage) => this.handleMessage(message))
     worker.on('error', (error) => this.handleWorkerError(error))

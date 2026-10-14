@@ -17,46 +17,16 @@
     "source": true
   },
   "permissions": {
-    "required": ["network.internet", "intelligence.basic", "storage.plugin", "search.root-results"],
+    "required": ["network.internet", "intelligence.basic", "storage.plugin"],
     "optional": ["clipboard.write"]
   },
   "permissionReasons": {
     "network.internet": "供插件设置 Surface 访问用户显式配置的翻译服务；隔离 Prelude 不直接联网",
     "intelligence.basic": "通过宿主受控智能服务执行文本翻译与图片 OCR",
     "storage.plugin": "供插件设置 Surface 保存启用状态和非敏感翻译源配置；密钥由安全存储管理",
-    "search.root-results": "将翻译状态与结果推送到 CoreBox 根搜索结果",
     "clipboard.write": "将翻译结果复制到剪贴板"
   },
-  "searchProviders": [
-    {
-      "id": "touch-translation.translate",
-      "displayName": "翻译",
-      "featureId": "touch-translate",
-      "kind": "plugin",
-      "owner": "official-plugin",
-      "mode": "push",
-      "priority": "fast",
-      "defaultOrder": 50,
-      "permissionScopes": ["root-results"],
-      "defaultState": "ask",
-      "requiresUserConsent": true,
-      "pushesToRootResults": true
-    },
-    {
-      "id": "touch-translation.multi-source",
-      "displayName": "多源翻译",
-      "featureId": "multi-source-translate",
-      "kind": "plugin",
-      "owner": "official-plugin",
-      "mode": "push",
-      "priority": "fast",
-      "defaultOrder": 51,
-      "permissionScopes": ["root-results", "network"],
-      "defaultState": "ask",
-      "requiresUserConsent": true,
-      "pushesToRootResults": true
-    }
-  ],
+  "searchProviders": [],
   "features": [
     {
       "id": "touch-translate",
@@ -79,7 +49,7 @@
         "value": "assets/logo.svg"
       },
       "keywords": ["translate", "翻译", "fy", "fanyi"],
-      "push": true,
+      "push": false,
       "priority": 10,
       "acceptedInputTypes": ["text"],
       "platform": {
@@ -94,8 +64,8 @@
         }
       ],
       "interaction": {
-        "type": "widget",
-        "path": "translate-panel",
+        "type": "webcontent",
+        "path": "/",
         "showInput": true,
         "allowInput": true,
         "forceMax": true
@@ -122,7 +92,7 @@
         "value": "assets/logo.svg"
       },
       "keywords": ["multi", "多源", "翻译"],
-      "push": true,
+      "push": false,
       "priority": 5,
       "acceptedInputTypes": ["text"],
       "platform": {

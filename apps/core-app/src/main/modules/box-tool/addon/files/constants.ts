@@ -538,6 +538,15 @@ export const CONTENT_INDEXABLE_EXTENSIONS = new Set(
     .map(([ext]) => ext)
 )
 
+/** Image formats handled by the local EmbeddingGemma media encoder. */
+export const IMAGE_EMBEDDING_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.tiff'
+])
 export function getContentSizeLimitMB(extension: string): number {
   const metadata = EXTENSION_METADATA[extension]
   if (!metadata) return DEFAULT_CONTENT_SIZE_LIMIT_MB

@@ -111,7 +111,7 @@ export class WindowBoundsController {
 
     try {
       this.stopAnimation()
-      browserWindow.setPosition(bounds.x, bounds.y)
+      this.setBounds(browserWindow, bounds)
     } catch (error) {
       boundsLog.error('Failed to set window position', { error })
     }

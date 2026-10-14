@@ -7,10 +7,6 @@ const electronMocks = vi.hoisted(() => ({
   writeText: vi.fn()
 }))
 
-const clipboardModuleMock = vi.hoisted(() => ({
-  saveCustomEntry: vi.fn()
-}))
-
 const i18nHelperMock = vi.hoisted(() => ({
   getLocale: vi.fn(() => 'zh-CN'),
   t: vi.fn((key: string) => key)
@@ -21,10 +17,6 @@ vi.mock('electron', () => ({
     readText: electronMocks.readText,
     writeText: electronMocks.writeText
   }
-}))
-
-vi.mock('../../../clipboard', () => ({
-  clipboardModule: clipboardModuleMock
 }))
 
 vi.mock('../../../../utils/i18n-helper', () => ({
@@ -81,7 +73,6 @@ describe('PreviewProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     electronMocks.readText.mockReturnValue('')
-    clipboardModuleMock.saveCustomEntry.mockResolvedValue({ id: 1 })
   })
 
   it('uses PreviewSDK resolve and builds a CoreBox preview item', async () => {
@@ -199,7 +190,7 @@ describe('PreviewProvider', () => {
     expect(electronMocks.readText).not.toHaveBeenCalled()
   })
 
-  it('copies primary value and records preview history on execute', async () => {
+  it('copies primary value on execute', async () => {
     const provider = new PreviewProvider(createSdk())
     const searchResult = await provider.onSearch(
       { text: '2 + 2', inputs: [] },
@@ -214,13 +205,6 @@ describe('PreviewProvider', () => {
     await provider.onExecute(executeArgs)
 
     expect(electronMocks.writeText).toHaveBeenCalledWith('4')
-    expect(clipboardModuleMock.saveCustomEntry).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: '4',
-        rawContent: '2 + 2',
-        category: 'preview'
-      })
-    )
   })
 
   it('does not expose QuickOps QR save actions from the generic PreviewProvider', async () => {

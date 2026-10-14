@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { createClient } from '@libsql/client'
+import { drizzle } from 'drizzle-orm/libsql'
+import * as schema from '../../../../db/schema'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileIndexProgress as FileIndexProgressPayload } from '@talex-touch/utils/transport/events/types'
 import type {
@@ -14,10 +17,15 @@ import {
   hasActiveForegroundSearches,
   markSearchActivity
 } from '../../search-engine/search-activity'
-import type { FileProviderRuntimeWriteSnapshot } from './file-provider-index-contracts'
+import type {
+  FileIndexedSourceRuntimeMutationDelegate,
+  FileProviderRuntimeWriteSnapshot
+} from './file-provider-index-contracts'
 import type { FileIndexSettings } from './types'
 import { DEFAULT_FILE_INDEX_SETTINGS } from './types'
 import { IndexedSourceResetReasons, IndexedSourceScanReasons } from '@talex-touch/utils/search'
+import type * as SqliteRetryModule from '../../../../db/sqlite-retry'
+import type * as DbUtilsModule from '../../../../db/utils'
 
 const {
   transportOn,
@@ -156,14 +164,19 @@ vi.mock('../../../../db/db-write-scheduler', () => ({
   }
 }))
 
-vi.mock('../../../../db/sqlite-retry', () => ({
-  isSqliteBusyError: vi.fn(() => false),
-  withSqliteRetry: vi.fn((operation: () => Promise<unknown>) => operation())
-}))
+vi.mock('../../../../db/sqlite-retry', async (importOriginal) => {
+  const actual = await importOriginal<typeof SqliteRetryModule>()
+  return {
+    ...actual,
+    isSqliteBusyError: vi.fn(() => false),
+    withSqliteRetry: vi.fn((operation: () => Promise<unknown>) => operation())
+  }
+})
 
 vi.mock('./embedding-service', () => ({
   EmbeddingService: vi.fn(() => ({
     semanticSearch: vi.fn(async () => []),
+    close: vi.fn(async () => undefined),
     // Read by the indexed-source evidence: null while embedding runs.
     getUsageLimitPause: vi.fn(() => null)
   }))
@@ -251,6 +264,36 @@ import {
   FileProviderMaintenanceService,
   type FileProviderMaintenanceDeps
 } from './services/file-provider-maintenance-service'
+import { FileProviderContentCapacityService } from './services/file-provider-content-capacity-service'
+import { FileProviderContentIndexPolicyService } from './services/file-provider-content-index-policy-service'
+import { FileProviderIndexRuntimeService } from './services/file-provider-index-runtime-service'
+import type { FileProviderIndexRuntimeServiceDeps } from './services/file-provider-index-runtime-service'
+
+const capacityFixture = fileProvider as unknown as {
+  contentIndexPolicyService: FileProviderContentIndexPolicyService
+  initializationContext: FileProviderIndexingLifecycleTestApi['initializationContext']
+  fileIndexSettings: FileIndexSettings
+}
+// These provider-owned instances were built with named constructor DI contracts.
+const policyConstruction = capacityFixture.contentIndexPolicyService as unknown as {
+  deps: ConstructorParameters<typeof FileProviderContentIndexPolicyService>[0]
+}
+const contentPolicyDependencies = policyConstruction.deps
+const capacityConstruction = contentPolicyDependencies.capacity as unknown as {
+  deps: ConstructorParameters<typeof FileProviderContentCapacityService>[0]
+}
+const capacityDependencies = capacityConstruction.deps
+const initialContentSettings = { ...capacityFixture.fileIndexSettings }
+
+async function admitContentFixture(): Promise<void> {
+  capacityFixture.fileIndexSettings = {
+    ...capacityFixture.fileIndexSettings,
+    contentIndexingEnabled: true
+  }
+  // Use the actual provider writer-volume resolver with an explicit healthy statfs
+  // boundary, not the workstation's nearly-full disk or a bypassed admission check.
+  await expect(capacityFixture.contentIndexPolicyService.checkAdmission(true)).resolves.toBe(true)
+}
 
 // Production shutdown is terminal. This singleton-based suite owns a fresh maintenance
 // instance per case rather than reviving an aborted production controller or stale timers.
@@ -361,7 +404,11 @@ interface FileProviderIndexingLifecycleTestApi extends MutableFileProvider {
   }>
   isInitializing: Promise<unknown> | null
   initializationContext: {
-    databaseManager: { getDb: () => unknown; filePath: string }
+    databaseManager: {
+      getDb: () => unknown
+      getSearchDatabaseFilePath: () => string
+      filePath: string
+    }
     searchIndex: unknown
     touchApp: { channel: unknown }
   } | null
@@ -571,6 +618,7 @@ function createContext() {
       getDb: () => ({}),
       getSearchDb: () => ({}),
       isSearchSplitEnabled: () => false,
+      getSearchDatabaseFilePath: () => '/tmp/tuff-file-provider-search-index.db',
       filePath: '/tmp/tuff-file-provider-db'
     },
     searchIndex: {}
@@ -686,6 +734,23 @@ function resetProviderState(provider: MutableFileProvider): void {
 }
 
 beforeEach(async () => {
+  capacityFixture.contentIndexPolicyService.dispose()
+  capacityFixture.initializationContext = createContext()
+  capacityFixture.fileIndexSettings = { ...initialContentSettings }
+  const capacity = new FileProviderContentCapacityService({
+    ...capacityDependencies,
+    statfs: async (directory) => {
+      if (directory !== path.dirname(createContext().databaseManager.getSearchDatabaseFilePath())) {
+        throw new Error('Unexpected fixture index volume')
+      }
+      return { bavail: 8n * 1024n ** 3n, bsize: 1n }
+    }
+  })
+  capacityFixture.contentIndexPolicyService = new FileProviderContentIndexPolicyService({
+    ...contentPolicyDependencies,
+    capacity
+  })
+  await capacity.check(true)
   await maintenanceFixture.maintenanceService.stop()
   resetProviderState(fileProvider as unknown as FileProviderIndexingLifecycleTestApi)
   maintenanceFixture.maintenanceService = new FileProviderMaintenanceService(
@@ -695,6 +760,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  capacityFixture.contentIndexPolicyService.dispose()
   const provider = fileProvider as unknown as FileProviderIndexingLifecycleTestApi
   for (const release of ownedDeferredReleases) release()
   ownedDeferredReleases.clear()
@@ -1940,6 +2006,7 @@ describe('file-provider startup readiness', () => {
 
   it('cancels a timed-out lease, waits its active dispatch, and requeues its late publication as pending', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalScheduler = provider.indexSchedulerService
     const originalWorker = provider.fileIndexWorker
     const originalReset = provider.resetIndexedSourceRuntimeState
@@ -2181,6 +2248,7 @@ describe('file-provider startup readiness', () => {
 
   it('does not admit content indexing when the durable pending marker cannot be written', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalMark = provider.markContentEnrichmentPending
     const originalScheduler = provider.indexSchedulerService
     const originalShuttingDown = provider.shuttingDown
@@ -2192,7 +2260,8 @@ describe('file-provider startup readiness', () => {
 
     provider.markContentEnrichmentPending = markPending
     provider.indexSchedulerService = {
-      schedule
+      schedule,
+      cancelPending: vi.fn()
     } as unknown as typeof provider.indexSchedulerService
     provider.shuttingDown = false
 
@@ -2229,14 +2298,30 @@ describe('file-provider startup readiness', () => {
 
   it('never parses the next index batch while the previous results are still unreleased', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalWorker = provider.fileIndexWorker
     const originalDbUtils = provider.dbUtils
     const originalSearchIndex = provider.searchIndex
+    const runtimeFixture = fileProvider as unknown as {
+      indexRuntimeService: FileProviderIndexRuntimeService
+    }
+    const originalRuntime = runtimeFixture.indexRuntimeService
+    // Shutdown is terminal: own a fresh real runtime with the production DI
+    // closures instead of reviving disposed private state on the singleton.
+    const runtimeConstruction = originalRuntime as unknown as {
+      deps: FileProviderIndexRuntimeServiceDeps
+    }
     const pendingResults = provider.pendingIndexWorkerResults
     const pendingSnapshot = new Map(pendingResults)
     const inflightResults = provider.inflightIndexWorkerResults
     const inflightSnapshot = new Map(inflightResults)
+    pendingResults.clear()
+    inflightResults.clear()
+    const runtime = new FileProviderIndexRuntimeService(runtimeConstruction.deps)
+    runtimeFixture.indexRuntimeService = runtime
     const persistGate = createDeferred<void>()
+    const persistStarted = createDeferred<void>()
+    let settledDrain: Promise<{ error: unknown | null }> | null = null
     const indexFiles = vi.fn(
       async (
         _dbPath: string,
@@ -2262,11 +2347,11 @@ describe('file-provider startup readiness', () => {
     provider.fileIndexWorker = {
       indexFiles
     } as unknown as typeof provider.fileIndexWorker
-    // A previously dispatched batch still owned by the runtime: its persist has not completed.
-    // The runtime's flush buffer captured this exact map instance at construction, so the entry
-    // below is real retained ownership, not a parallel copy the barrier would ignore.
+    // This case's fresh runtime owns the exact provider maps below: the retained
+    // result crosses its real persistence/publication barrier before the next parse.
     pendingResults.set(1, createWorkerResult(1, 'lease-barrier'))
     filePersistencePersistEntries.mockImplementation(async () => {
+      persistStarted.resolve(undefined)
       await persistGate.promise
       return {}
     })
@@ -2279,15 +2364,27 @@ describe('file-provider startup readiness', () => {
       )
       expect(scheduled.accepted).toBe(1)
 
-      const drain = scheduler.drain(5_000)
+      // Attach both settlement handlers immediately: an early dispatch failure must
+      // be asserted here, never become an unhandled rejection while awaiting persist.
+      settledDrain = scheduler.drain(5_000).then(
+        () => ({ error: null }),
+        (error: unknown) => ({ error })
+      )
 
       // The owned batch has reached persistence, so the completion barrier is holding the
       // dispatch: the parser must never be asked for the next batch while results are unreleased.
-      await vi.waitFor(() => expect(filePersistencePersistEntries).toHaveBeenCalled())
+      await Promise.race([
+        persistStarted.promise,
+        settledDrain.then((result) => {
+          if (result.error) throw result.error
+          throw new Error('Scheduler drained before retained results reached persistence')
+        })
+      ])
       expect(indexFiles).not.toHaveBeenCalled()
 
       persistGate.resolve(undefined)
-      await drain
+      const result = await settledDrain
+      if (result.error) throw result.error
 
       expect(indexFiles).toHaveBeenCalledTimes(1)
       expect(indexFiles.mock.calls[0]?.[3]).toEqual([
@@ -2300,6 +2397,12 @@ describe('file-provider startup readiness', () => {
         pendingRecords: 0
       })
     } finally {
+      persistGate.resolve(undefined)
+      await settledDrain
+      scheduler.cancelPending()
+      scheduler.close()
+      runtime.dispose()
+      runtimeFixture.indexRuntimeService = originalRuntime
       provider.fileIndexWorker = originalWorker
       provider.dbUtils = originalDbUtils
       provider.searchIndex = originalSearchIndex
@@ -2316,6 +2419,7 @@ describe('file-provider startup readiness', () => {
 
   it('drops only cancelled worker publication groups while applying healthy leases', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalCancelledLeases = provider.cancelledIndexWorkerMutationLeases
     const originalDbUtils = provider.dbUtils
     const markPending = vi.fn(async () => undefined)
@@ -2350,6 +2454,7 @@ describe('file-provider startup readiness', () => {
 
   it('does not publish worker results for files the worker found missing', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const skippedResult = (fileId: number, lastError: string) => {
       const result = createWorkerResult(fileId, 'lease-publish')
       return { ...result, progress: { ...result.progress, status: 'skipped', lastError } }
@@ -2386,6 +2491,7 @@ describe('file-provider startup readiness', () => {
 
   it('re-arms a stale mutation lease publication instead of retrying it forever', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalDbUtils = provider.dbUtils
     const originalShuttingDown = provider.shuttingDown
     const markPending = vi.fn(async () => undefined)
@@ -2423,6 +2529,7 @@ describe('file-provider startup readiness', () => {
 
   it('re-arms only the expired lease group while publishing a healthy group in the same flush', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalDbUtils = provider.dbUtils
     const originalShuttingDown = provider.shuttingDown
     const markPending = vi.fn(async () => undefined)
@@ -2470,6 +2577,7 @@ describe('file-provider startup readiness', () => {
 
   it('propagates publication errors that are not a stale mutation lease of this source', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalDbUtils = provider.dbUtils
     const originalShuttingDown = provider.shuttingDown
     const markPending = vi.fn(async () => undefined)
@@ -2510,6 +2618,7 @@ describe('file-provider startup readiness', () => {
 
   it('keeps an unscoped content request durably pending and deferred instead of dispatching it', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalScheduler = provider.indexSchedulerService
     const originalDbUtils = provider.dbUtils
     const originalShuttingDown = provider.shuttingDown
@@ -2525,6 +2634,7 @@ describe('file-provider startup readiness', () => {
     provider.dbUtils = { markFileEnrichmentPending: markPending }
     provider.indexSchedulerService = {
       schedule,
+      cancelPending: vi.fn(),
       hasPendingWork: vi.fn(() => false)
     } as unknown as typeof provider.indexSchedulerService
     provider.shuttingDown = false
@@ -2554,6 +2664,7 @@ describe('file-provider startup readiness', () => {
 
   it('dispatches content indexing under the lease its owner acquired, without a recovery round', async () => {
     const provider = fileProvider as unknown as FileProviderLeaseRecoveryTestApi
+    await admitContentFixture()
     const originalScheduler = provider.indexSchedulerService
     const originalDbUtils = provider.dbUtils
     const originalShuttingDown = provider.shuttingDown
@@ -2569,6 +2680,7 @@ describe('file-provider startup readiness', () => {
     provider.dbUtils = { markFileEnrichmentPending: markPending }
     provider.indexSchedulerService = {
       schedule,
+      cancelPending: vi.fn(),
       hasPendingWork: vi.fn(() => false)
     } as unknown as typeof provider.indexSchedulerService
     provider.shuttingDown = false
@@ -2607,6 +2719,7 @@ describe('file-provider startup readiness', () => {
     provider.dbUtils = { markFileEnrichmentPending: markPending }
     provider.indexSchedulerService = {
       schedule,
+      cancelPending: vi.fn(),
       hasPendingWork: vi.fn(() => false)
     } as unknown as typeof provider.indexSchedulerService
 
@@ -2978,4 +3091,162 @@ describe('runtime writer ack re-admission', () => {
     expect(scheduleIndexing).not.toHaveBeenCalled()
     expect(extensionBatches).toEqual([])
   })
+
+  it.each([
+    { name: 'enabled', enabled: true, expectedStatus: 'pending', expectedError: null },
+    {
+      name: 'disabled',
+      enabled: false,
+      expectedStatus: 'skipped',
+      expectedError: 'content-indexing-disabled'
+    }
+  ])(
+    're-admits a metadata-unchanged manual file only with content policy $name',
+    async ({ enabled, expectedStatus, expectedError }) => {
+      const provider = fileProvider as unknown as FileProviderRuntimeAckTestApi & {
+        handleIncrementalAddsOrChanges: (
+          entries: Array<[string, { action: 'add'; rawPath: string; manual: boolean }]>
+        ) => Promise<void>
+        indexSchedulerService: FileProviderLeaseRecoveryTestApi['indexSchedulerService']
+        drainIndexedSourceMutations: FileProviderLeaseRecoveryTestApi['drainIndexedSourceMutations']
+      }
+      const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tuff-manual-content-refresh-'))
+      const backingFilePath = path.join(fixtureDir, 'unchanged.txt')
+      // Manual admission correctly excludes the OS temporary root. Map only this fixture's
+      // logical document path to its private backing file at the filesystem boundary.
+      const filePath = '/Users/tuff-manual-refresh-fixture/Documents/unchanged.txt'
+      const actualLstat = fs.lstat.bind(fs)
+      const fileMetadata = vi
+        .spyOn(fs, 'lstat')
+        .mockImplementation(async (candidate) =>
+          actualLstat(candidate === filePath ? backingFilePath : candidate)
+        )
+      const client = createClient({ url: ':memory:' })
+      const originalDbUtils = provider.dbUtils
+      const originalSearchIndex = provider.searchIndex
+      const originalScheduler = provider.indexSchedulerService
+      const originalSettings = capacityFixture.fileIndexSettings
+      const extensionRefresh = vi
+        .spyOn(provider, 'processFileExtensions')
+        .mockResolvedValue(undefined)
+      // The background drain is outside this admission contract; the actual progress write,
+      // writer acknowledgement filter and policy-controlled scheduler ingress remain intact.
+      const drain = vi.spyOn(provider, 'drainIndexedSourceMutations').mockResolvedValue(undefined)
+      const queuedFileIds: number[] = []
+
+      try {
+        await client.execute(`CREATE TABLE files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        display_name TEXT,
+        extension TEXT,
+        size INTEGER,
+        mtime INTEGER NOT NULL,
+        ctime INTEGER NOT NULL,
+        last_indexed_at INTEGER NOT NULL,
+        is_dir INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        content TEXT,
+        embedding_status TEXT NOT NULL
+      )`)
+        await client.execute(`CREATE TABLE file_index_progress (
+        file_id INTEGER PRIMARY KEY,
+        status TEXT NOT NULL,
+        progress INTEGER NOT NULL,
+        processed_bytes INTEGER,
+        total_bytes INTEGER,
+        last_error TEXT,
+        started_at INTEGER,
+        updated_at INTEGER NOT NULL
+      )`)
+        await fs.writeFile(backingFilePath, 'content waiting for the first authorized parse')
+        const details = await fs.lstat(backingFilePath)
+        const db = drizzle(client, { schema })
+        const [file] = await db
+          .insert(schema.files)
+          .values({
+            path: filePath,
+            name: path.basename(filePath),
+            extension: '.txt',
+            size: details.size,
+            mtime: details.mtime,
+            ctime: details.birthtime,
+            lastIndexedAt: new Date(0),
+            isDir: false,
+            type: 'file',
+            content: null,
+            embeddingStatus: 'none'
+          })
+          .returning()
+        await db.insert(schema.fileIndexProgress).values({
+          fileId: file.id,
+          status: 'skipped',
+          progress: 0,
+          lastError: 'content-indexing-disabled',
+          updatedAt: new Date(1_000)
+        })
+        const { createDbUtils } =
+          await vi.importActual<typeof DbUtilsModule>('../../../../db/utils')
+        provider.dbUtils = createDbUtils(db)
+        provider.searchIndex = {}
+        capacityFixture.fileIndexSettings = {
+          ...originalSettings,
+          contentIndexingEnabled: enabled
+        }
+        if (enabled) await admitContentFixture()
+        provider.indexSchedulerService = {
+          schedule: (batch: Parameters<typeof provider.indexSchedulerService.schedule>[0]) => {
+            queuedFileIds.push(...batch.map((entry) => entry.id!))
+            return { accepted: batch.length, deferred: 0 }
+          }
+        } as unknown as typeof provider.indexSchedulerService
+        const delegate: FileIndexedSourceRuntimeMutationDelegate = {
+          withMutationLease: async (operation) => operation('lease-manual-refresh'),
+          applyBatch: async ({ records, mutationLeaseId }) => {
+            await provider.handleIndexedSourceRuntimeRecordsApplied(
+              records.map((record) => ({ path: record.path!, metadata: record.metadata })),
+              mutationLeaseId
+            )
+          },
+          applyBatchWithPersistence: async () => ({ persistedCount: 0 }),
+          publishFileDeletionCommit: runtimePublishFileDeletionCommit,
+          cleanupSource: runtimeCleanupSource,
+          countSource: runtimeCountSource,
+          publishContentCleared: runtimePublishContentCleared,
+          drainSource: runtimeDrainSource,
+          scanSource: runtimeScanSource
+        }
+        provider.setIndexedSourceRuntimeMutationDelegate(delegate)
+        await provider.handleIndexedSourceRuntimeRecordsApplied(
+          [{ path: filePath, metadata: { runtimePublication: 'base' } }],
+          'lease-before-manual-refresh'
+        )
+        expect(queuedFileIds).toEqual([])
+
+        await provider.handleIncrementalAddsOrChanges([
+          ['', { action: 'add', rawPath: filePath, manual: true }]
+        ])
+
+        const [progress] = await db.select().from(schema.fileIndexProgress)
+        expect({ status: progress.status, lastError: progress.lastError }).toEqual({
+          status: expectedStatus,
+          lastError: expectedError
+        })
+        expect(queuedFileIds).toEqual(enabled ? [file.id] : [])
+        expect(await db.select().from(schema.files)).toEqual([file])
+      } finally {
+        provider.dbUtils = originalDbUtils
+        provider.searchIndex = originalSearchIndex
+        provider.indexSchedulerService = originalScheduler
+        capacityFixture.fileIndexSettings = originalSettings
+        installRuntimeDependencies(provider)
+        extensionRefresh.mockRestore()
+        drain.mockRestore()
+        fileMetadata.mockRestore()
+        client.close()
+        await fs.rm(fixtureDir, { recursive: true, force: true })
+      }
+    }
+  )
 })

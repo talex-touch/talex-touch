@@ -485,19 +485,20 @@ describe('MetaOverlay panel', () => {
     expect(rowLabels(wrapper)).toEqual([
       'corebox.actions.open',
       'corebox.actions.revealInExplorer',
+      'corebox.actions.openInTerminal',
+      'corebox.actions.systemShare',
+      'corebox.actions.flowTransfer',
       'corebox.actions.openFolder',
       'corebox.actions.quickLook',
       'corebox.actions.getInfo',
-      'corebox.actions.openInTerminal',
       'corebox.actions.copyFile',
-      'corebox.actions.systemShare',
       'corebox.actions.copyPath',
       'corebox.actions.copyTitle',
-      'corebox.actions.flowTransfer',
       'corebox.actions.pin',
       'corebox.actions.openSettings'
     ])
     expect(wrapper.findAll('.MetaPanel-SectionTitle').map((title) => title.text())).toEqual([
+      'corebox.actions.groups.quickFlow',
       'corebox.actions.groups.open',
       'corebox.actions.groups.host'
     ])
@@ -661,7 +662,7 @@ describe('MetaOverlay panel', () => {
     expect(activeLabel(wrapper)).toBe('corebox.actions.open')
 
     await rows[3].trigger('pointermove')
-    expect(activeLabel(wrapper)).toBe('corebox.actions.quickLook')
+    expect(activeLabel(wrapper)).toBe('corebox.actions.systemShare')
     // Hover never scrolls: the row is already under the pointer.
     expect(scrollIntoView).not.toHaveBeenCalled()
 

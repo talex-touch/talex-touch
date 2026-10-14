@@ -1,3 +1,4 @@
+import { APP_DESTINATION_PROVIDER_ID } from '../../../../shared/app-destinations'
 import type { IProviderActivate, ISearchProvider, TuffItem, TuffQuery } from '@talex-touch/utils'
 import {
   CONTEXT_ACTIONS_PROVIDER_ID,
@@ -94,7 +95,20 @@ export class SearchQueryOrchestrator {
         selected = selected.filter((provider) => provider.id === CONTEXT_ACTIONS_PROVIDER_ID)
       }
       const inputTypes = query.inputs?.map((input) => input.type) ?? []
-      if (inputTypes.some((type) => type !== TuffInputType.Text)) {
+      const hasMediaOrFileInput = inputTypes.some(
+        (type) => type === TuffInputType.Image || type === TuffInputType.Files
+      )
+      if (hasMediaOrFileInput) {
+        selected = selected.filter(
+          (provider) =>
+            provider.id !== 'app-provider' &&
+            provider.id !== APP_DESTINATION_PROVIDER_ID &&
+            provider.id !== 'windows-shell-file-provider' &&
+            provider.type !== 'application' &&
+            (provider.id === 'plugin-features' ||
+              inputTypes.some((type) => provider.supportedInputTypes?.includes(type)))
+        )
+      } else if (inputTypes.some((type) => type !== TuffInputType.Text)) {
         selected = selected.filter(
           (provider) =>
             provider.id === 'plugin-features' ||

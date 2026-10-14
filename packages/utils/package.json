@@ -75,7 +75,8 @@
     "fs-extra": "^11.3.6",
     "gsap": "catalog:",
     "marked": "catalog:",
-    "path-browserify": "^1.0.1"
+    "path-browserify": "^1.0.1",
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",

@@ -12,6 +12,7 @@ import {
 } from './clipboard-text-utils'
 import {
   clearImplicitClipboardState,
+  isClipboardDismissed,
   isClipboardFreshForAutoPaste,
   isSameClipboardItem,
   normalizeClipboardTimestamp,
@@ -132,7 +133,12 @@ export function useClipboard(
       const pathList = JSON.parse(data.content)
       if (!pathList[0]) return false
 
-      boxOptions.file = { iconPath: pathList[0], paths: pathList }
+      boxOptions.file = {
+        iconPath: pathList[0],
+        paths: pathList,
+        clipboardId: data.id,
+        thumbnail: data.thumbnail
+      }
       boxOptions.mode = BoxMode.FILE
       markAsAutoPasted(data)
       return true
@@ -263,9 +269,8 @@ export function useClipboard(
       return
     }
 
-    const dismissedTimestamp = normalizeClipboardTimestamp(clipboardOptions.lastClearedTimestamp)
     const isSameClipboard = isSameClipboardItem(clipboardOptions.last, clipboard)
-    const isDismissed = !overrideDismissed && dismissedTimestamp === clipboardTimestamp
+    const isDismissed = !overrideDismissed && isClipboardDismissed(clipboard, clipboardOptions)
 
     if (isDismissed) {
       autoPasteActive.value = false
@@ -385,12 +390,7 @@ export function useClipboard(
         onNewItem: (item) => {
           if (!item?.type) return
 
-          const dismissedTimestamp = normalizeClipboardTimestamp(
-            clipboardOptions.lastClearedTimestamp
-          )
-
-          const incomingTimestamp = normalizeClipboardTimestamp(item.timestamp)
-          if (incomingTimestamp && dismissedTimestamp && incomingTimestamp === dismissedTimestamp) {
+          if (isClipboardDismissed(item, clipboardOptions)) {
             return
           }
 

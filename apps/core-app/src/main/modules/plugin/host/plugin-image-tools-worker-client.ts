@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { trackWorkerThread } from '../../../core/worker-thread-registry'
 import type {
   PluginImageToolsImageMetadata,
   PluginImageToolsRenderedImage,
@@ -60,6 +61,7 @@ function runWorker(
   if (signal.aborted) return Promise.reject(workerError('PLUGIN_HOST_CAPABILITY_CANCELLED'))
   const source = Uint8Array.from(input.source)
   const worker = new Worker(path.join(__dirname, 'plugin-image-tools-worker.js'))
+  trackWorkerThread(worker, 'plugin-image-tools')
 
   return new Promise((resolve, reject) => {
     let settled = false

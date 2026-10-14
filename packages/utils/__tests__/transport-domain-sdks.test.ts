@@ -518,15 +518,6 @@ describe('transport domain sdk mappings', () => {
     expect(CoreBoxEvents.recommendation.isPinned.toEventName()).toBe(
       'core-box:recommendation:is-pinned',
     )
-    expect(CoreBoxEvents.previewHistory.show.toEventName()).toBe(
-      'core-box:preview-history:show',
-    )
-    expect(CoreBoxEvents.previewHistory.show.toEventName()).toBe(
-      'core-box:preview-history:show',
-    )
-    expect(CoreBoxEvents.previewHistory.hide.toEventName()).toBe(
-      'core-box:preview-history:hide',
-    )
     expect(CoreBoxEvents.preview.copy.toEventName()).toBe(
       'core-box:preview:copy',
     )

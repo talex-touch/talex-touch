@@ -1,3 +1,5 @@
+import type { FileParserChunk } from '@talex-touch/utils/electron/file-parsers'
+import { FILE_CONTENT_CHUNKS_KEY } from '@talex-touch/utils/search'
 import type { Client } from '@libsql/client'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 import type { SearchIndexService } from './search-index-service'
@@ -49,6 +51,7 @@ export interface FilePersistenceEntry {
     embeddingStatus: string
     embeddings?: Array<{ vector: number[]; model: string }>
     contentHash: string | null
+    chunks?: FileParserChunk[]
   } | null
   progress: {
     status: string
@@ -533,17 +536,35 @@ export class SqliteFileIndexPersistenceRepository implements FileIndexPersistenc
                   .where(eq(schema.files.id, fileId))
                 summary.fileUpdates += 1
                 summary.persistedRows += 1
-
-                if (fileUpdate.embeddings && fileUpdate.embeddings.length > 0) {
-                  const sourceId = String(fileId)
-                  await tx
-                    .delete(schema.embeddings)
-                    .where(
-                      and(
-                        eq(schema.embeddings.sourceId, sourceId),
-                        eq(schema.embeddings.sourceType, 'file')
-                      )
+                // Replace the content-owned locator alongside its version-fenced body.
+                await tx
+                  .delete(schema.fileExtensions)
+                  .where(
+                    and(
+                      eq(schema.fileExtensions.fileId, fileId),
+                      eq(schema.fileExtensions.key, FILE_CONTENT_CHUNKS_KEY)
                     )
+                  )
+                if (fileUpdate.content !== null && fileUpdate.chunks?.length) {
+                  await tx.insert(schema.fileExtensions).values({
+                    fileId,
+                    key: FILE_CONTENT_CHUNKS_KEY,
+                    value: JSON.stringify(fileUpdate.chunks)
+                  })
+                }
+
+                // A content replacement invalidates old vectors immediately, including
+                // while generation of its new vectors is still pending.
+                const sourceId = String(fileId)
+                await tx
+                  .delete(schema.embeddings)
+                  .where(
+                    and(
+                      eq(schema.embeddings.sourceId, sourceId),
+                      eq(schema.embeddings.sourceType, 'file')
+                    )
+                  )
+                if (fileUpdate.embeddings && fileUpdate.embeddings.length > 0) {
                   await tx.insert(schema.embeddings).values(
                     fileUpdate.embeddings.map((embedding) => ({
                       sourceId,

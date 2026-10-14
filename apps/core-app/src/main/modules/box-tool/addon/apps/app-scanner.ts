@@ -8,7 +8,8 @@ import chalk from 'chalk'
 import { createLogger } from '../../../../utils/logger'
 import { enterPerfContext } from '../../../../utils/perf-context'
 import { formatLog, LogStyle } from './app-utils'
-import type { ScannedAppInfo } from './app-types'
+import type { AppDisplayNameQuality, ScannedAppInfo } from './app-types'
+import { getLocale } from '../../../../utils/i18n-helper'
 import type { WindowsAppSourceScanResult } from './win'
 
 export type AppScannerSourceScanResult = WindowsAppSourceScanResult
@@ -32,6 +33,52 @@ const WINDOWS_START_MENU_PATHS = [
   path.resolve('C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs'),
   path.join(os.homedir(), 'AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs')
 ]
+function mergeAppDisplayNameUpdate(
+  app: ScannedAppInfo,
+  spotlightName: string
+): {
+  displayName: string
+  displayNameSource: string
+  displayNameQuality: AppDisplayNameQuality
+  alternateNames?: string[]
+} {
+  const currentDisplayName = app.displayName
+  let nextDisplayName = spotlightName
+  let nextQuality: AppDisplayNameQuality = 'system'
+  let nextSource = 'mdls:kMDItemDisplayName'
+
+  const isZh = (() => {
+    try {
+      return getLocale().startsWith('zh')
+    } catch {
+      return true
+    }
+  })()
+
+  // When Tuff is set to Chinese, and the app already has a localized name (from InfoPlist.strings),
+  // retain that localized Chinese name as displayName and keep spotlightName in alternateNames.
+  if (isZh && app.displayNameQuality === 'localized' && currentDisplayName) {
+    nextDisplayName = currentDisplayName
+    nextQuality = 'localized'
+    nextSource = app.displayNameSource ?? 'InfoPlist.strings'
+  }
+
+  const alternateNames = new Set(app.alternateNames ?? [])
+  if (currentDisplayName && currentDisplayName !== nextDisplayName) {
+    alternateNames.add(currentDisplayName)
+  }
+  if (spotlightName && spotlightName !== '(null)' && spotlightName !== nextDisplayName) {
+    alternateNames.add(spotlightName)
+  }
+  const nextAlternate = Array.from(alternateNames).filter(Boolean)
+
+  return {
+    displayName: nextDisplayName,
+    displayNameSource: nextSource,
+    displayNameQuality: nextQuality,
+    alternateNames: nextAlternate.length > 0 ? nextAlternate : undefined
+  }
+}
 
 /**
  * Service for scanning applications, responsible for app discovery and information retrieval.
@@ -425,12 +472,11 @@ export class AppScanner {
                 )
               )
 
+              const updatedMeta = mergeAppDisplayNameUpdate(app, spotlightName)
               updatedCount++
               updatedApps.push({
                 ...app,
-                displayName: spotlightName,
-                displayNameSource: 'mdls:kMDItemDisplayName',
-                displayNameQuality: 'system'
+                ...updatedMeta
               })
             }
           }
@@ -463,12 +509,11 @@ export class AppScanner {
                 spotlightName !== '(null)' &&
                 (spotlightName !== app.displayName || app.displayNameQuality !== 'system')
               ) {
+                const updatedMeta = mergeAppDisplayNameUpdate(app, spotlightName)
                 updatedCount++
                 updatedApps.push({
                   ...app,
-                  displayName: spotlightName,
-                  displayNameSource: 'mdls:kMDItemDisplayName',
-                  displayNameQuality: 'system'
+                  ...updatedMeta
                 })
               }
             } catch {

@@ -54,6 +54,18 @@ export function isSameClipboardItem(
   return previousTimestamp !== null && nextTimestamp !== null && previousTimestamp === nextTimestamp
 }
 
+export function isClipboardDismissed(
+  item: IClipboardItem | null | undefined,
+  options: IClipboardOptions
+): boolean {
+  if (!item?.timestamp || !options.lastClearedTimestamp) return false
+  const itemTimestamp = normalizeClipboardTimestamp(item.timestamp)
+  const dismissedTimestamp = normalizeClipboardTimestamp(options.lastClearedTimestamp)
+  return (
+    itemTimestamp !== null && dismissedTimestamp !== null && itemTimestamp === dismissedTimestamp
+  )
+}
+
 export function clearImplicitClipboardState(options: IClipboardOptions): boolean {
   if (options.activeClipboardSource === 'manual') return false
 

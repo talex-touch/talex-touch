@@ -754,7 +754,7 @@ function respond(message: WorkerResultMessage | WorkerErrorMessage): void {
 
 function respondMetrics(request: WorkerMetricsRequest): void {
   const mem = process.memoryUsage()
-  const cpu = process.cpuUsage()
+  const cpu = readWorkerCpuUsage()
   const metrics: WorkerMetricsPayload = {
     timestamp: Date.now(),
     memory: getWorkerMemorySnapshot(mem),

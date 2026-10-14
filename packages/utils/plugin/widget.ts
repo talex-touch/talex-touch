@@ -108,7 +108,6 @@ export type WidgetSandboxOperation =
   | "history.pushState"
   | "history.replaceState"
   | "history.go"
-  | "history.hostAction"
   | "location.assign"
   | "location.replace"
   | "location.reload"

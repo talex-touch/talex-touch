@@ -1,6 +1,13 @@
 import type { Mock } from 'vitest'
 import type { TuffItem, TuffQuery } from '@talex-touch/utils'
 import { describe, expect, it, vi } from 'vitest'
+import { createClient } from '@libsql/client'
+import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { SearchIndexService } from '../../../search-engine/search-index-service'
+import * as schema from '../../../../../db/schema'
 import {
   FileProviderSearchResultService,
   type FileProviderSearchResultServiceDeps
@@ -38,6 +45,8 @@ function makeService(opts: {
   ngramCandidates?: string[]
   ftsResponses?: Array<Array<{ itemId: string; score: number }>>
   preciseHits?: string[]
+  searchIndex?: SearchIndexService
+  db?: LibSQLDatabase<typeof schema>
 }): ServiceHarness {
   const mtime = new Date()
   const dbRows = opts.rows.map((row) => ({
@@ -54,15 +63,16 @@ function makeService(opts: {
     extensionValue: null
   }))
 
-  const getDb = (): unknown => ({
-    select: () => ({
-      from: () => ({
-        leftJoin: () => ({
-          where: () => Promise.resolve(dbRows)
+  const getDb = (): unknown =>
+    opts.db ?? {
+      select: () => ({
+        from: () => ({
+          leftJoin: () => ({
+            where: () => Promise.resolve(dbRows)
+          })
         })
       })
-    })
-  })
+    }
 
   const ftsCalls: FtsCall[] = []
   const ngramQueries: string[] = []
@@ -73,6 +83,7 @@ function makeService(opts: {
     providerId: 'files',
     getDbUtils: () => ({ getDb, getFileIndexReadDb: getDb }) as never,
     getSearchIndex: () =>
+      opts.searchIndex ??
       ({
         lookupByKeywords: async (_providerId: string, lookupTerms: string[]) => {
           const hits = opts.preciseHits
@@ -97,7 +108,7 @@ function makeService(opts: {
           return (opts.ngramCandidates ?? []).map((itemId) => ({ itemId, score: 1 }))
         },
         lookupBySubsequence: subsequenceCalls
-      }) as never,
+      } as never),
     isContentIndexingEnabled: () => false,
     isPathAdmitted: (path) => path.startsWith('/work/'),
     buildItem: (file) =>
@@ -280,5 +291,79 @@ describe('FileProviderSearchResultService bounded candidate ranking', () => {
     expect(calls[1]?.limit).toBeLessThan(calls[0]?.limit ?? 0)
     // The selective probe found the candidate, so the ngram stage never runs.
     expect(harness.ngramQueries()).toEqual([])
+  })
+})
+
+describe('FileProviderSearchResultService real typo candidate retrieval', () => {
+  it('recalls a transposed filename through physical ngrams without admitting unrelated noise', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'file-typo-consumer-'))
+    const client = createClient({ url: `file:${join(directory, 'search.sqlite')}` })
+    try {
+      await client.execute(`CREATE TABLE keyword_mappings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, keyword TEXT NOT NULL,
+        item_id TEXT NOT NULL, provider_id TEXT NOT NULL, priority REAL NOT NULL
+      )`)
+      await client.execute(`CREATE TABLE search_index_meta (
+        provider_id TEXT NOT NULL, item_id TEXT NOT NULL,
+        keyword_hash TEXT NOT NULL, updated_at INTEGER NOT NULL,
+        PRIMARY KEY (provider_id, item_id)
+      )`)
+      await client.execute(`CREATE TABLE files (
+        id INTEGER PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL,
+        display_name TEXT, extension TEXT, size INTEGER,
+        mtime INTEGER NOT NULL, ctime INTEGER NOT NULL,
+        last_indexed_at INTEGER NOT NULL, is_dir INTEGER NOT NULL,
+        type TEXT NOT NULL, content TEXT, embedding_status TEXT NOT NULL
+      )`)
+      await client.execute(`CREATE TABLE file_extensions (
+        id INTEGER PRIMARY KEY, file_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL
+      )`)
+      const db = drizzle(client, { schema })
+      const searchIndex = new SearchIndexService(db, {
+        directMode: true,
+        initializationMode: 'writer'
+      })
+      await searchIndex.warmup()
+      const rows = [
+        { path: '/work/settings.ts', name: 'settings.ts' },
+        { path: '/work/report.ts', name: 'report.ts' },
+        { path: '/work/photo.ts', name: 'photo.ts' }
+      ]
+      await db.insert(schema.files).values(
+        rows.map((row, index) => ({
+          id: index + 1,
+          path: row.path,
+          name: row.name,
+          extension: '.ts',
+          mtime: new Date(0),
+          ctime: new Date(0),
+          lastIndexedAt: new Date(0),
+          isDir: false,
+          type: 'file',
+          embeddingStatus: 'none' as const
+        }))
+      )
+      await searchIndex.indexItems(
+        rows.map((row) => ({
+          providerId: 'files',
+          itemId: row.path,
+          type: 'file',
+          name: row.name,
+          path: row.path,
+          extension: '.ts'
+        }))
+      )
+      const { service } = makeService({ rows, searchIndex, db })
+      const result = await service.search(
+        { text: 'settnig' } as TuffQuery,
+        new AbortController().signal
+      )
+      expect(result.items.map((item) => item.id)).toEqual(['/work/settings.ts'])
+      expect(result.items[0]?.scoring?.match_details?.type).toBe('fuzzy')
+      expect(result.items[0]?.scoring?.match).toBeGreaterThan(0)
+    } finally {
+      client.close()
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 })

@@ -19,7 +19,8 @@ import { LocalProvider } from './local-provider'
 const mockedRecognizeImageTextIsolated = vi.mocked(recognizeImageTextIsolated)
 const networkMocks = vi.hoisted(() => ({
   request: vi.fn(),
-  requestStream: vi.fn()
+  requestStream: vi.fn(),
+  requestJson: vi.fn()
 }))
 
 vi.mock('../../network', () => ({
@@ -807,5 +808,51 @@ describe('LocalProvider fallback behavior', () => {
       parseError
     )
     expect(compatibilitySpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('LocalProvider.embedding failure boundaries', () => {
+  afterEach(() => {
+    networkMocks.request.mockReset()
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    { name: 'absent vector', data: {} },
+    { name: 'empty vector', data: { embeddings: [[]] } }
+  ])(
+    'rejects an Ollama response with $name instead of publishing searchable success',
+    async ({ data }) => {
+      networkMocks.request.mockResolvedValueOnce({ data })
+      await expect(
+        createProvider().embedding({ text: 'Tenant may not keep animals.' }, {})
+      ).rejects.toMatchObject({ code: 'OLLAMA_REQUEST_FAILED' })
+    }
+  )
+
+  it('does not upload text to compatibility fallback when a generic inference error mentions 404', async () => {
+    const rejected = new Error('inference failed at token 404')
+    networkMocks.request.mockRejectedValueOnce(rejected)
+    const fallback = vi
+      .spyOn(OpenAiCompatibleLangChainProvider.prototype, 'embedding')
+      .mockRejectedValue(new Error('Unexpected upload'))
+    await expect(createProvider().embedding({ text: 'Private tenant policy' }, {})).rejects.toBe(
+      rejected
+    )
+    expect(fallback).not.toHaveBeenCalled()
+  })
+
+  it('rejects an incompatible model in the opted-in offline runtime without trying network providers', async () => {
+    const fallback = vi
+      .spyOn(OpenAiCompatibleLangChainProvider.prototype, 'embedding')
+      .mockRejectedValue(new Error('Unexpected upload'))
+    await expect(
+      createProvider().embedding(
+        { text: 'Private tenant policy', model: 'unrelated-model' },
+        { metadata: { localEmbeddingRuntime: 'llama.cpp' } }
+      )
+    ).rejects.toThrow(/only supports/)
+    expect(networkMocks.request).not.toHaveBeenCalled()
+    expect(fallback).not.toHaveBeenCalled()
   })
 })

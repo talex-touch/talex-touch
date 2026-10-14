@@ -34,6 +34,21 @@ describe('buildClipboardQueryInputs', () => {
     ])
   })
 
+  it('attaches active short text clipboard content when query is empty', () => {
+    const inputs = buildClipboardQueryInputs({
+      clipboardItem: createClipboardItem({ content: 'apple' }),
+      queryText: ''
+    })
+
+    expect(inputs).toEqual([
+      {
+        type: TuffInputType.Text,
+        content: 'apple',
+        metadata: undefined
+      }
+    ])
+  })
+
   it('uses the same text attachment identity for repeated clipboard content', () => {
     const first = createClipboardItem({
       id: 1,

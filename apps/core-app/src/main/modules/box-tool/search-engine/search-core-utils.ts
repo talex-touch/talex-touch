@@ -59,6 +59,12 @@ export interface SearchTraceProviderSummary {
   topSlow: Array<{ providerId: string; durationMs: number; status: string; resultCount: number }>
 }
 
+/** Shared gate: preserve the existing Latin threshold while admitting short Han queries. */
+export function isDeferredSemanticQueryEligible(text: string): boolean {
+  const normalized = text.trim()
+  return normalized.length >= 3 || /^\p{Script=Han}{1,2}$/u.test(normalized)
+}
+
 export function resolveProviderCategory(providerId: string): string {
   if (PROVIDER_CATEGORY_MAP[providerId]) return PROVIDER_CATEGORY_MAP[providerId]
   if (providerId.includes('file')) return 'file'

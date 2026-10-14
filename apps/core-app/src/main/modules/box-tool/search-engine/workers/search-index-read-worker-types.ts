@@ -23,6 +23,22 @@ export interface SearchIndexReadWorkerQueryMessage {
   args: unknown[]
 }
 
+/** Vector paging and scoring stay in the reader; only bounded matches cross back. */
+export interface SearchIndexReadWorkerSemanticMessage {
+  type: 'semantic-search'
+  requestId: string
+  vector: number[]
+  model: string
+  limit: number
+  cancelFlag: SharedArrayBuffer
+}
+
+export type SearchIndexSemanticMatch = {
+  sourceId: string
+  score: number
+  contentHash: string | null
+}
+
 export interface SearchIndexReadWorkerResultMessage {
   type: 'result'
   requestId: string
@@ -37,6 +53,7 @@ export interface SearchIndexReadWorkerErrorMessage {
 
 export type SearchIndexReadWorkerRequest =
   | SearchIndexReadWorkerQueryMessage
+  | SearchIndexReadWorkerSemanticMessage
   | SearchIndexReadWorkerShutdownMessage
 export type SearchIndexReadWorkerResponse =
   | SearchIndexReadWorkerResultMessage

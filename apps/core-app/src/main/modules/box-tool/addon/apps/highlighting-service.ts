@@ -119,7 +119,7 @@ export function calculateHighlights(
   }
 
   // 3. 拼音匹配
-  if (/^[a-z]+$/i.test(lowerQuery)) {
+  if (/^[a-z\s]+$/i.test(lowerQuery)) {
     const pinyinResult = pinyinMatch(text, query)
     if (pinyinResult && pinyinResult.length > 0) {
       return convertIndicesToRanges(pinyinResult)

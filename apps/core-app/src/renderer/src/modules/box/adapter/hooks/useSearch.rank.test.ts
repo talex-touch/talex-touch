@@ -2,7 +2,7 @@ import type { TuffItem, TuffSearchResult } from '@talex-touch/utils'
 import type { Ref } from 'vue'
 import type { IBoxOptions } from '..'
 import type { IClipboardOptions } from './types'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 import { BoxMode } from '..'
 import { useSearch } from './useSearch'
@@ -149,6 +149,12 @@ function buildItem(
   } as TuffItem
 }
 
+function buildSemanticItem(id: string, final: number): TuffItem {
+  const item = buildItem(id, 'file-provider', { final })
+  item.scoring!.match_details = { type: 'semantic', query: 'a pet cat', confidence: 0.73 }
+  return item
+}
+
 async function flushPromises(): Promise<void> {
   await nextTick()
   await Promise.resolve()
@@ -204,29 +210,197 @@ describe('useSearch rendered ranking', () => {
     })
 
     const windowEvents = new EventTarget()
-    Object.defineProperty(globalThis, 'window', {
-      value: {
-        addEventListener: windowEvents.addEventListener.bind(windowEvents),
-        removeEventListener: windowEvents.removeEventListener.bind(windowEvents),
-        dispatchEvent: (event: Event) => windowEvents.dispatchEvent(event),
-        setTimeout,
-        clearTimeout
-      },
-      configurable: true
+    vi.stubGlobal('window', {
+      addEventListener: windowEvents.addEventListener.bind(windowEvents),
+      removeEventListener: windowEvents.removeEventListener.bind(windowEvents),
+      dispatchEvent: (event: Event) => windowEvents.dispatchEvent(event),
+      setTimeout,
+      clearTimeout
     })
 
     if (typeof globalThis.CustomEvent === 'undefined') {
-      Object.defineProperty(globalThis, 'CustomEvent', {
-        value: class CustomEvent<T = unknown> extends Event {
+      vi.stubGlobal(
+        'CustomEvent',
+        class CustomEvent<T = unknown> extends Event {
           detail: T
           constructor(type: string, eventInitDict?: CustomEventInit<T>) {
             super(type, eventInitDict)
             this.detail = eventInitDict?.detail as T
           }
-        },
-        configurable: true
-      })
+        }
+      )
     }
+  })
+
+  afterEach(() => {
+    for (const callback of state.beforeUnmountCallbacks) callback()
+    vi.unstubAllGlobals()
+  })
+
+  it('inserts a late semantic cat above a weak history hit and selects it at untouched focus zero', async () => {
+    const boxOptions = createBoxOptions()
+    const hook = useSearch(boxOptions, createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('deploy.sh', 'file-provider', { final: 10 })
+    ])
+    await pushDeferredBatch(stream, [buildSemanticItem('IMG_9f3a2048.png', 500)])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual(['IMG_9f3a2048.png', 'deploy.sh'])
+    expect(boxOptions.focus).toBe(0)
+    expect(hook.activeItem.value?.id).toBe('IMG_9f3a2048.png')
+  })
+
+  it('preserves existing stream order and never promotes semantic arrivals past stronger late literals', async () => {
+    const boxOptions = createBoxOptions()
+    const hook = useSearch(boxOptions, createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('weak-history', 'file-provider', { final: 10 })
+    ])
+    await pushDeferredBatch(stream, [buildItem('late-literal', 'file-provider', { final: 900 })])
+    expect(hook.res.value.map((item) => item.id)).toEqual(['weak-history', 'late-literal'])
+
+    await pushDeferredBatch(stream, [
+      buildItem('another-literal', 'file-provider', { final: 1_000 }),
+      buildSemanticItem('semantic-cat', 500)
+    ])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual([
+      'weak-history',
+      'late-literal',
+      'another-literal',
+      'semantic-cat'
+    ])
+    expect(boxOptions.focus).toBe(0)
+    expect(hook.activeItem.value?.id).toBe('weak-history')
+  })
+
+  it('keeps an already displayed equal-score row ahead of a late semantic arrival', async () => {
+    const boxOptions = createBoxOptions()
+    const hook = useSearch(boxOptions, createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('existing-equal', 'file-provider', { final: 500 }),
+      buildItem('weak-history', 'file-provider', { final: 10 })
+    ])
+    await pushDeferredBatch(stream, [buildSemanticItem('semantic-cat', 500)])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual([
+      'existing-equal',
+      'semantic-cat',
+      'weak-history'
+    ])
+    expect(hook.activeItem.value?.id).toBe('existing-equal')
+  })
+
+  it('leaves full-name and stem exact hits ahead of a lower-scoring semantic arrival', async () => {
+    const hook = useSearch(createBoxOptions(), createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('full-name-exact', 'file-provider', { final: 1_000 }),
+      buildItem('stem-exact', 'file-provider', { final: 420 }),
+      buildItem('weak-history', 'file-provider', { final: 10 })
+    ])
+    await pushDeferredBatch(stream, [buildSemanticItem('semantic-cat', 400)])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual([
+      'full-name-exact',
+      'stem-exact',
+      'semantic-cat',
+      'weak-history'
+    ])
+  })
+
+  it('inserts semantic after a stronger exact row in an unsorted snapshot without reranking existing rows', async () => {
+    const boxOptions = createBoxOptions()
+    const hook = useSearch(boxOptions, createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('weak', 'file-provider', { final: 100 }),
+      buildItem('exact', 'file-provider', { final: 20_000_000 }),
+      buildItem('tailweak', 'file-provider', { final: 50 })
+    ])
+    await pushDeferredBatch(stream, [buildSemanticItem('semantic', 5_000_000)])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual(['weak', 'exact', 'semantic', 'tailweak'])
+    expect(boxOptions.focus).toBe(0)
+    expect(hook.activeItem.value?.id).toBe('weak')
+  })
+
+  it('appends a stronger semantic arrival after an explicit selection without moving its id or position', async () => {
+    const boxOptions = createBoxOptions()
+    const hook = useSearch(boxOptions, createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('first-file', 'file-provider', { final: 100 }),
+      buildItem('selected-file', 'file-provider', { final: 50 })
+    ])
+    boxOptions.focus = 1
+    await pushDeferredBatch(stream, [buildSemanticItem('semantic-cat', 500)])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual([
+      'first-file',
+      'selected-file',
+      'semantic-cat'
+    ])
+    expect(boxOptions.focus).toBe(1)
+    expect(hook.activeItem.value?.id).toBe('selected-file')
+  })
+
+  it('keeps a pinned weak row ahead of a stronger semantic arrival', async () => {
+    const hook = useSearch(createBoxOptions(), createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('pinned-history', 'file-provider', { final: 1, pinned: true }),
+      buildItem('weak-history', 'file-provider', { final: 10 })
+    ])
+    await pushDeferredBatch(stream, [buildSemanticItem('semantic-cat', 500)])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual([
+      'pinned-history',
+      'semantic-cat',
+      'weak-history'
+    ])
+    expect(hook.activeItem.value?.id).toBe('pinned-history')
+  })
+
+  it('deduplicates semantic ids within a batch and never moves an existing row on semantic re-score', async () => {
+    const hook = useSearch(createBoxOptions(), createClipboardOptions())
+    await flushPromises()
+
+    const stream = await runFirstBatch(hook, 'a pet cat', [
+      buildItem('existing-file', 'file-provider', { final: 100 }),
+      buildItem('weak-history', 'file-provider', { final: 10 })
+    ])
+    await pushDeferredBatch(stream, [
+      buildSemanticItem('semantic-cat', 500),
+      buildSemanticItem('semantic-cat', 500)
+    ])
+    expect(hook.res.value.map((item) => item.id)).toEqual([
+      'semantic-cat',
+      'existing-file',
+      'weak-history'
+    ])
+
+    await pushDeferredBatch(stream, [
+      buildSemanticItem('existing-file', 900),
+      buildSemanticItem('semantic-cat', 700)
+    ])
+
+    expect(hook.res.value.map((item) => item.id)).toEqual([
+      'semantic-cat',
+      'existing-file',
+      'weak-history'
+    ])
+    expect(hook.activeItem.value?.id).toBe('semantic-cat')
   })
 
   it('appends a deferred batch below the rows on screen, whatever its score', async () => {

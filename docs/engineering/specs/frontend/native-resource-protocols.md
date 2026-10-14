@@ -101,6 +101,13 @@ forces every call site to re-implement a remote-URL guard. A renderer-local twin
 
 `packages/utils/transport/sdk/stream/protocol.ts` is a typed transport protocol, not the `stream:` resource scheme. It may carry stream IDs, cancellation, status, and bounded structured chunks. It must not carry image/audio/video/file bytes.
 
+### Captured clipboard file previews
+
+- `fileIndex.previewResource` remains host-only. Without `clipboardId`, it authorizes only a live ordinary indexed file and its indexed canonical path. With `clipboardId`, it requires the Clipboard module's immutable in-memory capture proof; it never falls back to arbitrary or indexed-path authorization when the clipboard proof fails.
+- Only native-watch, background-poll, visible-poll, and CoreBox baseline captures can own file-list proofs. Database metadata, manual writes, and history application cannot manufacture them. The live database row must still match the captured file list, and the requested path must be an exact member. Deletion, content changes, or forgotten capture ownership revoke authorization.
+- A granted original resource must be an ordinary canonical file. The `tfile` consumer rechecks `lstat`, `realpath`, and grant expiry after filesystem waits. An invalid token is denied even under an otherwise allowed root; it cannot fall back to root authorization. This does not broaden the Library or application-cache allowlist.
+- FILE autofill preserves the capture id and prepared thumbnail. `UnifiedFileTag` prefers that thumbnail, otherwise waits for the exact grant before assigning an image source. Selection changes synchronously invalidate old requests; same-render prop updates produce only the final request. A failed or unavailable resource shows the file glyph, not a bare original URL.
+
 ### First renderer navigation includes the resource handler
 
 #### 1. Scope / Trigger
