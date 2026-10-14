@@ -69,6 +69,8 @@
   - **历史取证保留**（2026-09-18，本机 4 个真实库）：当时 `embeddings` 表 0 行；`files` 合计 155,716 行，`embedding_status` 仅有 `none`/`pending`。该数据是修复前基线，不再表述当前工作树的写侧为零调用。
   - **默认排序补正（2026-10-12）**：用户反馈 `a pet cat` 的原图低于 `deploy.sh`。语义候选原先直接发布 0–1 相似度且一律追加，现经既有 full enrichment 和 sorter 发布同量纲 final；文件语义贡献最高 400 match 分，低于 stem exact 420 和完整名字 1000。未选择结果时，新语义项可插入弱项前，但保留所有已有更强／同分项、置顶项和已有相对次序；选择后仍追加。普通晚到结果和已有项重排不扩范围。
   - **新狗图正常入库闭环（2026-10-13）**：新 PNG 文件已存在，但无 progress／向量。真实库还出现 111 张已生成向量的图片被旧 pending 进度覆盖；flush 尾阶段现只确认原始终态，图片完成归向量事务所有。另有约 9,865 张旧 disabled-image skips 与普通任务混排，整页预标 pending 的溢出继续污染普通队列；最终分 fresh／retry／legacy 独立游标公平轮转，新文件不再等全库旧图补完。正常队列将原狗图写为 embedding completed／progress completed=100／向量 1／正文 NULL；真实 CoreBox 的 `dog` 默认第 1，当次 2026 ms。无手动重加或伪向量，原文件不改；临时固定窗口已恢复，不冒充全局键盘焦点与 packaged 验收。
+  - **图片输入兼容修复（2026-10-13）**：实际待处理的 `.JPG` 包含 HEIC／HEVC 字节，Sharp 能识别头信息但缺少 HEVC 解码器。macOS 现使用 `/usr/bin/sips` 解码来自有界文件句柄的私有副本，按最长边 1024 缩小，再规范化为无原始元数据的 PNG；AVIF 使用 Sharp。不扩大扩展名或目录准入，不上传原图。输入仍限 32 MiB、单帧及 20 秒解码；像素限改为 67,108,864，另按通道和采样深度限制原始解码存储为 256 MiB，此预算不等同进程峰值内存。真实 HEIC-in-JPG、19,644,840 像素 JPEG 和 25,217,568 像素 PNG 经实际 runtime 与已安装模型均生成 768 维有限向量，原文件 SHA／大小／mtime 不变。未写正式 profile、未启动或重启 Electron；此证据不代表当前旧 dev 进程已加载新代码或后台队列已补齐。
+    - 输入边界回归 30／30、Node 类型检查及相关 ESLint 通过。回归覆盖 EXIF 旋转、去元数据、小 HEIC 不放大、AVIF 真实解码、超像素／解码存储／文件大小拒绝，以及既有文件身份和符号链接保护。HEIC 原生回归仅在 macOS 执行；非 macOS 的 HEVC 支持取决于本机解码器，各解码步骤独立设 20 秒超时。
 
 - [x] **B2 — 补全权重被绕过** ✅ 已修（`07-13-fix-ranking-dead-features`）
   - 位置：`search-engine/query-completion-service.ts:191`（写 `item.scoring.match *= boost`）vs `search-engine/sort/tuff-sorter.ts:254`（排序用 `calculateMatchScore` 重算，只读 `scoring.recency/frequency`，**不读 `scoring.match` 或 `meta.completion`**）

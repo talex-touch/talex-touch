@@ -1,9 +1,14 @@
 import { Buffer } from 'node:buffer'
+import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, open, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os, { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import process from 'node:process'
+import { Readable, Writable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import { promisify } from 'node:util'
+import { createDeflate } from 'node:zlib'
 import sharp from 'sharp'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { localEmbeddingInstallManifestPath } from './local-embedding-assets'
@@ -14,6 +19,70 @@ import {
 } from './local-embedding-runtime'
 
 let directory: string | undefined
+
+const execFileAsync = promisify(execFile)
+
+async function imageInput(file: string) {
+  const details = await stat(file)
+  vi.stubEnv('TEST_ORIGINAL_IMAGE', file)
+  return { path: file, mtime: details.mtimeMs, size: details.size }
+}
+
+/** Valid, highly compressible PNGs exercise declared decode budgets without giant allocations. */
+async function budgetPng(width: number, height: number, bitDepth: 8 | 16, channels: 1 | 4) {
+  function chunk(type: string, data: Buffer): Buffer {
+    const body = Buffer.concat([Buffer.from(type), data])
+    let crc = 0xffffffff
+    for (const byte of body) {
+      crc ^= byte
+      for (let bit = 0; bit < 8; bit++) {
+        crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+      }
+    }
+    const framed = Buffer.alloc(data.length + 12)
+    framed.writeUInt32BE(data.length, 0)
+    body.copy(framed, 4)
+    framed.writeUInt32BE((crc ^ 0xffffffff) >>> 0, framed.length - 4)
+    return framed
+  }
+  function* scanlines() {
+    const row = Buffer.alloc(1 + width * channels * (bitDepth / 8))
+    for (let index = 0; index < height; index++) yield row
+  }
+  const compressed: Buffer[] = []
+  await pipeline(
+    Readable.from(scanlines()),
+    createDeflate(),
+    new Writable({
+      write(data: Buffer, _encoding, callback) {
+        compressed.push(data)
+        callback()
+      }
+    })
+  )
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = bitDepth
+  header[9] = channels === 4 ? 6 : 0
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', Buffer.concat(compressed)),
+    chunk('IEND', Buffer.alloc(0))
+  ])
+}
+
+async function expectNormalizedCapture(file: string, width: number, height: number) {
+  const bytes = await readFile(file)
+  const metadata = await sharp(bytes).metadata()
+  expect(metadata.format).toBe('png')
+  expect(metadata.orientation).toBeUndefined()
+  expect(metadata.exif).toBeUndefined()
+  expect(metadata.icc).toBeUndefined()
+  const decoded = await sharp(bytes).raw().toBuffer({ resolveWithObject: true })
+  expect(decoded.info).toMatchObject({ width, height })
+}
 
 async function sparseWeight(file: string, bytes: number): Promise<void> {
   const handle = await open(file, 'w')
@@ -77,6 +146,10 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       if (request.inputs[0] === process.env.TEST_ORIGINAL_IMAGE) throw new Error('UNSAFE_ORIGINAL_PATH_EXPOSED')
       const bytes = fs.readFileSync(request.inputs[0])
       if (!bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) throw new Error('NOT_A_REAL_PNG')
+      const width = bytes.readUInt32BE(16)
+      const height = bytes.readUInt32BE(20)
+      if (Math.max(width, height) > 1024) throw new Error('IMAGE_NOT_RESIZED')
+      fs.writeFileSync(process.env.TEST_IMAGE_CAPTURE, bytes)
       values[1] = 1
       if (process.env.TEST_REPLACE_IMAGE === '1') fs.writeFileSync(process.env.TEST_ORIGINAL_IMAGE, 'replaced during inference')
     } else if (request.op === 'text') {
@@ -94,6 +167,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   await writeFile(helper, script, { mode: 0o700 })
   const launchRecord = join(directory, 'helper-launched.txt')
   vi.stubEnv('TEST_HELPER_LAUNCH_RECORD', launchRecord)
+  const imageCapture = join(directory, 'helper-image.png')
+  vi.stubEnv('TEST_IMAGE_CAPTURE', imageCapture)
   vi.stubEnv('TUFF_LOCAL_EMBEDDING_HELPER', helper)
   vi.stubEnv(
     'TUFF_LOCAL_EMBEDDING_HELPER_SHA256',
@@ -104,7 +179,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   vi.stubEnv('TEST_REPLACE_IMAGE', '')
   vi.stubEnv('TEST_HELPER_WRONG_MODE', '')
   setLocalEmbeddingRuntimeForTests(null)
-  return { runtime: getLocalEmbeddingRuntime(), input, helper, script, launchRecord }
+  return { runtime: getLocalEmbeddingRuntime(), input, helper, script, launchRecord, imageCapture }
 }
 
 async function installRuntime(media: boolean) {
@@ -170,6 +245,167 @@ describe('LocalEmbeddingRuntime image filesystem and vector-space boundaries', (
     expect(after.vector).toEqual(before.vector)
     expect(image.modelKey).toBe(before.modelKey)
     expect(after.modelKey).toBe(before.modelKey)
+  })
+
+  it.each([
+    {
+      name: '19.6MP JPEG with a quarter-turn EXIF orientation',
+      format: 'jpeg' as const,
+      width: 5120,
+      height: 3840,
+      outputWidth: 768,
+      outputHeight: 1024
+    },
+    {
+      name: '25.2MP PNG',
+      format: 'png' as const,
+      width: 6000,
+      height: 4200,
+      outputWidth: 1024,
+      outputHeight: 717
+    }
+  ])(
+    'normalizes $name above the former pixel limit before embedding',
+    async (sample) => {
+      const { runtime, imageCapture } = await makeRuntime(true)
+      const file = join(directory!, sample.format === 'jpeg' ? 'large.JPG' : 'large.png')
+      const encoder = sharp({
+        create: {
+          width: sample.width,
+          height: sample.height,
+          channels: 3,
+          background: '#996633'
+        }
+      })
+      if (sample.format === 'jpeg') {
+        await encoder.withMetadata({ orientation: 6 }).jpeg().toFile(file)
+      } else {
+        await encoder.png().toFile(file)
+      }
+      const original = await readFile(file)
+      const image = await runtime.generateImage(await imageInput(file))
+      expect(image.vector).toEqual([
+        0,
+        1,
+        ...Array<number>(models.LOCAL_EMBEDDING_MODEL.dimension - 2).fill(0)
+      ])
+      expect(image.modelKey).toBe(models.LOCAL_EMBEDDING_MODEL_KEY)
+      await expectNormalizedCapture(imageCapture, sample.outputWidth, sample.outputHeight)
+      expect(await readFile(file)).toEqual(original)
+    },
+    30_000
+  )
+
+  it('accepts AVIF bytes named .jpg without enlarging the normalized image', async () => {
+    const { runtime, imageCapture } = await makeRuntime(true)
+    const file = join(directory!, 'avif-disguised.jpg')
+    await sharp({ create: { width: 40, height: 24, channels: 3, background: '#996633' } })
+      .avif({ effort: 1 })
+      .toFile(file)
+    const original = await readFile(file)
+    expect(await sharp(original).metadata()).toMatchObject({ format: 'heif', compression: 'av1' })
+    const image = await runtime.generateImage(await imageInput(file))
+    expect(image.vector).toEqual([
+      0,
+      1,
+      ...Array<number>(models.LOCAL_EMBEDDING_MODEL.dimension - 2).fill(0)
+    ])
+    await expectNormalizedCapture(imageCapture, 40, 24)
+    expect(await readFile(file)).toEqual(original)
+  })
+
+  it.skipIf(process.platform !== 'darwin')(
+    'normalizes native HEVC HEIC bytes named .JPG using the macOS image decoder',
+    async () => {
+      const { runtime, imageCapture } = await makeRuntime(true)
+      const file = join(directory!, 'native-heic.JPG')
+      const source = join(directory!, 'heic-source.png')
+      await sharp({ create: { width: 80, height: 48, channels: 3, background: '#996633' } })
+        .png()
+        .toFile(source)
+      try {
+        await execFileAsync('/usr/bin/sips', ['-s', 'format', 'heic', source, '--out', file], {
+          timeout: 20_000,
+          killSignal: 'SIGKILL',
+          maxBuffer: 16 * 1024
+        })
+      } catch (error) {
+        throw new Error(
+          'Native HEIC regression fixture unavailable: /usr/bin/sips could not encode HEIC',
+          { cause: error }
+        )
+      }
+      const original = await readFile(file)
+      expect(await sharp(original).metadata()).toMatchObject({
+        format: 'heif',
+        compression: 'hevc'
+      })
+      const image = await runtime.generateImage(await imageInput(file))
+      expect(image.vector).toEqual([
+        0,
+        1,
+        ...Array<number>(models.LOCAL_EMBEDDING_MODEL.dimension - 2).fill(0)
+      ])
+      await expectNormalizedCapture(imageCapture, 80, 48)
+      expect(await readFile(file)).toEqual(original)
+    },
+    60_000
+  )
+
+  it.each([
+    {
+      name: '64Mi pixels exceeded by one image column',
+      width: 8193,
+      height: 8192,
+      bitDepth: 8 as const,
+      channels: 1 as const,
+      error: /exceeds pixel limit/i
+    },
+    {
+      name: '256MiB decoded RGBA16 exceeded below the pixel limit',
+      width: 8193,
+      height: 4096,
+      bitDepth: 16 as const,
+      channels: 4 as const,
+      error: /image decoded size exceeds limit/i
+    }
+  ])(
+    'rejects $name before launching the model helper',
+    async (sample) => {
+      const { runtime, launchRecord, imageCapture } = await makeRuntime(true)
+      const file = join(directory!, 'budget.png')
+      await writeFile(
+        file,
+        await budgetPng(sample.width, sample.height, sample.bitDepth, sample.channels)
+      )
+      const metadata = await sharp(file, { limitInputPixels: false }).metadata()
+      expect(metadata).toMatchObject({
+        format: 'png',
+        width: sample.width,
+        height: sample.height,
+        channels: sample.channels,
+        depth: sample.bitDepth === 16 ? 'ushort' : 'uchar'
+      })
+      await expect(runtime.generateImage(await imageInput(file))).rejects.toThrow(sample.error)
+      await expect(stat(launchRecord)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(stat(imageCapture)).rejects.toMatchObject({ code: 'ENOENT' })
+    },
+    30_000
+  )
+
+  it('rejects a PNG exceeding 32MiB by one byte before launching the model helper', async () => {
+    const { runtime, input, launchRecord, imageCapture } = await makeRuntime(true)
+    const handle = await open(input.path, 'r+')
+    try {
+      await handle.truncate(32 * 1024 * 1024 + 1)
+    } finally {
+      await handle.close()
+    }
+    await expect(runtime.generateImage(await imageInput(input.path))).rejects.toThrow(
+      'Local EmbeddingGemma image identity or size is invalid'
+    )
+    await expect(stat(launchRecord)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(stat(imageCapture)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('rejects a symlink rather than reading a different file through an admitted image path', async () => {

@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import { Buffer } from 'node:buffer'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { constants, createReadStream, existsSync, statSync } from 'node:fs'
 import type { Stats } from 'node:fs'
 import { lstat, mkdtemp, open, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { promisify } from 'node:util'
 import sharp from 'sharp'
 import {
   embeddingModelDirectories,
@@ -74,7 +75,21 @@ const MAX_INPUT_CHARS = 32_000
 const START_TIMEOUT_MS = 20_000
 const REQUEST_TIMEOUT_MS = 120_000
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024
-const MAX_IMAGE_PIXELS = 16 * 1024 * 1024
+// Admit ordinary high-resolution photos, but bound decoded storage as well as pixels.
+const MAX_IMAGE_PIXELS = 64 * 1024 * 1024
+const MAX_IMAGE_DECODED_BYTES = 256 * 1024 * 1024
+const IMAGE_MAX_EDGE = 1024
+const IMAGE_DEPTH_BYTES: Partial<Record<string, number>> = {
+  uchar: 1,
+  char: 1,
+  ushort: 2,
+  short: 2,
+  uint: 4,
+  int: 4,
+  float: 4,
+  double: 8
+}
+const execFileAsync = promisify(execFile)
 const IMAGE_EXTENSIONS: Record<string, true> = {
   '.png': true,
   '.jpg': true,
@@ -152,23 +167,66 @@ async function prepareImageSnapshot(
     }
     await recheck()
     if (signal?.aborted) throw abortError()
-    const decoder = sharp(bytes, {
+    let decoder = sharp(bytes, {
       failOn: 'error',
       limitInputPixels: MAX_IMAGE_PIXELS,
       pages: 1
     }).timeout({ seconds: 20 })
-    const decoding = (async () => {
-      const metadata = await decoder.metadata()
-      if (!['png', 'jpeg', 'webp', 'gif', 'tiff'].includes(metadata.format ?? '')) {
-        throw new Error('Local EmbeddingGemma image format is unsupported')
-      }
+    const metadata = await decoder.metadata()
+    if (!['png', 'jpeg', 'webp', 'gif', 'tiff', 'heif'].includes(metadata.format ?? '')) {
+      throw new Error('Local EmbeddingGemma image format is unsupported')
+    }
+    const sampleBytes = IMAGE_DEPTH_BYTES[metadata.depth]
+    const decodedBytes = metadata.width * metadata.height * metadata.channels * (sampleBytes ?? 0)
+    if (
+      !sampleBytes ||
+      !Number.isSafeInteger(decodedBytes) ||
+      decodedBytes <= 0 ||
+      decodedBytes > MAX_IMAGE_DECODED_BYTES
+    ) {
+      throw new Error('Local EmbeddingGemma image decoded size exceeds limit')
+    }
+    if (signal?.aborted) throw abortError()
+    if (
+      metadata.format === 'heif' &&
+      metadata.compression === 'hevc' &&
+      process.platform === 'darwin'
+    ) {
+      // The bundled libvips has AV1, not HEVC. ImageIO handles HEIC locally; it only
+      // sees the bounded, no-follow bytes, never a second read of the original path.
+      directory = await mkdtemp(path.join(os.tmpdir(), 'tuff-embedding-image-'))
+      const sourcePath = path.join(directory, 'source.heic')
+      const decodedPath = path.join(directory, 'decoded.png')
+      const nativeMaxEdge = Math.min(IMAGE_MAX_EDGE, Math.max(metadata.width, metadata.height))
+      await writeFile(sourcePath, bytes, { mode: 0o600, flag: 'wx' })
+      await execFileAsync(
+        '/usr/bin/sips',
+        [
+          '--setProperty',
+          'format',
+          'png',
+          '--resampleHeightWidthMax',
+          String(nativeMaxEdge),
+          sourcePath,
+          '--out',
+          decodedPath
+        ],
+        { timeout: 20_000, maxBuffer: 16 * 1024, signal, killSignal: 'SIGKILL' }
+      )
+      await rm(sourcePath)
       if (signal?.aborted) throw abortError()
-      return decoder
-        .rotate()
-        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-        .png()
-        .toBuffer()
-    })()
+      decoder.destroy()
+      decoder = sharp(decodedPath, {
+        failOn: 'error',
+        limitInputPixels: IMAGE_MAX_EDGE * IMAGE_MAX_EDGE,
+        pages: 1
+      }).timeout({ seconds: 20 })
+    }
+    const decoding = decoder
+      .rotate()
+      .resize(IMAGE_MAX_EDGE, IMAGE_MAX_EDGE, { fit: 'inside', withoutEnlargement: true })
+      .png()
+      .toBuffer()
     const normalized = await new Promise<Buffer>((resolve, reject) => {
       const onAbort = () => {
         signal?.removeEventListener('abort', onAbort)
@@ -190,7 +248,7 @@ async function prepareImageSnapshot(
     })
     if (signal?.aborted) throw abortError()
     await recheck()
-    directory = await mkdtemp(path.join(os.tmpdir(), 'tuff-embedding-image-'))
+    directory ??= await mkdtemp(path.join(os.tmpdir(), 'tuff-embedding-image-'))
     const snapshotPath = path.join(directory, 'input.png')
     await writeFile(snapshotPath, normalized, { mode: 0o600, flag: 'wx' })
     if (signal?.aborted) throw abortError()
