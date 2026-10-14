@@ -1,0 +1,44 @@
+---
+title: Light Modes & Hue Sorting
+description: Why plus-lighter glows collapse into muddy grey on white surfaces; independent hue ordering pipelines and TxPrismGlow dual-track execution.
+---
+
+# Light Modes & Hue Sorting
+
+Glowing light beams that look stunning in dark mode (such as ambient AI streaming beams) frequently degenerate into muddy grey smudges on light surfaces.
+
+## Additive Light Only Works on Dark Surfaces
+
+On dark backgrounds, light beams combine via additive blending (CSS `mix-blend-mode: plus-lighter`):
+$$\text{Color}_{\text{Result}} = \min(1, \text{Color}_A + \text{Color}_B)$$
+Where two beams intersect, luminance accumulates toward pure white (`(1, 1, 1)`), recreating radiant beams crossing in the night sky.
+
+## Why Glows Turn Muddy Grey in Light Mode
+
+Light-mode canvases already sit near pure white:
+- Additive blending fails on white backgrounds because pixels cannot get brighter.
+- Blending transparent layers normally calculates the average color: **Two hues separated by more than 120° on the color wheel (e.g. yellow and blue) average directly into dull grey**!
+- Instead of radiant illumination, light surfaces end up covered in dirty, desaturated smudges.
+
+## Light-Mode Adjacent Hue Ordering Pipeline
+
+To maintain crisp vibrancy on light canvases, TuffEx enforces an **adjacent hue ordering constraint**:
+- In light mode, overlapping light cones must restrict their angular hue delta to under 60° (e.g. cyan, sky blue, mint green).
+- Complementary hues (blue and orange, purple and yellow) are strictly forbidden from co-occurring in the same spatial frame.
+
+## TxPrismGlow Dual-Hue Architecture
+
+The `TxPrismGlow` component implements two completely isolated hue generation pipelines:
+
+:::TuffCodeBlock{lang="typescript"}
+---
+code: |
+  // Dark mode: Full spectrum dispersion accumulating toward white
+  export const DARK_HUE_ORDER = [0, 60, 120, 180, 240, 300];
+
+  // Light mode: Constrained to adjacent cool spectrum (< 60° delta)
+  export const LIGHT_HUE_ORDER = [210, 230, 250, 190, 220];
+---
+:::
+
+Automated test gates in `prism-glow.test.ts` continuously assert that light-mode hue orders never cross the 120° grey-collapse threshold.

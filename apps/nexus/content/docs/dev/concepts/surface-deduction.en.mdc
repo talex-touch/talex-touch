@@ -1,0 +1,42 @@
+---
+title: Adaptive Surface Deduction & 120Hz Fallback
+description: Pointer velocity sensing, window drag hooks, 0ms mask fallback, and 140ms asymmetric spring recovery to prevent frame drops.
+---
+
+# Adaptive Surface Deduction & 120Hz Fallback
+
+Refraction delivers crystalline aesthetics, but during 120Hz (ProMotion) window dragging, heavy displacement shaders must gracefully degrade to guarantee zero dropped frames.
+
+## Why Runtime Auto Deduction is Essential
+
+Client runtimes exhibit extreme volatility:
+- The user may suddenly drag a window across monitors at high velocity.
+- The operating system may throttle clocks under Low Power Mode.
+- Integrated GPUs may hit memory bandwidth bottlenecks during rapid renders.
+
+Forcing developers to sprinkle manual checks like `if (isDragging)` across views invites bugs. TuffEx abstracts this into the `autoDetect` perception engine.
+
+## The autoDetect Sensor Matrix
+
+The system continuously tracks runtime physical signals:
+1. **Pointer Velocity Sensing**: Samples positions $\vec{s}(t)$ to compute instantaneous velocity $|\vec{v}| = \frac{\|\Delta \vec{s}\|}{\Delta t}$. Sustained speeds exceeding $1.2\text{px/ms}$ trigger the motion state.
+2. **Window Move / Resize Events**: Hooks Electron main-process native window movement events, dispatching immediate fallback signals.
+3. **Frame Budget Probes**: Monitors composite duration; frames exceeding 8ms trigger lightweight fallbacks.
+
+## Instant 0ms Fallback & 140ms Asymmetric Recovery
+
+TuffEx applies an **asymmetric clock transition**:
+
+- **Fallback (0ms Instantaneous)**: As soon as rapid motion is detected, heavy shaders drop to an ultra-lightweight monochrome `mask` within one frame. GPU load drops immediately, sustaining full 120Hz tracking.
+- **Recovery (140ms Damped Hysteresis)**: When motion ceases, the engine does not switch back immediately (which would cause chatter if pointer jitter occurs). It waits 140ms to confirm stability, then smoothly restores refraction.
+
+## State Machine Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> Refraction_Active: Window resting (Default refraction)
+    Refraction_Active --> Mask_Fallback: Drag initiated / Velocity > 1.2px/ms (0ms instant)
+    Mask_Fallback --> Refraction_Active: Motion stopped for 140ms (Asymmetric spring restore)
+    Refraction_Active --> Blur_Degraded: Low Power Mode / GPU probe timeout
+```
+This architecture harmonizes high-fidelity material simulation with unflinching desktop responsiveness.

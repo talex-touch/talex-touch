@@ -1,0 +1,47 @@
+---
+title: 90ms+90ms Confirmation & Spring Physics
+description: Why instant menu dismissal fails usability; the two-beat 90ms+90ms activation feedback rhythm and second-order damped spring dynamics.
+---
+
+# 90ms+90ms Confirmation & Spring Physics
+
+Click feedback must reconcile spatial certainty with high-speed execution. TuffEx formalizes the confirmation rhythm and continuous spring dynamics.
+
+## Why Instant Menu Dismissal Harms Usability
+
+In many native operating systems, selecting an item from a context menu closes the panel within 0ms.
+Users frequently freeze for a fraction of a second: "Did I actually click that option, or did my pointer slip outside?"
+Missing feedback breaks the cognitive feedback loop.
+
+## The Two-Beat Confirmation Rhythm (90ms + 90ms)
+
+TuffEx items (`TxDropdownItem`, `TxContextMenuItem`) employ an immutable **180ms two-beat confirmation rhythm**:
+
+```
+[User triggers menu item selection]
+  │
+  ├─ [Beat 1: 90ms] Clears hover/focus highlights to dissolve pointer residue.
+  │
+  ├─ [Beat 2: 90ms] Pulses the active token fill to register visual confirmation.
+  │
+  └─ [Resolution] Emits the select event and closes the parent menu panel.
+```
+
+The entire cycle executes in 180ms, delivering confirmation without lagging the user. Under reduced motion, it degrades to 0ms instant execution.
+
+## Cubic Bezier Limitations Under Gesture Interruption
+
+Standard CSS cubic bezier transitions are **fixed-duration time interpolation curves**.
+When user gestures interrupt an ongoing animation (such as catching a drawer mid-flight and reversing direction):
+- Bezier curves cannot absorb initial velocity $\vec{v}_0$; they forcibly reset velocity to zero and restart.
+- The visual motion stutters mechanically, violating physical intuition.
+
+## The TuffEx Second-Order Damped Spring Engine
+
+TuffEx motion models rely on the second-order damped harmonic oscillator equation:
+$$m \frac{d^2x}{dt^2} + c \frac{dx}{dt} + k x = 0$$
+- **Stiffness ($k$)**: Governs restorative spring force.
+- **Damping ($c$)**: Dissipates oscillation energy, eliminating unwanted wobble.
+- **Mass ($m$)**: Imparts physical inertia.
+
+When interrupted, the spring system inherits the instantaneous velocity vector naturally, maintaining physical continuity.

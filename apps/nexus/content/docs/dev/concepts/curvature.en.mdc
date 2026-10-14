@@ -1,0 +1,52 @@
+---
+title: G2 Continuous Curvature & Squircle Geometry
+description: Why standard circular fillets look harsh in premium interfaces; deriving G0/G1 to G2 continuity and implementing Apple-style smooth corners.
+---
+
+# G2 Continuous Curvature & Squircle Geometry
+
+In precision industrial design (such as luxury automotive contours) and modern operating systems (such as Apple macOS / iOS), curvature continuity directly dictates the softness of light reflection.
+
+## Geometric Continuity Orders
+
+Geometric continuity defines the smoothness at the junction of two curves:
+
+- **$G^0$ Continuity (Positional)**: The curves touch at the junction, but their tangents diverge abruptly (a 90-degree corner).
+- **$G^1$ Continuity (Tangential)**: The curves share the same tangent vector at the junction, making first derivatives continuous. Standard CSS `border-radius` is a classic $G^1$ fillet (straight lines tangent to quarter circles).
+- **$G^2$ Continuity (Curvature)**: The curves share the exact same curvature $\kappa$ across the junction, making second derivatives continuous.
+
+## Why Circular Fillets Break Visual Continuity
+
+For a standard circular fillet:
+- The straight edge has zero curvature ($\kappa = 0$).
+- Entering the circle instantaneously jumps curvature to $\kappa = \frac{1}{R}$.
+This second-derivative jump causes an optical crease under specular lighting or refraction (the Specular Break phenomenon).
+
+## The Superellipse Formula and Apple Smooth Corners
+
+Apple transitioned to the superellipse (Lamé curve) starting with iOS 7:
+$$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \approx 4 \sim 5)$$
+By introducing an Euler spiral (Clothoid) transition between the flat edge and the corner, the rate of curvature change at the transition point stays exactly zero.
+
+## TuffEx Engineering Implementation
+
+In the Web and Electron environment, TuffEx implements G2 squircle corners through progressive enhancement:
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  @mixin tx-squircle($radius: 16px) {
+    @supports (corner-shape: squircle) {
+      border-radius: $radius;
+      corner-shape: squircle;
+    }
+    @supports not (corner-shape: squircle) {
+      border-radius: $radius;
+      // Fitted smooth bezier curves or SVG Mask delivering superellipse profiles
+      clip-path: url("data:image/svg+xml,...");
+    }
+  }
+---
+:::
+
+On large floating cards and CoreBox windows, G2 continuity eliminates harsh corner breaks and ensures refracted borders merge seamlessly into the canvas.

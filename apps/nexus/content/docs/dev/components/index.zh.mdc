@@ -6,7 +6,7 @@ status: beta
 since: 0.3.9
 tags: [concepts, overview, foundations, utils]
 syncStatus: reviewed
-verified: false
+verified: true
 ---
 
 Tuffex（`@talex-touch/tuffex`）是服务 CoreBox、插件界面与本文档站的 Vue 3 组件库。
@@ -16,7 +16,8 @@ Tuffex（`@talex-touch/tuffex`）是服务 CoreBox、插件界面与本文档站
 | 页面 | 内容 |
 |------|------|
 | [安装与引入](./installation.zh.mdc) | 三种引入方式与样式文件 |
-| [设计基础](./foundations.zh.mdc) | 字体与颜色 token |
+| [设计基础](./foundations.zh.mdc) | G2 曲率、琉光折射、暗色光学、13-14px 排版与 Token 体系 |
+| [设计工程概念手册](../concepts/index.zh.mdc) | 18 篇深度专栏：物理曲率、着色器色散、微动效与流式防抖 |
 | [主题定制](./theming.zh.mdc) | 覆盖 token、深色与高对比度 |
 | [图标体系](./icons.zh.mdc) | `TxIcon` 如何解析与加载图标 |
 | [无障碍](./accessibility.zh.mdc) | 焦点、动效、对比度与 ARIA 约定 |

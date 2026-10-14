@@ -1,0 +1,41 @@
+---
+title: Surface 8-Material Taxonomy & Gatekeepers
+description: Why professional desktop interfaces require physical materiality; detailed taxonomy across Refraction, Glass, Acrylic, Mica, and explicit confirmation gatekeepers.
+---
+
+# Surface 8-Material Taxonomy & Gatekeepers
+
+Flat design eliminated spatial depth, while early skeuomorphism created visual clutter. Tuff introduces "sub-surface materiality" to establish lightweight yet grounded spatial order.
+
+## Why Professional Desktop UIs Require Sub-surface Materials
+
+Physical materiality is an intuitive cognitive anchor, not decorative garnish:
+- **Spatial Continuity**: Transmitting ambient cues through translucent media preserves awareness of underlying context.
+- **Depth Hierarchy**: Varying refractive indexes and blur radii immediately communicate focal boundaries.
+- **Cognitive Relief**: Translucent surfaces relieve visual tension compared to monolithic solid blocks.
+
+## The 8-Material Physical Matrix
+
+| Surface Mode | Rendering Pipeline | Physical Metaphor | Typical Target |
+|---|---|---|---|
+| `refraction` (Default) | SVG Displacement Map + RGB Dispersion | Crystalline Prism | CoreBox main window, cards, dialogs |
+| `glass` | Backdrop Filter Blur + Specular Inset Ring | Frosted Glass | Ephemeral menus, floating action bars |
+| `acrylic` | Multi-stage Blur + Noise Scatter | Diffuse Acrylic | Sidebars, utility drawers |
+| `mica` | Harmonized Wallpaper Sampling | Dynamic Mica | Root window foundation (zero GPU hit) |
+| `mask` | Monochrome Translucent Alpha Mask | Ink Film | Rapid motion fallback, dense table rows |
+| `blur` | Native CSS `backdrop-filter: blur(20px)` | Basic Frost | Low-tier GPU fallback environments |
+| `flat` | Solid Monolithic Fill | Dense Polymer | High-contrast accessibility modes |
+| `plain` | Zero Style Passthrough | Empty Space | Structural layout wrapper |
+
+## The Absolute Rule: Default to Refraction
+
+In the TuffEx component family, **every container component featuring a surface layer must strictly default to `refraction`**.
+
+This establishes the visual signature of Tuff. Whether in CoreBox, modals, drawers, or cards, refraction delivers a unified, refractive aesthetic across the desktop surface.
+
+## Explicit Confirmation Gatekeeper for Mode Switching
+
+If a specialized scenario demands switching `surface` from `refraction` to another material (such as `flat` or `glass`):
+- **Explicit manual user confirmation is mandatory**!
+- Neither AI coding agents nor engineers may arbitrarily override the default material.
+- This gatekeeper preserves design system integrity across distributed teams and automated workflows.

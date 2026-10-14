@@ -1,0 +1,47 @@
+---
+title: 7-Tier Z-Axis Topology & Sticky Dividers
+description: Eliminating arbitrary z-index wars through an immutable 7-tier elevation topology and the 1px line divider rule.
+---
+
+# 7-Tier Z-Axis Topology & Sticky Dividers
+
+In complex desktop applications, arbitrary `z-index` declarations inevitably lead to layer collisions and visual leaks. Tuff enforces an immutable 7-tier elevation hierarchy.
+
+## Eliminating the z-index Arms Race
+
+Legacy frontend applications frequently patch layering bugs by bumping numbers to `z-index: 9999` or `99999`. This causes:
+- Dropdown menus poking through system modals.
+- Tooltips getting truncated by sticky headers.
+- Multi-agent or modular features losing coordinate alignment.
+
+TuffEx strictly bans hardcoded `z-index` literals; all elevations must reference tokenized layers.
+
+## The 7-Tier Elevation Topology
+
+| Token | Z-Index | Physical Metaphor | Spatial Responsibility |
+|---|---|---|---|
+| `--tx-z-floor` | `0` | Canvas Floor | Workspace canvas and base page |
+| `--tx-z-surface` | `1` | Local Containers | Standard cards, table rows, sections |
+| `--tx-z-sticky` | `10` | Scroll Anchors | Sticky table headers and action bars |
+| `--tx-z-popover` | `100` | Floating Overlays | Select menus, pickers, context menus |
+| `--tx-z-drawer` | `500` | Slide Drawers | Detail drawers (occluding main window) |
+| `--tx-z-modal` | `1000` | Blocking Modals | Dialogs and destructive confirmations |
+| `--tx-z-system` | `5000` | System Command Strip | CoreBox launcher and global search |
+| `--tx-z-toast` | `9999` | Ambient Alerts | System toasts, alarms, tooltips |
+
+## Sticky Headers Use 1px Lines, Never Drop Shadows
+
+When a table header or toolbar sticks to the top while content scrolls underneath, **drop shadows are strictly forbidden**.
+
+```scss
+// Anti-pattern: Drop shadow detaches the bar into thin air and blurs passing rows
+.sticky-bar { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+// Correct: 1px crisp border establishing a structural barrier
+.sticky-bar {
+  border-bottom: 1px solid var(--tx-border-color);
+  background-color: var(--tx-bg-color); // Must be an opaque backstop
+}
+```
+
+A sticky bar represents a viewport gate, not a hovering carpet. A 1px line establishes a crisp spatial boundary without blurring the first line of scrolling text.

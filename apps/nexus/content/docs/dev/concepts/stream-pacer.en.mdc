@@ -1,0 +1,50 @@
+---
+title: Stream Pacer & Reveal Presets
+description: Mitigating LLM token arrival jitter via useStreamPacer clock scheduling, Aurora micro-reveals, and the single caret handoff contract.
+---
+
+# Stream Pacer & Reveal Presets
+
+In generative AI interfaces, token arrival rates are non-uniform. Piping raw network packets directly into the DOM triggers visually jarring spasms.
+
+## Token Arrival Jitter in LLM Streaming
+
+Server-side batching and network hops introduce severe burstiness:
+- Long initial delays waiting for the First-Token (TTFT).
+- Sudden TCP bursts dumping dozens of characters instantaneously.
+- Unpredictable multi-second pauses mid-sentence.
+
+Without smoothing buffers, the UI oscillates between frozen pauses and overwhelming text dumps, fatiguing the reader's eyes.
+
+## The useStreamPacer Clock State Machine
+
+TuffEx decouples raw network streams from DOM rendering via an internal clock pacer:
+
+:::TuffCodeBlock{lang="typescript"}
+---
+code: |
+  useStreamPacer({
+    wordMs: () => 24,    // Baseline release cadence: 24ms per word unit
+    maxLagMs: () => 600, // Backlog deadline: units queued > 600ms accelerate
+    drainMs: () => 320,  // Cleanly drains residual tokens within 320ms on close
+    pauseMs: () => 400,  // Declares paused state after 400ms idle; caret breathes
+  })
+---
+:::
+
+- **Steady Stream**: Tokens emerge at a rhythmic 24ms cadence.
+- **Catch-up Burst**: If network bursts threaten the 600ms latency ceiling, the pacer raises release rates dynamically to match real-time model progress.
+
+## Reveal Style Presets (Aurora and Blur)
+
+As words emerge, delicate compositor presets enrich the presentation:
+- **`aurora` (460ms)**: Refractive micro-bloom transitioning from soft chromatic shift to solid ink.
+- **`blur` (420ms)**: Recreates physical ink dispersion, transitioning from `filter: blur(2px)` to tack-sharp focus within 90ms–120ms.
+- **`hue` (180ms)**: Subtle cool-tone entrance.
+- **`none` (0ms)**: Instantaneous text painting (zero overhead).
+
+## Single Caret Handoff Contract
+
+When a rich Markdown payload spans paragraphs, lists, and code blocks:
+**Multiple blinking carets are strictly forbidden!**
+As downstream parts take over generation, upstream parts instantly retract their caret. When the answer completes, the final caret gently dissolves.

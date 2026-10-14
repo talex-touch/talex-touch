@@ -1,0 +1,53 @@
+---
+title: 13–14px Desktop Baseline & 0.9em Code
+description: Cognitive differences between productivity tools and marketing pages, the 13–14px optical reading ladder, and 0.9em monospace code calibration.
+---
+
+# 13–14px Desktop Baseline & 0.9em Code
+
+The fundamental purpose of typography in productivity software is to sustain high-density, low-fatigue information intake across hours of continuous work.
+
+## Productivity Tools vs Marketing Pages
+
+- **Marketing Sites / Blogs**: Prefer larger type (16px–20px) with loose leading to capture passive attention and encourage rapid scrolling.
+- **Desktop Productivity Tools (IDEs, Consoles, CoreBox)**: Must anchor body type between 13px–14px. Oversized type dilutes information density, forcing constant eye travel that violates the Gestalt Law of Proximity and accelerates visual exhaustion.
+
+## The 13–14px Optical Scanning Baseline
+
+The human foveal vision window covers approximately 2 degrees. At typical desktop viewing distances (50cm–70cm), 13px–14px allows full word units to land inside the fovea, optimizing scanning velocity:
+
+- **Controls & Data Rows (13px–14px)**: Input field values, table cells, button labels.
+- **Secondary Copy (12px)**: Helper copy, empty state notes, shortcut badges.
+- **Micro-labels (10px–11px)**: All-caps tags or miniature badges.
+- **Headings (16px–18px)**: Reserved strictly for card and module titles; prose never exceeds 14px.
+
+## Monospace X-Height Inflation Mechanics
+
+Technical documentation routinely mixes inline code (`<code>`) into body copy.
+Sans-serif typefaces (e.g. Inter, SF Pro) and monospace code faces (e.g. JetBrains Mono, SF Mono) carry fundamentally divergent font metrics:
+To maximize legibility in code editors, monospace typefaces inflate letter counters—their **x-height runs 12%–18% taller than equivalent sans-serif type**!
+
+## Optical Alignment: Scaling Inline Code to 0.9em
+
+If inline code inherits `font-size: 1em`:
+- Monospace tokens stick out awkwardly like unharmonized patches.
+- Inflated height distorts uniform line-height rhythms.
+
+TuffEx enforces the standard:
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  .tx-prose code,
+  .tx-inline-code {
+    font-family: var(--tx-font-family-mono);
+    // Scaled to 0.9em to compensate for monospace x-height inflation
+    font-size: 0.9em;
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    background-color: var(--tx-fill-color-light);
+    vertical-align: baseline;
+  }
+---
+:::
+At 0.9em, monospace stems align with adjacent sans-serif glyphs, preserving rhythmic integrity across mixed technical prose.

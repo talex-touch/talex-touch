@@ -1,0 +1,61 @@
+---
+title: 合成器线程优先与双 Keyframe 重放
+description: 动画属性绝不可引起排版重排；四大 GPU 合成器属性保障与双 Keyframe 名字交替规避重排技巧。
+---
+
+# 合成器线程优先与双 Keyframe 重放
+
+界面丝滑度的决定性门槛在于：动画执行时，GPU 合成器线程（Compositor Thread）是否被主线程的布局重排（Layout Thrashing）所拖累。
+
+## 为什么动画属性绝不可引起排版重排？
+
+浏览器渲染管线分为三级：
+1. **Layout（排版重排）**：计算元素几何尺寸与流式位置（耗时极高）。
+2. **Paint（像素重绘）**：计算颜色、文本抗锯齿与阴影。
+3. **Composite（合成器合成）**：GPU 将图层直接拼接合成（极低耗时，零主线程依赖）。
+
+如果动画改变了 `width`、`height`、`margin` 或 `top/left`，浏览器在每一帧都必须被迫重新执行整页排版重排，瞬间导致 60Hz/120Hz 帧率暴跌。
+
+## 四大 GPU 合成器安全金刚属性
+
+TuffEx 强制规定：所有高频动效、微交互和循环背景动效，**严格只能使用四大合成属性**：
+
+- **`translate`**（位置移动，使用独立 CSS translate 属性而非 transform 复合矩阵）
+- **`scale`**（缩放变换）
+- **`rotate`**（旋转变换）
+- **`opacity`**（透明度渐变）
+
+这四项属性由 GPU 独立图层直接硬件光栅化，即便主线程正在执行密集的 JavaScript 计算，动画依然能保持 120Hz 绝对满帧运行。
+
+## 为什么严禁在 Keyframes 中使用 CSS 变量？
+
+很多初学者喜欢在动画关键帧里引入 CSS 变量：
+```scss
+// 违规写法：Keyframes 内部包含 var()
+@keyframes bad-scale {
+  0% { transform: scale(var(--base-scale)); }
+  100% { transform: scale(1); }
+}
+```
+**严重缺陷**：浏览器无法在合成器线程对带有动态 CSS 变量的关键帧进行提前编译优化，每次插值都必须回退到主线程重新解析变量值，抵消了 GPU 硬件加速的优势。
+
+## 双 Keyframe 名字交替重放技巧
+
+当需要“在同一元素上重新播放一次动画”（例如表单校验失败时晃动卡片）：
+传统做法是使用 `void el.offsetWidth` 强制刷新 DOM，这会在主线程引发一次极度昂贵的强制同步重排。
+
+TuffEx 采用双 Keyframe 翻转技巧：
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  // 声明两个逻辑完全相同、名称不同的 Keyframe
+  @keyframes tx-pulse-a { 30% { scale: 1.1; } }
+  @keyframes tx-pulse-b { 30% { scale: 1.1; } }
+
+  .tx-box.is-pulse-a { animation: tx-pulse-a 240ms ease-out; }
+  .tx-box.is-pulse-b { animation: tx-pulse-b 240ms ease-out; }
+---
+:::
+
+JavaScript 每次重播只需切换 `is-pulse-a` 与 `is-pulse-b` 类名。由于动画名称改变，浏览器会自动重播动画，**全过程零 DOM 重排开销**！

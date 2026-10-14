@@ -33,7 +33,7 @@ Use these guidelines together with the package-level `AGENTS.md` files:
 | [Hook Guidelines](./hook-guidelines.md)                       | Custom composables, lifecycle, data access                                           | Filled |
 | [State Management](./state-management.md)                     | Local state, Pinia, host/server state                                                | Filled |
 | [CoreBox Results Contracts](./corebox-results-contracts.md)   | CoreBox renderer: selection follow, focus scroll against a viewport that holds the row, stable merge with default semantic insertion and ordinary append-only arrivals, refresh reconcile, searching cue, one motion gate, selection block, list FLIP, preview pane, action feedback hint | Filled |
-| [TuffEx Design Rules](./tuffex-design-rules.md)               | Kumo-derived type/spacing/colour/motion rules restated in `--tx-*` tokens and BEM      | Filled |
+| [TuffEx Design Rules](./tuffex-design-rules.md)               | Kumo-derived type/spacing/colour/motion rules restated in `--tx-*` tokens and BEM (alongside [Design Concepts](../../design/concepts/README.md)) | Filled |
 | [TuffEx Charts Package](./tuffex-charts-package.md)           | tuffex-charts contracts: no echarts, CSS-var theming, kumo divergences               | Filled |
 | [TuffEx Text Motion](./tuffex-text-motion.md)                 | One text-morph engine: torph port, the shared spring, unscoped styles, mode fallbacks | Filled |
 | [TuffEx Streaming Text](./tuffex-streaming-text.md)           | Streamed text family: one pacer, shared units, reveal presets, caret handoff (`:css="caret"`, `translate`), `$stable` slots, reserve | Filled |

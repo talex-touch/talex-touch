@@ -58,6 +58,25 @@ The current tree has 12 `font-weight: 700` declarations. Every surviving one is 
 
 A code span inside prose uses `font-size: 0.9em` relative to its surrounding text. Monospace faces carry a larger x-height than the UI face, so a 1em code span reads a step too big and breaks the line's rhythm.
 
+
+### Dark-mode optical irradiation compensation & weight calibration
+
+White text on dark backgrounds causes retinal light scattering (the optical irradiation illusion), making dark-mode typography appear roughly 10%–15% bolder than light-mode text at the same CSS weight.
+
+When paired with variable system fonts (e.g., `-apple-system`, `Inter`, `Roboto Flex`), calibrated weights compensate for this visual dilation:
+- Base prose: `400` in light mode; down-tune to `380`–`400` where variable axes are available.
+- Semi-bold headings: `600` in light mode; tune down towards `560` in dark surfaces.
+- Medium emphasis: `500` in light mode; tune down towards `460` in dark surfaces.
+
+**Hard verification constraint**: Static fonts lack arbitrary variable weights (e.g. `460`, `560`). Browsers fall back to the nearest discrete weight bucket (100–900). Never assume `font-weight: 460` takes effect without verifying the active font family's variable axis in computed styles. If discrete fonts are active, preserve `400` / `500` / `600` and control optical contrast via `--tx-text-color-regular` instead of raw weight hacks.
+
+### Typographic wrapping: `pretty` for prose, `balance` for titles
+
+Preventing ragged lines and single-word orphans is handled at the layout engine level:
+- **Prose & description blocks**: Use `text-wrap: pretty`. It runs Chrome/Safari's orphan prevention algorithm, pulling words down to balance trailing lines without inserting hard line breaks.
+- **Headings & short titles (≤6 lines)**: Use `text-wrap: balance` to harmonize line lengths across broken headings.
+- **Anti-pattern**: Never inject artificial `<br>` or hard line breaks into dynamic copy. Hard breaks hardcode the viewport width into the document structure and glitch when resized.
+- **Streaming stability**: During active token streaming (e.g. `TxStreamText`, `TxStreamMarkdown`), keep `text-wrap: wrap` until the full paragraph or block stream settles, then apply `pretty`. Applying `pretty` on every streaming frame triggers recalculations on partial sentences.
 ---
 
 ## Spacing
@@ -281,6 +300,15 @@ When results arrive and make the host of a loading effect taller, the effect mus
 - Growth during a fade-out counts too, because `items = data; loading = false` in one update is the common case. Speed up the running fade through `animation.playbackRate` rather than restarting it.
 - An `inset: 0` layer stretches with a growing host, so pin the leaving layer to its pre-growth height in the Transition's `@before-leave` hook. A node that `v-if` is removing receives no new bindings; a reactive `:style` cannot pin it.
 
+
+### Streaming text reveals on the compositor without blocking interaction
+
+Text arriving from AI or streaming channels must be revealed smoothly without delaying user comprehension or input:
+
+1. **Compositor-only reveal transition**: New tokens/words may apply an ultra-short transition (e.g. 90ms–120ms opacity fade or subtle blur-to-sharpness `filter: blur(2px)` → `blur(0)`).
+2. **Zero queuing lag (Non-blocking arrival)**: Pacing must never queue words behind animations if the backend stream accelerates. When backpressure builds, the pacer drains immediately to current time (`maxLagMs` deadline).
+3. **Interaction & selection unblocked**: Text nodes must be immediately selectable, copyable, and readable in the DOM. Never attach interaction blockers (`user-select: none`, pointer event capture, or `inert`) to in-progress reveal blocks.
+4. **Instant reduced-motion bypass**: When `@media (prefers-reduced-motion: reduce)` matches, reveal transitions are entirely omitted, and text paints instantaneously as chunks arrive.
 ---
 
 ## Structure

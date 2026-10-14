@@ -6,7 +6,7 @@ status: beta
 since: 0.3.9
 tags: [concepts, overview, foundations, utils]
 syncStatus: reviewed
-verified: false
+verified: true
 ---
 
 Tuffex (`@talex-touch/tuffex`) is the Vue 3 component library behind CoreBox, plugin surfaces, and this documentation site.
@@ -16,7 +16,8 @@ Tuffex (`@talex-touch/tuffex`) is the Vue 3 component library behind CoreBox, pl
 | Page | Covers |
 |------|--------|
 | [Installation](./installation.en.mdc) | Three import paths and their stylesheets |
-| [Design Foundations](./foundations.en.mdc) | Typography and color tokens |
+| [Design Foundations](./foundations.en.mdc) | G2 curvature, refraction shaders, dark optics, 13-14px typography, and token matrix |
+| [Design Concepts Manual](../concepts/index.en.mdc) | 18 in-depth topics: physical curvature, dispersion shaders, micro-motion, and anti-jitter |
 | [Theming](./theming.en.mdc) | Token overrides, dark mode, high contrast |
 | [Icons](./icons.en.mdc) | How `TxIcon` resolves and loads icons |
 | [Accessibility](./accessibility.en.mdc) | Focus, motion, contrast and ARIA conventions |

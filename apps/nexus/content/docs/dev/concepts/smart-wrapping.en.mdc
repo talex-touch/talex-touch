@@ -1,0 +1,51 @@
+---
+title: Modern Soft Wrapping & Zero Tracking
+description: text-wrap: pretty orphan prevention, balance heading symmetry, banning hard breaks, and zero tracking on body copy.
+---
+
+# Modern Soft Wrapping & Zero Tracking
+
+The refinement of typography surfaces in the subtlest line breaks and letter spacing. Arbitrary manual breaks and loose tracking silently degrade interface quality.
+
+## The Visual Flaw of Typographic Orphans
+
+In descriptive cards or modals, a paragraph frequently concludes with **a single orphan word or lonely punctuation mark trailing on the final line**.
+These orphans unbalance the bottom boundary of the paragraph, leaving awkward negative space that reads unpolished.
+
+## Modern CSS Soft Wrapping: pretty and balance
+
+From Chrome 117+ and Safari 17.4+ onward, browser engines feature dynamic programming wrapping algorithms. TuffEx establishes them as system defaults:
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  // 1. Headings and short titles (≤6 lines): Balanced line variance
+  .tx-heading,
+  .tx-modal__title {
+    text-wrap: balance;
+  }
+
+  // 2. Body prose and descriptions: Orphan prevention
+  .tx-prose p,
+  .tx-description {
+    text-wrap: pretty;
+  }
+---
+:::
+
+- `text-wrap: balance`: The layout engine minimizes character variance across lines, rendering harmonious inverted-pyramid or balanced blocks.
+- `text-wrap: pretty`: Targets terminal orphans. When a single trailing word is detected, it pulls the preceding word down to form a balanced couplet.
+
+## Banning Hardcoded Line Breaks
+
+**Injecting artificial `<br>` or `\n` into dynamic copy is strictly prohibited**!
+Hard breaks hardcode current viewport assumptions into text models. When users resize windows, hard breaks split sentences prematurely, destroying readability. Wrapping belongs strictly to the engine's soft-breaking algorithms.
+
+## Zero Tracking on Body Copy and Permitted Exceptions
+
+Type foundries spend years tuning kerning pairs (e.g. `AV`, `To`, `We`). Injecting `letter-spacing: 1px` onto body text shatters these optical locks, decreasing reading comprehension velocity by over 20%.
+
+TuffEx mandates: **Zero tracking on body text**. Letter-spacing is permitted strictly across three edge cases:
+1. **≤11px Uppercase Micro-labels** (`TxSidebarNav` headers at `0.08em`): Prevents small caps from collapsing together.
+2. **≥20px Display Numerals** (`TxInsightMetric` at `-0.01em`): Tightens oversized numerals.
+3. **Centered Avatar Initials**: The glyph functions as graphic art rather than prose.

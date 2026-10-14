@@ -1,0 +1,39 @@
+---
+title: Retinal Irradiation & Weight Tuning
+description: Helmholtz optical irradiation illusion, 10%–15% white text expansion, variable font 460/560 tuning, and discrete font fallback traps.
+---
+
+# Retinal Irradiation & Weight Tuning
+
+Identical `font-weight: 500` copy appears noticeably heavier in dark mode than in light mode, eroding typographic refinement.
+
+## Optical Irradiation (The Helmholtz Illusion)
+
+In 1867, physiological optics pioneer Hermann von Helmholtz documented this retinal mechanism in the *Handbuch der physiologischen Optik*:
+**Photoreceptors stimulated by bright light spill excitation into neighboring dark-adapted cells, causing the visual cortex to perceive bright shapes expanding outward**.
+
+## The 10%–15% Perceived Expansion of White Text
+
+- **Light Mode (Dark on Light)**: Expansive light backgrounds encroach upon the boundaries of dark strokes, making typography feel compact and refined.
+- **Dark Mode (Light on Dark)**: Radiant white strokes bleed into the surrounding darkness. **To human retinas, stroke thickness appears 10%–15% bolder**.
+
+Reusing identical numeric weights across themes causes dark mode typography to read clumsy and congested.
+
+## Variable Font 460/560 Tuning in Action
+
+When variable system fonts (e.g. San Francisco, Segoe UI Variable, Inter) are active, TuffEx calibrates dark weights downward to achieve perceived optical equivalence:
+
+| Role | Light Weight | Dark Compensated Weight | Optical Target |
+|---|---|---|---|
+| **Body Default** | `400` (Regular) | `380` – `400` | Eliminates bloom and stroke fattening |
+| **Inline Emphasis** | `500` (Medium) | `460` | Crisp emphasis without interior stroke collision |
+| **Headings / Buttons** | `600` (Semi-Bold) | `560` | Preserves letter counters and structural posture |
+
+## Discrete Static Font Fallback Guards
+
+**A critical engineering pitfall**: If a platform lacks variable font axes and falls back to static fonts:
+- A CSS declaration of `font-weight: 460` triggers the browser's fallback algorithm.
+- Values between `400` and `500` round *up* to `500`!
+- Rather than compensating for optical bloom, this **unintentionally thickens the text**!
+
+TuffEx requires scoping variable weight tuning behind variable font support; under static font environments, developers preserve `400/500/600` and dial back text contrast (using `--tx-text-color-regular` instead of raw white) to offset irradiation expansion.

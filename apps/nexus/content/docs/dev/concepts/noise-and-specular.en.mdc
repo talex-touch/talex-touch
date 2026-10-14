@@ -1,0 +1,50 @@
+---
+title: Alpha Noise Masks & Specular Tracking
+description: Overcoming dirty greys from overlay blending via mask-composite: intersect, and generating physical card cursor specular reflections.
+---
+
+# Alpha Noise Masks & Specular Tracking
+
+In realistic material design, grain and specular highlights grant physical tactile qualities to a surface, but improper blending ruins color purity.
+
+## Why Overlay Blending Turns Faint Tints Grey
+
+Designers frequently blend a 5% noise layer over frosted cards using CSS `mix-blend-mode: overlay`.
+Over faint washes (at roughly 16% alpha), the overlay formula:
+$$\text{Overlay}(A, B) = \begin{cases} 2AB & B < 0.5 \\ 1 - 2(1-A)(1-B) & B \ge 0.5 \end{cases}$$
+shifts pixel luminance toward middle grey, creating a muddy, speckled smudge across high-DPI Retina screens.
+
+## The mask-composite: intersect Solution
+
+TuffEx avoids modifying pixel RGB values entirely, instead **encoding fractal noise directly into the alpha mask**:
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  @supports (mask-composite: intersect) {
+    .tx-status-hint__wash {
+      background-color: var(--tx-status-hint-accent, #67c23a);
+      // Mask image intersects linear wash and fractal noise
+      mask-image: 
+        linear-gradient(to right, rgb(0 0 0 / var(--tx-wash-strength, 0.26)), transparent), 
+        url("data:image/svg+xml,..."); // Fractal noise SVG
+      mask-composite: intersect;
+    }
+  }
+---
+:::
+
+The noise governs purely "how much light passes through"; the underlying canvas color stays completely clean.
+
+## Card Specular Light Cursor Tracking
+
+In `TxCard` and interactive elements, hovering moves a faint radial specular highlight across the card surface:
+
+- **Normalized Coordinates**: Moving the pointer updates normalized CSS custom properties (`--tx-card-light-x`, `--tx-card-light-y`).
+- **Subtle Ambient Alpha**: Specular opacity rests around `0.06`, casting a soft sheen across dark surfaces without competing with typography.
+
+## Damped Smoothing & Normal Map Illusion
+
+To prevent the highlight from jittering during rapid pointer travel, coordinates pass through an easing filter:
+$$\vec{P}_{\text{render}}(t) = \vec{P}_{\text{render}}(t-1) + \alpha \cdot (\vec{P}_{\text{cursor}}(t) - \vec{P}_{\text{render}}(t-1))$$
+As the radial highlight glances off the 1px card boundary, it creates the optical illusion of physical bevel refraction (Normal Map Illusion), heightening spatial depth.

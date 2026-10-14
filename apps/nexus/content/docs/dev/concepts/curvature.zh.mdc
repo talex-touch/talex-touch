@@ -1,0 +1,52 @@
+---
+title: G2 连续曲率与超椭圆几何
+description: 为什么标准 border-radius 圆弧倒角在高端界面中显得生硬？从 G0/G1 到 G2 曲率连续性推导与 Apple 平滑圆角实现。
+---
+
+# G2 连续曲率与超椭圆几何
+
+在高级工业制造（如汽车流线外壳）和现代高端操作系统界面（如 Apple macOS / iOS）中，曲率的连续性直接决定了光影反射的柔和度。
+
+## 几何连续性阶数定义
+
+几何连续性决定了两条曲线连接处的光滑程度：
+
+- **$G^0$ 连续（位置连续）**：两段曲线在端点重合，但切线方向发生突变（90 度直角）。
+- **$G^1$ 连续（切线连续）**：两段曲线在连接点处切线方向相同，一阶导数连续。CSS 标准的 `border-radius` 就是典型的 $G^1$ 连续（直线与圆弧相切）。
+- **$G^2$ 连续（曲率连续）**：两段曲线在连接点处曲率 $\kappa$ 保持完全相等，二阶导数连续。
+
+## 为什么标准圆弧倒角存在视觉断裂？
+
+对于标准圆弧倒角：
+- 直线段曲率 $\kappa = 0$。
+- 进入圆弧瞬间，曲率突跃为 $\kappa = \frac{1}{R}$。
+由于二阶导数的阶跃，人眼在光照或者折射材质下会敏锐察觉到连接处的“折痕感”（Specular Break）。
+
+## 超椭圆方程与 Apple 平滑圆角
+
+Apple 从 iOS 7 起采用超椭圆（Lamé 曲线）替代标准圆弧：
+$$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \approx 4 \sim 5)$$
+通过在直线与圆弧之间引入平滑爬升的过渡段（Clothoid / Euler 螺线），让交界处的曲率变化率为零。
+
+## TuffEx 的工程实现方案
+
+在 Web 与 Electron 体系中，TuffEx 采用渐进增强方式实现 G2 平滑：
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  @mixin tx-squircle($radius: 16px) {
+    @supports (corner-shape: squircle) {
+      border-radius: $radius;
+      corner-shape: squircle;
+    }
+    @supports not (corner-shape: squircle) {
+      border-radius: $radius;
+      // 采用精密平滑贝塞尔曲线或 SVG Mask 赋予超椭圆外形
+      clip-path: url("data:image/svg+xml,...");
+    }
+  }
+---
+:::
+
+在大尺寸悬浮卡片和 CoreBox 视窗上，G2 连续曲率消除了四周生硬的折角，使琉光折射边缘呈现自然的浑然一体感。

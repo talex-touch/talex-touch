@@ -1,0 +1,61 @@
+---
+title: Compositor Thread Priority & Dual Keyframes
+description: Animation properties must never trigger layout reflow; four GPU compositor properties and alternating dual keyframe names to eliminate DOM reflow.
+---
+
+# Compositor Thread Priority & Dual Keyframes
+
+Interface fluidity hinges on a non-negotiable invariant: animations must execute on the GPU Compositor Thread, completely detached from main-thread Layout Thrashing.
+
+## Why Animation Properties Must Never Cause Reflow
+
+The browser rendering pipeline comprises three sequential stages:
+1. **Layout**: Recomputes geometry, box dimensions, and fluid flow (extremely expensive).
+2. **Paint**: Rasterizes colors, font glyphs, and box shadows.
+3. **Composite**: Assembles pre-rasterized layers directly on the GPU (ultra-fast, zero main-thread block).
+
+If an animation mutates `width`, `height`, `margin`, or `top/left`, the engine forces full-page recalculations on every frame, plummeting framerates below 60Hz.
+
+## The Four Safe GPU Compositor Properties
+
+TuffEx strictly confines all animations, loops, and micro-interactions to **four compositor properties**:
+
+- **`translate`** (independent position translation, decoupled from transform matrices)
+- **`scale`** (hardware scaling)
+- **`rotate`** (hardware rotation)
+- **`opacity`** (alpha compositing)
+
+These properties live on dedicated GPU layers. Even during intense JavaScript execution, compositor animations remain locked at an unwavering 120Hz.
+
+## Why CSS Variables are Banned Inside @keyframes
+
+Developers often attempt parameterizing keyframes with CSS variables:
+```scss
+// Anti-pattern: Keyframes referencing var()
+@keyframes bad-scale {
+  0% { transform: scale(var(--base-scale)); }
+  100% { transform: scale(1); }
+}
+```
+**Fatal flaw**: Browsers cannot pre-compile keyframes holding dynamic variables on the compositor thread; they fall back to the main thread to resolve values on every tick, destroying hardware acceleration.
+
+## Alternating Dual-Keyframe Replay Trick
+
+When an effect must replay on demand (such as shaking an invalid input field):
+The naive hack calls `void el.offsetWidth` to force-restart CSS transitions, paying a punishing synchronous layout penalty.
+
+TuffEx employs dual-keyframe name alternation:
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  // Two keyframes with identical bodies but distinct names
+  @keyframes tx-pulse-a { 30% { scale: 1.1; } }
+  @keyframes tx-pulse-b { 30% { scale: 1.1; } }
+
+  .tx-box.is-pulse-a { animation: tx-pulse-a 240ms ease-out; }
+  .tx-box.is-pulse-b { animation: tx-pulse-b 240ms ease-out; }
+---
+:::
+
+Triggering a replay simply toggles between `is-pulse-a` and `is-pulse-b`. Changing the animation name restarts the animation with **zero DOM reflow penalty**.
