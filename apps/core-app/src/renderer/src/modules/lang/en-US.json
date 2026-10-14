@@ -7447,6 +7447,7 @@
       "empty": "No matching actions",
       "failed": "Action failed",
       "groups": {
+        "quickFlow": "Quick Flow",
         "open": "Basic",
         "host": "App settings",
         "plugin": "Plugins"

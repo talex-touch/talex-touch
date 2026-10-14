@@ -816,8 +816,8 @@ describe('useKeyboard ⌘K request', () => {
     expect(event.defaultPrevented).toBe(true)
     const request = lastShowRequest()
     expect(request.anchor).toBe('footer')
-    // Seven rows in three sections, two titled.
-    expect(request.desiredPanelHeight).toBe(372)
+    // Seven rows in four sections, three titled.
+    expect(request.desiredPanelHeight).toBe(400)
     expect((request.builtinActions as Array<{ id: string }>).map((action) => action.id)).toEqual([
       '__corebox_primary__',
       'reveal-in-finder',
@@ -925,8 +925,8 @@ describe('buildCoreBoxMetaShowRequest Flow page', () => {
     const actions = buildCoreBoxMetaShowRequest(ACTION_APP_ITEM, { footerShown: false })
     expect(actions.page).toBeUndefined()
     expect(actions.flowTargets).toBeUndefined()
-    // Seven rows in three sections, two titled, as the ⌘K request above.
-    expect(actions.desiredPanelHeight).toBe(372)
+    // Seven rows in four sections, three titled, as the ⌘K request above.
+    expect(actions.desiredPanelHeight).toBe(400)
   })
 })
 

@@ -7447,6 +7447,7 @@
       "empty": "没有匹配的操作",
       "failed": "操作失败",
       "groups": {
+        "quickFlow": "快速流转",
         "open": "基本操作",
         "host": "应用设置",
         "plugin": "插件"
