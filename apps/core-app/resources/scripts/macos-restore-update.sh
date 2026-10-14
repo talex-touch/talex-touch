@@ -50,6 +50,9 @@ fi
 
 restore_direct() {
   rm -rf "$DEST_APP" >> "$LOG_FILE" 2>&1 || return 1
+  if /bin/cp -cR "$BACKUP_APP" "$DEST_APP" >> "$LOG_FILE" 2>&1; then
+    return 0
+  fi
   /usr/bin/ditto "$BACKUP_APP" "$DEST_APP" >> "$LOG_FILE" 2>&1
 }
 

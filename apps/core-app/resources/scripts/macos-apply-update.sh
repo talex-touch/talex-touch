@@ -101,13 +101,22 @@ wait_for_app_exit() {
   fi
 }
 
-copy_app_candidate() {
-  local candidate="$1"
-  if [ -z "$candidate" ] || [ ! -d "$candidate" ]; then
+copy_app_bundle() {
+  local src="$1"
+  local dst="$2"
+  if [ -z "$src" ] || [ ! -d "$src" ] || [ -z "$dst" ]; then
     return 1
   fi
-  rm -rf "$WORK_APP" >> "$LOG_FILE" 2>&1 || true
-  /usr/bin/ditto "$candidate" "$WORK_APP" >> "$LOG_FILE" 2>&1
+  rm -rf "$dst" >> "$LOG_FILE" 2>&1 || true
+  if /bin/cp -cR "$src" "$dst" >> "$LOG_FILE" 2>&1; then
+    return 0
+  fi
+  /usr/bin/ditto "$src" "$dst" >> "$LOG_FILE" 2>&1
+}
+
+copy_app_candidate() {
+  local candidate="$1"
+  copy_app_bundle "$candidate" "$WORK_APP"
 }
 
 prepare_source() {
@@ -127,7 +136,7 @@ prepare_source() {
       ;;
     *.dmg|*.DMG)
       mkdir -p "$MOUNT_DIR" >> "$LOG_FILE" 2>&1 || return 1
-      /usr/bin/hdiutil attach "$SOURCE_PACKAGE" -nobrowse -readonly -mountpoint "$MOUNT_DIR" >> "$LOG_FILE" 2>&1 || return 1
+      /usr/bin/hdiutil attach "$SOURCE_PACKAGE" -nobrowse -readonly -noverify -noautofsck -mountpoint "$MOUNT_DIR" >> "$LOG_FILE" 2>&1 || return 1
       local mounted_app
       mounted_app="$(/usr/bin/find "$MOUNT_DIR" -maxdepth 4 -type d -name "*.app" | /usr/bin/head -n 1)"
       copy_app_candidate "$mounted_app"
@@ -150,18 +159,17 @@ prepare_source() {
 
 restore_backup() {
   if [ -d "$BACKUP_APP" ]; then
-    rm -rf "$DEST_APP" >> "$LOG_FILE" 2>&1 || true
-    /usr/bin/ditto "$BACKUP_APP" "$DEST_APP" >> "$LOG_FILE" 2>&1 || true
+    copy_app_bundle "$BACKUP_APP" "$DEST_APP" || true
   fi
 }
 
 install_direct() {
   rm -rf "$BACKUP_APP" >> "$LOG_FILE" 2>&1 || true
   if [ -d "$DEST_APP" ]; then
-    /usr/bin/ditto "$DEST_APP" "$BACKUP_APP" >> "$LOG_FILE" 2>&1 || return 1
+    copy_app_bundle "$DEST_APP" "$BACKUP_APP" || return 1
   fi
 
-  if rm -rf "$DEST_APP" >> "$LOG_FILE" 2>&1 && /usr/bin/ditto "$WORK_APP" "$DEST_APP" >> "$LOG_FILE" 2>&1; then
+  if copy_app_bundle "$WORK_APP" "$DEST_APP"; then
     /usr/bin/xattr -dr com.apple.quarantine "$DEST_APP" >> "$LOG_FILE" 2>&1 || true
     return 0
   fi

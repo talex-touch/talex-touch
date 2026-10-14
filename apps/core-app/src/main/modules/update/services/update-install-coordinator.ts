@@ -258,6 +258,7 @@ export class UpdateInstallCoordinator {
       healthTimeoutMs: HEALTH_TIMEOUT_MS,
       ackPath: paths.ackPath,
       markerPath: paths.markerPath,
+      lockPath: paths.lockPath,
       handoff: platformSpec.handoff,
       recovery: platformSpec.recovery,
       cleanupPaths: platformSpec.cleanupPaths,
@@ -354,6 +355,22 @@ export class UpdateInstallCoordinator {
     }
 
     if (currentVersion === plan.currentVersion) {
+      const isHandoffActive = await this.isHandoffInProgress(plan)
+      if (isHandoffActive) {
+        this.deps.log.warn(
+          'Update handoff is still in progress by external helper; deferring reconciliation and yielding to updater',
+          {
+            meta: {
+              attemptId: lifecycle.attemptId,
+              currentVersion,
+              targetVersion: plan.targetVersion
+            }
+          }
+        )
+        this.deps.requestQuit()
+        return
+      }
+
       const recoveryRequired = await this.transitionToRecoveryRequired(
         lifecycle,
         'The current version remained intact after update handoff'
@@ -378,6 +395,30 @@ export class UpdateInstallCoordinator {
       lifecycle,
       'Application restarted without target version or a matching recovery marker'
     )
+  }
+  private async isHandoffInProgress(plan: UpdateHandoffPlan): Promise<boolean> {
+    try {
+      const lock = await this.store.readLock(plan.attemptId)
+      if (!lock || lock.attemptId !== plan.attemptId || lock.token !== plan.token) {
+        return false
+      }
+      if (Date.now() - lock.startedAt > plan.healthTimeoutMs) {
+        return false
+      }
+      return this.isProcessAlive(lock.helperPid)
+    } catch {
+      return false
+    }
+  }
+
+  private isProcessAlive(pid: number): boolean {
+    if (!Number.isSafeInteger(pid) || pid <= 0) return false
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'EPERM'
+    }
   }
 
   private async transitionToRecoveryRequired(

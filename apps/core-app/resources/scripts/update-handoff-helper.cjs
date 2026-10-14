@@ -73,6 +73,9 @@ function validatePlan(root, plan) {
   assertInternalPath(root, plan.packagePath)
   assertInternalPath(root, plan.ackPath)
   assertInternalPath(root, plan.markerPath)
+  if (typeof plan.lockPath === 'string') {
+    assertInternalPath(root, plan.lockPath)
+  }
   for (const cleanupPath of plan.cleanupPaths) assertInternalPath(root, cleanupPath)
   return plan
 }
@@ -247,38 +250,58 @@ async function runHelper(root, planPath) {
   ) {
     return { status: existingMarker.status }
   }
+  const lockPath = plan.lockPath || path.join(path.dirname(safePlanPath), 'handoff-lock.json')
+  await writeJsonAtomic(root, lockPath, {
+    schemaVersion: SCHEMA_VERSION,
+    attemptId: plan.attemptId,
+    token: plan.token,
+    helperPid: process.pid,
+    startedAt: Date.now()
+  })
 
-  if (!(await waitForParentExit(plan.parentPid))) {
-    await writeJsonAtomic(root, plan.markerPath, {
-      schemaVersion: SCHEMA_VERSION,
-      attemptId: plan.attemptId,
-      token: plan.token,
-      status: 'handoff-failed',
-      recoveryAttempted: true,
-      reason: 'Parent process did not exit before helper timeout',
-      updatedAt: Date.now()
-    })
-    return { status: 'parent-timeout' }
+  const removeLock = async () => {
+    try {
+      await fs.rm(assertInternalPath(root, lockPath), { force: true })
+    } catch {
+      // ignore
+    }
   }
 
   try {
-    await launchCommand(plan.handoff)
-  } catch (error) {
-    await recoverOnce(
-      root,
-      plan,
-      `Update handoff failed: ${error instanceof Error ? error.message : String(error)}`
-    )
-    return { status: 'handoff-failed' }
-  }
+    if (!(await waitForParentExit(plan.parentPid))) {
+      await writeJsonAtomic(root, plan.markerPath, {
+        schemaVersion: SCHEMA_VERSION,
+        attemptId: plan.attemptId,
+        token: plan.token,
+        status: 'handoff-failed',
+        recoveryAttempted: true,
+        reason: 'Parent process did not exit before helper timeout',
+        updatedAt: Date.now()
+      })
+      return { status: 'parent-timeout' }
+    }
 
-  if (await waitForHealthAck(plan)) {
-    await cleanup(root, plan.cleanupPaths)
-    return { status: 'healthy' }
-  }
+    try {
+      await launchCommand(plan.handoff)
+    } catch (error) {
+      await recoverOnce(
+        root,
+        plan,
+        `Update handoff failed: ${error instanceof Error ? error.message : String(error)}`
+      )
+      return { status: 'handoff-failed' }
+    }
 
-  const recovered = await recoverOnce(root, plan, 'Startup health acknowledgement timed out')
-  return { status: recovered ? 'recovery-started' : 'recovery-required' }
+    if (await waitForHealthAck(plan)) {
+      await cleanup(root, plan.cleanupPaths)
+      return { status: 'healthy' }
+    }
+
+    const recovered = await recoverOnce(root, plan, 'Startup health acknowledgement timed out')
+    return { status: recovered ? 'recovery-started' : 'recovery-required' }
+  } finally {
+    await removeLock()
+  }
 }
 
 function parseArgs(argv) {

@@ -25,6 +25,7 @@ export interface UpdateHandoffPlan {
   healthTimeoutMs: number
   ackPath: string
   markerPath: string
+  lockPath?: string
   handoff: UpdateHandoffCommand
   recovery: UpdateHandoffCommand | null
   cleanupPaths: string[]
@@ -49,6 +50,14 @@ export interface UpdateRecoveryMarker {
   recoveryAttempted: boolean
   reason: string
   updatedAt: number
+}
+
+export interface UpdateHandoffLock {
+  schemaVersion: typeof UPDATE_HANDOFF_SCHEMA_VERSION
+  attemptId: string
+  token: string
+  helperPid: number
+  startedAt: number
 }
 
 export interface PreviousUpdateAsset {
@@ -101,6 +110,7 @@ export class UpdateRecoveryStore {
     planPath: string
     ackPath: string
     markerPath: string
+    lockPath: string
   } {
     if (!SAFE_ATTEMPT_ID.test(attemptId)) {
       throw new Error('Update attempt id contains unsafe characters')
@@ -110,8 +120,26 @@ export class UpdateRecoveryStore {
       attemptRoot,
       planPath: path.join(attemptRoot, 'plan.json'),
       ackPath: path.join(attemptRoot, 'health-ack.json'),
-      markerPath: path.join(attemptRoot, 'recovery-marker.json')
+      markerPath: path.join(attemptRoot, 'recovery-marker.json'),
+      lockPath: path.join(attemptRoot, 'handoff-lock.json')
     }
+  }
+
+  async readLock(attemptId: string): Promise<UpdateHandoffLock | null> {
+    const { lockPath } = this.createAttemptPaths(attemptId)
+    const value = await this.readJson(lockPath)
+    if (!value) return null
+    return value as UpdateHandoffLock
+  }
+
+  async writeLock(attemptId: string, lock: UpdateHandoffLock): Promise<void> {
+    const { lockPath } = this.createAttemptPaths(attemptId)
+    await this.writeJsonAtomic(lockPath, lock)
+  }
+
+  async removeLock(attemptId: string): Promise<void> {
+    const { lockPath } = this.createAttemptPaths(attemptId)
+    await fs.rm(lockPath, { force: true })
   }
 
   async writePlan(plan: UpdateHandoffPlan): Promise<string> {
@@ -291,6 +319,9 @@ export class UpdateRecoveryStore {
     this.assertInternalPath(plan.packagePath)
     this.assertInternalPath(plan.ackPath)
     this.assertInternalPath(plan.markerPath)
+    if (typeof plan.lockPath === 'string') {
+      this.assertInternalPath(plan.lockPath)
+    }
     for (const cleanupPath of plan.cleanupPaths) this.assertInternalPath(cleanupPath)
   }
 

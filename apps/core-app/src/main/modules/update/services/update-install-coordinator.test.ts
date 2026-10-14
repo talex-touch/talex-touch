@@ -312,4 +312,31 @@ describe('UpdateInstallCoordinator', () => {
 
     expect(repository.current.phase).toBe('recovered')
   })
+
+  it('defers reconciliation and requests quit when update handoff is still in progress', async () => {
+    const root = await createRoot()
+    const store = new UpdateRecoveryStore(root)
+    await store.initialize()
+    const plan = createPlan(store)
+    await mkdir(path.dirname(plan.packagePath), { recursive: true })
+    await writeFile(plan.packagePath, 'verified package')
+    await store.writePlan(plan)
+    await store.writeLock(plan.attemptId, {
+      schemaVersion: UPDATE_HANDOFF_SCHEMA_VERSION,
+      attemptId: plan.attemptId,
+      token: plan.token,
+      helperPid: process.pid,
+      startedAt: Date.now()
+    })
+
+    const repository = createRepository(lifecycle('handoff-started'))
+    const { coordinator, requestQuit } = createCoordinator(root, repository, {
+      currentVersion: '2.4.9'
+    })
+
+    await coordinator.initialize()
+
+    expect(requestQuit).toHaveBeenCalledOnce()
+    expect(repository.current.phase).toBe('handoff-started')
+  })
 })
