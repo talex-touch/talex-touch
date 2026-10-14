@@ -21,6 +21,7 @@ import {
 // water-ripple wavefront. The first title line keeps the signature line shadow.
 
 const LazyEventHorizon = defineAsyncComponent(() => import('~/components/tuff/background/EventHorizon.vue'))
+const LazyPromoVideoModal = defineAsyncComponent(() => import('~/components/tuff/landing/TuffPromoVideoModal.vue'))
 //
 // Two download channels, two affordances that must never compete: the primary
 // CTA ships the certified RELEASE build, while the split capsule below it owns
@@ -49,6 +50,11 @@ const enableMotion = ref(false)
 const triggerRef = ref<InstanceType<typeof TxVersionCapsule> | null>(null)
 const closeRef = ref<HTMLButtonElement | null>(null)
 let revealFrame: number | null = null
+const videoModalOpen = ref(false)
+
+function openVideoModal() {
+  videoModalOpen.value = true
+}
 
 const platformName = computed(() => {
   if (heroPlatform.value === 'win32')
@@ -64,6 +70,8 @@ const copy = computed(() => ({
   titleAccent: t('landing.nexus.hero.titleAccent'),
   primary: t('landing.nexus.hero.getPlatformVersion', { platform: platformName.value }),
   secondary: t('landing.nexus.hero.secondaryCta'),
+  watchVideo: t('landing.nexus.hero.watchVideo'),
+  videoBadge: t('landing.nexus.hero.videoBadge'),
   openSource: t('landing.nexus.hero.openSource'),
   placeholder: t('landing.nexus.hero.corebox.placeholder'),
   hintOpen: t('landing.nexus.hero.corebox.hints.open'),
@@ -476,6 +484,11 @@ onMounted(() => {
 
   loadReleases()
   startSceneDemo()
+  if (hasWindow()) {
+    const route = useRoute()
+    if (route.query.video !== undefined || route.query.watch !== undefined || route.hash === '#video' || route.hash === '#watch-video')
+      videoModalOpen.value = true
+  }
 })
 
 onBeforeUnmount(() => {
@@ -525,6 +538,16 @@ onBeforeUnmount(() => {
           <TxOsIcon :platform="heroPlatform" />
           <span>{{ copy.primary }}</span>
         </NuxtLink>
+        <button
+          type="button"
+          class="NexusButton is-video"
+          :aria-label="copy.watchVideo"
+          @click="openVideoModal"
+        >
+          <span class="i-carbon-play-filled-alt ExpHero-VideoPlayIcon" aria-hidden="true" />
+          <span>{{ copy.watchVideo }}</span>
+          <span class="ExpHero-VideoBadge">{{ copy.videoBadge }}</span>
+        </button>
         <NuxtLink class="NexusButton" to="/docs">
           <span class="i-carbon-book" aria-hidden="true" />
           <span>{{ copy.secondary }}</span>
@@ -721,6 +744,9 @@ onBeforeUnmount(() => {
         </Transition>
       </Teleport>
     </ClientOnly>
+
+    <!-- Promo Video Modal -->
+    <LazyPromoVideoModal v-model="videoModalOpen" />
   </section>
 </template>
 
@@ -925,6 +951,41 @@ onBeforeUnmount(() => {
 
 .NexusButton.is-primary:hover {
   background: rgba(246, 247, 244, 0.88);
+}
+
+.NexusButton.is-video {
+  border-color: rgba(56, 212, 153, 0.28);
+  background: rgba(56, 212, 153, 0.05);
+  color: #fff;
+}
+
+.NexusButton.is-video:hover {
+  border-color: rgba(56, 212, 153, 0.55);
+  background: rgba(56, 212, 153, 0.12);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(56, 212, 153, 0.16);
+}
+
+.ExpHero-VideoPlayIcon {
+  color: #38d499;
+  font-size: 1.15rem;
+  transition: transform 160ms ease;
+}
+
+.NexusButton.is-video:hover .ExpHero-VideoPlayIcon {
+  transform: scale(1.12);
+}
+
+.ExpHero-VideoBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(246, 247, 244, 0.12);
+  color: rgba(246, 247, 244, 0.72);
+  letter-spacing: 0.02em;
 }
 
 /* ── Version capsule (preview channel) ──────────────────────────────────── */
