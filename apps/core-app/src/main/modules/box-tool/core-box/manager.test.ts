@@ -158,7 +158,7 @@ describe('CoreBoxManager polling pressure', () => {
         serial: 1
       }
     })
-    expect(mocks.show).toHaveBeenCalledWith(false)
+    expect(mocks.show).toHaveBeenCalledWith(false, undefined, undefined)
   })
 
   it('clears polling pressure when CoreBox hides', async () => {
@@ -245,6 +245,6 @@ describe('CoreBoxManager polling pressure', () => {
 
     coreBoxManager.trigger(true)
 
-    expect(mocks.show).toHaveBeenCalledWith(false)
+    expect(mocks.show).toHaveBeenCalledWith(false, undefined, undefined)
   })
 })

@@ -23,6 +23,14 @@ export interface ExtensionMetadata {
 }
 
 const DEFAULT_CONTENT_SIZE_LIMIT_MB = 25
+export function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  const safeChunkSize = Math.max(1, Math.floor(chunkSize))
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += safeChunkSize) {
+    chunks.push(items.slice(i, i + safeChunkSize))
+  }
+  return chunks
+}
 
 export const EXTENSION_METADATA: Record<string, ExtensionMetadata> = {
   // Text & documents
