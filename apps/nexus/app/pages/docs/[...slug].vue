@@ -1184,14 +1184,7 @@ const currentDocRenderKey = computed(() => {
 })
 const isDocsContentReady = computed(() => viewState.value === 'content' && Boolean(doc.value))
 const deferredBodySplitIndex = computed(() => resolveDeferredBodySplitIndex(renderDoc.value?.body))
-const shouldDeferDocBodySections = computed(() =>
-  import.meta.dev
-  && import.meta.client
-  && docsClientPanelsMounted.value
-  && docScope.value.isComponent
-  && isDocPerformancePending.value
-  && deferredBodySplitIndex.value > 0,
-)
+const shouldDeferDocBodySections = computed(() => false)
 const primaryRenderDoc = computed(() => {
   if (!shouldDeferDocBodySections.value)
     return renderDoc.value
