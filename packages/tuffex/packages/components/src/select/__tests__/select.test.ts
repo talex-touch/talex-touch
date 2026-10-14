@@ -488,4 +488,31 @@ describe('txSelect', () => {
     // Beta is disabled, so the second step lands on Gamma.
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['gamma'])
   })
+  it('automatically enables search when options count meets or exceeds searchThreshold', async () => {
+    const options = Array.from({ length: 8 }, (_, i) => ({ value: `opt-${i}`, label: `Option ${i}` }))
+    const wrapper = mount(TxSelect, {
+      props: {
+        options,
+      },
+      global: { stubs: { TxPopover: PopoverStub } },
+    })
+    await nextTick()
+
+    // 8 options >= default threshold (8), search field should be rendered automatically
+    expect(wrapper.find('.tuff-select__search').exists()).toBe(true)
+  })
+
+  it('respects explicit searchable: false even when options count exceeds searchThreshold', async () => {
+    const options = Array.from({ length: 12 }, (_, i) => ({ value: `opt-${i}`, label: `Option ${i}` }))
+    const wrapper = mount(TxSelect, {
+      props: {
+        options,
+        searchable: false,
+      },
+      global: { stubs: { TxPopover: PopoverStub } },
+    })
+    await nextTick()
+
+    expect(wrapper.find('.tuff-select__search').exists()).toBe(false)
+  })
 })

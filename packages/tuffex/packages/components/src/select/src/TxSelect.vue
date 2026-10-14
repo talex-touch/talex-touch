@@ -26,7 +26,8 @@ const props = withDefaults(
     options: () => [],
     maxTagCount: undefined,
     maxTagTextLength: undefined,
-    searchable: false,
+    searchable: undefined,
+    searchThreshold: 8,
     searchPlaceholder: 'Search',
     editable: false,
     remote: false,
@@ -76,7 +77,13 @@ const panelRef = ref<HTMLElement | null>(null)
 const searchTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 const isEditable = computed(() => !props.multiple && (props.editable || props.remote))
-const isMultiInputEnabled = computed(() => props.multiple && (props.searchable || props.remote || props.allowCreate))
+const effectiveSearchable = computed(() => {
+  if (props.searchable !== undefined)
+    return props.searchable
+  const threshold = props.searchThreshold ?? 8
+  return threshold > 0 && allOptions.value.length >= threshold
+})
+const isMultiInputEnabled = computed(() => props.multiple && (effectiveSearchable.value || props.remote || props.allowCreate))
 const hasPropOptions = computed(() => (props.options?.length ?? 0) > 0)
 
 const triggerText = computed({
@@ -641,8 +648,7 @@ watch(
   async (open) => {
     if (!open)
       return
-
-    if (props.searchable)
+    if (effectiveSearchable.value)
       searchInputRef.value?.focus?.()
     if (isEditable.value)
       triggerInputRef.value?.focus?.()
@@ -859,7 +865,7 @@ onBeforeUnmount(() => {
         class="tuff-select__panel"
         :style="panelStyle"
       >
-        <div v-if="searchable && !isEditable && !isMultiInputEnabled" class="tuff-select__search">
+        <div v-if="effectiveSearchable && !isEditable && !isMultiInputEnabled" class="tuff-select__search">
           <TxSearchInput
             ref="searchInputRef"
             v-model="searchQuery"

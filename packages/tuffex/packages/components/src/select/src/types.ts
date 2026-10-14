@@ -35,6 +35,12 @@ export interface TxSelectProps {
   maxTagCount?: number
   maxTagTextLength?: number
   searchable?: boolean
+  /**
+   * Automatically enables search when total option count meets or exceeds this threshold.
+   * Set to `<= 0` or pass `searchable: false` to disable.
+   * @default 8
+   */
+  searchThreshold?: number
   searchPlaceholder?: string
   editable?: boolean
   remote?: boolean
