@@ -1,9 +1,10 @@
-import type { filesSchema } from '../../../../../db/schema'
+import type { files as filesSchema } from '../../../../../db/schema'
 import type { DbUtils } from '../../../../../db/utils'
 import path from 'node:path'
-import { timingLogger } from '../../../../../core/timing-logger'
-import { scheduleDbWrite } from '../../../../../db/sqlite-retry'
-import { FILE_TIMING_BASE_OPTIONS, KEYWORD_MAP } from '../constants'
+import { timingLogger } from '@talex-touch/utils'
+import { scheduleDbWrite } from '../../../../../db/db-write'
+import { FILE_TIMING_BASE_OPTIONS } from '../../../../../utils/file-indexing-utils'
+import { KEYWORD_MAP } from '../constants'
 
 export const FILE_EXTENSION_WRITE_MAX_QUEUE = 12
 

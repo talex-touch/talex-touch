@@ -1,6 +1,6 @@
 import type { DbUtils } from '../../../../../db/utils'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
-import { fileIndexProgress, filesSchema } from '../../../../../db/schema'
+import { fileIndexProgress, files as filesSchema } from '../../../../../db/schema'
 
 export interface FileProviderIndexingProgressEntry {
   path: string
