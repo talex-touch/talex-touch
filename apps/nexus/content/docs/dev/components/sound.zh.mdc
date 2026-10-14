@@ -21,6 +21,31 @@ verified: true
 | `disposeSound()` | 关闭音频图，下次播放时重建 |
 | `SOUND_PRESETS` | 预设表，可读取参数或作为自定义起点 |
 
+## 交互试听
+
+:::TuffDemoWrapper{demo="SoundSoundAuditionDemo" code-lang="vue" title="交互音效试听" description="7 款微交互反馈音现场播放与参数调控"}
+---
+code: |
+  <script setup lang="ts">
+  import { sound, configureSound } from '@talex-touch/tuffex/utils'
+
+  configureSound({ enabled: true, volume: 0.7 })
+
+  function handleClick() {
+    sound.click()
+  }
+  function handleSuccess() {
+    sound.success()
+  }
+  </script>
+
+  <template>
+    <TxButton variant="primary" @click="handleClick">点击音效 (Click)</TxButton>
+    <TxButton variant="success" @click="handleSuccess">成功音效 (Success)</TxButton>
+  </template>
+---
+:::
+
 ## 默认关闭
 
 ```ts

@@ -363,6 +363,7 @@ export const demoLoaders: Record<string, DemoLoader> = {
   SliderSliderFormatValueDemo: () => import('./demos/SliderSliderFormatValueDemo.vue'),
   SliderSliderShowValueDemo: () => import('./demos/SliderSliderShowValueDemo.vue'),
   SortableListSortableListDemo: () => import('./demos/SortableListSortableListDemo.vue'),
+  SoundSoundAuditionDemo: () => import('./demos/SoundSoundAuditionDemo.vue'),
   SourcesSourcesDemo: () => import('./demos/SourcesSourcesDemo.vue'),
   SparkChartSparkChartDemo: () => import('./demos/SparkChartSparkChartDemo.vue'),
   SpinnerSpinnerDemo: () => import('./demos/SpinnerSpinnerDemo.vue'),

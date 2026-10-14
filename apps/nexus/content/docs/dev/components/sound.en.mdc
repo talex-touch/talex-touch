@@ -21,6 +21,31 @@ verified: true
 | `disposeSound()` | Closes the graph; the next play rebuilds it |
 | `SOUND_PRESETS` | The preset table; read its parameters or start a custom cue from one |
 
+## Interactive Audition
+
+:::TuffDemoWrapper{demo="SoundSoundAuditionDemo" code-lang="vue" title="Interactive Sound Audition" description="Audition 7 micro-interaction feedback sounds with live parameter controls"}
+---
+code: |
+  <script setup lang="ts">
+  import { sound, configureSound } from '@talex-touch/tuffex/utils'
+
+  configureSound({ enabled: true, volume: 0.7 })
+
+  function handleClick() {
+    sound.click()
+  }
+  function handleSuccess() {
+    sound.success()
+  }
+  </script>
+
+  <template>
+    <TxButton variant="primary" @click="handleClick">Click sound</TxButton>
+    <TxButton variant="success" @click="handleSuccess">Success sound</TxButton>
+  </template>
+---
+:::
+
 ## Off by Default
 
 ```ts
