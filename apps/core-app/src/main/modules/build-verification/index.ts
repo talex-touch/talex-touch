@@ -42,7 +42,7 @@ export class BuildVerificationModule extends BaseModule {
   }
 
   private transport: ITuffTransportMain | null = null
-
+  private verificationPromise: Promise<void> | null = null
   constructor() {
     super(BuildVerificationModule.key, {
       create: true,
@@ -68,13 +68,25 @@ export class BuildVerificationModule extends BaseModule {
       return
     }
 
-    await this.verifyPackagedBuild()
+    // Run verification asynchronously in the background so packaged startup is not blocked by asar hashing
+    this.verificationPromise = this.verifyPackagedBuild().catch((error) => {
+      buildVerificationLog.error('Unexpected build attestation verification error', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+      this.setVerificationStatus({
+        isVerified: true,
+        isOfficialBuild: false,
+        verificationFailed: true,
+        hasOfficialKey: false,
+        reason: 'verification-runtime-error'
+      })
+    })
   }
 
   onDestroy(): MaybePromise<void> {
     this.transport = null
+    this.verificationPromise = null
   }
-
   private async verifyPackagedBuild(): Promise<void> {
     const platform = this.resolvePlatform()
     const arch = this.resolveArch()
@@ -174,6 +186,20 @@ export class BuildVerificationModule extends BaseModule {
 
   public getVerificationStatus(): BuildVerificationModuleStatus {
     return { ...this.status }
+  }
+
+  public async waitForVerification(timeoutMs = 5000): Promise<BuildVerificationModuleStatus> {
+    if (this.status.isVerified) return this.getVerificationStatus()
+    if (this.verificationPromise) {
+      const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<void>()
+      const timer = setTimeout(resolveTimeout, timeoutMs)
+      try {
+        await Promise.race([this.verificationPromise, timeoutPromise])
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+    return this.getVerificationStatus()
   }
 }
 
