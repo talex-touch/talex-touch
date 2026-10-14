@@ -127,11 +127,9 @@ describe('doubao-ime protocol & provider', () => {
 
   it('runs stream session through DoubaoImeVoiceProvider', async () => {
     const sentMessages: string[] = []
-    let onMessageHandler: ((data: string) => void) | null = null
 
     let openHandler: (() => void) | null = null
-    let messageHandler: ((data: string | Uint8Array) => void) | null = null
-
+    let _messageHandler: ((data: string | Uint8Array) => void) | null = null
     const mockSocket: VoiceSocket = {
       readyState: 1,
       send: (data: string | Uint8Array) => {
@@ -142,7 +140,7 @@ describe('doubao-ime protocol & provider', () => {
         openHandler = handler
       },
       onMessage: (handler) => {
-        messageHandler = handler
+        _messageHandler = handler
       },
       onError: vi.fn(),
       onClose: vi.fn(),
