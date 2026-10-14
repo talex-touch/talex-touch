@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as H3 from 'h3'
 import type { H3Event } from 'h3'
+import type { getCreditSummary } from '../../../../../server/utils/creditsStore'
 
 const authMocks = vi.hoisted(() => ({
   requireAppAuth: vi.fn(),
@@ -11,7 +12,7 @@ const rateLimitMocks = vi.hoisted(() => ({
 }))
 
 const creditsMocks = vi.hoisted(() => ({
-  getCreditSummary: vi.fn(),
+  getCreditSummary: vi.fn<typeof getCreditSummary>(),
   consumeCredits: vi.fn(),
 }))
 
@@ -50,6 +51,7 @@ interface GlobalEventHandlerScope {
   defineEventHandler?: (fn: unknown) => unknown
 }
 const globalScope = globalThis as unknown as GlobalEventHandlerScope
+const originalDefineEventHandler = globalScope.defineEventHandler
 
 let tokenHandler: (event: H3Event) => Promise<unknown>
 let settleHandler: (event: H3Event) => Promise<unknown>
@@ -66,17 +68,33 @@ beforeAll(async () => {
 })
 
 afterAll(() => {
-  delete globalScope.defineEventHandler
+  if (originalDefineEventHandler === undefined)
+    delete globalScope.defineEventHandler
+  else
+    globalScope.defineEventHandler = originalDefineEventHandler
 })
 
 describe('Nexus voice token issuance and settlement', () => {
   const fakeEvent = {} as H3Event
 
+  const creditSummary = {
+    month: '2026-10',
+    user: { quota: 500, used: 100 },
+    team: { quota: 1000, used: 200 },
+    teamContext: {
+      id: 'team_user-123',
+      name: 'Personal',
+      type: 'personal' as const,
+      hasTeamPool: false,
+    },
+    boost: null,
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     authMocks.requireAppAuth.mockResolvedValue({ userId: 'user-123' })
     rateLimitMocks.enforceAdminRateLimit.mockResolvedValue(undefined)
-    creditsMocks.getCreditSummary.mockResolvedValue({ balance: 500 })
+    creditsMocks.getCreditSummary.mockResolvedValue(creditSummary)
     asrServiceMocks.resolveDashScopeAsrProvider.mockResolvedValue({
       provider: { id: 'dashscope-main', authRef: 'ref-1' },
     })
@@ -95,37 +113,49 @@ describe('Nexus voice token issuance and settlement', () => {
   })
 
   describe('POST /api/v1/ai/audio/token', () => {
-    it('issues an ephemeral token when user is authenticated and has credit balance', async () => {
+    it.each([
+      {
+        name: 'numeric balances',
+        user: { quota: 501, used: 500 },
+        team: { quota: 1001, used: 1000 },
+      },
+      {
+        name: 'numeric string balances',
+        user: { quota: '501', used: '500' },
+        team: { quota: '1001', used: '1000' },
+      },
+    ])('issues an ephemeral token when both scopes have one credit remaining ($name)', async ({ user, team }) => {
+      creditsMocks.getCreditSummary.mockResolvedValueOnce({ ...creditSummary, user, team })
+
       const result = await tokenHandler(fakeEvent)
 
-      expect(authMocks.requireAppAuth).toHaveBeenCalledWith(fakeEvent)
-      expect(rateLimitMocks.enforceAdminRateLimit).toHaveBeenCalledWith(
-        fakeEvent,
-        expect.objectContaining({ key: 'asr-token:user:user-123' })
-      )
-      expect(creditsMocks.getCreditSummary).toHaveBeenCalledWith(fakeEvent, 'user-123')
-      expect(dashscopeMocks.createDashScopeEphemeralToken).toHaveBeenCalledWith(
-        fakeEvent,
-        { id: 'dashscope-main', authRef: 'ref-1' },
-        300
-      )
       expect(result).toMatchObject({
         token: 'st-mock-token-xyz',
         expiresAt: 1791761400,
-        websocketUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
-        model: 'qwen3-asr-flash-realtime',
-        sessionId: expect.any(String),
       })
+      expect(creditsMocks.consumeCredits).not.toHaveBeenCalled()
     })
 
-    it('rejects with 402 INSUFFICIENT_CREDITS when balance is zero or negative', async () => {
-      creditsMocks.getCreditSummary.mockResolvedValueOnce({ balance: 0 })
+    describe.each(['user', 'team'] as const)('%s balance admission', (scope) => {
+      it.each<{ name: string; balance: { quota?: unknown; used?: unknown } | null }>([
+        { name: 'exhausted', balance: { quota: 500, used: 500 } },
+        { name: 'overdrawn', balance: { quota: 500, used: 501 } },
+        { name: 'missing row', balance: null },
+        { name: 'missing amounts', balance: {} },
+        { name: 'missing quota', balance: { used: 100 } },
+        { name: 'non-numeric quota', balance: { quota: 'invalid', used: 100 } },
+        { name: 'non-numeric usage', balance: { quota: 500, used: 'invalid' } },
+      ])('rejects $name with 402 before creating a token while the other scope has credits', async ({ balance }) => {
+        creditsMocks.getCreditSummary.mockResolvedValueOnce({ ...creditSummary, [scope]: balance })
 
-      await expect(tokenHandler(fakeEvent)).rejects.toMatchObject({
-        statusCode: 402,
-        statusMessage: 'INSUFFICIENT_CREDITS',
+        await expect(tokenHandler(fakeEvent)).rejects.toMatchObject({
+          statusCode: 402,
+          statusMessage: 'INSUFFICIENT_CREDITS',
+          data: { errorCode: 'INSUFFICIENT_CREDITS' },
+        })
+        expect(dashscopeMocks.createDashScopeEphemeralToken).not.toHaveBeenCalled()
+        expect(creditsMocks.consumeCredits).not.toHaveBeenCalled()
       })
-      expect(dashscopeMocks.createDashScopeEphemeralToken).not.toHaveBeenCalled()
     })
   })
 

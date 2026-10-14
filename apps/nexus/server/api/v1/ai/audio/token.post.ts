@@ -16,7 +16,9 @@ export default defineEventHandler(async (event) => {
   })
 
   const summary = await getCreditSummary(event, userId)
-  if (summary.balance <= 0) {
+  const userRemaining = Number(summary.user?.quota ?? 0) - Number(summary.user?.used ?? 0)
+  const teamRemaining = Number(summary.team?.quota ?? 0) - Number(summary.team?.used ?? 0)
+  if (!(userRemaining > 0 && teamRemaining > 0)) {
     throw createError({
       statusCode: 402,
       statusMessage: 'INSUFFICIENT_CREDITS',

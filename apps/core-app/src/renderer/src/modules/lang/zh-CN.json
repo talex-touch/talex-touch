@@ -749,6 +749,11 @@
     "title": "语音输入设置",
     "description": "语音输入与云端路由配置。",
     "refresh": "刷新",
+    "customWords": {
+      "title": "热词与专有词库",
+      "description": "输入专用术语、人名或英文缩写（逗号分隔），辅助语音识别与 AI 润色。",
+      "placeholder": "例如：SGLang, vLLM, DeepSeek, Qwen"
+    },
     "input": {
       "title": "语音输入",
       "description": "登录后默认开启；Fn/Ctrl 触发输入，麦克风仅在输入时采集。"

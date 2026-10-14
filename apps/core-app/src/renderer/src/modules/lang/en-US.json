@@ -749,6 +749,11 @@
     "title": "Voice input settings",
     "description": "Voice input and cloud routing.",
     "refresh": "Refresh",
+    "customWords": {
+      "title": "Hotwords and terminology",
+      "description": "Enter specialized terms, names, or English abbreviations, separated by commas, to guide recognition and AI polishing.",
+      "placeholder": "For example: SGLang, vLLM, DeepSeek, Qwen"
+    },
     "input": {
       "title": "Voice input",
       "description": "On by default once you sign in; Fn/Ctrl starts input. The microphone is captured only while input is active."
