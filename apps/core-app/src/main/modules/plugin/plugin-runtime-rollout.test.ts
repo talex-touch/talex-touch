@@ -236,7 +236,6 @@ describe('plugin runtime production rollout gate', () => {
         'network.internet',
         'intelligence.basic',
         'storage.plugin',
-        'search.root-results',
         'clipboard.write'
       ])
     )

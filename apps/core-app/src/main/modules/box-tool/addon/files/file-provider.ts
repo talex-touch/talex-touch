@@ -49,7 +49,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
-import { StorageList, timingLogger, TuffInputType } from '@talex-touch/utils'
+import { StorageList, TuffInputType } from '@talex-touch/utils'
 import { fileFilterService } from '@talex-touch/utils/common/file-filter-service'
 import { getLogger } from '@talex-touch/utils/common/logger'
 import { runAdaptiveTaskQueue } from '@talex-touch/utils/common/utils'
@@ -64,7 +64,7 @@ import {
   mapIndexedWriteFullScanUpsertRecords,
   resolveIndexedWatchRootSet
 } from '@talex-touch/utils/search'
-import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, sql } from 'drizzle-orm'
 import { app } from 'electron'
 import { notificationModule } from '../../../notification'
 import { operationalErrorService } from '../../../observability'
@@ -82,7 +82,6 @@ import { isSqliteBusyError } from '../../../../db/sqlite-retry'
 import { createDbUtils } from '../../../../db/utils'
 import { appTaskGate } from '../../../../service/app-task-gate'
 import { deviceIdleService } from '../../../../service/device-idle-service'
-import { FILE_TIMING_BASE_OPTIONS } from '../../../../utils/file-indexing-utils'
 import {
   normalizeRenderableSource,
   normalizeTuffItemLocalAssets,
@@ -91,7 +90,12 @@ import {
 import { formatDuration } from '../../../../utils/logger'
 import { enterPerfContext } from '../../../../utils/perf-context'
 import { getMainConfig, saveMainConfig } from '../../../storage'
-import { getTypeTagsForExtension, KEYWORD_MAP, WHITELISTED_EXTENSIONS } from './constants'
+import {
+  chunkArray,
+  getTypeTagsForExtension,
+  KEYWORD_MAP,
+  WHITELISTED_EXTENSIONS
+} from './constants'
 import { normalizeFsPath } from '@talex-touch/utils/common/file-scan-utils'
 import {
   getFileTraversalExclusionReason,
@@ -178,6 +182,11 @@ import {
 } from './services/file-provider-keyword-backfill-service'
 import { getStartupDegradeWindowRemainingMs } from '../../../../db/runtime-flags'
 import { FileProviderWriteSideEffectService } from './services/file-provider-write-side-effect-service'
+import { FileProviderExtensionService } from './services/file-provider-extension-service'
+import {
+  FileProviderIndexingProgressService,
+  type FileProviderIndexingProgressResult
+} from './services/file-provider-indexing-progress-service'
 import { FileProviderIndexSchedulerService } from './services/file-provider-index-scheduler-service'
 import type { FileProviderIndexSchedulerFile } from './services/file-provider-index-scheduler-service'
 import { isIndexWorkerFileMissing } from './workers/index-worker-read-failure'
@@ -221,7 +230,6 @@ import {
 import { resolveFileProviderBaseWatchPaths } from './file-provider-watch-paths'
 
 const fileProviderLog = getLogger('file-provider')
-const FILE_EXTENSION_WRITE_MAX_QUEUE = 12
 const FILE_ICON_WRITE_MAX_QUEUE = 24
 /**
  * How long one `getIndexStats()` snapshot serves every caller.
@@ -237,15 +245,6 @@ const FILE_PATH_NORMALIZATION_INITIAL_DELAY_MS = 30_000
 const FILE_PATH_NORMALIZATION_CONFIG_KEY = 'file_provider_path_normalization_version'
 const FILE_KEYWORD_BACKFILL_INITIAL_DELAY_MS = 30_000
 const FILE_KEYWORD_BACKFILL_CONFIG_KEY = 'file_provider_keyword_schema_version'
-
-function chunkArray<T>(items: T[], chunkSize: number): T[][] {
-  const safeChunkSize = Math.max(1, Math.floor(chunkSize))
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += safeChunkSize) {
-    chunks.push(items.slice(i, i + safeChunkSize))
-  }
-  return chunks
-}
 
 const FILE_PROVIDER_BASE_WATCH_PATHS_ENV = 'TUFF_FILE_PROVIDER_BASE_WATCH_PATHS'
 
@@ -424,6 +423,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   private readonly writeSideEffectService: FileProviderWriteSideEffectService<
     typeof filesSchema.$inferSelect
   >
+  private readonly extensionService: FileProviderExtensionService
+  private readonly indexingProgressService: FileProviderIndexingProgressService
   private readonly fileUpdateExecutor: IndexedWriteUpdateExecutorService<
     FileUpdateRecord,
     typeof filesSchema.$inferSelect
@@ -755,8 +756,15 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         ]),
       resumeMaintenance: () => this.maintenanceService.scheduleFileMaintenance()
     })
+    this.extensionService = new FileProviderExtensionService({
+      getDbUtils: () => this.dbUtils,
+      isSearchSplitEnabledNow: () => this.isSearchSplitEnabledNow(),
+      waitForCacheWriteCapacity: (maxQueue, label) =>
+        this.waitForCacheWriteCapacity(maxQueue, label)
+    })
+    this.indexingProgressService = new FileProviderIndexingProgressService(() => this.dbUtils)
     this.writeSideEffectService = new FileProviderWriteSideEffectService({
-      processFileExtensions: (files) => this.processFileExtensions(files),
+      processFileExtensions: (files) => this.extensionService.processFileExtensions(files),
       scheduleIndexing: (files, reason, mutationLeaseId) =>
         this.scheduleIndexing(files, reason, mutationLeaseId),
       logWarn: (message, error, meta) => this.logWarn(message, error, meta)
@@ -3921,97 +3929,6 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       .where(inArray(filesSchema.id, ids))
   }
 
-  private async processFileExtensions(files: (typeof filesSchema.$inferSelect)[]): Promise<void> {
-    if (!this.dbUtils) return
-    if (files.length === 0) return
-
-    const timingToken = timingLogger.start(
-      'FileProvider:ProcessExtensions',
-      {
-        stage: 'ProcessFileExtensions',
-        message: 'Processing file extensions',
-        files: files.length
-      },
-      FILE_TIMING_BASE_OPTIONS
-    )
-
-    const extensionsToAdd: { fileId: number; key: string; value: string }[] = []
-    let status: 'success' | 'failed' = 'success'
-
-    try {
-      const desiredKeywordExtensions = new Map<number, string>()
-
-      for (const file of files) {
-        const fileId = typeof file.id === 'number' ? file.id : null
-        const fileExtension = file.extension || path.extname(file.name).toLowerCase()
-        const keywords = KEYWORD_MAP[fileExtension]
-        if (keywords && fileId) {
-          desiredKeywordExtensions.set(fileId, JSON.stringify(keywords))
-        }
-      }
-
-      if (desiredKeywordExtensions.size > 0) {
-        const fileIds = Array.from(desiredKeywordExtensions.keys())
-        const existingKeywordRows = await this.dbUtils!.getFileExtensionsByFileIds(fileIds, [
-          'keywords'
-        ])
-        const existingKeywordMap = new Map<number, string>()
-        for (const row of existingKeywordRows) {
-          if (row.key === 'keywords' && typeof row.value === 'string') {
-            existingKeywordMap.set(row.fileId, row.value)
-          }
-        }
-
-        for (const [fileId, value] of desiredKeywordExtensions.entries()) {
-          if (existingKeywordMap.get(fileId) === value) {
-            continue
-          }
-          extensionsToAdd.push({ fileId, key: 'keywords', value })
-        }
-      }
-
-      if (extensionsToAdd.length > 0) {
-        const hasCapacity = await this.waitForCacheWriteCapacity(
-          FILE_EXTENSION_WRITE_MAX_QUEUE,
-          'file-index.extensions.upsert'
-        )
-        if (!hasCapacity) {
-          return
-        }
-
-        if (this.isSearchSplitEnabledNow()) {
-          // addFileExtensions is split-routed (execWrite → worker, the sole
-          // writer of its file). Do NOT wrap it in scheduleDbWrite here: that
-          // would hold the primary write lane through a cross-thread round
-          // trip for a write that never touches the primary file.
-          await this.dbUtils!.addFileExtensions(extensionsToAdd)
-        } else {
-          await scheduleDbWrite('file-index.extensions.upsert', () =>
-            this.dbUtils!.addFileExtensions(extensionsToAdd)
-          )
-        }
-      }
-    } catch (error) {
-      status = 'failed'
-      throw error
-    } finally {
-      timingLogger.finish(
-        timingToken,
-        {
-          stage: 'ProcessFileExtensions',
-          message:
-            status === 'success'
-              ? 'Processed file extensions'
-              : 'Failed to process file extensions',
-          files: files.length,
-          extensions: extensionsToAdd.length,
-          status
-        },
-        FILE_TIMING_BASE_OPTIONS
-      )
-    }
-  }
-
   private createFileSearchItem(
     file: typeof filesSchema.$inferSelect,
     extensions: Record<string, string>
@@ -4042,70 +3959,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     )
   }
 
-  public async getIndexingProgress(paths?: string[]): Promise<{
-    summary: Record<string, number>
-    entries: Array<{
-      path: string
-      status: string | null
-      progress: number | null
-      processedBytes: number | null
-      totalBytes: number | null
-      updatedAt: Date | null
-      lastError: string | null
-    }>
-  }> {
-    if (!this.dbUtils) {
-      return { summary: {}, entries: [] }
-    }
-
-    const db = this.dbUtils.getFileIndexReadDb()
-    const limit = paths && paths.length > 0 ? undefined : 50
-
-    const rows = await db
-      .select({
-        path: filesSchema.path,
-        status: fileIndexProgress.status,
-        progress: fileIndexProgress.progress,
-        processedBytes: fileIndexProgress.processedBytes,
-        totalBytes: fileIndexProgress.totalBytes,
-        updatedAt: fileIndexProgress.updatedAt,
-        lastError: fileIndexProgress.lastError
-      })
-      .from(fileIndexProgress)
-      .innerJoin(filesSchema, eq(fileIndexProgress.fileId, filesSchema.id))
-      .where(paths && paths.length > 0 ? inArray(filesSchema.path, paths) : sql`1 = 1`)
-      .orderBy(desc(fileIndexProgress.updatedAt))
-      .limit(limit ?? Number.MAX_SAFE_INTEGER)
-
-    const entries = rows.map((row) => ({
-      path: row.path,
-      status: row.status,
-      progress: row.progress,
-      processedBytes: row.processedBytes,
-      totalBytes: row.totalBytes,
-      updatedAt: row.updatedAt,
-      lastError: row.lastError
-    }))
-
-    let summary: Record<string, number> = {}
-
-    if (paths && paths.length > 0) {
-      summary = entries.reduce<Record<string, number>>((acc, entry) => {
-        const key = entry.status ?? 'unknown'
-        acc[key] = (acc[key] ?? 0) + 1
-        return acc
-      }, {})
-    } else {
-      const summaryRows = await db.all<{ status: string; total: number }>(
-        sql`SELECT status, COUNT(*) as total FROM file_index_progress GROUP BY status`
-      )
-      summary = summaryRows.reduce<Record<string, number>>((acc, row) => {
-        acc[row.status ?? 'unknown'] = row.total
-        return acc
-      }, {})
-    }
-
-    return { summary, entries }
+  public async getIndexingProgress(paths?: string[]): Promise<FileProviderIndexingProgressResult> {
+    return this.indexingProgressService.getIndexingProgress(paths)
   }
 
   public async getWorkerStatusSnapshot(): Promise<FileProviderWorkerStatusSnapshot> {
