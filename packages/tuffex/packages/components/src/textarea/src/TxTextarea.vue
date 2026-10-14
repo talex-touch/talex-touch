@@ -122,6 +122,7 @@ defineExpose({
 .tx-textarea {
   position: relative;
   display: inline-flex;
+  box-sizing: border-box;
   width: 100%;
   min-height: 96px;
   border: 1px solid var(--tx-border-color, #dcdfe6);
@@ -148,6 +149,7 @@ defineExpose({
 }
 
 .tx-textarea__field {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: inherit;

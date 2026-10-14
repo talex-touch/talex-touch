@@ -185,6 +185,7 @@ defineExpose({
   position: relative;
   display: inline-flex;
   align-items: center;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   height: 32px;
@@ -228,6 +229,7 @@ defineExpose({
     min-width: 0;
     width: 100%;
     height: 100%;
+    box-sizing: border-box;
     padding: 0;
     border: none;
     outline: none;
@@ -252,6 +254,7 @@ defineExpose({
   }
 
   &__textarea {
+    box-sizing: border-box;
     height: auto;
     padding: 8px 0;
     resize: vertical;

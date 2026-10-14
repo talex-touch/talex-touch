@@ -149,6 +149,7 @@ function onBlur(e: FocusEvent) {
 
 <style scoped lang="scss">
 .tx-tag-input {
+  box-sizing: border-box;
   border: 1px solid var(--tx-border-color, #dcdfe6);
   border-radius: 12px;
   padding: 6px 8px;
