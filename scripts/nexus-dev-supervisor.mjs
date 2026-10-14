@@ -53,7 +53,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process'
-import { appendFileSync, renameSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, renameSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
@@ -391,6 +391,34 @@ async function supervise(proc) {
 }
 
 reapOrphans()
+function ensureTuffexReady() {
+  const tuffexDistEntry = resolve(REPO_ROOT, 'packages/tuffex/dist/es/index.js')
+  if (existsSync(tuffexDistEntry))
+    return
+
+  if (process.env.NUXT_TUFFEX_SOURCE === 'true' || process.env.NUXT_TUFFEX_SOURCE === '1')
+    return
+
+  log('tuffex dist is missing; building packages/tuffex automatically...')
+  try {
+    execFileSync('pnpm', ['-C', 'packages/tuffex', 'run', 'build'], {
+      cwd: REPO_ROOT,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        npm_config_verify_deps_before_run: 'false',
+        pnpm_config_verify_deps_before_run: 'false',
+      },
+    })
+    log('packages/tuffex built successfully.')
+  }
+  catch (err) {
+    log(`packages/tuffex build failed (${err.message}); falling back to NUXT_TUFFEX_SOURCE=true`)
+    process.env.NUXT_TUFFEX_SOURCE = 'true'
+  }
+}
+
+ensureTuffexReady()
 
 let attempt = 0
 while (!isStopping()) {
@@ -418,6 +446,9 @@ while (!isStopping()) {
       ...process.env,
       NUXT_USE_CLOUDFLARE_DEV: 'true',
       CLOUDFLARE_DEV_ENVIRONMENT: cloudflareEnv,
+      ...(existsSync(resolve(REPO_ROOT, 'packages/tuffex/dist/es/index.js'))
+        ? {}
+        : { NUXT_TUFFEX_SOURCE: 'true' }),
       // sidebase/nuxt-auth warns AUTH_NO_ORIGIN when a worktree has no .env.local;
       // the dev server always lives on this port, so derive it instead of asking people to.
       AUTH_ORIGIN: process.env.AUTH_ORIGIN ?? `http://localhost:${port}`,

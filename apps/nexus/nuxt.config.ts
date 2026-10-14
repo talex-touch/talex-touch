@@ -40,6 +40,7 @@ const tuffexDevMode = resolveTuffexDevMode({
   isDev: isDev && process.env.NODE_ENV !== 'test',
   env: process.env,
   distEntryExists: existsSync(tuffexDistEntry),
+  autoFallback: true,
 })
 const useTuffexSource = tuffexDevMode === 'source'
 const tuffexSourceEntry = resolve(currentDir, '../../packages/tuffex/packages/components/src/index.ts')

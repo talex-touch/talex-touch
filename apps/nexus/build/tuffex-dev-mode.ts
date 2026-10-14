@@ -4,6 +4,7 @@ export interface ResolveTuffexDevModeOptions {
   isDev: boolean
   env?: Record<string, string | undefined>
   distEntryExists: boolean
+  autoFallback?: boolean
 }
 
 function isEnabled(value?: string): boolean {
@@ -35,6 +36,7 @@ export function resolveTuffexDevMode({
   isDev,
   env = {},
   distEntryExists,
+  autoFallback = false,
 }: ResolveTuffexDevModeOptions): TuffexDevMode {
   if (!isDev)
     return 'dist'
@@ -43,6 +45,13 @@ export function resolveTuffexDevMode({
     return 'source'
 
   if (!distEntryExists) {
+    if (autoFallback) {
+      console.warn(
+        '[nexus] tuffex dist is missing; automatically falling back to NUXT_TUFFEX_SOURCE=true to develop against tuffex source.',
+      )
+      return 'source'
+    }
+
     throw new Error(
       '[nexus] tuffex dist is missing. Run `pnpm -C packages/tuffex run build`, '
       + 'or set NUXT_TUFFEX_SOURCE=true to develop against tuffex source.',

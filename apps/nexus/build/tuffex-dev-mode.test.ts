@@ -51,6 +51,15 @@ describe('resolveTuffexDevMode', () => {
     expect(message).toContain('NUXT_TUFFEX_SOURCE')
   })
 
+  it('falls back to source mode in dev when autoFallback is true and dist is missing', () => {
+    expect(resolveTuffexDevMode({
+      isDev: true,
+      env: {},
+      distEntryExists: false,
+      autoFallback: true,
+    })).toBe('source')
+  })
+
   it('uses dist in production even when the flag is set or dist is absent', () => {
     expect(resolveTuffexDevMode({
       isDev: false,
