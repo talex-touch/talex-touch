@@ -129,7 +129,16 @@ export class UpdateRecoveryStore {
     const { lockPath } = this.createAttemptPaths(attemptId)
     const value = await this.readJson(lockPath)
     if (!value) return null
-    return value as UpdateHandoffLock
+    if (
+      value.schemaVersion !== UPDATE_HANDOFF_SCHEMA_VERSION ||
+      typeof value.attemptId !== 'string' ||
+      typeof value.token !== 'string' ||
+      typeof value.helperPid !== 'number' ||
+      typeof value.startedAt !== 'number'
+    ) {
+      throw new Error('Update handoff lock is invalid')
+    }
+    return value as unknown as UpdateHandoffLock
   }
 
   async writeLock(attemptId: string, lock: UpdateHandoffLock): Promise<void> {

@@ -560,7 +560,6 @@ describe('capability-bound voice ASR provider resolution', () => {
       {
         'tuff-nexus-default': channel('tuff-nexus-default', {
           models: ['qwen3-asr-flash-realtime'],
-          type: DEFAULT_PROVIDERS.NEXUS,
           metadata: { voiceAsr: { protocol: 'nexus-realtime' } }
         })
       },

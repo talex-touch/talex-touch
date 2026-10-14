@@ -589,9 +589,9 @@ export async function requestNexusVoiceToken(
     )
   }
 
-  const body = response.body as Record<string, unknown>
+  const body = parseResponse(response.body) as Record<string, unknown>
   if (!body || typeof body.token !== 'string' || typeof body.websocketUrl !== 'string') {
-    throw createError('INVALID_RESPONSE', 'Nexus returned an invalid token response.')
+    throw createError('INVALID_REQUEST', 'Nexus returned an invalid token response.')
   }
 
   cachedVoiceToken = {
