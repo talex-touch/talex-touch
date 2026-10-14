@@ -228,6 +228,11 @@
   - 同时补上该文件此前完全缺失的日志（`createLogger('SearchIndex').child('ReadWorker')`，只在首次失败与触发冷却那次告警），这是原故障无法从会话日志回溯的直接原因。
   - 未做（仍 open）：读 worker 侧同样无日志（`search-index-read-worker.ts`），首次失败的真实原因（15s 慢查询 / worker OOM 退出 / 确定性 SQL 错误）仍需运行时证据；`waitUntilReadable(request)` 把 request 对象按位置传进 signal 形参（本文件被静默忽略）属既有 E-L8。
 
+
+- [ ] **R12 — Search Engine 独立子进程/Worker 化架构待办**（2026-10-13 用户现场取证记账）
+  - 现场现象：CoreBox 交互搜索（如 `a pet`）与后台文件索引/富化并发，主进程同时承受 Spotlight 654ms 子进程 I/O 物化、FTS 读 808ms、主线程同步 LibSQL 水合、以及 5.2s 慢写导致的 30s drain 超时，造成主进程事件循环卡顿。
+  - 目标架构：将 Search Engine Core、文件 Provider（FileProvider、Spotlight、Everything 等）、FTS5 检索及候选数据水合整体移出 Electron 主进程，沉降至独立 Search Engine 子进程（或专用 Worker Thread）。
+  - 边界收益：主进程彻底解耦所有搜索计算与 SQLite 连接，仅负责窗口呈现与 IPC 消息中继；搜索慢查询与底层 I/O 争用不再影响 CoreBox 前台响应与动画流畅度。
 ### 🟢 低危清理
 
 - [x] **C1 — 死依赖** ✅ 已修（2026-08-07）：`mathjs` 已从两处 manifest、Vite externalize 例外与 electron-builder 排除项一并移除（[#338](https://github.com/talex-touch/tuff/issues/338) / [PR #1088](https://github.com/talex-touch/tuff/pull/1088)）；`tesseract.js` 在依赖树里已不存在，其残留的 build-allowlist 条目随 [#347](https://github.com/talex-touch/tuff/issues/347) / [PR #1084](https://github.com/talex-touch/tuff/pull/1084) 一并清除。
