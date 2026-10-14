@@ -16,10 +16,12 @@
 - `TxButton` 新增 `progress`（0–100）、`showProgress` 与 `formatProgress`：有效数字显示背景进度条与百分比读数，进度值夹在范围内；可结合状态反馈使用。
 - `TxDataTable` 新增语义列 `type`（`text` / `number` / `datetime` / `date` / `tag` / `source` / `actions`），补齐数值与日期排序、标签与来源展示，以及表头列筛选。列级 `filter` / `filterOptions` 配合 `defaultFilter` 或受控 `filter`，通过 `update:filter` / `filterChange` 报告变化；`filterOnClient` 默认为 `true`，关闭后由调用方筛选；`autoStickyActions` 默认将操作列固定在右侧，显式 `fixed` 优先。
 - `TxSelect` 未显式指定 `searchable` 时，选项数达到 `searchThreshold`（默认 8）自动开启搜索；`searchable=false` 或阈值不大于 0 可关闭自动搜索，显式 `searchable=true` 保持强制开启。
+- DataTable 的筛选与排序状态提取为内部模块，并合并重复样式声明；真实 0.8.0 构建的单组件 JS 为 42.9 KiB（48 KiB 上限不变），完整 CSS 为 749.0 KiB、按需 CSS 总量为 719.6 KiB。新增语义筛选样式采用 750 / 720.5 KiB 的实测总量基线，根入口、全量样式导入禁令与单文件预算保持不变。
 
 ### 🐛 组件修复
 
 - 表单组件 `TxInput`、`TxTextarea`、`TxSelect`、`TxNumberInput` 与 `TxTagInput` 的结构和输入区显式使用 `box-sizing: border-box`，不再依赖宿主全局 reset，避免宽度叠加 padding / border 后溢出；不向全局注入通配重置。
+- DataTable 的 `date` 列按本地日历解析纯日期值；`today` 采用本地午夜到下一个本地午夜的半开区间，保留 `datetime` 的时区时间点，并覆盖夏令时回拨的 25 小时日。
 - `TxConversationStream` 挂载时测量恢复的对话行，避免初始尺寸记录缺失。
 
 ## [0.7.0] - 2026-10-09

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { DataTableColumn, DataTableEmits, DataTableFilterOption, DataTableFilterState, DataTableHeaderSlotProps, DataTableKey, DataTableProps, DataTableSortOrder, DataTableSortState } from './types'
+import type { DataTableColumn, DataTableEmits, DataTableHeaderSlotProps, DataTableKey, DataTableProps, DataTableSortOrder, DataTableSortState } from './types'
 import { computed, getCurrentInstance, ref, useId, useSlots, watch } from 'vue'
 import { TxCheckbox } from '../../checkbox'
 import { TxEmptyState } from '../../empty-state'
 import { TxPopover } from '../../popover'
 import { TxSkeleton } from '../../skeleton'
 import { TxSpinner } from '../../spinner'
+import { DATE_FILTER_PRESETS, getCellValue, useDataTableData } from './use-data-table-data'
 defineOptions({ name: 'TxDataTable' })
 
 // Kept in step with `.tx-data-table__th--select` / `--expand` in the style block:
@@ -160,312 +161,23 @@ function getColumnAriaSort(column: DataTableColumn): 'ascending' | 'descending' 
   return order === 'desc' ? 'descending' : 'ascending'
 }
 
-function getCellValue(row: any, column: DataTableColumn) {
-  const key = column.dataIndex ?? column.key
-  return row?.[key]
-}
-
-function defaultSorter(a: any, b: any): number {
-  if (a == null && b == null)
-    return 0
-  if (a == null)
-    return -1
-  if (b == null)
-    return 1
-  if (typeof a === 'number' && typeof b === 'number')
-    return a - b
-  const sa = String(a)
-  const sb = String(b)
-  return sa.localeCompare(sb)
-}
-const DATE_FILTER_PRESETS = [
-  { label: '今天', value: 'today' },
-  { label: '近 3 天', value: '3d' },
-  { label: '近 7 天', value: '7d' },
-  { label: '近 30 天', value: '30d' },
-]
-
-const effectiveColumns = computed<DataTableColumn[]>(() => {
-  return props.columns.map(col => {
-    const next: DataTableColumn = { ...col }
-    const key = col.key?.toLowerCase() || ''
-    const title = typeof col.title === 'string' ? col.title : ''
-    const isAction = col.type === 'actions' || key === 'actions' || key === 'action' || title.includes('操作')
-
-    if (isAction) {
-      if (props.autoStickyActions !== false && col.fixed === undefined) {
-        next.fixed = 'right'
-      }
-      if (col.align === undefined) {
-        next.align = 'right'
-      }
-      if (col.nowrap === undefined) {
-        next.nowrap = true
-      }
-      if (col.width === undefined && col.minWidth === undefined) {
-        next.width = 140
-      }
-      next.type = next.type || 'actions'
-      return next
-    }
-
-    if (col.type === 'number') {
-      if (col.align === undefined) {
-        next.align = 'right'
-      }
-      if (col.nowrap === undefined) {
-        next.nowrap = true
-      }
-      if (col.sortable === undefined) {
-        next.sortable = true
-      }
-      if (!col.sorter) {
-        next.sorter = (a: any, b: any) => {
-          const va = Number(getCellValue(a, col))
-          const vb = Number(getCellValue(b, col))
-          if (Number.isNaN(va) && Number.isNaN(vb)) return 0
-          if (Number.isNaN(va)) return -1
-          if (Number.isNaN(vb)) return 1
-          return va - vb
-        }
-      }
-    } else if (col.type === 'datetime' || col.type === 'date') {
-      if (col.nowrap === undefined) {
-        next.nowrap = true
-      }
-      if (col.sortable === undefined) {
-        next.sortable = true
-      }
-      if (!col.sorter) {
-        next.sorter = (a: any, b: any) => {
-          const da = new Date(String(getCellValue(a, col) ?? '')).getTime()
-          const db = new Date(String(getCellValue(b, col) ?? '')).getTime()
-          if (Number.isNaN(da) && Number.isNaN(db)) return 0
-          if (Number.isNaN(da)) return -1
-          if (Number.isNaN(db)) return 1
-          return da - db
-        }
-      }
-    } else if (col.type === 'tag') {
-      if (col.nowrap === undefined) {
-        next.nowrap = true
-      }
-    } else if (col.type === 'source') {
-      if (col.nowrap === undefined) {
-        next.nowrap = true
-      }
-    }
-
-    return next
-  })
-})
-
-const filterOpenState = ref<Record<string, boolean>>({})
-const tagFilterQueries = ref<Record<string, string>>({})
-const localFilter = ref<DataTableFilterState>({ ...(props.defaultFilter ?? {}) })
-
-watch(
-  () => props.defaultFilter,
-  next => {
-    localFilter.value = { ...(next ?? {}) }
-  },
-  { deep: true },
-)
-
-const activeFilter = computed<DataTableFilterState>(() => {
-  return props.filter !== undefined ? props.filter : localFilter.value
-})
-
-function setColumnFilter(key: string, value: unknown) {
-  const next: DataTableFilterState = { ...activeFilter.value }
-  if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) {
-    delete next[key]
-  } else {
-    next[key] = value
-  }
-  localFilter.value = next
-  emit('update:filter', next)
-  emit('filterChange', next)
-}
-
-function clearColumnFilter(key: string) {
-  setColumnFilter(key, undefined)
-}
-
-function isColumnFiltered(key: string): boolean {
-  const val = activeFilter.value[key]
-  if (val === undefined || val === null || val === '') return false
-  if (Array.isArray(val)) return val.length > 0
-  if (typeof val === 'object') {
-    return Object.values(val as Record<string, unknown>).some(v => v !== undefined && v !== null && v !== '')
-  }
-  return true
-}
-
-function isTagAllSelected(colKey: string): boolean {
-  const val = activeFilter.value[colKey]
-  if (!val) return true
-  if (Array.isArray(val)) return val.length === 0
-  return false
-}
-
-function getColumnFilterOptions(col: DataTableColumn): DataTableFilterOption[] {
-  if (col.filterOptions && col.filterOptions.length > 0)
-    return col.filterOptions
-  const values = new Set<string>()
-  for (const row of props.data) {
-    const v = getCellValue(row, col)
-    if (v != null && v !== '') {
-      const label = typeof v === 'object' && v && 'label' in v ? String((v as { label: unknown }).label) : String(v)
-      if (label) values.add(label)
-    }
-  }
-  return Array.from(values).map(val => ({ label: val, value: val }))
-}
-
-function getFilteredTagOptions(col: DataTableColumn): DataTableFilterOption[] {
-  const all = getColumnFilterOptions(col)
-  const query = (tagFilterQueries.value[col.key] || '').trim().toLowerCase()
-  if (!query) return all
-  return all.filter(opt => opt.label.toLowerCase().includes(query))
-}
-
-function isTagOptionSelected(colKey: string, val: unknown): boolean {
-  const current = activeFilter.value[colKey]
-  if (!current) return false
-  if (Array.isArray(current)) return current.includes(val) || current.includes(String(val))
-  return current === val || String(current) === String(val)
-}
-
-function toggleTagFilter(colKey: string, val: unknown) {
-  const current = activeFilter.value[colKey]
-  let next: unknown[]
-  if (Array.isArray(current)) {
-    next = [...current]
-    const idx = next.findIndex(item => item === val || String(item) === String(val))
-    if (idx >= 0) {
-      next.splice(idx, 1)
-    } else {
-      next.push(val)
-    }
-  } else if (current !== undefined && current !== null && current !== '') {
-    if (current === val || String(current) === String(val)) {
-      next = []
-    } else {
-      next = [current, val]
-    }
-  } else {
-    next = [val]
-  }
-  setColumnFilter(colKey, next.length ? next : undefined)
-}
-
-function getNumberFilterVal(colKey: string, bound: 'min' | 'max'): string | number {
-  const current = activeFilter.value[colKey]
-  if (typeof current === 'object' && current !== null) {
-    const val = (current as Record<string, unknown>)[bound]
-    return (val as string | number) ?? ''
-  }
-  if (bound === 'min' && typeof current === 'number') return current
-  return ''
-}
-
-function setNumberFilterVal(colKey: string, bound: 'min' | 'max', rawVal: string) {
-  const current = typeof activeFilter.value[colKey] === 'object' && activeFilter.value[colKey] !== null
-    ? { ...(activeFilter.value[colKey] as Record<string, unknown>) }
-    : {}
-  const num = rawVal.trim() === '' ? undefined : Number(rawVal)
-  if (num === undefined || Number.isNaN(num)) {
-    delete current[bound]
-  } else {
-    current[bound] = num
-  }
-  if (current.min === undefined && current.max === undefined) {
-    setColumnFilter(colKey, undefined)
-  } else {
-    setColumnFilter(colKey, current)
-  }
-}
-
-const displayRows = computed(() => {
-  let rows = props.data.slice()
-
-  if (props.filterOnClient) {
-    const filters = activeFilter.value
-    const filterKeys = Object.keys(filters)
-    if (filterKeys.length > 0) {
-      rows = rows.filter(row => {
-        return filterKeys.every(k => {
-          const targetCol = effectiveColumns.value.find(c => c.key === k)
-          if (!targetCol) return true
-          const filterVal = filters[k]
-          if (filterVal === undefined || filterVal === null || filterVal === '') return true
-          const cellVal = getCellValue(row, targetCol)
-
-          if (targetCol.type === 'tag') {
-            const rawVal = cellVal && typeof cellVal === 'object' && 'label' in cellVal ? (cellVal as { label: unknown }).label : cellVal
-            if (Array.isArray(filterVal)) {
-              if (!filterVal.length) return true
-              return filterVal.includes(rawVal) || filterVal.includes(String(rawVal))
-            }
-            return String(rawVal) === String(filterVal)
-          }
-
-          if (targetCol.type === 'number') {
-            const num = Number(cellVal)
-            if (typeof filterVal === 'object' && filterVal !== null) {
-              const { min, max } = filterVal as { min?: number, max?: number }
-              if (min != null && !Number.isNaN(Number(min)) && num < Number(min)) return false
-              if (max != null && !Number.isNaN(Number(max)) && num > Number(max)) return false
-              return true
-            }
-            return num === Number(filterVal)
-          }
-
-          if (targetCol.type === 'datetime' || targetCol.type === 'date') {
-            const t = new Date(String(cellVal ?? '')).getTime()
-            if (Number.isNaN(t)) return false
-            const now = Date.now()
-            if (filterVal === 'today') {
-              const startOfToday = new Date().setHours(0, 0, 0, 0)
-              return t >= startOfToday
-            }
-            if (filterVal === '3d') {
-              return t >= now - 3 * 86400000
-            }
-            if (filterVal === '7d') {
-              return t >= now - 7 * 86400000
-            }
-            if (filterVal === '30d') {
-              return t >= now - 30 * 86400000
-            }
-            if (typeof filterVal === 'object' && filterVal !== null) {
-              const { start, end } = filterVal as { start?: number, end?: number }
-              if (start != null && t < start) return false
-              if (end != null && t > end) return false
-              return true
-            }
-            return true
-          }
-
-          return String(cellVal ?? '').toLowerCase().includes(String(filterVal).toLowerCase())
-        })
-      })
-    }
-  }
-
-  if (!props.sortOnClient)
-    return rows
-  const state = sortState.value
-  if (!state)
-    return rows
-  const col = effectiveColumns.value.find(c => c.key === state.key)
-  if (!col)
-    return rows
-  const dir = state.order === 'desc' ? -1 : 1
-  const sorter = col.sorter ?? ((a: any, b: any) => defaultSorter(getCellValue(a, col), getCellValue(b, col)))
-  return rows.sort((a, b) => dir * sorter(a, b))
-})
+const {
+  effectiveColumns,
+  displayRows,
+  filterOpenState,
+  tagFilterQueries,
+  activeFilter,
+  setColumnFilter,
+  clearColumnFilter,
+  isColumnFiltered,
+  isTagAllSelected,
+  getColumnFilterOptions,
+  getFilteredTagOptions,
+  isTagOptionSelected,
+  toggleTagFilter,
+  getNumberFilterVal,
+  setNumberFilterVal,
+} = useDataTableData(props, sortState, emit)
 
 // --- Loading ---------------------------------------------------------------
 // Anything but an explicit `skeleton` keeps the overlay, so a mistyped variant
@@ -1078,7 +790,9 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   </div>
 </template>
 
-<style scoped lang="scss">
+<!-- BEM names isolate the stylesheet, including teleported filter content.
+     Generic table selectors stay under the owned table, never a slot's nested table. -->
+<style lang="scss">
 .tx-data-table {
   position: relative;
   width: 100%;
@@ -1113,10 +827,6 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   background: var(--tx-bg-color, #fff);
 }
 
-.tx-data-table.is-layout-fixed .tx-data-table__table {
-  table-layout: fixed;
-}
-
 .tx-data-table__th,
 .tx-data-table__cell {
   padding: 10px 12px;
@@ -1130,20 +840,16 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 // straight into the curve and reads as a stray line under the table. `> :last-child`
 // is whichever section actually ends the table, so a summary `tfoot` keeps the
 // separator that divides it from the body.
-.tx-data-table__table > :last-child > tr:last-child > td,
-.tx-data-table__table > :last-child > tr:last-child > th {
+.tx-data-table__table > :last-child > tr:last-child > :is(td, th) {
   border-bottom: 0;
 }
 
-.tx-data-table__th.is-nowrap,
-.tx-data-table__cell.is-nowrap,
-.tx-data-table.is-nowrap .tx-data-table__th,
-.tx-data-table.is-nowrap .tx-data-table__cell {
+:is(.tx-data-table__th, .tx-data-table__cell).is-nowrap,
+.tx-data-table.is-nowrap :is(.tx-data-table__th, .tx-data-table__cell) {
   white-space: nowrap;
 }
 
-.tx-data-table__th.is-fixed,
-.tx-data-table__cell.is-fixed {
+:is(.tx-data-table__th, .tx-data-table__cell).is-fixed {
   position: sticky;
   z-index: 1;
   background: var(--tx-bg-color, #fff);
@@ -1154,13 +860,11 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   background: var(--tx-fill-color-lighter, #fafafa);
 }
 
-.tx-data-table__th.is-fixed-left,
-.tx-data-table__cell.is-fixed-left {
+:is(.tx-data-table__th, .tx-data-table__cell).is-fixed-left {
   box-shadow: 1px 0 0 var(--tx-border-color-lighter, #ebeef5);
 }
 
-.tx-data-table__th.is-fixed-right,
-.tx-data-table__cell.is-fixed-right {
+:is(.tx-data-table__th, .tx-data-table__cell).is-fixed-right {
   box-shadow: -1px 0 0 var(--tx-border-color-lighter, #ebeef5);
 }
 
@@ -1189,19 +893,23 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   text-align: center;
 }
 
-.tx-data-table__expand-toggle {
-  appearance: none;
+.tx-data-table__expand-toggle,
+.tx-data-table__filter-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
   background: transparent;
-  color: var(--tx-text-color-secondary, #909399);
   cursor: pointer;
+}
+
+.tx-data-table__expand-toggle {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--tx-text-color-secondary, #909399);
   transition:
     transform 160ms ease,
     background-color 160ms ease,
@@ -1238,35 +946,45 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   padding: 0;
 }
 
-.tx-data-table__sort-button {
-  appearance: none;
+.tx-data-table__sort-button,
+.tx-data-table__filter-option {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   box-sizing: border-box;
   width: 100%;
-  padding: 10px 12px;
   border: 0;
   background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: inherit;
-  line-height: inherit;
-  text-align: inherit;
   cursor: pointer;
-
-  &.is-align-center {
-    justify-content: center;
-  }
-
-  &.is-align-right {
-    justify-content: flex-end;
-  }
 }
 
-.tx-data-table__sort-button:focus-visible {
+.tx-data-table__sort-button {
+  appearance: none;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+}
+
+:is(.tx-data-table__sort-button, .tx-data-table__th-wrap).is-align-center {
+  justify-content: center;
+}
+
+:is(.tx-data-table__sort-button, .tx-data-table__th-wrap).is-align-right {
+  justify-content: flex-end;
+}
+
+.tx-data-table__sort-button:focus-visible,
+.tx-data-table__row.is-interactive:focus-visible {
   outline: 2px solid var(--tx-color-primary, #409eff);
   outline-offset: -2px;
+}
+
+.tx-data-table__sort,
+.tx-data-table__filter-trigger,
+.tx-data-table__range-sep,
+.tx-data-table__time-icon {
+  color: var(--tx-text-color-placeholder, #a8abb2);
 }
 
 .tx-data-table__sort {
@@ -1274,7 +992,6 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   flex-direction: column;
   gap: 2px;
   margin-left: 6px;
-  color: var(--tx-text-color-placeholder, #a8abb2);
 }
 
 .tx-data-table__sort svg {
@@ -1288,10 +1005,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 // Detail rows live in the same tbody, so `nth-child(odd)` stops matching the
 // data rows. An expandable table stripes off the row's own `is-stripe` class.
-.tx-data-table.is-striped:not(.is-expandable) tbody tr:nth-child(odd) {
-  background: color-mix(in srgb, var(--tx-fill-color-light, #f5f7fa) 60%, transparent);
-}
-
+.tx-data-table.is-striped:not(.is-expandable) .tx-data-table__table > tbody > tr:nth-child(odd),
 .tx-data-table.is-striped.is-expandable .tx-data-table__row.is-stripe {
   background: color-mix(in srgb, var(--tx-fill-color-light, #f5f7fa) 60%, transparent);
 }
@@ -1299,7 +1013,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 // The fallback is the long-standing accent tint. The variable exists so a host
 // with a different table language (a neutral-grey BUI records table, say) can
 // repoint the hover without a prop or an override on `!important`.
-.tx-data-table.is-hover tbody tr:hover:not(.tx-data-table__row--detail) {
+.tx-data-table.is-hover .tx-data-table__table > tbody > tr:hover:not(.tx-data-table__row--detail) {
   background: var(
     --tx-data-table-row-hover-bg,
     color-mix(in srgb, var(--tx-color-primary-light-9, #ecf5ff) 60%, transparent)
@@ -1318,11 +1032,6 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 .tx-data-table__row.is-interactive {
   cursor: pointer;
-}
-
-.tx-data-table__row.is-interactive:focus-visible {
-  outline: 2px solid var(--tx-color-primary, #409eff);
-  outline-offset: -2px;
 }
 
 .tx-data-table__loading {
@@ -1397,10 +1106,8 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 /* Footer ------------------------------------------------------------------ */
 
-/* `:deep` because the `footer` slot's own <td>s are compiled in the consumer's
-   scope and would never match this component's scope id. */
-.tx-data-table__footer-row :deep(td),
-.tx-data-table__footer-row :deep(th) {
+// Footer slots render the consumer's cells; namespacing reaches them directly.
+.tx-data-table__footer-row :is(td, th) {
   padding: 10px 12px;
   text-align: left;
   font-size: 13px;
@@ -1430,14 +1137,13 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   border-spacing: 0;
 }
 
-.tx-data-table.is-sticky-shell.has-sticky-header thead th {
+.tx-data-table.is-sticky-shell.has-sticky-header .tx-data-table__th {
   position: sticky;
   top: 0;
   z-index: 5;
 }
 
-.tx-data-table.is-sticky-shell.has-sticky-footer .tx-data-table__footer-row :deep(td),
-.tx-data-table.is-sticky-shell.has-sticky-footer .tx-data-table__footer-row :deep(th) {
+.tx-data-table.is-sticky-shell.has-sticky-footer .tx-data-table__footer-row :is(td, th) {
   position: sticky;
   bottom: 0;
   z-index: 4;
@@ -1445,11 +1151,11 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 /* A cell that is pinned on both axes has to outrank whichever edge it crosses,
    so the corners sit above their own row or column. */
-.tx-data-table.is-sticky-shell.has-sticky-header thead th.is-fixed {
+.tx-data-table.is-sticky-shell.has-sticky-header .tx-data-table__th.is-fixed {
   z-index: 7;
 }
 
-.tx-data-table.is-sticky-shell.has-sticky-footer .tx-data-table__footer-row :deep(td.is-fixed) {
+.tx-data-table.is-sticky-shell.has-sticky-footer .tx-data-table__footer-row td.is-fixed {
   z-index: 6;
 }
 
@@ -1460,14 +1166,6 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   align-items: center;
   gap: 4px;
   width: 100%;
-
-  &.is-align-center {
-    justify-content: center;
-  }
-
-  &.is-align-right {
-    justify-content: flex-end;
-  }
 }
 
 .tx-data-table__th.has-filter {
@@ -1475,17 +1173,9 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 }
 
 .tx-data-table__filter-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 20px;
   height: 20px;
-  padding: 0;
-  border: 0;
   border-radius: 4px;
-  background: transparent;
-  color: var(--tx-text-color-placeholder, #a8abb2);
-  cursor: pointer;
   transition: color 140ms ease, background-color 140ms ease;
 
   &:hover {
@@ -1507,21 +1197,25 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   color: var(--tx-text-color-primary, #303133);
 }
 
-.tx-data-table__filter-search {
+.tx-data-table__filter-search,
+.tx-data-table__range-input {
   box-sizing: border-box;
-  width: 100%;
-  padding: 5px 8px;
-  font-size: 12px;
   border: 1px solid var(--tx-border-color-lighter, #ebeef5);
   border-radius: 6px;
-  background: var(--tx-bg-color, #fff);
-  color: inherit;
-  margin-bottom: 6px;
+  font-size: 12px;
   outline: none;
 
   &:focus {
     border-color: var(--tx-color-primary, #409eff);
   }
+}
+
+.tx-data-table__filter-search {
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--tx-bg-color, #fff);
+  color: inherit;
+  margin-bottom: 6px;
 }
 
 .tx-data-table__filter-options {
@@ -1533,19 +1227,12 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 }
 
 .tx-data-table__filter-option {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  box-sizing: border-box;
-  width: 100%;
   padding: 6px 8px;
-  border: 0;
   border-radius: 6px;
-  background: transparent;
   color: var(--tx-text-color-regular, #606266);
   font-size: 12px;
   text-align: left;
-  cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 
   &:hover {
@@ -1572,21 +1259,11 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 }
 
 .tx-data-table__range-input {
-  box-sizing: border-box;
   width: 72px;
   padding: 4px 6px;
-  border: 1px solid var(--tx-border-color-lighter, #ebeef5);
-  border-radius: 6px;
-  font-size: 12px;
-  outline: none;
-
-  &:focus {
-    border-color: var(--tx-color-primary, #409eff);
-  }
 }
 
 .tx-data-table__range-sep {
-  color: var(--tx-text-color-placeholder, #a8abb2);
   font-size: 12px;
 }
 
@@ -1619,15 +1296,19 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   color: #fff;
 }
 
-.tx-data-table__tag-pill {
+.tx-data-table__tag-pill,
+.tx-data-table__datetime {
   display: inline-flex;
   align-items: center;
+  font-size: 12px;
+  color: var(--tx-text-color-regular, #606266);
+}
+
+.tx-data-table__tag-pill {
   padding: 2px 8px;
   border-radius: 9999px;
-  font-size: 12px;
   font-weight: 500;
   background: var(--tx-fill-color, #f0f2f5);
-  color: var(--tx-text-color-regular, #606266);
 }
 
 .tx-data-table__source-badge {
@@ -1643,22 +1324,16 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 }
 
 .tx-data-table__datetime {
-  display: inline-flex;
-  align-items: center;
   gap: 4px;
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  color: var(--tx-text-color-regular, #606266);
 }
 
 .tx-data-table__time-icon {
   flex-shrink: 0;
-  color: var(--tx-text-color-placeholder, #a8abb2);
 }
 
 .tx-data-table__number,
-.tx-data-table__cell.is-numeric,
-.tx-data-table__cell.is-type-number {
+.tx-data-table__cell.is-numeric {
   font-variant-numeric: tabular-nums;
 }
 </style>

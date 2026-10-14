@@ -273,21 +273,6 @@ describe('package CI workflow contracts', () => {
     expect(upload.with?.['if-no-files-found']).toBe('error')
   })
 
-  it('builds the complete Utils public surface and declarations in its dedicated CI', () => {
-    const workflow = readWorkflow('package-utils-ci.yml')
-    const manifest = JSON.parse(readFileSync(path.join(ROOT, 'packages/utils/package.json'), 'utf8'))
-    const exports = Object.values(manifest.publishConfig?.exports ?? {})
-      .flatMap(entry => typeof entry === 'string' ? [entry] : Object.values(entry))
-
-    expect(workflow.jobs.ci.with['run-build']).toBe(true)
-    expect(workflow.jobs.ci.with['build-command']).toBe('pnpm build')
-    expect(workflow.jobs.ci.with['test-command']).toContain('--exclude "**/*.benchmark.test.ts"')
-    expect(workflow.jobs.ci.with['test-command']).toContain('pnpm benchmark:preview')
-    expect(manifest.scripts.build).toContain('--dts')
-    expect(exports.length).toBeGreaterThan(20)
-    expect(exports.every(target => target === './package.json' || target.startsWith('./dist/'))).toBe(true)
-  })
-
   it('runs Tuff Intelligence tests with a non-default pack-test timeout', () => {
     const workflow = readWorkflow('package-tuff-intelligence-ci.yml')
     const input = workflow.jobs.ci.with

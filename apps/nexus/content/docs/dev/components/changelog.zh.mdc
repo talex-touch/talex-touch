@@ -32,6 +32,7 @@ verified: false
   - `TxDataTable` 新增语义列 `type`、列级 `filter` / `filterOptions`、受控 `filter` / `defaultFilter`、`update:filter` / `filterChange`，默认客户端筛选；`filterOnClient=false` 将筛选交给调用方，`autoStickyActions` 默认固定操作列到右侧
   - `TxSelect` 在未指定 `searchable` 时，选项数达到 `searchThreshold`（默认 8）自动启用搜索；显式 `false` 或阈值不大于 0 可关闭
   - Input、Textarea、Select、NumberInput 与 TagInput 显式使用 `border-box`，无需宿主全局 reset，也不注入全局通配重置
+  - DataTable 内部状态拆分与样式去重后，单组件 JS 为 42.9 KiB，完整 / 按需 CSS 为 749.0 / 719.6 KiB；总量基线为 750 / 720.5 KiB，单文件预算与导入禁令不变
 
 
 ### 0.7.0 版本（2026-10-09）

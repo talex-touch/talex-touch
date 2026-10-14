@@ -35,7 +35,7 @@ code: |
 :::
 
 ### Local Filtering
-`searchable` renders a search field in the panel that filters registered option labels.
+With `searchable` omitted, search appears automatically at 8 registered options, including grouped and slot options. `searchThreshold` changes that threshold; explicit `searchable=false` or a nonpositive threshold disables automatic search, and explicit `true` always enables it.
 :::TuffDemoWrapper{demo="SelectSelectSearchableDemo" code-lang="vue"}
 ---
 code: |
@@ -259,7 +259,8 @@ code: |
 | `options` | `TxSelectOptionLike[]` | `[]` | Plain or grouped options. |
 | `maxTagCount` | `number` | - | Maximum visible tags; the rest collapse into `+ N ...`. |
 | `maxTagTextLength` | `number` | - | Maximum tag text length before truncation. |
-| `searchable` | `boolean` | `false` | Shows a local search field in the panel when not editable. |
+| `searchable` | `boolean` | `undefined` | Explicitly enables or disables search; omission uses the option-count threshold. |
+| `searchThreshold` | `number` | `8` | Automatically enables search at this option count; a nonpositive value disables automatic search. |
 | `searchPlaceholder` | `string` | `'Search'` | Placeholder of the panel search field. |
 | `editable` | `boolean` | `false` | Makes the trigger text editable as the query and opens on focus. |
 | `remote` | `boolean` | `false` | Editable remote mode; emits `search` while the panel is open. |

@@ -1,6 +1,6 @@
 ---
 title: DataTable
-description: A data table with sorting, selection, and expandable rows.
+description: A data table with semantic cells, column filtering, sorting, selection, and expandable rows.
 category: Data
 status: beta
 since: 0.3.4
@@ -12,20 +12,22 @@ verified: true
 ## Usage
 
 ### Basic
+Semantic `type` values provide numeric sorting, tag pills, and local calendar dates; `filter: true` adds the matching header filter.
 ::TuffDemoWrapper{demo="DataTableDataTableDemo" code-lang="vue"}
 ---
 code: |
   <script setup lang="ts">
   const columns = [
     { key: 'name', title: 'Name' },
-    { key: 'role', title: 'Role' },
-    { key: 'score', title: 'Score', sortable: true },
+    { key: 'role', title: 'Role', type: 'tag', filter: true },
+    { key: 'score', title: 'Score', type: 'number', filter: true },
+    { key: 'joinedAt', title: 'Joined', type: 'date', filter: true },
   ]
 
   const data = [
-    { id: 1, name: 'Ava', role: 'Designer', score: 92 },
-    { id: 2, name: 'Noah', role: 'Engineer', score: 88 },
-    { id: 3, name: 'Mia', role: 'PM', score: 95 },
+    { id: 1, name: 'Ava', role: 'Designer', score: 92, joinedAt: '2026-10-14' },
+    { id: 2, name: 'Noah', role: 'Engineer', score: 88, joinedAt: '2026-10-13' },
+    { id: 3, name: 'Mia', role: 'PM', score: 95, joinedAt: '2026-10-12' },
   ]
   </script>
 
@@ -163,6 +165,8 @@ code: |
 - Give fixed columns numeric px `width` / `minWidth`, and keep one horizontal scroller: `scrollX`, or an outer `overflow-x: auto`.
 - A pinned header or footer needs `maxHeight` or a scrolling ancestor; don't nest the table in `TxScroll`'s default mode, whose transform scrolling disables sticky.
 - Sort on comparable fields such as timestamps or ranks, never on formatted relative-time text.
+- Use `filterOnClient=false` for remote filtering and handle `filterChange` alongside pagination; controlled `filter` remains the parent's state.
+- A `date` column interprets `YYYY-MM-DD` as a local calendar day. A `datetime` column preserves the instant of timezone-qualified values; `today` ends at the next local midnight, including daylight-saving transitions.
 
 ## API Reference
 
@@ -201,6 +205,10 @@ code: |
 | `stickyFooter` | `boolean` | `false` | Pins the summary row. |
 | `rowClass` | `(row, index) => string \| string[] \| Record<string, boolean>` | - | Extra classes per row, such as a tint by state. |
 | `highlightSelected` | `boolean` | `false` | Tints selected rows. |
+| `defaultFilter` | `DataTableFilterState` | `{}` | Initial filter values in uncontrolled mode. |
+| `filter` | `DataTableFilterState` | - | Controlled values by column key; bind with `v-model:filter`. |
+| `filterOnClient` | `boolean` | `true` | Filters rows locally; `false` delegates row retrieval to the caller. |
+| `autoStickyActions` | `boolean` | `true` | Defaults action columns to the right fixed edge; an explicit column `fixed` takes precedence. |
 
 ### Events
 
@@ -212,6 +220,8 @@ code: |
 | `expand` | `({ row, index, expanded })` | A row was expanded or collapsed. |
 | `sortChange` | `(sort)` | Sort change. |
 | `update:sort` | `(sort)` | Sort change; fires in controlled and uncontrolled modes. |
+| `update:filter` | `(filter)` | Filter values changed; fires in controlled and uncontrolled modes. |
+| `filterChange` | `(filter)` | Filter changes for client or remote filtering. |
 | `rowClick` | `({ row, index })` | Row click. |
 
 ### Slots
@@ -220,6 +230,7 @@ code: |
 |------|------|
 | `header-<columnKey>` | Custom header; receives `{ column, sorted, order, toggle }`, where `toggle` advances the sort cycle. |
 | `cell-<columnKey>` | Custom cell; receives `{ row, column, value, index }`. |
+| `filter-<columnKey>` | Custom filter; receives `{ column, filterValue, setFilter, clearFilter }`. |
 | `expanded` | Detail of an expanded row, spanning every column; receives `{ row, index }`. |
 | `footer` | The whole summary row of your own `<td>`s, which can span columns. Any footer slot renders a `<tfoot>`. |
 | `footer-<columnKey>` | One summary cell per column; receives `{ column, data }`. `footer` wins when both exist. |
@@ -231,6 +242,7 @@ code: |
 |------|------|------|
 | `key` | `string` | Column key. |
 | `title` | `string` | Header title. |
+| `type` | `'text' \| 'number' \| 'datetime' \| 'date' \| 'tag' \| 'source' \| 'actions'` | Semantic display, sort, and filter behavior; cell slots and `format` take precedence. |
 | `dataIndex` | `string` | Data field. |
 | `width` | `string \| number` | Column width. |
 | `minWidth` | `string \| number` | Minimum column width. |
@@ -241,6 +253,8 @@ code: |
 | `align` | `'left' \| 'center' \| 'right'` | Alignment. |
 | `sortable` | `boolean` | Sortable. |
 | `sorter` | `(a, b) => number` | Custom sorter. |
+| `filter` | `boolean` | Adds a type-aware header filter; off by default. |
+| `filterOptions` | `DataTableFilterOption[]` | Custom tag-filter options containing `label`, `value`, and optional `tone`. |
 | `format` | `(value, row, index) => string` | Cell formatter. |
 | `headerClass` | `string` | Header class. |
 | `cellClass` | `string` | Cell class. |
@@ -248,6 +262,7 @@ code: |
 ## Overview
 
 - Passing `sort` or `expandedKeys` (even `null` or `[]`) makes it controlled: the table only emits updates and renders what the parent sends back.
+- `filter` also makes filtering controlled. Tags accept one value or multiple values, numbers accept `{ min, max }`, and dates accept `today`, `3d`, `7d`, `30d`, or timestamp `{ start, end }` values. Text filtering can be driven by a custom filter slot or controlled state.
 - Sortable headers carry `scope="col"` and `aria-sort`; click, Enter, and Space step through `sortCycle`.
 - On a partial selection the select-all box is `indeterminate` (`aria-checked="mixed"`); clicks in the selection and toggle cells never fire `rowClick`.
 - `loading` sets `aria-busy` on the `<table>`, and the empty state stays hidden while loading.
@@ -257,6 +272,7 @@ code: |
 ## Technologies
 
 - The skeleton variant renders `TxSkeleton`. The on-demand style plugin loads its sheet; when importing styles by hand, add `@talex-touch/tuffex/skeleton/style.css`.
+- Semantic defaults, filtering, and sorting share the internal `useDataTableData` module. Filter panels use `TxPopover`; their teleported content keeps component-owned BEM styling.
 - Source: `packages/tuffex/packages/components/src/data-table/`.
 
 <TuffDocSourceLink />

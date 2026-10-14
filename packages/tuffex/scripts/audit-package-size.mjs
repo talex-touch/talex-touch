@@ -237,7 +237,15 @@ const LIMITS = {
   // `data-v` attributes). Measured 746.8 KiB. Checked for inlining: `button/style.css`
   // carries only `.tx-button*`, `.tx-split-button*`, `.tx-icon-button*` and
   // `.tx-copy-button*` rules; `text-morph` stays in its own sheet through style-deps.
-  fullCssBytes: 748 * 1024,
+  // 748 -> 750 on 2026-10-14: DataTable semantic cells and column-filter panels
+  // add component-owned styles; Select/form border-box corrections land alongside.
+  // The final isolated 0.8.0 build measures 749.0 KiB after removing DataTable's
+  // scoped-selector payload and merging duplicate declarations (751.4 before).
+  // data-table/style.css contains only its BEM rules and refresh keyframes, not
+  // Popover/Skeleton dependency rules. Component JS is split at the data-state
+  // boundary (42.9 KiB, under the unchanged 48 KiB limit). Actuals plus minimal
+  // headroom; per-file and root/full-style import gates remain unchanged.
+  fullCssBytes: 750 * 1024,
   // The per-component stylesheets, added up. This is the set a consumer
   // actually installs and the on-demand plugin picks from, so it is the number
   // worth watching: it fell from 2290.6 KiB to 634.7 when dependency styles
@@ -305,7 +313,11 @@ const LIMITS = {
   // still imports each primitive stylesheet once. Actuals plus minimal headroom.
   // 715.5 -> 718.5 on 2026-10-11: the same TxButton progress-bar and status rules as the
   // `fullCssBytes` note above, measured at 717.4 KiB across the same 188 sheets.
-  onDemandCssBytes: 718.5 * 1024,
+  // 718.5 -> 720.5 on 2026-10-14: the same component-owned feature styles as
+  // fullCssBytes, measured at 719.6 KiB across the unchanged 188 stylesheets
+  // after local DataTable deduplication (722.0 before). Dependencies remain
+  // separate sheets; this is actuals plus minimal headroom, not an import waiver.
+  onDemandCssBytes: 720.5 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus

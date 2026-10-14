@@ -11,7 +11,7 @@ const labels = computed(() => {
       placeholder: '搜索工作区',
       searchPlaceholder: '输入标签名称',
       selected: '当前选中',
-      hint: 'searchable 会在下拉面板内过滤已注册选项。',
+      hint: '未指定 searchable，选项达到 8 项时自动显示搜索框。',
       options: [
         { value: 'docs', label: 'Docs 文档' },
         { value: 'sdk', label: 'SDK 工具' },
@@ -27,7 +27,7 @@ const labels = computed(() => {
     placeholder: 'Search workspace',
     searchPlaceholder: 'Type a tag name',
     selected: 'Selected',
-    hint: 'searchable filters the registered options inside the dropdown panel.',
+    hint: 'With searchable omitted, search appears automatically at 8 options.',
     options: [
       { value: 'docs', label: 'Docs' },
       { value: 'sdk', label: 'SDK tools' },
@@ -62,7 +62,6 @@ const options = computed(() => [
       v-model="value"
       :placeholder="labels.placeholder"
       :search-placeholder="labels.searchPlaceholder"
-      searchable
     >
       <TuffSelectItem
         v-for="option in options"

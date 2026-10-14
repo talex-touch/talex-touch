@@ -35,7 +35,7 @@ code: |
 :::
 
 ### 本地过滤
-`searchable` 在面板内渲染搜索框，按已注册选项的 label 过滤。
+未指定 `searchable` 时，已注册选项达到 8 项自动显示搜索框，包含分组与插槽选项。`searchThreshold` 调整阈值；显式 `searchable=false` 或非正阈值关闭自动搜索，显式 `true` 始终开启。
 :::TuffDemoWrapper{demo="SelectSelectSearchableDemo" code-lang="vue"}
 ---
 code: |
@@ -259,7 +259,8 @@ code: |
 | `options` | `TxSelectOptionLike[]` | `[]` | 普通选项或分组。 |
 | `maxTagCount` | `number` | - | 最多显示的标签数，其余显示为 `+ N ...`。 |
 | `maxTagTextLength` | `number` | - | 标签文本的最大长度，超出截断。 |
-| `searchable` | `boolean` | `false` | 非编辑模式下在面板内显示本地搜索框。 |
+| `searchable` | `boolean` | `undefined` | 显式开启或关闭搜索；未指定时按选项数量自动决定。 |
+| `searchThreshold` | `number` | `8` | 达到该选项数量时自动开启搜索；非正数关闭自动搜索。 |
 | `searchPlaceholder` | `string` | `'Search'` | 面板搜索框的占位文本。 |
 | `editable` | `boolean` | `false` | 触发器文本可编辑并作为搜索词，聚焦即展开。 |
 | `remote` | `boolean` | `false` | 启用可编辑远程模式，面板打开期间派发 `search`。 |

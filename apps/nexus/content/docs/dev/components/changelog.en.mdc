@@ -32,6 +32,7 @@ Fixed brand-color surface lighting, voice-message playback, semantic data tables
   - `TxDataTable` adds semantic column `type`, per-column `filter` / `filterOptions`, controlled `filter` / `defaultFilter`, and `update:filter` / `filterChange`. Client-side filtering is on by default; `filterOnClient=false` delegates filtering to the caller, and `autoStickyActions` fixes action columns to the right by default
   - `TxSelect` enables search at `searchThreshold` options (8 by default) when `searchable` is omitted; explicit `false` or a nonpositive threshold disables automatic search
   - Input, Textarea, Select, NumberInput and TagInput explicitly use `border-box`, without relying on a host reset or injecting a global wildcard reset
+  - After extracting DataTable data state and deduplicating its styles, component JS is 42.9 KiB and full / on-demand CSS is 749.0 / 719.6 KiB; aggregate baselines are 750 / 720.5 KiB, with per-file budgets and import restrictions unchanged
 
 
 ### Version 0.7.0 (2026-10-09)

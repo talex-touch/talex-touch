@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import TxDataTable from '../src/TxDataTable.vue'
 
 describe('txDataTable semantic column types and smart defaults', () => {
@@ -78,6 +78,86 @@ describe('txDataTable semantic column types and smart defaults', () => {
 
       const filteredRows = wrapper.findAll('tbody tr').map(r => r.findAll('td')[1].text())
       expect(filteredRows).toEqual(['50'])
+    })
+  })
+
+  describe('today date filters in the consumer timezone', () => {
+    it.each([
+      {
+        name: 'date calendar values retain their local day',
+        type: 'date' as const,
+        now: '2026-10-14T08:44:00.000Z',
+        data: [
+          { name: 'yesterday', time: '2026-10-13' },
+          { name: 'today', time: '2026-10-14' },
+          { name: 'tomorrow', time: '2026-10-15' },
+        ],
+        expected: ['today'],
+      },
+      {
+        name: 'datetime UTC instants use a half-open local day',
+        type: 'datetime' as const,
+        now: '2026-10-14T08:44:00.000Z',
+        data: [
+          { name: 'UTC today but local yesterday', time: '2026-10-14T00:00:00.000Z' },
+          { name: 'before local midnight', time: '2026-10-14T06:59:59.999Z' },
+          { name: 'local midnight', time: '2026-10-14T07:00:00.000Z' },
+          { name: 'UTC tomorrow but local today', time: '2026-10-15T00:00:00.000Z' },
+          { name: 'last millisecond today', time: '2026-10-15T06:59:59.999Z' },
+          { name: 'next local midnight', time: '2026-10-15T07:00:00.000Z' },
+        ],
+        expected: ['local midnight', 'UTC tomorrow but local today', 'last millisecond today'],
+      },
+      {
+        name: 'datetime includes the extra hour on the daylight-saving fall-back day',
+        type: 'datetime' as const,
+        now: '2026-11-01T08:44:00.000Z',
+        data: [
+          { name: 'yesterday', time: '2026-11-01T06:59:59.999Z' },
+          { name: 'local midnight', time: '2026-11-01T07:00:00.000Z' },
+          { name: 'first 01:30', time: '2026-11-01T08:30:00.000Z' },
+          { name: 'second 01:30', time: '2026-11-01T09:30:00.000Z' },
+          { name: 'last millisecond today', time: '2026-11-02T07:59:59.999Z' },
+          { name: 'next local midnight', time: '2026-11-02T08:00:00.000Z' },
+        ],
+        expected: ['local midnight', 'first 01:30', 'second 01:30', 'last millisecond today'],
+      },
+    ])('$name', async ({ type, now, data, expected }) => {
+      const previousTimezone = process.env.TZ
+      process.env.TZ = 'America/Los_Angeles'
+
+      try {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(new Date(now))
+
+        const wrapper = mount(TxDataTable, {
+          props: {
+            columns: [
+              { key: 'name', title: 'Name' },
+              { key: 'time', title: 'Time', type, filter: true },
+            ],
+            data,
+            filterOnClient: true,
+          },
+        })
+
+        try {
+          await wrapper.setProps({ filter: { time: 'today' } })
+
+          const visibleNames = wrapper.findAll('tbody tr').map(row => row.findAll('td')[0].text())
+          expect(visibleNames).toEqual(expected)
+        }
+        finally {
+          wrapper.unmount()
+        }
+      }
+      finally {
+        vi.useRealTimers()
+        if (previousTimezone === undefined)
+          delete process.env.TZ
+        else
+          process.env.TZ = previousTimezone
+      }
     })
   })
 

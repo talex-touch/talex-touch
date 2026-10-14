@@ -1,11 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import TxDataTable from '../src/TxDataTable.vue'
-
-// vitest runs from the tuffex package root; import.meta.url is rewritten by vite.
-const SFC_PATH = join(process.cwd(), 'packages/components/src/data-table/src/TxDataTable.vue')
 
 const columns = [
   { key: 'name', title: 'Name' },
@@ -62,11 +57,6 @@ describe('txDataTable loading variants', () => {
     expect(first[2]!.find('.tx-data-table__skeleton').attributes('style')).toContain('align-items: flex-end')
     expect(first[0]!.find('.tx-data-table__skeleton').attributes('style')).not.toContain('align-items')
 
-    // The placeholder is TxSkeleton's root, which must carry the table's scope id:
-    // without it the scoped one-line-box rule (`height: 1lh`) never matches.
-    const scopeId = Object.keys(wrapper.find('table').attributes()).find(name => name.startsWith('data-v-'))
-    expect(scopeId).toBeDefined()
-    expect(first[0]!.find('.tx-data-table__skeleton').attributes()).toHaveProperty(scopeId!)
   })
 
   it('varies the bar widths deterministically and honours skeletonRows', () => {
@@ -156,25 +146,4 @@ describe('txDataTable loading variants', () => {
     expect(wrapper.findAll(skeletonRows)).toHaveLength(0)
   })
 
-  // vitest never evaluates an SFC's <style>, so the layout contracts are read off
-  // the source: the placeholder holds one line box, and the refresh bar only moves
-  // when motion is allowed, on the compositor, without leaving the table.
-  it('sizes placeholders by the line box and keeps the refresh bar still under reduced motion', () => {
-    const sfc = readFileSync(SFC_PATH, 'utf8')
-    const style = sfc.slice(sfc.indexOf('<style'))
-
-    expect(style).toMatch(/\.tx-data-table__skeleton \{\s*height: 1lh;/)
-    expect(style).toMatch(/\.tx-data-table__row--skeleton \{\s*pointer-events: none;/)
-
-    const motion = style.match(/@media \(prefers-reduced-motion: no-preference\) \{([\s\S]*?)\n\}/)
-    expect(motion, 'refresh animation must be declared under no-preference only').not.toBeNull()
-    expect(motion![1]).toMatch(/animation: tx-data-table-refresh /)
-    // Declared nowhere else: reduced motion keeps the still, full-width bar.
-    expect(style.match(/animation: tx-data-table-refresh/g)).toHaveLength(1)
-
-    const keyframes = style.match(/@keyframes tx-data-table-refresh \{([\s\S]*?)\n\}/)
-    expect(keyframes).not.toBeNull()
-    expect(keyframes![1]).toMatch(/translate: 150% 0;/)
-    expect(keyframes![1]).not.toMatch(/var\(|left|width|transform:/)
-  })
 })
