@@ -304,21 +304,32 @@ export class FileProviderSearchResultService {
     // cleanupStaleCandidates — a DESTRUCTIVE removal from that same index.
     // Reading the primary here under the split would judge live search-home
     // entries against a stale/empty catalog and delete them.
-    const rows = await dbUtils
-      .getFileIndexReadDb()
-      .select({
-        file: filesSchema,
-        extensionKey: fileExtensions.key,
-        extensionValue: fileExtensions.value
-      })
-      .from(filesSchema)
-      .leftJoin(fileExtensions, eq(filesSchema.id, fileExtensions.fileId))
-      .where(
-        and(
-          or(fileTypeIs('file'), fileTypeIs('directory')),
-          inArray(filesSchema.path, candidatePaths)
-        )
-      )
+    const workerLoadedRows =
+      searchIndex && typeof searchIndex.loadFileCandidatesByPaths === 'function'
+        ? await searchIndex.loadFileCandidatesByPaths(candidatePaths, signal).catch((err) => {
+            this.deps.logDebug('Worker candidate hydration failed, falling back to local query', {
+              error: err instanceof Error ? err.message : String(err)
+            })
+            return null
+          })
+        : null
+    const rows =
+      workerLoadedRows ??
+      (await dbUtils
+        .getFileIndexReadDb()
+        .select({
+          file: filesSchema,
+          extensionKey: fileExtensions.key,
+          extensionValue: fileExtensions.value
+        })
+        .from(filesSchema)
+        .leftJoin(fileExtensions, eq(filesSchema.id, fileExtensions.fileId))
+        .where(
+          and(
+            or(fileTypeIs('file'), fileTypeIs('directory')),
+            inArray(filesSchema.path, candidatePaths)
+          )
+        ))
     if (signal.aborted) return this.empty(query)
     searchLogger.fileDataResults(rows.length, this.now() - dataFetchStart)
     this.deps.logDebug('Loaded candidate rows for scoring', {
@@ -455,16 +466,30 @@ export class FileProviderSearchResultService {
     // embeddings.sourceId carries the ids of the home the worker writes —
     // resolving them against the primary would be a cross-home id collision
     // (the wrong file could be displayed). Same-home read only.
-    const rows = await dbUtils
-      .getFileIndexReadDb()
-      .select({
-        file: filesSchema,
-        extensionKey: fileExtensions.key,
-        extensionValue: fileExtensions.value
-      })
-      .from(filesSchema)
-      .leftJoin(fileExtensions, eq(filesSchema.id, fileExtensions.fileId))
-      .where(and(eq(filesSchema.type, 'file'), inArray(filesSchema.id, [...scoreByFileId.keys()])))
+    const fileIds = [...scoreByFileId.keys()]
+    const searchIndex = this.deps.getSearchIndex()
+    const workerLoadedRows =
+      searchIndex && typeof searchIndex.loadFileCandidatesByIds === 'function'
+        ? await searchIndex.loadFileCandidatesByIds(fileIds, signal).catch((err) => {
+            this.deps.logDebug(
+              'Worker semantic candidate hydration failed, falling back to local query',
+              { error: err instanceof Error ? err.message : String(err) }
+            )
+            return null
+          })
+        : null
+    const rows =
+      workerLoadedRows ??
+      (await dbUtils
+        .getFileIndexReadDb()
+        .select({
+          file: filesSchema,
+          extensionKey: fileExtensions.key,
+          extensionValue: fileExtensions.value
+        })
+        .from(filesSchema)
+        .leftJoin(fileExtensions, eq(filesSchema.id, fileExtensions.fileId))
+        .where(and(eq(filesSchema.type, 'file'), inArray(filesSchema.id, fileIds))))
     if (signal.aborted || !this.deps.isContentIndexingEnabled()) return []
 
     const scored: Array<{ item: TuffItem; score: number }> = []

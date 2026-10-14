@@ -122,6 +122,12 @@ export interface SearchIndexProviderReplacementSummary {
   indexedItems: number
 }
 
+export interface LoadedFileCandidateRow {
+  file: typeof schema.files.$inferSelect
+  extensionKey: string | null
+  extensionValue: string | null
+}
+
 interface PreparedIndexDocument extends SearchIndexDocument {
   keywordEntries: SearchIndexKeyword[]
 }
@@ -954,6 +960,163 @@ export class SearchIndexService {
     }
     this.zeroResultDiagnosticAt.set(providerId, now)
     return true
+  }
+
+  /**
+   * Offload candidate file row hydration from Electron main thread to read worker.
+   * Performs LEFT JOIN on files and file_extensions within the search database read home.
+   */
+  async loadFileCandidatesByPaths(
+    paths: string[],
+    signal?: AbortSignal
+  ): Promise<LoadedFileCandidateRow[]> {
+    const uniquePaths = Array.from(new Set(paths.map((p) => p.trim()).filter(Boolean)))
+    if (uniquePaths.length === 0) return []
+    signal?.throwIfAborted()
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+
+    const query = sql`
+      SELECT
+        f.id AS id,
+        f.path AS path,
+        f.name AS name,
+        f.display_name AS displayName,
+        f.extension AS extension,
+        f.size AS size,
+        f.mtime AS mtime,
+        f.ctime AS ctime,
+        f.last_indexed_at AS lastIndexedAt,
+        f.is_dir AS isDir,
+        f.type AS type,
+        f.content AS content,
+        f.embedding_status AS embeddingStatus,
+        fe.key AS extensionKey,
+        fe.value AS extensionValue
+      FROM files f
+      LEFT JOIN file_extensions fe ON f.id = fe.file_id
+      WHERE (+f.type = 'file' OR +f.type = 'directory')
+        AND f.path IN (${sql.join(
+          uniquePaths.map((p) => sql`${p}`),
+          sql`, `
+        )})
+    `
+    const rows = await this.readAll<{
+      id: number
+      path: string
+      name: string
+      displayName: string | null
+      extension: string | null
+      size: number | null
+      mtime: number | string
+      ctime: number | string
+      lastIndexedAt: number | string
+      isDir: number | boolean
+      type: string
+      content: string | null
+      embeddingStatus: string
+      extensionKey: string | null
+      extensionValue: string | null
+    }>(query, signal)
+
+    signal?.throwIfAborted()
+    return rows.map((row) => ({
+      file: {
+        id: row.id,
+        path: row.path,
+        name: row.name,
+        displayName: row.displayName ?? null,
+        extension: row.extension ?? null,
+        size: row.size ?? null,
+        mtime: new Date(row.mtime || 0),
+        ctime: new Date(row.ctime || 0),
+        lastIndexedAt: new Date(row.lastIndexedAt || 0),
+        isDir: Boolean(row.isDir),
+        type: row.type,
+        content: row.content ?? null,
+        embeddingStatus: (row.embeddingStatus as 'none' | 'pending' | 'completed') || 'none'
+      },
+      extensionKey: row.extensionKey ?? null,
+      extensionValue: row.extensionValue ?? null
+    }))
+  }
+
+  /**
+   * Offload semantic recall candidate row hydration from Electron main thread to read worker.
+   */
+  async loadFileCandidatesByIds(
+    ids: number[],
+    signal?: AbortSignal
+  ): Promise<LoadedFileCandidateRow[]> {
+    const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id))))
+    if (uniqueIds.length === 0) return []
+    signal?.throwIfAborted()
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+
+    const query = sql`
+      SELECT
+        f.id AS id,
+        f.path AS path,
+        f.name AS name,
+        f.display_name AS displayName,
+        f.extension AS extension,
+        f.size AS size,
+        f.mtime AS mtime,
+        f.ctime AS ctime,
+        f.last_indexed_at AS lastIndexedAt,
+        f.is_dir AS isDir,
+        f.type AS type,
+        f.content AS content,
+        f.embedding_status AS embeddingStatus,
+        fe.key AS extensionKey,
+        fe.value AS extensionValue
+      FROM files f
+      LEFT JOIN file_extensions fe ON f.id = fe.file_id
+      WHERE +f.type = 'file'
+        AND f.id IN (${sql.join(
+          uniqueIds.map((id) => sql`${id}`),
+          sql`, `
+        )})
+    `
+    const rows = await this.readAll<{
+      id: number
+      path: string
+      name: string
+      displayName: string | null
+      extension: string | null
+      size: number | null
+      mtime: number | string
+      ctime: number | string
+      lastIndexedAt: number | string
+      isDir: number | boolean
+      type: string
+      content: string | null
+      embeddingStatus: string
+      extensionKey: string | null
+      extensionValue: string | null
+    }>(query, signal)
+
+    signal?.throwIfAborted()
+    return rows.map((row) => ({
+      file: {
+        id: row.id,
+        path: row.path,
+        name: row.name,
+        displayName: row.displayName ?? null,
+        extension: row.extension ?? null,
+        size: row.size ?? null,
+        mtime: new Date(row.mtime || 0),
+        ctime: new Date(row.ctime || 0),
+        lastIndexedAt: new Date(row.lastIndexedAt || 0),
+        isDir: Boolean(row.isDir),
+        type: row.type,
+        content: row.content ?? null,
+        embeddingStatus: (row.embeddingStatus as 'none' | 'pending' | 'completed') || 'none'
+      },
+      extensionKey: row.extensionKey ?? null,
+      extensionValue: row.extensionValue ?? null
+    }))
   }
 
   /**

@@ -49,6 +49,54 @@ async function withIsolatedIndex(
         PRIMARY KEY (provider_id, item_id)
       )
     `)
+    await writerClient.execute(`
+      CREATE TABLE IF NOT EXISTS files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        display_name TEXT,
+        extension TEXT,
+        size INTEGER,
+        mtime INTEGER NOT NULL,
+        ctime INTEGER NOT NULL,
+        last_indexed_at INTEGER NOT NULL DEFAULT 0,
+        is_dir INTEGER NOT NULL DEFAULT 0,
+        type TEXT NOT NULL DEFAULT 'file',
+        content TEXT,
+        embedding_status TEXT NOT NULL DEFAULT 'none'
+      )
+    `)
+    await writerClient.execute(`
+      CREATE TABLE IF NOT EXISTS file_extensions (
+        file_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT,
+        PRIMARY KEY (file_id, key)
+      )
+    `)
+    await writerClient.execute({
+      sql: `INSERT INTO files (id, path, name, display_name, extension, size, mtime, ctime, last_indexed_at, is_dir, type, content, embedding_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        1,
+        '/tmp/test.txt',
+        'test.txt',
+        'Test Doc',
+        '.txt',
+        1234,
+        1700000000000,
+        1700000000000,
+        1700000000000,
+        0,
+        'file',
+        'content',
+        'completed'
+      ]
+    })
+    await writerClient.execute({
+      sql: `INSERT INTO file_extensions (file_id, key, value) VALUES (?, ?, ?)`,
+      args: [1, 'customKey', 'customValue']
+    })
 
     const direct = new SearchIndexService(drizzle(writerClient) as never, {
       directMode: true,
@@ -250,6 +298,28 @@ describe('SearchIndexService read executor parity', () => {
       const details = plan.rows.map((row) => ('detail' in row ? String(row.detail) : '')).join(' ')
       expect(details).toContain('USING INDEX idx_keyword_mappings_provider_keyword')
       expect(details).not.toContain('SCAN keyword_mappings')
+    })
+  })
+
+  it('hydrates file candidates through the isolated reader executor off the main thread', async () => {
+    await withIsolatedIndex(async ({ reader, reads }) => {
+      reads.length = 0
+      const loaded = await reader.loadFileCandidatesByPaths(['/tmp/test.txt'])
+      expect(loaded).toHaveLength(1)
+      expect(loaded[0]?.file.name).toBe('test.txt')
+      expect(loaded[0]?.file.displayName).toBe('Test Doc')
+      expect(loaded[0]?.file.path).toBe('/tmp/test.txt')
+      expect(loaded[0]?.extensionKey).toBe('customKey')
+      expect(loaded[0]?.extensionValue).toBe('customValue')
+      expect(reads).toHaveLength(1)
+      expect(reads[0]?.sql).toContain('FROM files f')
+      expect(reads[0]?.sql).toContain('LEFT JOIN file_extensions fe')
+
+      reads.length = 0
+      const byIds = await reader.loadFileCandidatesByIds([1])
+      expect(byIds).toHaveLength(1)
+      expect(byIds[0]?.file.id).toBe(1)
+      expect(reads).toHaveLength(1)
     })
   })
 })
