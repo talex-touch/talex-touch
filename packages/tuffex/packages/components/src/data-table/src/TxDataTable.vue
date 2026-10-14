@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { DataTableColumn, DataTableEmits, DataTableHeaderSlotProps, DataTableKey, DataTableProps, DataTableSortOrder, DataTableSortState } from './types'
+import type { DataTableColumn, DataTableEmits, DataTableFilterOption, DataTableFilterState, DataTableHeaderSlotProps, DataTableKey, DataTableProps, DataTableSortOrder, DataTableSortState } from './types'
 import { computed, getCurrentInstance, ref, useId, useSlots, watch } from 'vue'
 import { TxCheckbox } from '../../checkbox'
 import { TxEmptyState } from '../../empty-state'
+import { TxPopover } from '../../popover'
 import { TxSkeleton } from '../../skeleton'
 import { TxSpinner } from '../../spinner'
-
 defineOptions({ name: 'TxDataTable' })
 
 // Kept in step with `.tx-data-table__th--select` / `--expand` in the style block:
@@ -43,8 +43,9 @@ const props = withDefaults(defineProps<DataTableProps<any>>(), {
   stickyHeader: false,
   stickyFooter: false,
   highlightSelected: false,
+  filterOnClient: true,
+  autoStickyActions: true,
 })
-
 const emit = defineEmits<DataTableEmits<any>>()
 
 const slots = useSlots()
@@ -177,15 +178,288 @@ function defaultSorter(a: any, b: any): number {
   const sb = String(b)
   return sa.localeCompare(sb)
 }
+const DATE_FILTER_PRESETS = [
+  { label: '今天', value: 'today' },
+  { label: '近 3 天', value: '3d' },
+  { label: '近 7 天', value: '7d' },
+  { label: '近 30 天', value: '30d' },
+]
+
+const effectiveColumns = computed<DataTableColumn[]>(() => {
+  return props.columns.map(col => {
+    const next: DataTableColumn = { ...col }
+    const key = col.key?.toLowerCase() || ''
+    const title = typeof col.title === 'string' ? col.title : ''
+    const isAction = col.type === 'actions' || key === 'actions' || key === 'action' || title.includes('操作')
+
+    if (isAction) {
+      if (props.autoStickyActions !== false && col.fixed === undefined) {
+        next.fixed = 'right'
+      }
+      if (col.align === undefined) {
+        next.align = 'right'
+      }
+      if (col.nowrap === undefined) {
+        next.nowrap = true
+      }
+      if (col.width === undefined && col.minWidth === undefined) {
+        next.width = 140
+      }
+      next.type = next.type || 'actions'
+      return next
+    }
+
+    if (col.type === 'number') {
+      if (col.align === undefined) {
+        next.align = 'right'
+      }
+      if (col.nowrap === undefined) {
+        next.nowrap = true
+      }
+      if (col.sortable === undefined) {
+        next.sortable = true
+      }
+      if (!col.sorter) {
+        next.sorter = (a: any, b: any) => {
+          const va = Number(getCellValue(a, col))
+          const vb = Number(getCellValue(b, col))
+          if (Number.isNaN(va) && Number.isNaN(vb)) return 0
+          if (Number.isNaN(va)) return -1
+          if (Number.isNaN(vb)) return 1
+          return va - vb
+        }
+      }
+    } else if (col.type === 'datetime' || col.type === 'date') {
+      if (col.nowrap === undefined) {
+        next.nowrap = true
+      }
+      if (col.sortable === undefined) {
+        next.sortable = true
+      }
+      if (!col.sorter) {
+        next.sorter = (a: any, b: any) => {
+          const da = new Date(String(getCellValue(a, col) ?? '')).getTime()
+          const db = new Date(String(getCellValue(b, col) ?? '')).getTime()
+          if (Number.isNaN(da) && Number.isNaN(db)) return 0
+          if (Number.isNaN(da)) return -1
+          if (Number.isNaN(db)) return 1
+          return da - db
+        }
+      }
+    } else if (col.type === 'tag') {
+      if (col.nowrap === undefined) {
+        next.nowrap = true
+      }
+    } else if (col.type === 'source') {
+      if (col.nowrap === undefined) {
+        next.nowrap = true
+      }
+    }
+
+    return next
+  })
+})
+
+const filterOpenState = ref<Record<string, boolean>>({})
+const tagFilterQueries = ref<Record<string, string>>({})
+const localFilter = ref<DataTableFilterState>({ ...(props.defaultFilter ?? {}) })
+
+watch(
+  () => props.defaultFilter,
+  next => {
+    localFilter.value = { ...(next ?? {}) }
+  },
+  { deep: true },
+)
+
+const activeFilter = computed<DataTableFilterState>(() => {
+  return props.filter !== undefined ? props.filter : localFilter.value
+})
+
+function setColumnFilter(key: string, value: unknown) {
+  const next: DataTableFilterState = { ...activeFilter.value }
+  if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) {
+    delete next[key]
+  } else {
+    next[key] = value
+  }
+  localFilter.value = next
+  emit('update:filter', next)
+  emit('filterChange', next)
+}
+
+function clearColumnFilter(key: string) {
+  setColumnFilter(key, undefined)
+}
+
+function isColumnFiltered(key: string): boolean {
+  const val = activeFilter.value[key]
+  if (val === undefined || val === null || val === '') return false
+  if (Array.isArray(val)) return val.length > 0
+  if (typeof val === 'object') {
+    return Object.values(val as Record<string, unknown>).some(v => v !== undefined && v !== null && v !== '')
+  }
+  return true
+}
+
+function isTagAllSelected(colKey: string): boolean {
+  const val = activeFilter.value[colKey]
+  if (!val) return true
+  if (Array.isArray(val)) return val.length === 0
+  return false
+}
+
+function getColumnFilterOptions(col: DataTableColumn): DataTableFilterOption[] {
+  if (col.filterOptions && col.filterOptions.length > 0)
+    return col.filterOptions
+  const values = new Set<string>()
+  for (const row of props.data) {
+    const v = getCellValue(row, col)
+    if (v != null && v !== '') {
+      const label = typeof v === 'object' && v && 'label' in v ? String((v as { label: unknown }).label) : String(v)
+      if (label) values.add(label)
+    }
+  }
+  return Array.from(values).map(val => ({ label: val, value: val }))
+}
+
+function getFilteredTagOptions(col: DataTableColumn): DataTableFilterOption[] {
+  const all = getColumnFilterOptions(col)
+  const query = (tagFilterQueries.value[col.key] || '').trim().toLowerCase()
+  if (!query) return all
+  return all.filter(opt => opt.label.toLowerCase().includes(query))
+}
+
+function isTagOptionSelected(colKey: string, val: unknown): boolean {
+  const current = activeFilter.value[colKey]
+  if (!current) return false
+  if (Array.isArray(current)) return current.includes(val) || current.includes(String(val))
+  return current === val || String(current) === String(val)
+}
+
+function toggleTagFilter(colKey: string, val: unknown) {
+  const current = activeFilter.value[colKey]
+  let next: unknown[]
+  if (Array.isArray(current)) {
+    next = [...current]
+    const idx = next.findIndex(item => item === val || String(item) === String(val))
+    if (idx >= 0) {
+      next.splice(idx, 1)
+    } else {
+      next.push(val)
+    }
+  } else if (current !== undefined && current !== null && current !== '') {
+    if (current === val || String(current) === String(val)) {
+      next = []
+    } else {
+      next = [current, val]
+    }
+  } else {
+    next = [val]
+  }
+  setColumnFilter(colKey, next.length ? next : undefined)
+}
+
+function getNumberFilterVal(colKey: string, bound: 'min' | 'max'): string | number {
+  const current = activeFilter.value[colKey]
+  if (typeof current === 'object' && current !== null) {
+    const val = (current as Record<string, unknown>)[bound]
+    return (val as string | number) ?? ''
+  }
+  if (bound === 'min' && typeof current === 'number') return current
+  return ''
+}
+
+function setNumberFilterVal(colKey: string, bound: 'min' | 'max', rawVal: string) {
+  const current = typeof activeFilter.value[colKey] === 'object' && activeFilter.value[colKey] !== null
+    ? { ...(activeFilter.value[colKey] as Record<string, unknown>) }
+    : {}
+  const num = rawVal.trim() === '' ? undefined : Number(rawVal)
+  if (num === undefined || Number.isNaN(num)) {
+    delete current[bound]
+  } else {
+    current[bound] = num
+  }
+  if (current.min === undefined && current.max === undefined) {
+    setColumnFilter(colKey, undefined)
+  } else {
+    setColumnFilter(colKey, current)
+  }
+}
 
 const displayRows = computed(() => {
-  const rows = props.data.slice()
+  let rows = props.data.slice()
+
+  if (props.filterOnClient) {
+    const filters = activeFilter.value
+    const filterKeys = Object.keys(filters)
+    if (filterKeys.length > 0) {
+      rows = rows.filter(row => {
+        return filterKeys.every(k => {
+          const targetCol = effectiveColumns.value.find(c => c.key === k)
+          if (!targetCol) return true
+          const filterVal = filters[k]
+          if (filterVal === undefined || filterVal === null || filterVal === '') return true
+          const cellVal = getCellValue(row, targetCol)
+
+          if (targetCol.type === 'tag') {
+            const rawVal = cellVal && typeof cellVal === 'object' && 'label' in cellVal ? (cellVal as { label: unknown }).label : cellVal
+            if (Array.isArray(filterVal)) {
+              if (!filterVal.length) return true
+              return filterVal.includes(rawVal) || filterVal.includes(String(rawVal))
+            }
+            return String(rawVal) === String(filterVal)
+          }
+
+          if (targetCol.type === 'number') {
+            const num = Number(cellVal)
+            if (typeof filterVal === 'object' && filterVal !== null) {
+              const { min, max } = filterVal as { min?: number, max?: number }
+              if (min != null && !Number.isNaN(Number(min)) && num < Number(min)) return false
+              if (max != null && !Number.isNaN(Number(max)) && num > Number(max)) return false
+              return true
+            }
+            return num === Number(filterVal)
+          }
+
+          if (targetCol.type === 'datetime' || targetCol.type === 'date') {
+            const t = new Date(String(cellVal ?? '')).getTime()
+            if (Number.isNaN(t)) return false
+            const now = Date.now()
+            if (filterVal === 'today') {
+              const startOfToday = new Date().setHours(0, 0, 0, 0)
+              return t >= startOfToday
+            }
+            if (filterVal === '3d') {
+              return t >= now - 3 * 86400000
+            }
+            if (filterVal === '7d') {
+              return t >= now - 7 * 86400000
+            }
+            if (filterVal === '30d') {
+              return t >= now - 30 * 86400000
+            }
+            if (typeof filterVal === 'object' && filterVal !== null) {
+              const { start, end } = filterVal as { start?: number, end?: number }
+              if (start != null && t < start) return false
+              if (end != null && t > end) return false
+              return true
+            }
+            return true
+          }
+
+          return String(cellVal ?? '').toLowerCase().includes(String(filterVal).toLowerCase())
+        })
+      })
+    }
+  }
+
   if (!props.sortOnClient)
     return rows
   const state = sortState.value
   if (!state)
     return rows
-  const col = props.columns.find(c => c.key === state.key)
+  const col = effectiveColumns.value.find(c => c.key === state.key)
   if (!col)
     return rows
   const dir = state.order === 'desc' ? -1 : 1
@@ -295,8 +569,10 @@ function formatCell(row: any, column: DataTableColumn, index: number): string {
   const value = getCellValue(row, column)
   if (column.format)
     return column.format(value, row, index)
-  if (value == null)
-    return ''
+  if (value == null || value === '')
+    return '—'
+  if (typeof value === 'object' && value && 'label' in value)
+    return String(value.label)
   return String(value)
 }
 
@@ -332,14 +608,14 @@ const fixedColumnOffsets = computed(() => {
   let leftOffset = (props.expandable ? EXPAND_COLUMN_WIDTH : 0) + (props.selectable ? SELECT_COLUMN_WIDTH : 0)
   let rightOffset = 0
 
-  for (const column of props.columns) {
+  for (const column of effectiveColumns.value) {
     if (getFixedSide(column) !== 'left')
       continue
     left.set(column.key, `${leftOffset}px`)
     leftOffset += getStickyWidth(column)
   }
 
-  for (const column of [...props.columns].reverse()) {
+  for (const column of [...effectiveColumns.value].reverse()) {
     if (getFixedSide(column) !== 'right')
       continue
     right.set(column.key, `${rightOffset}px`)
@@ -349,7 +625,7 @@ const fixedColumnOffsets = computed(() => {
   return { left, right }
 })
 
-const hasFixedColumns = computed(() => props.columns.some(column => Boolean(getFixedSide(column))))
+const hasFixedColumns = computed(() => effectiveColumns.value.some(column => Boolean(getFixedSide(column))))
 
 function columnStyle(column: DataTableColumn): Record<string, string> {
   const style: Record<string, string> = {}
@@ -385,18 +661,22 @@ function columnClass(column: DataTableColumn, type: 'header' | 'cell') {
       'is-nowrap': props.nowrap || column.nowrap,
       'is-sortable': type === 'header' && column.sortable,
       'is-sorted': type === 'header' && sortState.value?.key === column.key,
+      'has-filter': type === 'header' && Boolean(column.filter),
+      'is-filtered': isColumnFiltered(column.key),
+      [`is-type-${column.type}`]: Boolean(column.type),
+      'is-numeric': column.type === 'number',
     },
   ]
 }
 
 const colspan = computed(
-  () => props.columns.length + (props.selectable ? 1 : 0) + (props.expandable ? 1 : 0),
+  () => effectiveColumns.value.length + (props.selectable ? 1 : 0) + (props.expandable ? 1 : 0),
 )
 
 // Plain functions, not computeds: slot presence is read at render time, so a
 // parent that starts passing a footer slot gets a footer without a key change.
 function hasFooter(): boolean {
-  return Boolean(slots.footer) || props.columns.some(column => Boolean(slots[`footer-${column.key}`]))
+  return Boolean(slots.footer) || effectiveColumns.value.some(column => Boolean(slots[`footer-${column.key}`]))
 }
 
 function rowClasses(row: any, index: number) {
@@ -477,7 +757,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
             />
           </th>
           <th
-            v-for="column in columns"
+            v-for="column in effectiveColumns"
             :key="column.key"
             class="tx-data-table__th"
             scope="col"
@@ -485,28 +765,169 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
             :style="columnStyle(column)"
             :aria-sort="getColumnAriaSort(column)"
           >
-            <button
-              v-if="column.sortable"
-              type="button"
-              class="tx-data-table__sort-button"
-              :class="`is-align-${column.align || 'left'}`"
-              @click="toggleSort(column)"
-            >
-              <slot :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
+            <div v-if="column.filter" class="tx-data-table__th-wrap" :class="`is-align-${column.align || 'left'}`">
+              <button
+                v-if="column.sortable"
+                type="button"
+                class="tx-data-table__sort-button"
+                :class="`is-align-${column.align || 'left'}`"
+                @click="toggleSort(column)"
+              >
+                <slot :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
+                  {{ column.title }}
+                </slot>
+                <span class="tx-data-table__sort" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'asc' }">
+                    <path fill="currentColor" d="M7 14l5-5 5 5z" />
+                  </svg>
+                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'desc' }">
+                    <path fill="currentColor" d="M7 10l5 5 5-5z" />
+                  </svg>
+                </span>
+              </button>
+              <slot v-else :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
+                <span class="tx-data-table__th-title">{{ column.title }}</span>
+              </slot>
+
+              <TxPopover
+                v-model="filterOpenState[column.key]"
+                placement="bottom-start"
+                :offset="6"
+                panel-background="pure"
+                :panel-radius="12"
+                panel-shadow="soft"
+                class="tx-data-table__filter-popover"
+              >
+                <template #reference>
+                  <button
+                    type="button"
+                    class="tx-data-table__filter-trigger"
+                    :class="{ 'is-active': isColumnFiltered(column.key) }"
+                    :aria-label="`Filter ${column.title}`"
+                    @click.stop
+                  >
+                    <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                      <path fill="currentColor" d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
+                    </svg>
+                  </button>
+                </template>
+
+                <div class="tx-data-table__filter-panel" @click.stop>
+                  <slot
+                    :name="`filter-${column.key}`"
+                    :column="column"
+                    :filter-value="activeFilter[column.key]"
+                    :set-filter="(v: unknown) => setColumnFilter(column.key, v)"
+                    :clear-filter="() => clearColumnFilter(column.key)"
+                  >
+                    <div v-if="column.type === 'tag'" class="tx-data-table__tag-filter">
+                      <input
+                        v-if="getColumnFilterOptions(column).length >= 8"
+                        v-model="tagFilterQueries[column.key]"
+                        class="tx-data-table__filter-search"
+                        placeholder="搜索..."
+                      />
+                      <div class="tx-data-table__filter-options">
+                        <button
+                          type="button"
+                          class="tx-data-table__filter-option"
+                          :class="{ 'is-selected': isTagAllSelected(column.key) }"
+                          @click="clearColumnFilter(column.key)"
+                        >
+                          <span>全部</span>
+                        </button>
+                        <button
+                          v-for="opt in getFilteredTagOptions(column)"
+                          :key="String(opt.value)"
+                          type="button"
+                          class="tx-data-table__filter-option"
+                          :class="{ 'is-selected': isTagOptionSelected(column.key, opt.value) }"
+                          @click="toggleTagFilter(column.key, opt.value)"
+                        >
+                          <span>{{ opt.label }}</span>
+                          <span v-if="isTagOptionSelected(column.key, opt.value)" class="tx-data-table__filter-check">✓</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div v-else-if="column.type === 'datetime' || column.type === 'date'" class="tx-data-table__date-filter">
+                      <div class="tx-data-table__filter-options">
+                        <button
+                          type="button"
+                          class="tx-data-table__filter-option"
+                          :class="{ 'is-selected': !activeFilter[column.key] }"
+                          @click="clearColumnFilter(column.key)"
+                        >
+                          全部时间
+                        </button>
+                        <button
+                          v-for="opt in DATE_FILTER_PRESETS"
+                          :key="opt.value"
+                          type="button"
+                          class="tx-data-table__filter-option"
+                          :class="{ 'is-selected': activeFilter[column.key] === opt.value }"
+                          @click="setColumnFilter(column.key, opt.value)"
+                        >
+                          {{ opt.label }}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div v-else-if="column.type === 'number'" class="tx-data-table__number-filter">
+                      <div class="tx-data-table__number-inputs">
+                        <input
+                          type="number"
+                          class="tx-data-table__range-input"
+                          placeholder="Min"
+                          :value="getNumberFilterVal(column.key, 'min')"
+                          @input="setNumberFilterVal(column.key, 'min', ($event.target as HTMLInputElement).value)"
+                        />
+                        <span class="tx-data-table__range-sep">~</span>
+                        <input
+                          type="number"
+                          class="tx-data-table__range-input"
+                          placeholder="Max"
+                          :value="getNumberFilterVal(column.key, 'max')"
+                          @input="setNumberFilterVal(column.key, 'max', ($event.target as HTMLInputElement).value)"
+                        />
+                      </div>
+                      <div class="tx-data-table__filter-actions">
+                        <button type="button" class="tx-data-table__btn-reset" @click="clearColumnFilter(column.key)">
+重置
+</button>
+                        <button type="button" class="tx-data-table__btn-confirm" @click="filterOpenState[column.key] = false">
+完成
+</button>
+                      </div>
+                    </div>
+                  </slot>
+                </div>
+              </TxPopover>
+            </div>
+            <template v-else>
+              <button
+                v-if="column.sortable"
+                type="button"
+                class="tx-data-table__sort-button"
+                :class="`is-align-${column.align || 'left'}`"
+                @click="toggleSort(column)"
+              >
+                <slot :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
+                  {{ column.title }}
+                </slot>
+                <span class="tx-data-table__sort" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'asc' }">
+                    <path fill="currentColor" d="M7 14l5-5 5 5z" />
+                  </svg>
+                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'desc' }">
+                    <path fill="currentColor" d="M7 10l5 5 5-5z" />
+                  </svg>
+                </span>
+              </button>
+              <slot v-else :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
                 {{ column.title }}
               </slot>
-              <span class="tx-data-table__sort" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'asc' }">
-                  <path fill="currentColor" d="M7 14l5-5 5 5z" />
-                </svg>
-                <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'desc' }">
-                  <path fill="currentColor" d="M7 10l5 5 5-5z" />
-                </svg>
-              </span>
-            </button>
-            <slot v-else :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
-              {{ column.title }}
-            </slot>
+            </template>
           </th>
         </tr>
       </thead>
@@ -533,7 +954,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
               <TxSkeleton class="tx-data-table__skeleton is-check" :width="18" :height="18" :radius="6" />
             </td>
             <td
-              v-for="(column, columnIndex) in columns"
+              v-for="(column, columnIndex) in effectiveColumns"
               :key="column.key"
               class="tx-data-table__cell"
               :class="columnClass(column, 'cell')"
@@ -581,7 +1002,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
               />
             </td>
             <td
-              v-for="column in columns"
+              v-for="column in effectiveColumns"
               :key="column.key"
               class="tx-data-table__cell"
               :class="columnClass(column, 'cell')"
@@ -594,7 +1015,24 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
                 :value="getCellValue(row, column)"
                 :index="index"
               >
-                {{ formatCell(row, column, index) }}
+                <span v-if="column.type === 'tag'" class="tx-data-table__tag-pill">
+                  {{ formatCell(row, column, index) }}
+                </span>
+                <span v-else-if="column.type === 'source'" class="tx-data-table__source-badge" :title="String(getCellValue(row, column) ?? '')">
+                  {{ formatCell(row, column, index) }}
+                </span>
+                <span v-else-if="column.type === 'datetime' || column.type === 'date'" class="tx-data-table__datetime" :title="String(getCellValue(row, column) ?? '')">
+                  <svg class="tx-data-table__time-icon" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                    <path fill="currentColor" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z" />
+                  </svg>
+                  <span>{{ formatCell(row, column, index) }}</span>
+                </span>
+                <span v-else-if="column.type === 'number'" class="tx-data-table__number">
+                  {{ formatCell(row, column, index) }}
+                </span>
+                <template v-else>
+                  {{ formatCell(row, column, index) }}
+                </template>
               </slot>
             </td>
           </tr>
@@ -620,12 +1058,12 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
         <tr class="tx-data-table__footer-row">
           <!-- The `footer` slot supplies the cells itself, so a summary row can
                span columns; `footer-<key>` fills one cell per column. -->
-          <slot v-if="$slots.footer" name="footer" :columns="columns" :data="data" :selected-keys="selectedKeys" />
+          <slot v-if="$slots.footer" name="footer" :columns="effectiveColumns" :data="data" :selected-keys="selectedKeys" />
           <template v-else>
             <td v-if="expandable" class="tx-data-table__footer-cell tx-data-table__footer-cell--expand" />
             <td v-if="selectable" class="tx-data-table__footer-cell tx-data-table__footer-cell--select" />
             <td
-              v-for="column in columns"
+              v-for="column in effectiveColumns"
               :key="column.key"
               class="tx-data-table__footer-cell"
               :class="columnClass(column, 'cell')"
@@ -1013,5 +1451,214 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 .tx-data-table.is-sticky-shell.has-sticky-footer .tx-data-table__footer-row :deep(td.is-fixed) {
   z-index: 6;
+}
+
+/* Filter & type styling -------------------------------------------------- */
+
+.tx-data-table__th-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+
+  &.is-align-center {
+    justify-content: center;
+  }
+
+  &.is-align-right {
+    justify-content: flex-end;
+  }
+}
+
+.tx-data-table__th.has-filter {
+  padding-right: 6px;
+}
+
+.tx-data-table__filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tx-text-color-placeholder, #a8abb2);
+  cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease;
+
+  &:hover {
+    color: var(--tx-text-color-primary, #303133);
+    background: color-mix(in srgb, var(--tx-fill-color, #f0f2f5) 80%, transparent);
+  }
+
+  &.is-active {
+    color: var(--tx-color-primary, #409eff);
+    background: color-mix(in srgb, var(--tx-color-primary, #409eff) 12%, transparent);
+  }
+}
+
+.tx-data-table__filter-panel {
+  padding: 8px;
+  min-width: 130px;
+  max-width: 240px;
+  font-size: 13px;
+  color: var(--tx-text-color-primary, #303133);
+}
+
+.tx-data-table__filter-search {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--tx-border-color-lighter, #ebeef5);
+  border-radius: 6px;
+  background: var(--tx-bg-color, #fff);
+  color: inherit;
+  margin-bottom: 6px;
+  outline: none;
+
+  &:focus {
+    border-color: var(--tx-color-primary, #409eff);
+  }
+}
+
+.tx-data-table__filter-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tx-data-table__filter-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tx-text-color-regular, #606266);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+
+  &:hover {
+    background: var(--tx-fill-color-light, #f5f7fa);
+    color: var(--tx-text-color-primary, #303133);
+  }
+
+  &.is-selected {
+    color: var(--tx-color-primary, #409eff);
+    font-weight: 500;
+    background: color-mix(in srgb, var(--tx-color-primary, #409eff) 10%, transparent);
+  }
+}
+
+.tx-data-table__filter-check {
+  font-size: 11px;
+}
+
+.tx-data-table__number-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tx-data-table__range-input {
+  box-sizing: border-box;
+  width: 72px;
+  padding: 4px 6px;
+  border: 1px solid var(--tx-border-color-lighter, #ebeef5);
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+
+  &:focus {
+    border-color: var(--tx-color-primary, #409eff);
+  }
+}
+
+.tx-data-table__range-sep {
+  color: var(--tx-text-color-placeholder, #a8abb2);
+  font-size: 12px;
+}
+
+.tx-data-table__filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.tx-data-table__btn-reset,
+.tx-data-table__btn-confirm {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tx-data-table__btn-reset {
+  background: transparent;
+  color: var(--tx-text-color-secondary, #909399);
+
+  &:hover {
+    color: var(--tx-text-color-primary, #303133);
+  }
+}
+
+.tx-data-table__btn-confirm {
+  background: var(--tx-color-primary, #409eff);
+  color: #fff;
+}
+
+.tx-data-table__tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--tx-fill-color, #f0f2f5);
+  color: var(--tx-text-color-regular, #606266);
+}
+
+.tx-data-table__source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--tx-fill-color-lighter, #fafafa);
+  border: 1px solid var(--tx-border-color-lighter, #ebeef5);
+  color: var(--tx-text-color-secondary, #909399);
+}
+
+.tx-data-table__datetime {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--tx-text-color-regular, #606266);
+}
+
+.tx-data-table__time-icon {
+  flex-shrink: 0;
+  color: var(--tx-text-color-placeholder, #a8abb2);
+}
+
+.tx-data-table__number,
+.tx-data-table__cell.is-numeric,
+.tx-data-table__cell.is-type-number {
+  font-variant-numeric: tabular-nums;
 }
 </style>

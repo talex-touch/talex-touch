@@ -13,6 +13,16 @@ export interface DataTableSortState {
   order: DataTableSortOrder
 }
 
+export type DataTableColumnType = 'text' | 'number' | 'datetime' | 'date' | 'tag' | 'source' | 'actions'
+
+export interface DataTableFilterOption {
+  label: string
+  value: unknown
+  tone?: string
+}
+
+export type DataTableFilterState = Record<string, unknown>
+
 /**
  * How repeated clicks on a sortable header cycle.
  *
@@ -52,6 +62,7 @@ export interface DataTableHeaderSlotProps<T = any> {
 export interface DataTableColumn<T = any> {
   key: string
   title: string
+  type?: DataTableColumnType
   dataIndex?: string
   width?: string | number
   minWidth?: string | number
@@ -65,6 +76,16 @@ export interface DataTableColumn<T = any> {
   format?: (value: any, row: T, index: number) => string
   headerClass?: string
   cellClass?: string
+  /**
+   * Enables column filtering in the header.
+   * @default false
+   */
+  filter?: boolean
+  /**
+   * Custom options for tag/enum filtering. If omitted for a tag column,
+   * options are automatically gathered from distinct row values.
+   */
+  filterOptions?: DataTableFilterOption[]
 }
 
 export type DataTableRowKey<T = any> = keyof T | ((row: T, index: number) => DataTableKey)
@@ -181,6 +202,26 @@ export interface DataTableProps<T = any> {
    * @default false
    */
   highlightSelected?: boolean
+  /**
+   * Initial filter state for uncontrolled mode.
+   */
+  defaultFilter?: DataTableFilterState
+  /**
+   * Controlled filter state. When provided, the component reports changes
+   * through `update:filter` / `filterChange`.
+   */
+  filter?: DataTableFilterState
+  /**
+   * Filters rows in memory on the client when `true`.
+   * @default true
+   */
+  filterOnClient?: boolean
+  /**
+   * Automatically fixes actions columns (key `actions`/`action` or title containing '操作')
+   * to the right edge unless `fixed` is explicitly configured.
+   * @default true
+   */
+  autoStickyActions?: boolean
 }
 
 export interface DataTableEmits<T = any> {
@@ -191,4 +232,6 @@ export interface DataTableEmits<T = any> {
   (e: 'sortChange', value: DataTableSortState | null): void
   (e: 'update:sort', value: DataTableSortState | null): void
   (e: 'rowClick', payload: { row: T, index: number }): void
+  (e: 'update:filter', value: DataTableFilterState): void
+  (e: 'filterChange', value: DataTableFilterState): void
 }
