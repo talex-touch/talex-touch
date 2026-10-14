@@ -1398,9 +1398,6 @@ importers:
 
   packages/utils:
     dependencies:
-      '@talex-touch/pi-desktop-reuse':
-        specifier: workspace:*
-        version: link:../pi-desktop-reuse
       '@vueuse/core':
         specifier: ^14.4.0
         version: 14.4.0(vue@3.5.39(typescript@5.9.3))
@@ -1429,6 +1426,9 @@ importers:
         specifier: 6.4.299
         version: 6.4.299
     devDependencies:
+      '@talex-touch/pi-desktop-reuse':
+        specifier: workspace:*
+        version: link:../pi-desktop-reuse
       '@types/fs-extra':
         specifier: ^11.0.4
         version: 11.0.4

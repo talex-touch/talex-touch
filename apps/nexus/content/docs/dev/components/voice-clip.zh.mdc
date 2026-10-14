@@ -3,7 +3,7 @@ title: "VoiceClip 语音条"
 description: "可播放、可拖动定位的语音消息胶囊"
 category: AiChat
 status: beta
-since: 0.6.3
+since: 0.8.0
 tags: [voice, audio, waveform, playback]
 syncStatus: reviewed
 verified: true

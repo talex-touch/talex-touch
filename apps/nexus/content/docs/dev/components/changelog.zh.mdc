@@ -13,11 +13,26 @@ verified: false
 
 | 项目 | 值 |
 |------|----|
-| 源码版本 | **0.7.0**，与 npm 发布一致 |
-| npm 最新版本 | **0.7.0** |
-| 组件模块 | **183**：基础 94 · 进阶 55 · AI 34 |
+| 源码版本 | **0.8.0** |
+| 发布版本 | **0.8.0**（本轮 npm 发布） |
+| 组件模块 | **185**：基础 94 · 进阶 56 · AI 35 |
 
 ## 版本更新历程
+
+### 0.8.0 版本（2026-10-14）
+
+固定品牌色流光底、语音播放条，以及语义数据表与表单尺寸修复。
+
+- **新增组件（2 个）**：[flow-light](./flow-light.zh.mdc)、[voice-clip](./voice-clip.zh.mdc)
+- **更新组件（13 个）**：base-anchor、base-surface、button、card、conversation-stream、data-table、dropdown-menu、input、number-input、select、tag-input、textarea、voice-beam
+- **关键特性**：
+  - `TxFlowLight` 支持 corners / rim / aurora，BaseSurface、Card 与菜单面板可透传固定品牌色流光；高对比度下隐藏
+  - `TxVoiceClip` 支持播放、波形定位、键盘操作、本地录音解码与单条播放；`TxVoiceBeam` 新增 `organic` 独立起伏，尊重减少动态效果
+  - `TxButton` 新增 `progress`、`showProgress`、`formatProgress`；`TxConversationStream` 挂载时测量恢复的对话行
+  - `TxDataTable` 新增语义列 `type`、列级 `filter` / `filterOptions`、受控 `filter` / `defaultFilter`、`update:filter` / `filterChange`，默认客户端筛选；`filterOnClient=false` 将筛选交给调用方，`autoStickyActions` 默认固定操作列到右侧
+  - `TxSelect` 在未指定 `searchable` 时，选项数达到 `searchThreshold`（默认 8）自动启用搜索；显式 `false` 或阈值不大于 0 可关闭
+  - Input、Textarea、Select、NumberInput 与 TagInput 显式使用 `border-box`，无需宿主全局 reset，也不注入全局通配重置
+
 
 ### 0.7.0 版本（2026-10-09）
 
@@ -199,6 +214,7 @@ TuffEx 独立包初始基线。
 | [`flip-book`](./flip-book.zh.mdc) | pro | 0.7.0 |
 | [`flip-overlay`](./flip-overlay.zh.mdc) | pro | 0.3.4 |
 | [`floating`](./floating.zh.mdc) | pro | 0.3.4 |
+| [`flow-light`](./flow-light.zh.mdc) | pro | 0.8.0 |
 | [`flowchart`](./flowchart.zh.mdc) | ai | 0.6.0 |
 | [`form`](./form.zh.mdc) | base | 0.3.4 |
 | [`fusion`](./fusion.zh.mdc) | pro | 0.3.4 |
@@ -319,6 +335,7 @@ TuffEx 独立包初始基线。
 | [`version-capsule`](./version-capsule.zh.mdc) | pro | 0.3.9 |
 | [`virtual-list`](./virtual-list.zh.mdc) | pro | 0.3.4 |
 | [`voice-beam`](./voice-beam.zh.mdc) | pro | 0.6.2 |
+| [`voice-clip`](./voice-clip.zh.mdc) | ai | 0.8.0 |
 | [`working-indicator`](./working-indicator.zh.mdc) | ai | 0.3.9 |
 
 ### Charts 模块新增

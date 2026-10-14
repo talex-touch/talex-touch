@@ -3,7 +3,7 @@ title: "FlowLight"
 description: "A fixed brand-colour light laid over a panel."
 category: Effects
 status: beta
-since: 0.6.3
+since: 0.8.0
 tags: [light, surface, gradient, brand]
 syncStatus: reviewed
 verified: true

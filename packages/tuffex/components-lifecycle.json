@@ -1,8 +1,20 @@
 {
   "$schema": "./components-lifecycle.schema.json",
-  "currentVersion": "0.7.0",
+  "currentVersion": "0.8.0",
   "totalComponents": 185,
   "versions": [
+    {
+      "version": "0.8.0",
+      "date": "2026-10-14",
+      "title": "流光、语音条与语义数据表 (Flow Light, Voice Clips and Semantic Tables)",
+      "newComponents": ["flow-light", "voice-clip"],
+      "updatedComponents": [
+        "base-anchor", "base-surface", "button", "card", "conversation-stream",
+        "data-table", "dropdown-menu", "input", "number-input", "select",
+        "tag-input", "textarea", "voice-beam"
+      ],
+      "summary": "新增固定品牌色流光底与语音播放条，语音光束支持 organic；按钮支持进度，数据表支持语义列与筛选，Select 自动开启长列表搜索，表单显式使用 border-box。"
+    },
     {
       "version": "0.7.0",
       "date": "2026-10-09",
@@ -684,7 +696,7 @@
     },
     "flow-light": {
       "slug": "flow-light",
-      "since": "0.6.3",
+      "since": "0.8.0",
       "suite": "pro"
     },
     "flowchart": {
@@ -1289,7 +1301,7 @@
     },
     "voice-clip": {
       "slug": "voice-clip",
-      "since": "0.6.3",
+      "since": "0.8.0",
       "suite": "ai"
     },
     "working-indicator": {

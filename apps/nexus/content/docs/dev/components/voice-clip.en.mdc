@@ -3,7 +3,7 @@ title: "VoiceClip"
 description: "A voice message capsule you can play and scrub through."
 category: AiChat
 status: beta
-since: 0.6.3
+since: 0.8.0
 tags: [voice, audio, waveform, playback]
 syncStatus: reviewed
 verified: true

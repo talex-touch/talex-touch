@@ -3,7 +3,7 @@ title: "FlowLight 流光底"
 description: "固定品牌色的面板光层"
 category: Effects
 status: beta
-since: 0.6.3
+since: 0.8.0
 tags: [light, surface, gradient, brand]
 syncStatus: reviewed
 verified: true

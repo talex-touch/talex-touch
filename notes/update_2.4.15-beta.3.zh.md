@@ -22,6 +22,11 @@
 - 音效文档新增交互试听面板，可试听 7 种微交互反馈音并实时调整参数，帮助开发者选择和定制界面音效。
 - 组件文档正文不再因性能面板等待状态而延迟显示；Nexus 开发启动在缺少 TuffEx 构建产物时尝试自动构建，并可回退到源码开发模式。
 - 官网新增中英双语宣传视频弹窗，展示 Tuff 核心体验；播放器支持章节快速跳转，并在切换视频语言时保留播放进度与播放状态。
+- 同步公开包发布：`@talex-touch/utils` 3.0.0、TuffEx 0.8.0、Tuff Intelligence 0.2.0、Unplugin Export Plugin 2.0.1 与 Tuff CLI 0.1.1；Utils 成品包含私有复用模块所需实现与声明，并保留对应许可证、源码及重建说明。
+
+## 破坏性变更
+
+- SDK 模型配置不再使用字符串数组：Utils 3.0.0 的 `IntelligenceProviderConfig.models` 使用模型绑定对象数组，Tuff Intelligence 0.2.0 的路由模型列表使用含 `id` 的对象，并在 Provider 响应中提供 `effectiveModels`。直接消费这些 SDK 的集成需迁移配置与响应类型；应用内已有配置沿用既有归一化路径。
 
 ## 已知限制
 

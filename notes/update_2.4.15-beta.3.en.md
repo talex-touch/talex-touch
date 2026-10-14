@@ -22,6 +22,11 @@
 - Add an interactive audition panel to the sound documentation for 7 micro-interaction feedback sounds, with live parameter adjustments to help developers choose and customize interface audio.
 - Stop deferring component-document bodies while the performance panel is pending. When TuffEx build artifacts are missing during Nexus development startup, attempt an automatic build and allow a fallback to source development mode.
 - Add a Chinese and English promotional video modal showcasing Tuff's core experience. The player offers chapter navigation and preserves playback position and playing state when switching video languages.
+- Publish the public packages together: `@talex-touch/utils` 3.0.0, TuffEx 0.8.0, Tuff Intelligence 0.2.0, Unplugin Export Plugin 2.0.1, and Tuff CLI 0.1.1. Utils includes the implementation and declarations required from its private reuse module, together with licenses, corresponding source, and rebuilding instructions.
+
+## Breaking Changes
+
+- SDK model configuration no longer uses string arrays: Utils 3.0.0 uses model-binding objects for `IntelligenceProviderConfig.models`, while Tuff Intelligence 0.2.0 uses routing-model objects containing `id` and provides `effectiveModels` in Provider responses. Direct SDK consumers must migrate configuration and response types; existing in-app configuration continues through the established normalization path.
 
 ## Known Limitations
 

@@ -1,10 +1,10 @@
 {
   "name": "@talex-touch/utils",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "private": false,
   "description": "Tuff series utils",
   "author": "TalexDreamSoul",
-  "license": "MPL-2.0",
+  "license": "(MPL-2.0 AND LGPL-3.0-only)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/talex-touch/tuff.git",
@@ -46,13 +46,16 @@
     "service",
     "store",
     "transport",
-    "types"
+    "types",
+    "tsup.config.ts",
+    "tsconfig.build.json",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=26.0.0"
   },
   "scripts": {
-    "build": "tsup account/index.ts analytics/index.ts auth/index.ts base/index.ts clipboard/index.ts cloud-share/index.ts cloud-sync/index.ts common/index.ts core-box/index.ts electron/index.ts env/index.ts eventbus/index.ts i18n/index.ts icons/index.ts index.ts intelligence/index.ts network/index.ts permission/index.ts plugin/index.ts plugin/preload.ts plugin/theme.ts plugin/sdk/box-sdk.ts plugin/sdk/clipboard.ts plugin/sdk/index.ts plugin/sdk/service/index.ts plugin/sdk/storage.ts plugin/sdk/system.ts plugin/sdk/types.ts preload/index.ts search/index.ts service/index.ts service/protocol/index.ts store/index.ts transport/events/types/index.ts transport/index.ts types/index.ts --format esm --dts --target node24 --platform neutral --clean --out-dir dist --tsconfig tsconfig.build.json",
+    "build": "tsup",
     "benchmark:preview": "vitest run \"__tests__/core-box/preview-sdk.benchmark.test.ts\" --reporter verbose",
     "lint": "pnpm exec eslint --cache .",
     "lint:fix": "pnpm exec eslint --cache --fix .",
@@ -67,7 +70,6 @@
     "vue": "^3.5.27"
   },
   "dependencies": {
-    "@talex-touch/pi-desktop-reuse": "workspace:*",
     "@vueuse/core": "^14.4.0",
     "chalk": "^5.6.2",
     "chokidar": "^4.0.3",
@@ -79,6 +81,7 @@
     "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
+    "@talex-touch/pi-desktop-reuse": "workspace:*",
     "@types/fs-extra": "^11.0.4",
     "@vitest/coverage-v8": "^3.2.7",
     "tsup": "^8.5.1",
@@ -265,6 +268,16 @@
         "types": "./dist/transport/events/types/index.d.mts",
         "import": "./dist/transport/events/types/index.mjs",
         "default": "./dist/transport/events/types/index.mjs"
+      },
+      "./types/intelligence": {
+        "types": "./dist/types/intelligence.d.mts",
+        "import": "./dist/types/intelligence.mjs",
+        "default": "./dist/types/intelligence.mjs"
+      },
+      "./types/ai-orchestrator": {
+        "types": "./dist/types/ai-orchestrator.d.mts",
+        "import": "./dist/types/ai-orchestrator.mjs",
+        "default": "./dist/types/ai-orchestrator.mjs"
       },
       "./types": {
         "types": "./dist/types/index.d.mts",

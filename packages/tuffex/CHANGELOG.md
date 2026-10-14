@@ -1,11 +1,11 @@
 # TouchX UI 更新日志
 
-## [Unreleased]
+## [0.8.0] - 2026-10-14
 
 ### 📦 组件变动 (Components)
 
-- **更新组件**: `base-surface`, `card`, `dropdown-menu`, `voice-beam`
-- **新增组件（未独立发布）**: `voice-clip`, `flow-light`
+- **更新组件**: `base-anchor`, `base-surface`, `button`, `card`, `conversation-stream`, `data-table`, `dropdown-menu`, `input`, `number-input`, `select`, `tag-input`, `textarea`, `voice-beam`
+- **新增组件 (Since 0.8.0)**: `voice-clip`, `flow-light`
 
 ### ✨ 组件增强
 
@@ -13,6 +13,14 @@
 - 新增 `TxVoiceClip` 语音条：播放键、可拖动定位的波形与倒计时排成一个胶囊，宽度随时长按平方根增长（140–300px）。未传 `peaks` 时组件读取并解码本地录音得到波形（8 kHz 离线解码，按 URL 缓存最近 24 条；远程地址不会再读一次），解码完成前或失败时显示平直轨道；同一页面同时只播放一条，新开始的一条会暂停正在播放的那条。波形本身是 `role="slider"`，支持方向键、Page 键与 Home/End；`src` 为空或加载失败时进入不可用态并显示 `unavailableLabel`。颜色通过 `--tx-voice-clip-*` 变量覆盖，可写在任一祖先上。
 - `TxVoiceBeam` 新增 `organic`（0–1，默认 0）：有声音时各色瓣、光带与整道光弧各自起伏，不再整体同步缩放；每个分量是质数周期的正弦叠加平滑噪声，幅度随当前电平变化，静音时不动，处理中与 `prefers-reduced-motion: reduce` 时关闭。`organic` 为 0 时输出与此前逐帧一致。
 - 构建审计同步 `FlowLight` 的按需依赖闭包与两项新增组件的样式体积：完整 CSS 实测 744.0 KiB、按需 CSS 合计 714.5 KiB，预算分别为 745 KiB 和 715.5 KiB；单组件 CSS/JS 限制与根入口、全量样式导入禁令不变。
+- `TxButton` 新增 `progress`（0–100）、`showProgress` 与 `formatProgress`：有效数字显示背景进度条与百分比读数，进度值夹在范围内；可结合状态反馈使用。
+- `TxDataTable` 新增语义列 `type`（`text` / `number` / `datetime` / `date` / `tag` / `source` / `actions`），补齐数值与日期排序、标签与来源展示，以及表头列筛选。列级 `filter` / `filterOptions` 配合 `defaultFilter` 或受控 `filter`，通过 `update:filter` / `filterChange` 报告变化；`filterOnClient` 默认为 `true`，关闭后由调用方筛选；`autoStickyActions` 默认将操作列固定在右侧，显式 `fixed` 优先。
+- `TxSelect` 未显式指定 `searchable` 时，选项数达到 `searchThreshold`（默认 8）自动开启搜索；`searchable=false` 或阈值不大于 0 可关闭自动搜索，显式 `searchable=true` 保持强制开启。
+
+### 🐛 组件修复
+
+- 表单组件 `TxInput`、`TxTextarea`、`TxSelect`、`TxNumberInput` 与 `TxTagInput` 的结构和输入区显式使用 `box-sizing: border-box`，不再依赖宿主全局 reset，避免宽度叠加 padding / border 后溢出；不向全局注入通配重置。
+- `TxConversationStream` 挂载时测量恢复的对话行，避免初始尺寸记录缺失。
 
 ## [0.7.0] - 2026-10-09
 
@@ -520,6 +528,7 @@ const handleClick = () => {
 | `flip-book` | pro | **0.7.0** |
 | `flip-overlay` | pro | **0.3.4** |
 | `floating` | pro | **0.3.4** |
+| `flow-light` | pro | **0.8.0** |
 | `flowchart` | ai | **0.6.0** |
 | `form` | base | **0.3.4** |
 | `fusion` | pro | **0.3.4** |
@@ -640,4 +649,5 @@ const handleClick = () => {
 | `version-capsule` | pro | **0.3.9** |
 | `virtual-list` | pro | **0.3.4** |
 | `voice-beam` | pro | **0.6.2** |
+| `voice-clip` | ai | **0.8.0** |
 | `working-indicator` | ai | **0.3.9** |

@@ -1,7 +1,7 @@
 {
   "name": "@talex-touch/unplugin-export-plugin",
   "type": "module",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Export unplugin for talex-touch",
   "license": "MIT",
   "homepage": "https://tuff.tagzxia.com",

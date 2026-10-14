@@ -13,11 +13,26 @@ verified: false
 
 | Item | Value |
 |------|-------|
-| Source version | **0.7.0**, the same as the npm release |
-| Latest npm release | **0.7.0** |
-| Component modules | **183**: Base 94 · Pro 55 · AI 34 |
+| Source version | **0.8.0** |
+| Release version | **0.8.0** (this npm release) |
+| Component modules | **185**: Base 94 · Pro 56 · AI 35 |
 
 ## Release History
+
+### Version 0.8.0 (2026-10-14)
+
+Fixed brand-color surface lighting, voice-message playback, semantic data tables and form sizing fixes.
+
+- **New components (2)**: [flow-light](./flow-light.en.mdc), [voice-clip](./voice-clip.en.mdc)
+- **Updated components (13)**: base-anchor, base-surface, button, card, conversation-stream, data-table, dropdown-menu, input, number-input, select, tag-input, textarea, voice-beam
+- **Key features**:
+  - `TxFlowLight` supports corners / rim / aurora, with fixed brand-color lighting forwarded by BaseSurface, Card and menu panels; hidden in high-contrast mode
+  - `TxVoiceClip` provides playback, waveform seeking, keyboard controls, local recording decoding and one-at-a-time playback; `TxVoiceBeam` adds independent `organic` motion and respects reduced-motion preferences
+  - `TxButton` adds `progress`, `showProgress` and `formatProgress`; `TxConversationStream` measures restored conversation rows on mount
+  - `TxDataTable` adds semantic column `type`, per-column `filter` / `filterOptions`, controlled `filter` / `defaultFilter`, and `update:filter` / `filterChange`. Client-side filtering is on by default; `filterOnClient=false` delegates filtering to the caller, and `autoStickyActions` fixes action columns to the right by default
+  - `TxSelect` enables search at `searchThreshold` options (8 by default) when `searchable` is omitted; explicit `false` or a nonpositive threshold disables automatic search
+  - Input, Textarea, Select, NumberInput and TagInput explicitly use `border-box`, without relying on a host reset or injecting a global wildcard reset
+
 
 ### Version 0.7.0 (2026-10-09)
 
@@ -199,6 +214,7 @@ Introduction versions and installation barrels for all 183 component modules. Do
 | [`flip-book`](./flip-book.en.mdc) | pro | 0.7.0 |
 | [`flip-overlay`](./flip-overlay.en.mdc) | pro | 0.3.4 |
 | [`floating`](./floating.en.mdc) | pro | 0.3.4 |
+| [`flow-light`](./flow-light.en.mdc) | pro | 0.8.0 |
 | [`flowchart`](./flowchart.en.mdc) | ai | 0.6.0 |
 | [`form`](./form.en.mdc) | base | 0.3.4 |
 | [`fusion`](./fusion.en.mdc) | pro | 0.3.4 |
@@ -319,6 +335,7 @@ Introduction versions and installation barrels for all 183 component modules. Do
 | [`version-capsule`](./version-capsule.en.mdc) | pro | 0.3.9 |
 | [`virtual-list`](./virtual-list.en.mdc) | pro | 0.3.4 |
 | [`voice-beam`](./voice-beam.en.mdc) | pro | 0.6.2 |
+| [`voice-clip`](./voice-clip.en.mdc) | ai | 0.8.0 |
 | [`working-indicator`](./working-indicator.en.mdc) | ai | 0.3.9 |
 
 ### Charts module additions
