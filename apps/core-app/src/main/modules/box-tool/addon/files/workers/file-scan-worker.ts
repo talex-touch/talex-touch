@@ -9,7 +9,7 @@ import process from 'node:process'
 import { parentPort } from 'node:worker_threads'
 import { scanDirectoryBatches } from '@talex-touch/utils/common/file-scan-utils'
 import { scanDirectoryBatchesWithFd } from './file-scan-fd-backend'
-import { getWorkerMemorySnapshot } from './worker-status'
+import { getWorkerMemorySnapshot, readWorkerThreadCpuUsage } from './worker-status'
 
 interface FileScanRequest {
   type: 'scan'
@@ -63,7 +63,7 @@ function buildMetricsPayload(): WorkerMetricsPayload {
   return {
     timestamp: Date.now(),
     memory: getWorkerMemorySnapshot(memory),
-    cpuUsage: process.cpuUsage(),
+    cpuUsage: readWorkerThreadCpuUsage(),
     eventLoop: eventLoop
       ? {
           active: eventLoop.active,

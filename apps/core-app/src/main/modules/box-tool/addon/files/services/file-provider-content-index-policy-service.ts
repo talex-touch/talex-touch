@@ -6,8 +6,10 @@ import { IndexedWorkerPersistEntryMapperService } from '@talex-touch/utils/searc
 import type { FileIndexSettings } from '../types'
 import type { IndexWorkerFileResult } from '../workers/file-index-worker-client'
 import type { FilePersistenceEntry } from '../../../search-engine/file-index-persistence-repository'
+import type { FileProviderContentCapacityService } from './file-provider-content-capacity-service'
 
 interface FileProviderContentIndexPolicyDeps {
+  capacity?: FileProviderContentCapacityService
   cleanupVersion: number
   getSettings: () => FileIndexSettings
   updateSettings: (patch: Partial<FileIndexSettings>) => Promise<FileIndexSettings>
@@ -30,12 +32,47 @@ export class FileProviderContentIndexPolicyService {
   private suppressed = false
   private transition: 'idle' | 'clearing' = 'idle'
   private queue: Promise<void> = Promise.resolve()
+  private storagePaused = false
   private readonly persistEntryMapper = new IndexedWorkerPersistEntryMapperService()
 
   constructor(private readonly deps: FileProviderContentIndexPolicyDeps) {}
 
   isEnabled(): boolean {
     return this.deps.getSettings().contentIndexingEnabled && !this.suppressed
+  }
+
+  isAdmissionEnabled(): boolean {
+    return this.isEnabled() && (!this.deps.capacity || this.deps.capacity.isReady())
+  }
+
+  async checkAdmission(force = false): Promise<boolean> {
+    if (!this.isEnabled()) return false
+    await this.deps.capacity?.check(force)
+    this.handleStorageChange()
+    return this.isAdmissionEnabled()
+  }
+
+  handleStorageChange(): void {
+    if (!this.isEnabled()) return
+    const paused = Boolean(this.deps.capacity && !this.deps.capacity.isReady())
+    if (paused === this.storagePaused) return
+    this.storagePaused = paused
+    if (paused) {
+      this.deps.stop()
+      this.deps.cancelPending()
+    } else if (this.isEnabled()) {
+      this.deps.resume('content-storage-recovered')
+    }
+  }
+
+  recordStorageFailure(error: unknown): boolean {
+    const paused = this.deps.capacity?.recordFailure(error) ?? false
+    if (paused) this.handleStorageChange()
+    return paused
+  }
+
+  dispose(): void {
+    this.deps.capacity?.dispose()
   }
 
   /**
@@ -49,6 +86,9 @@ export class FileProviderContentIndexPolicyService {
   }
 
   filterPersistEntries(entries: FilePersistenceEntry[]): FilePersistenceEntry[] {
+    if (this.isEnabled() && !this.isAdmissionEnabled()) {
+      throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+    }
     if (this.isEnabled()) return entries
     return entries.map((entry) =>
       entry.fileUpdate
@@ -58,7 +98,8 @@ export class FileProviderContentIndexPolicyService {
               ...entry.fileUpdate,
               content: null,
               contentHash: null,
-              embeddings: undefined
+              embeddings: undefined,
+              chunks: undefined
             }
           }
         : entry
@@ -69,8 +110,15 @@ export class FileProviderContentIndexPolicyService {
     const settings = this.deps.getSettings()
     return {
       contentIndexingEnabled: settings.contentIndexingEnabled,
-      state: this.resolveState(settings)
+      state: this.resolveState(settings),
+      storage: this.deps.capacity?.getSnapshot()
     }
+  }
+
+  /** Settings reads inspect the target volume even while the user has opted out. */
+  async refreshSnapshot(): Promise<FileIndexContentSettings> {
+    await this.deps.capacity?.check(true)
+    return this.getSnapshot()
   }
 
   async update(contentIndexingEnabled: boolean): Promise<FileIndexContentSettings> {
@@ -84,18 +132,32 @@ export class FileProviderContentIndexPolicyService {
     try {
       const settings = this.deps.getSettings()
       if (contentIndexingEnabled === settings.contentIndexingEnabled) {
+        if (contentIndexingEnabled) await this.checkAdmission(true)
         return this.getSnapshot()
       }
 
       if (contentIndexingEnabled) {
-        await this.deps.updateSettings({ contentIndexingEnabled: true })
+        await this.deps.capacity?.check(true)
+        try {
+          await this.deps.updateSettings({ contentIndexingEnabled: true })
+        } catch (error) {
+          if (this.recordStorageFailure(error)) {
+            throw Object.assign(new Error('FILE_CONTENT_STORAGE_PAUSED'), {
+              code: 'FILE_CONTENT_STORAGE_PAUSED'
+            })
+          }
+          throw error
+        }
+        this.deps.capacity?.start()
         this.deps.syncSettings()
         this.suppressed = false
-        this.deps.resume('settings-enabled')
+        const wasPaused = this.storagePaused
+        if ((await this.checkAdmission(true)) && !wasPaused) this.deps.resume('settings-enabled')
         return this.getSnapshot()
       }
 
       this.suppressed = true
+      this.deps.capacity?.stop()
       this.transition = 'clearing'
       this.deps.stop()
       this.deps.cancelPending()
@@ -112,7 +174,10 @@ export class FileProviderContentIndexPolicyService {
         return this.getSnapshot()
       } catch (error) {
         this.suppressed = false
-        this.deps.resume('settings-disable-recovery')
+        this.deps.capacity?.start()
+        const wasPaused = this.storagePaused
+        if ((await this.checkAdmission()) && !wasPaused)
+          this.deps.resume('settings-disable-recovery')
         throw error
       } finally {
         this.transition = 'idle'
@@ -124,8 +189,10 @@ export class FileProviderContentIndexPolicyService {
 
   async reconcileAtStartup(): Promise<void> {
     const settings = this.deps.getSettings()
+    if (settings.contentIndexingEnabled) this.deps.capacity?.start()
     if (settings.contentIndexingEnabled) {
-      this.deps.resume('startup')
+      const wasPaused = this.storagePaused
+      if ((await this.checkAdmission(true)) && !wasPaused) this.deps.resume('startup')
       return
     }
     if (settings.contentIndexCleanupVersion >= this.deps.cleanupVersion) return
@@ -146,6 +213,7 @@ export class FileProviderContentIndexPolicyService {
   private resolveState(settings: FileIndexSettings): FileContentIndexingState {
     if (this.transition === 'clearing') return 'clearing'
     if (!settings.contentIndexingEnabled) return 'disabled'
+    if (!this.isAdmissionEnabled()) return 'paused'
     const scheduler = this.deps.getSchedulerSnapshot()
     return scheduler.activeBatches > 0 || scheduler.queuedBatches > 0 || this.deps.isResumeActive()
       ? 'indexing'

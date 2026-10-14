@@ -1,49 +1,11 @@
-<script setup lang="ts" generic="T extends any, O extends any">
-import { TxInput } from '@talex-touch/tuffex/input'
+<script setup lang="ts">
+import MultiTranslate from './multi-translate.vue'
+
 defineOptions({
   name: 'IndexPage',
 })
-
-const name = ref('')
-
-const router = useRouter()
-function go() {
-  if (name.value)
-    router.push(`/hi/${encodeURIComponent(name.value)}`)
-}
 </script>
 
 <template>
-  <div>
-    <div i-carbon-campsite inline-block text-4xl />
-    <p>
-      <a rel="noreferrer" href="https://github.com/antfu/vitesse-lite" target="_blank">
-        Vitesse Lite
-      </a>
-    </p>
-    <p>
-      <em text-sm op75>Opinionated Vite Starter Template</em>
-    </p>
-
-    <div py-4 />
-
-    <TxInput
-      id="input"
-      v-model="name"
-      class="w-250px text-center"
-      placeholder="What's your name?"
-      autocomplete="false"
-      @keydown.enter="go"
-    />
-
-    <div>
-      <button
-        class="m-3 text-sm btn"
-        :disabled="!name"
-        @click="go"
-      >
-        Go
-      </button>
-    </div>
-  </div>
+  <MultiTranslate />
 </template>

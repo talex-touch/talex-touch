@@ -6,6 +6,7 @@
 
 export * from './app-search-tokens'
 export * from './feature-matcher'
+export * from './file-content-chunks'
 export * from './fuzzy-match'
 export * from './search-charset'
 export * from './search-keyword-lookup'

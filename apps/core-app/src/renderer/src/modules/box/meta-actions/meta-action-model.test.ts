@@ -142,17 +142,17 @@ describe('buildMetaActionModel — one row per action', () => {
     expect(model.rows.map((row) => row.id)).toEqual([
       COREBOX_PRIMARY_ACTION_ID,
       'reveal-in-finder',
+      'open-terminal',
+      'system-share',
+      'flow-transfer',
       'open-folder',
       'quick-look',
       'get-info',
-      'open-terminal',
       'copy-file',
-      'system-share',
       'file-copy-path',
       'copy-title',
       'file-copy-shell-path',
       'file-copy-url',
-      'flow-transfer',
       'toggle-pin',
       'open-settings'
     ])
@@ -183,9 +183,9 @@ describe('buildMetaActionModel — one row per action', () => {
 
     expect(model.rows.map((row) => row.id)).toEqual([
       COREBOX_PRIMARY_ACTION_ID,
+      'flow-transfer',
       'copy',
       'copy-title',
-      'flow-transfer',
       'toggle-pin',
       'open-settings'
     ])
@@ -217,11 +217,12 @@ describe('buildMetaActionModel — one row per action', () => {
 
     expect(model.sections.map((section) => section.key)).toEqual([
       'primary',
+      'quick-flow',
       'open',
       'group:open:常用设置',
       'host'
     ])
-    expect(model.sections[2]!.title).toEqual({ text: '常用设置' })
+    expect(model.sections[3]!.title).toEqual({ text: '常用设置' })
     // A settings list is not an alternate way to run this item, so it has no ⌘↵.
     expect(model.rows.some((row) => row.role === 'secondary')).toBe(false)
   })
@@ -243,12 +244,14 @@ describe('buildMetaActionModel — groups, labels and icons', () => {
 
     expect(model.sections.map((section) => section.slot)).toEqual([
       'primary',
+      'quick-flow',
       'open',
       'host',
       'plugin'
     ])
     expect(model.sections.map((section) => section.title)).toEqual([
       null,
+      { key: 'corebox.actions.groups.quickFlow' },
       { key: 'corebox.actions.groups.open' },
       { key: 'corebox.actions.groups.host' },
       { key: 'corebox.actions.groups.plugin' }
@@ -262,7 +265,7 @@ describe('buildMetaActionModel — groups, labels and icons', () => {
 
     expect(sectionOf('app-bind-shortcut')).toBe('host')
     expect(sectionOf('open-settings')).toBe('host')
-    expect(sectionOf('reveal-in-finder')).toBe('open')
+    expect(sectionOf('reveal-in-finder')).toBe('quick-flow')
   })
 
   it('shows host provider labels in the interface language and plugin labels as written', () => {
@@ -596,11 +599,11 @@ describe('resolveMetaActionShortcut', () => {
 
 describe('estimateMetaActionPanelHeight', () => {
   it('counts rows, titled sections and gaps with the shared geometry', () => {
-    // Clipboard: six rows in three sections, two of them titled.
-    // 40 header + (6 + 6 × 32 + 2 × 24 + 2 × 4 + 6) list + 40 filter.
+    // Clipboard: six rows in four sections, three of them titled.
+    // 40 header + (12 + 6 × 32 + 3 × 24 + 3 × 4) list + 40 filter = 368.
     // Not the app item: its action list now needs more than the panel maximum, so it only
     // exercises the cap below.
-    expect(estimateMetaActionPanelHeight(build(CLIPBOARD_ITEM))).toBe(340)
+    expect(estimateMetaActionPanelHeight(build(CLIPBOARD_ITEM))).toBe(368)
   })
 
   it('caps a long action list at the panel maximum, where the list scrolls', () => {

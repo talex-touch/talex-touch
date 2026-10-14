@@ -12,13 +12,16 @@ function createExecutor(options: {
   isAvailable?: () => boolean;
   ensureReady?: () => Promise<boolean>;
   persist?: (entries: string[]) => Promise<{ persisted: number } | void>;
-  afterPersist?: () => Promise<Record<string, unknown> | void>;
+  afterPersist?: (input: { entries: string[]; persistEntries: string[]; result: { persisted: number } | void }) => Promise<Record<string, unknown> | void>;
+  shouldRetainBatch?: (error: unknown) => boolean;
+  prepareBatch?: (entries: string[]) => Promise<boolean>;
+  waitForCapacity?: () => Promise<void>;
   nowValues?: number[];
 }) {
   const inflight = options.inflight ?? new Map<number, string>();
   const buffer = new IndexedWriteBufferService(options.pending, inflight);
   const recordDuration = vi.fn();
-  const waitForCapacity = vi.fn(async () => undefined);
+  const waitForCapacity = vi.fn(options.waitForCapacity ?? (async () => undefined));
   const persist = vi.fn(options.persist ?? (async () => undefined));
   const ensureReady = vi.fn(options.ensureReady ?? (async () => true));
   const onBatchTaken = vi.fn();
@@ -47,6 +50,8 @@ function createExecutor(options: {
       now,
       onBatchTaken,
       afterPersist,
+      shouldRetainBatch: options.shouldRetainBatch,
+      prepareBatch: options.prepareBatch,
       resolveBatchMetadata: (entries) => ({ firstEntry: entries[0] }),
       resolvePersistMetadata: (result) =>
         result && typeof result === "object"
@@ -327,5 +332,113 @@ describe("IndexedWriteFlushExecutorService", () => {
       withContent: 2,
       empty: 1,
     });
+  });
+});
+
+describe("IndexedWriteFlushExecutorService retained durable ownership", () => {
+  it("resumes the exact persisted payload instead of repersisting or replacing it with newer pending work", async () => {
+    const pending = new Map<number, string>([[1, "old"]]);
+    const deferred = new Error("foreground-preempted");
+    const published: string[][] = [];
+    const inputs: Array<{ entries: string[]; persistEntries: string[]; result: { persisted: number } | void }> = [];
+    let preempt = true;
+    const { executor, inflight, persist } = createExecutor({
+      pending,
+      persist: async () => ({ persisted: 1 }),
+      shouldRetainBatch: (error) => error === deferred,
+      afterPersist: async (input) => {
+        inputs.push(input);
+        if (preempt) throw deferred;
+        published.push(input.persistEntries);
+        return { indexedItems: input.entries.length };
+      },
+    });
+    await expect(executor.execute()).rejects.toBe(deferred);
+    expect(pending.size).toBe(0);
+    expect(inflight.get(1)).toBe("old");
+    pending.set(1, "new");
+    preempt = false;
+    await expect(executor.execute()).resolves.toMatchObject({ status: "flushed", pending: 1, inflight: 0, metadata: { persisted: 1, indexedItems: 1 } });
+    expect(inputs[1].entries).toBe(inputs[0].entries);
+    expect(inputs[1].persistEntries).toBe(inputs[0].persistEntries);
+    expect(inputs[1].result).toBe(inputs[0].result);
+    expect(published).toEqual([["OLD"]]);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(pending.get(1)).toBe("new");
+    await executor.execute();
+    expect(published).toEqual([["OLD"], ["NEW"]]);
+    expect(persist).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains a durable batch on genuine publication failure without losing its error contract", async () => {
+    let fail = true;
+    const published: string[] = [];
+    const { executor, inflight, persist } = createExecutor({
+      pending: new Map([[1, "one"]]),
+      shouldRetainBatch: () => false,
+      afterPersist: async ({ persistEntries }) => {
+        if (fail) throw new Error("publication SQL failed");
+        published.push(...persistEntries);
+      },
+    });
+    await expect(executor.execute()).rejects.toMatchObject({ message: "publication SQL failed", flushResult: { entries: 1, pending: 0, inflight: 1, reason: "persist-failed" } });
+    expect(inflight.get(1)).toBe("one");
+    fail = false;
+    await executor.execute();
+    expect(published).toEqual(["ONE"]);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(inflight.size).toBe(0);
+  });
+
+  it.each(["readiness", "capacity", "prepare", "persistence"] as const)(
+    "discard invalidates an active %s continuation before any later publication", async (stage) => {
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const durable: string[] = [];
+      const published: string[] = [];
+      const hold = async () => { entered.resolve(); await release.promise; };
+      const { executor, inflight } = createExecutor({
+        pending: new Map([[1, "one"]]),
+        ensureReady: async () => { if (stage === "readiness") await hold(); return true; },
+        prepareBatch: async () => { if (stage === "prepare") await hold(); return true; },
+        waitForCapacity: async () => { if (stage === "capacity") await hold(); },
+        persist: async (entries) => {
+          if (stage === "persistence") await hold();
+          durable.push(...entries);
+        },
+        afterPersist: async ({ persistEntries }) => { published.push(...persistEntries); },
+      });
+      const running = executor.execute();
+      const rejected = expect(running).rejects.toThrow("INDEXED_WRITE_FLUSH_CANCELLED");
+      await entered.promise;
+      executor.discardRetainedBatch();
+      release.resolve();
+      await rejected;
+      expect(published).toEqual([]);
+      expect(durable).toEqual(stage === "persistence" ? ["ONE"] : []);
+      expect(inflight.size).toBe(0);
+      expect(executor.retainedEntries).toEqual([]);
+    },
+  );
+
+  it("drops an invalidated retained batch without publishing its durable payload", async () => {
+    let valid = true;
+    const deferred = new Error("foreground-preempted");
+    const published: string[] = [];
+    const { executor, inflight, persist } = createExecutor({
+      pending: new Map([[1, "one"]]),
+      shouldRetainBatch: (error) => error === deferred,
+      prepareBatch: async () => valid,
+      afterPersist: async ({ persistEntries }) => {
+        if (valid) throw deferred;
+        published.push(...persistEntries);
+      },
+    });
+    await expect(executor.execute()).rejects.toBe(deferred);
+    valid = false;
+    await expect(executor.execute()).resolves.toMatchObject({ status: "idle", reason: "invalidated-batch", inflight: 0 });
+    expect(published).toEqual([]);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(inflight.size).toBe(0);
   });
 });

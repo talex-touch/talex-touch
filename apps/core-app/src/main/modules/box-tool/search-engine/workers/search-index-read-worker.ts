@@ -2,6 +2,8 @@ import type { InValue } from '@libsql/client'
 import type {
   SearchIndexReadWorkerQueryMessage,
   SearchIndexReadWorkerResponse,
+  SearchIndexReadWorkerSemanticMessage,
+  SearchIndexSemanticMatch,
   SearchIndexReadWorkerShutdownMessage
 } from './search-index-read-worker-types'
 import { lstat } from 'node:fs/promises'
@@ -72,21 +74,106 @@ function isQueryRequest(value: unknown): value is SearchIndexReadWorkerQueryMess
   )
 }
 
+function isSemanticRequest(value: unknown): value is SearchIndexReadWorkerSemanticMessage {
+  if (!value || typeof value !== 'object') return false
+  const request = value as Partial<SearchIndexReadWorkerSemanticMessage>
+  return (
+    request.type === 'semantic-search' &&
+    typeof request.requestId === 'string' &&
+    Array.isArray(request.vector) &&
+    typeof request.model === 'string' &&
+    typeof request.limit === 'number' &&
+    request.cancelFlag instanceof SharedArrayBuffer
+  )
+}
+
+async function rankSemanticFiles(
+  client: Client,
+  request: SearchIndexReadWorkerSemanticMessage
+): Promise<SearchIndexSemanticMatch[]> {
+  const { vector, model } = request
+  const limit = Number.isFinite(request.limit) ? Math.max(0, Math.floor(request.limit)) : 0
+  if (!limit || !model || !vector.length || !vector.every(Number.isFinite)) return []
+  const cancelled = new Int32Array(request.cancelFlag)
+  let queryNorm = 0
+  for (const value of vector) queryNorm += value * value
+  if (!Number.isFinite(queryNorm) || queryNorm <= 0) return []
+  queryNorm = Math.sqrt(queryNorm)
+  const bestByFile = new Map<string, SearchIndexSemanticMatch>()
+  let cursor = 0
+  for (;;) {
+    if (Atomics.load(cancelled, 0)) return []
+    const result = await client.execute({
+      sql: 'SELECT id, source_id, embedding, content_hash FROM embeddings WHERE source_type = ? AND model = ? AND id > ? ORDER BY id LIMIT 128',
+      args: ['file', model, cursor]
+    })
+    for (const row of result.rows) {
+      if (Atomics.load(cancelled, 0)) return []
+      cursor = Number(row.id)
+      if (typeof row.source_id !== 'string' || typeof row.embedding !== 'string') continue
+      let candidate: unknown
+      try {
+        candidate = JSON.parse(row.embedding)
+      } catch {
+        continue
+      }
+      if (!Array.isArray(candidate) || candidate.length !== vector.length) continue
+      let dot = 0
+      let norm = 0
+      for (let index = 0; index < vector.length; index++) {
+        const value = candidate[index]
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+          norm = NaN
+          break
+        }
+        dot += vector[index] * value
+        norm += value * value
+      }
+      const score = dot / (queryNorm * Math.sqrt(norm))
+      if (
+        !Number.isFinite(score) ||
+        score <= 0.3 ||
+        score <= (bestByFile.get(row.source_id)?.score ?? -1)
+      )
+        continue
+      bestByFile.set(row.source_id, {
+        sourceId: row.source_id,
+        score,
+        contentHash: typeof row.content_hash === 'string' ? row.content_hash : null
+      })
+      if (bestByFile.size > limit) {
+        let worst: SearchIndexSemanticMatch | undefined
+        for (const entry of bestByFile.values())
+          if (!worst || entry.score < worst.score) worst = entry
+        if (worst) bestByFile.delete(worst.sourceId)
+      }
+    }
+    if (result.rows.length < 128) break
+    // Let graceful shutdown and queued port messages run between bounded pages.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+  return [...bestByFile.values()].sort((left, right) => right.score - left.score)
+}
+
 function post(message: SearchIndexReadWorkerResponse): void {
   port.postMessage(message)
 }
 
-function executeQuery(request: SearchIndexReadWorkerQueryMessage): void {
+function executeQuery(
+  request: SearchIndexReadWorkerQueryMessage | SearchIndexReadWorkerSemanticMessage
+): void {
   const run = (async () => {
     try {
       const client = await getClient()
-      const result = await client.execute({ sql: request.sql, args: request.args as InValue[] })
-      // ResultSet rows have a null prototype in some libSQL versions. Project
-      // them into ordinary records before crossing the worker boundary.
+      const rows =
+        request.type === 'semantic-search'
+          ? await rankSemanticFiles(client, request)
+          : (await client.execute({ sql: request.sql, args: request.args as InValue[] })).rows
+      // Project libSQL's null-prototype records before crossing the boundary.
       post({
         type: 'result',
         requestId: request.requestId,
-        rows: result.rows.map((row) => ({ ...row }))
+        rows: rows.map((row) => ({ ...row }))
       })
     } catch (error) {
       post({
@@ -140,6 +227,6 @@ port.on('message', (message: unknown) => {
     void shutdown()
     return
   }
-  if (!isQueryRequest(message)) return
+  if (!isQueryRequest(message) && !isSemanticRequest(message)) return
   executeQuery(message)
 })

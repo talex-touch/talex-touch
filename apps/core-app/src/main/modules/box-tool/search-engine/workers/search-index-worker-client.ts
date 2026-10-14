@@ -48,6 +48,7 @@ import { existsSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { trackWorkerThread } from '../../../../core/worker-thread-registry'
 import { getLogger } from '@talex-touch/utils/common/logger'
 import {
   FILE_WORKER_IDLE_SHUTDOWN_MS,
@@ -935,6 +936,7 @@ export class SearchIndexWorkerClient {
 
     const workerPath = resolveSearchIndexWorkerPath()
     const worker = new Worker(workerPath)
+    trackWorkerThread(worker, 'search-index-writer')
 
     worker.on('message', (message: WorkerMessage) => this.handleMessage(message))
     worker.on('error', (error) => {

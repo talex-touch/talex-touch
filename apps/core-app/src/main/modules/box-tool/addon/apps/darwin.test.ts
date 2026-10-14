@@ -246,6 +246,26 @@ describe('darwin app info', () => {
     )
     expect(execFileSafeMock).not.toHaveBeenCalled()
   })
+  it('reads InfoPlist.loctable for macOS Activity Monitor', async () => {
+    const activityMonitorPath = '/System/Applications/Utilities/Activity Monitor.app'
+    try {
+      await fs.access(activityMonitorPath)
+    } catch {
+      return
+    }
+
+    const { getAppInfo } = await loadSubject()
+    const appInfo = await getAppInfo(activityMonitorPath)
+
+    expect(appInfo).toEqual(
+      expect.objectContaining({
+        name: 'Activity Monitor',
+        displayName: '活动监视器',
+        displayNameQuality: 'localized',
+        alternateNames: expect.arrayContaining(['Activity Monitor'])
+      })
+    )
+  })
 
   it('returns the empty fallback before hydrating the bundle icon asynchronously', async () => {
     const tempRoot = await createTempAppBundle('ChatApp', 'ChatApp', {

@@ -136,6 +136,15 @@ export const LOCALIZATION_FACADE_MIN_VERSION: SdkApiVersion = SdkApi.V260713
 export const APPLICATION_RESOLUTION_MIN_VERSION: SdkApiVersion = SdkApi.V260817
 
 /**
+ * Minimum SDK version where feature interaction mutual exclusivity (push vs webcontent/widget)
+ * is strictly enforced as a fatal package/manifest error.
+ * In current versions (<= 261011), the runtime issues a warning and prioritizes the exclusive
+ * viewport without failing plugin loading. Starting from 261015 (2026-10-15), plugins declaring
+ * conflicting combinations will be rejected.
+ */
+export const INTERACTION_EXCLUSIVITY_STRICT_MIN_VERSION = 261015
+
+/**
  * SDK version compatibility result
  */
 export interface SdkCompatibilityResult {

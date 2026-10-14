@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { StringDecoder } from 'node:string_decoder'
 import type {
   IntelligenceChatPayload,
+  IntelligenceEmbeddingPayload,
   IntelligenceInvokeOptions,
   IntelligenceInvokeResult,
   IntelligenceStreamChunk,
@@ -17,6 +18,8 @@ import { translateSystemText } from '@talex-touch/tuff-native/translation'
 import { NetworkHttpStatusError } from '@talex-touch/utils/network'
 import { enterPerfContext } from '../../../utils/perf-context'
 import { getNetworkService } from '../../network'
+import { getLocalEmbeddingRuntime } from '../local-embedding-runtime'
+import { LOCAL_EMBEDDING_MODEL_KEY } from '../local-embedding-model'
 import { recognizeImageTextIsolated } from '../../ocr/ocr-process-client'
 import { OpenAiCompatibleLangChainProvider } from './langchain-openai-compatible-provider'
 
@@ -120,6 +123,72 @@ export class LocalProvider extends OpenAiCompatibleLangChainProvider {
 
   private resolveLocalChatModel(options: IntelligenceInvokeOptions): string {
     return options.modelPreference?.[0] || this.config.defaultModel || this.defaultChatModel
+  }
+
+  override async embedding(
+    payload: IntelligenceEmbeddingPayload,
+    options: IntelligenceInvokeOptions
+  ): Promise<IntelligenceInvokeResult<number[]>> {
+    const startTime = Date.now()
+    const traceId = this.generateTraceId()
+    const runtimeOptions = options as LocalProviderRuntimeOptions
+    const useBuiltInRuntime =
+      options.metadata?.localEmbeddingRuntime === true ||
+      options.metadata?.localEmbeddingRuntime === 'llama.cpp'
+    const requestedModel = payload.model || options.modelPreference?.[0]
+    const modelName = useBuiltInRuntime
+      ? LOCAL_EMBEDDING_MODEL_KEY
+      : requestedModel || this.defaultEmbeddingModel
+    const textInput = Array.isArray(payload.text)
+      ? payload.text.filter(Boolean).join('\n')
+      : payload.text || ''
+
+    if (useBuiltInRuntime) {
+      if (requestedModel && !requestedModel.includes('embeddinggemma-2')) {
+        throw new Error(`Local embedding runtime only supports ${LOCAL_EMBEDDING_MODEL_KEY}`)
+      }
+      const generated = await getLocalEmbeddingRuntime().generate(textInput, runtimeOptions.signal)
+      return {
+        result: generated.vector,
+        usage: withLocalUsageCost(),
+        model: generated.modelKey,
+        latency: Date.now() - startTime,
+        traceId,
+        provider: this.type
+      }
+    }
+
+    try {
+      const response = await getNetworkService().request<{
+        embeddings?: number[][]
+        embedding?: number[]
+      }>({
+        method: 'POST',
+        url: `${this.resolveOllamaBaseUrl()}/api/embed`,
+        body: {
+          model: modelName,
+          input: textInput
+        },
+        timeoutMs: this.resolveRequestTimeout(options, 30_000),
+        proxyOverride: LOCAL_DIRECT_PROXY,
+        responseType: 'json',
+        signal: runtimeOptions.signal
+      })
+      const vector = response.data?.embeddings?.[0] || response.data?.embedding || []
+      if (vector.length === 0) throw createLocalProviderError('OLLAMA_REQUEST_FAILED')
+      return {
+        result: vector,
+        usage: withLocalUsageCost(),
+        model: modelName,
+        latency: Date.now() - startTime,
+        traceId,
+        provider: this.type
+      }
+    } catch (error) {
+      if (!isHttpNotFound(error)) throw error
+      const result = await super.embedding(payload, options)
+      return { ...result, usage: withLocalUsageCost(result.usage) }
+    }
   }
 
   private buildOllamaChatBody(

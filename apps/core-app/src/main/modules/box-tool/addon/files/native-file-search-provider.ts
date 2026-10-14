@@ -51,6 +51,7 @@ type LinuxNativeSearchBackend = 'locate' | 'tracker3' | 'tracker' | 'baloo'
 const nativeFileSearchLog = getLogger('file-provider').child('Native')
 const execFileAsync = promisify(execFile)
 const NATIVE_SEARCH_MAX_RESULTS = 50
+export const DEFAULT_SPOTLIGHT_SEARCH_TIMEOUT_MS = 500
 /**
  * Candidates examined per query before the result list is cut to its 50. The directory rule
  * below can drop most of a native backend's head — for "wx", mdfind's first 13 hits were one
@@ -509,6 +510,15 @@ abstract class BaseNativeFileSearchProvider implements NativeFileSearchProvider 
   }
 }
 
+function isProcessTimeoutError(error: unknown): boolean {
+  if (error instanceof Error && error.name === 'TimeoutError') return true
+  if (error && typeof error === 'object') {
+    if ('code' in error && error.code === 'ETIMEDOUT') return true
+    if ('killed' in error && Boolean(error.killed)) return true
+  }
+  return false
+}
+
 class MacSpotlightFileProvider extends BaseNativeFileSearchProvider {
   readonly id = 'macos-spotlight-provider'
   readonly name = 'Spotlight Search'
@@ -549,11 +559,25 @@ class MacSpotlightFileProvider extends BaseNativeFileSearchProvider {
     // 900-1245ms vs 300-350ms on a 6GB-index library, with the paths returned being identical.
     const query = `kMDItemFSName == "*${escaped}*"cd`
     const scopeArgs = searchRoots.flatMap((root) => ['-onlyin', root.path])
-    const { stdout } = await execFileAsync('mdfind', ['-0', ...scopeArgs, query], {
-      timeout: 1200,
-      maxBuffer: 1024 * 1024 * 5,
-      signal
-    })
+    const timeout =
+      Number(process.env.TUFF_SPOTLIGHT_TIMEOUT_MS) || DEFAULT_SPOTLIGHT_SEARCH_TIMEOUT_MS
+    let stdout = ''
+    try {
+      const result = await execFileAsync('mdfind', ['-0', ...scopeArgs, query], {
+        timeout,
+        killSignal: 'SIGKILL',
+        maxBuffer: 1024 * 1024 * 5,
+        signal
+      })
+      stdout = result.stdout
+    } catch (error: unknown) {
+      if (signal.aborted) return []
+      if (isProcessTimeoutError(error)) {
+        nativeFileSearchLog.debug(`[${this.id}] mdfind timed out after ${timeout}ms, skipping`)
+        return []
+      }
+      throw error
+    }
     const candidates = Array.from(
       new Set(
         stdout

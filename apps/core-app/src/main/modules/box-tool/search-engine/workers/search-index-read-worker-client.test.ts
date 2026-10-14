@@ -110,63 +110,73 @@ async function failNextReadByTimeout(
 }
 
 describe('SearchIndexReadWorkerClient lifecycle', () => {
-  it('fences an active cancelled query until its worker result arrives, then starts the next query', async () => {
-    const client = createClient()
-    const activeAbort = new AbortController()
-    const active = client.all<{ itemId: string }>(sql`SELECT 'stale' AS itemId`, activeAbort.signal)
-    const worker = workerMock.workers.at(-1)!
-    const queued = client.all<{ itemId: string }>(sql`SELECT 'fresh' AS itemId`)
+  it.each(['query', 'semantic'] as const)(
+    'fences an active cancelled %s read until its worker result arrives, then starts the next query',
+    async (kind) => {
+      const client = createClient()
+      const activeAbort = new AbortController()
+      const active =
+        kind === 'semantic'
+          ? client.semanticSearch([1, 0, 0], 'semantic-model', 2, activeAbort.signal)
+          : client.all<{ itemId: string }>(sql`SELECT 'stale' AS itemId`, activeAbort.signal)
+      const worker = workerMock.workers.at(-1)!
+      const queued = client.all<{ itemId: string }>(sql`SELECT 'fresh' AS itemId`)
 
-    activeAbort.abort()
-    await expect(active).rejects.toBeInstanceOf(SearchIndexReadWorkerCancelledError)
-    expect(worker.messages).toHaveLength(1)
+      activeAbort.abort()
+      await expect(active).rejects.toBeInstanceOf(SearchIndexReadWorkerCancelledError)
+      expect(worker.messages).toHaveLength(1)
+      expect(worker.terminateCalls).toBe(0)
 
-    worker.emit('message', {
-      type: 'result',
-      requestId: requestIdOf(worker.messages[0]),
-      rows: [{ itemId: 'stale' }]
-    })
-    expect(worker.messages).toHaveLength(2)
+      worker.emit('message', {
+        type: 'result',
+        requestId: requestIdOf(worker.messages[0]),
+        rows: [{ itemId: 'stale' }]
+      })
+      expect(worker.messages).toHaveLength(2)
 
-    worker.emit('message', {
-      type: 'result',
-      requestId: requestIdOf(worker.messages[1]),
-      rows: [{ itemId: 'fresh' }]
-    })
-    await expect(queued).resolves.toEqual([{ itemId: 'fresh' }])
-    await client.close()
-  })
+      worker.emit('message', {
+        type: 'result',
+        requestId: requestIdOf(worker.messages[1]),
+        rows: [{ itemId: 'fresh' }]
+      })
+      await expect(queued).resolves.toEqual([{ itemId: 'fresh' }])
+      await client.close()
+    }
+  )
 
-  it('removes an aborted queued query instead of dispatching it after the active read', async () => {
-    const client = createClient()
-    const active = client.all<{ itemId: string }>(sql`SELECT 'first' AS itemId`)
-    const worker = workerMock.workers.at(-1)!
-    const queuedAbort = new AbortController()
-    const queued = client.all<{ itemId: string }>(
-      sql`SELECT 'cancelled' AS itemId`,
-      queuedAbort.signal
-    )
-    const later = client.all<{ itemId: string }>(sql`SELECT 'later' AS itemId`)
+  it.each(['query', 'semantic'] as const)(
+    'removes an aborted queued %s read instead of dispatching it after the active read',
+    async (kind) => {
+      const client = createClient()
+      const active = client.all<{ itemId: string }>(sql`SELECT 'first' AS itemId`)
+      const worker = workerMock.workers.at(-1)!
+      const queuedAbort = new AbortController()
+      const queued =
+        kind === 'semantic'
+          ? client.semanticSearch([1, 0, 0], 'semantic-model', 2, queuedAbort.signal)
+          : client.all<{ itemId: string }>(sql`SELECT 'cancelled' AS itemId`, queuedAbort.signal)
+      const later = client.all<{ itemId: string }>(sql`SELECT 'later' AS itemId`)
 
-    queuedAbort.abort()
-    await expect(queued).rejects.toBeInstanceOf(SearchIndexReadWorkerCancelledError)
+      queuedAbort.abort()
+      await expect(queued).rejects.toBeInstanceOf(SearchIndexReadWorkerCancelledError)
 
-    worker.emit('message', {
-      type: 'result',
-      requestId: requestIdOf(worker.messages[0]),
-      rows: [{ itemId: 'first' }]
-    })
-    await expect(active).resolves.toEqual([{ itemId: 'first' }])
-    expect(worker.messages).toHaveLength(2)
+      worker.emit('message', {
+        type: 'result',
+        requestId: requestIdOf(worker.messages[0]),
+        rows: [{ itemId: 'first' }]
+      })
+      await expect(active).resolves.toEqual([{ itemId: 'first' }])
+      expect(worker.messages).toHaveLength(2)
 
-    worker.emit('message', {
-      type: 'result',
-      requestId: requestIdOf(worker.messages[1]),
-      rows: [{ itemId: 'later' }]
-    })
-    await expect(later).resolves.toEqual([{ itemId: 'later' }])
-    await client.close()
-  })
+      worker.emit('message', {
+        type: 'result',
+        requestId: requestIdOf(worker.messages[1]),
+        rows: [{ itemId: 'later' }]
+      })
+      await expect(later).resolves.toEqual([{ itemId: 'later' }])
+      await client.close()
+    }
+  )
 
   it('times out one active read, settles its queue, then rebuilds a worker for the next query', async () => {
     vi.useFakeTimers()

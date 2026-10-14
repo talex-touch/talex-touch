@@ -818,6 +818,71 @@ async function getSearchProviderP95Durations(
 }
 
 /**
+ * Every figure derives from counters summed across all clients and days (and max of max); none
+ * is an average of per-day or per-client ratios or percentiles, which do not merge.
+ */
+export interface TelemetryPerformanceSummary {
+  longTaskCount: number
+  longTaskTotalMs: number
+  longTaskMaxMs: number
+  longTaskAvgMs: number
+  longAnimationFrameCount: number
+  longAnimationFrameTotalMs: number
+  longAnimationFrameMaxMs: number
+  longAnimationFrameAvgMs: number
+  /** Main-process event-loop lag samples (one per 100 ms tick on each client). */
+  eventLoopSamples: number
+  /** Share of samples whose lag was at least 100 ms, 0–1. */
+  eventLoopLagOver100Ratio: number
+  /** Share of samples whose lag was at least 250 ms, 0–1. */
+  eventLoopLagOver250Ratio: number
+  eventLoopLagOver1000Count: number
+  eventLoopLagMeanMs: number
+  eventLoopLagMaxMs: number
+  /** Main-thread CPU as a percentage of one core over the reported windows; null without data. */
+  mainThreadCpuPercent: number | null
+  unresponsiveCount: number
+  unresponsiveTotalMs: number
+  unresponsiveMaxMs: number
+  unresponsiveAvgMs: number
+}
+
+export function summarizePerformance(
+  sum: (measure: string) => number,
+  max: (measure: string) => number,
+): TelemetryPerformanceSummary {
+  const average = (total: number, count: number): number => (count > 0 ? Math.round(total / count) : 0)
+  const ratio = (part: number, whole: number): number => (whole > 0 ? part / whole : 0)
+  const samples = sum('perf_event_loop_samples')
+  const mainWindowMs = sum('perf_main_thread_window_ms')
+  return {
+    longTaskCount: sum('perf_longtask_count'),
+    longTaskTotalMs: sum('perf_longtask_total_ms'),
+    longTaskMaxMs: max('perf_longtask_max_ms'),
+    longTaskAvgMs: average(sum('perf_longtask_total_ms'), sum('perf_longtask_count')),
+    longAnimationFrameCount: sum('perf_long_animation_frame_count'),
+    longAnimationFrameTotalMs: sum('perf_long_animation_frame_total_ms'),
+    longAnimationFrameMaxMs: max('perf_long_animation_frame_max_ms'),
+    longAnimationFrameAvgMs: average(
+      sum('perf_long_animation_frame_total_ms'),
+      sum('perf_long_animation_frame_count'),
+    ),
+    eventLoopSamples: samples,
+    eventLoopLagOver100Ratio: ratio(sum('perf_event_loop_over_100'), samples),
+    eventLoopLagOver250Ratio: ratio(sum('perf_event_loop_over_250'), samples),
+    eventLoopLagOver1000Count: sum('perf_event_loop_over_1000'),
+    eventLoopLagMeanMs: average(sum('perf_event_loop_lag_total_ms'), samples),
+    eventLoopLagMaxMs: max('perf_event_loop_lag_max_ms'),
+    mainThreadCpuPercent:
+      mainWindowMs > 0 ? Math.round((sum('perf_main_thread_cpu_ms') / mainWindowMs) * 1000) / 10 : null,
+    unresponsiveCount: sum('perf_unresponsive_count'),
+    unresponsiveTotalMs: sum('perf_unresponsive_total_ms'),
+    unresponsiveMaxMs: max('perf_unresponsive_max_ms'),
+    unresponsiveAvgMs: average(sum('perf_unresponsive_total_ms'), sum('perf_unresponsive_count')),
+  }
+}
+
+/**
  * Get analytics summary for admin dashboard
  */
 export async function getAnalyticsSummary(
@@ -832,22 +897,7 @@ export async function getAnalyticsSummary(
   avgSortingDuration: number
   avgResultCount: number
   avgExecuteLatency: number
-  performance: {
-    longTaskCount: number
-    longTaskTotalMs: number
-    longTaskMaxMs: number
-    longTaskAvgMs: number
-    rafJankCount: number
-    rafJankTotalMs: number
-    rafJankMaxMs: number
-    rafJankAvgMs: number
-    eventLoopDelayP95AvgMs: number
-    eventLoopDelayMaxMs: number
-    unresponsiveCount: number
-    unresponsiveTotalMs: number
-    unresponsiveMaxMs: number
-    unresponsiveAvgMs: number
-  }
+  performance: TelemetryPerformanceSummary
   dailyStats: Array<{
     date: string
     visits: number
@@ -963,18 +1013,10 @@ export async function getAnalyticsSummary(
   let searchSlowCount = 0
   let executeLatencyTotal = 0
   let executeLatencyCount = 0
-  let perfLongTaskTotalMs = 0
-  let perfLongTaskCount = 0
-  let perfLongTaskMaxMs = 0
-  let perfRafJankTotalMs = 0
-  let perfRafJankCount = 0
-  let perfRafJankMaxMs = 0
-  let perfEventLoopDelayP95TotalMs = 0
-  let perfEventLoopDelayP95Count = 0
-  let perfEventLoopDelayMaxMs = 0
-  let perfUnresponsiveTotalMs = 0
-  let perfUnresponsiveCount = 0
-  let perfUnresponsiveMaxMs = 0
+  const perfSums = new Map<string, number>()
+  const perfMaxes = new Map<string, number>()
+  const perfSum = (key: string): number => perfSums.get(key) ?? 0
+  const perfMax = (key: string): number => perfMaxes.get(key) ?? 0
 
   for (const row of dailyResults) {
     if (!dailyMap.has(row.date)) {
@@ -1135,41 +1177,13 @@ export async function getAnalyticsSummary(
       case 'execute_latency_count':
         executeLatencyCount += row.value
         break
-      case 'perf_longtask_total_ms':
-        perfLongTaskTotalMs += row.value
-        break
-      case 'perf_longtask_count':
-        perfLongTaskCount += row.value
-        break
-      case 'perf_longtask_max_ms':
-        perfLongTaskMaxMs = Math.max(perfLongTaskMaxMs, row.value)
-        break
-      case 'perf_raf_jank_total_ms':
-        perfRafJankTotalMs += row.value
-        break
-      case 'perf_raf_jank_count':
-        perfRafJankCount += row.value
-        break
-      case 'perf_raf_jank_max_ms':
-        perfRafJankMaxMs = Math.max(perfRafJankMaxMs, row.value)
-        break
-      case 'perf_event_loop_delay_p95_total_ms':
-        perfEventLoopDelayP95TotalMs += row.value
-        break
-      case 'perf_event_loop_delay_p95_count':
-        perfEventLoopDelayP95Count += row.value
-        break
-      case 'perf_event_loop_delay_max_ms':
-        perfEventLoopDelayMaxMs = Math.max(perfEventLoopDelayMaxMs, row.value)
-        break
-      case 'perf_unresponsive_total_ms':
-        perfUnresponsiveTotalMs += row.value
-        break
-      case 'perf_unresponsive_count':
-        perfUnresponsiveCount += row.value
-        break
-      case 'perf_unresponsive_max_ms':
-        perfUnresponsiveMaxMs = Math.max(perfUnresponsiveMaxMs, row.value)
+      default:
+        if (row.stat_type.startsWith('perf_')) {
+          if (row.stat_type.endsWith('_max_ms'))
+            perfMaxes.set(row.stat_type, Math.max(perfMax(row.stat_type), row.value))
+          else
+            perfSums.set(row.stat_type, perfSum(row.stat_type) + row.value)
+        }
         break
     }
   }
@@ -1267,22 +1281,7 @@ export async function getAnalyticsSummary(
     avgFirstResultMs: firstResultCount > 0 ? Math.round(firstResultTotal / firstResultCount) : 0,
     searchSlowCount,
     avgExecuteLatency: executeLatencyCount > 0 ? Math.round(executeLatencyTotal / executeLatencyCount) : 0,
-    performance: {
-      longTaskCount: perfLongTaskCount,
-      longTaskTotalMs: perfLongTaskTotalMs,
-      longTaskMaxMs: perfLongTaskMaxMs,
-      longTaskAvgMs: perfLongTaskCount > 0 ? Math.round(perfLongTaskTotalMs / perfLongTaskCount) : 0,
-      rafJankCount: perfRafJankCount,
-      rafJankTotalMs: perfRafJankTotalMs,
-      rafJankMaxMs: perfRafJankMaxMs,
-      rafJankAvgMs: perfRafJankCount > 0 ? Math.round(perfRafJankTotalMs / perfRafJankCount) : 0,
-      eventLoopDelayP95AvgMs: perfEventLoopDelayP95Count > 0 ? Math.round(perfEventLoopDelayP95TotalMs / perfEventLoopDelayP95Count) : 0,
-      eventLoopDelayMaxMs: perfEventLoopDelayMaxMs,
-      unresponsiveCount: perfUnresponsiveCount,
-      unresponsiveTotalMs: perfUnresponsiveTotalMs,
-      unresponsiveMaxMs: perfUnresponsiveMaxMs,
-      unresponsiveAvgMs: perfUnresponsiveCount > 0 ? Math.round(perfUnresponsiveTotalMs / perfUnresponsiveCount) : 0,
-    },
+    performance: summarizePerformance(perfSum, perfMax),
     dailyStats,
     deviceDistribution: deviceDist,
     regionDistribution: regionDist,

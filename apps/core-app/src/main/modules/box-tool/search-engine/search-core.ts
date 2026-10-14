@@ -35,6 +35,7 @@ import { appTaskGate } from '../../../service/app-task-gate'
 import { enterPerfContext } from '../../../utils/perf-context'
 import { perfMonitor } from '../../../utils/perf-monitor'
 import { databaseModule } from '../../database'
+import { pluginEntityProvider } from '../../plugin/adapters/plugin-entity-provider'
 import PluginFeaturesAdapter from '../../plugin/adapters/plugin-features-adapter'
 import { getSentryService } from '../../sentry'
 import {
@@ -107,6 +108,7 @@ import { resolveUsageIdentity } from './usage-identity'
 import {
   buildProviderSummary,
   buildProviderTelemetry,
+  isDeferredSemanticQueryEligible,
   roundDuration,
   resolveProviderCategory,
   resolveSearchScene,
@@ -135,16 +137,12 @@ interface SearchCacheEntry {
 const SEARCH_CACHE_TTL_MS = 5_000
 const SEARCH_CACHE_MAX_SIZE = 100
 const SEARCH_FRONTEND_ITEM_LIMIT = 80
-// Later batches (deferred file layer) are appended below the rows on screen and
-// then quota'd with them by the renderer (each source keeps a floor of slots), so
-// cutting them to the visible 80 here would drop a batch's tail source before it
-// can claim its floor. This is a safety cap, not a display cap.
+// Later batches (deferred file layer) merge with rows on screen; semantic rows
+// may insert by score while no result is selected. The renderer then applies
+// source quotas, so cutting batches to the visible 80 here would drop a tail
+// source before it can claim its floor. This is a safety cap, not a display cap.
 const SEARCH_UPDATE_ITEM_LIMIT = 200
 const SEARCH_CACHE_ITEM_LIMIT = 200
-// Deferred semantic recall: only runs for text queries whose primary results are
-// sparse enough that surfacing semantically-related files adds value.
-const DEFERRED_SEMANTIC_MIN_QUERY_LENGTH = 3
-const DEFERRED_SEMANTIC_MAX_BASE_ITEMS = 20
 /**
  * Fast-lane reads give up at the gather's per-provider budget (`taskTimeoutMs`, 3s) instead of the
  * reader default of 15s: a fast provider whose read is still pending after 3s has already been
@@ -456,6 +454,7 @@ export class SearchEngineCore
 
     PluginFeaturesAdapter.attach(this)
     this.registerProvider(PluginFeaturesAdapter)
+    this.registerProvider(pluginEntityProvider)
     this.registerProvider(previewProvider)
   }
 
@@ -1012,42 +1011,65 @@ export class SearchEngineCore
   /**
    * After first results render, asynchronously surface files that are
    * semantically related to the query but were missed by the keyword/FTS pass,
-   * and merge-append them into the still-active session. Runs entirely off the
-   * hot search path; an aborted request-scoped session drops the recall silently.
-   * Renderer stream updates merge by id, so recalled items append after the
-   * primary results without reordering them.
+   * and merge them into the still-active session using the shared enriched rank.
+   * Runs off the hot search path; an aborted session drops the recall silently.
+   * The renderer preserves existing row order and inserts recalled rows by score
+   * only while no result is selected; otherwise recalled rows append.
    */
-  private scheduleDeferredSemanticRecall(
+  private async scheduleDeferredSemanticRecall(
     sessionId: string,
     query: TuffQuery,
     providerFilter: string | undefined,
     baseItems: TuffItem[],
     signal: AbortSignal,
     sendUpdateToFrontend: (itemsToSend: TuffItem[]) => void
-  ): void {
+  ): Promise<void> {
     const text = query.text?.trim()
-    if (!text || text.length < DEFERRED_SEMANTIC_MIN_QUERY_LENGTH) return
-    // Provider-scoped queries (e.g. "@app foo") should not pull in file recall.
+    if (!text || !isDeferredSemanticQueryEligible(text)) return
     if (providerFilter) return
-    // Only worth the embedding scan when the primary results are sparse.
-    if (baseItems.length >= DEFERRED_SEMANTIC_MAX_BASE_ITEMS) return
     if (signal.aborted) return
 
-    void (async () => {
-      try {
-        const excludeIds = new Set(baseItems.map((item) => item.id))
-        const recallCandidates = await fileProvider.semanticRecall(query, excludeIds, signal)
-        const recallItems = this.filterCurrentFileScope(recallCandidates)
-        if (recallItems.length === 0) return
-        if (signal.aborted) return
-        sendUpdateToFrontend(recallItems)
-      } catch (error) {
-        searchEngineLog.debug('Deferred semantic recall skipped', {
-          error,
-          meta: { sessionId }
-        })
-      }
-    })()
+    try {
+      const excludeIds = new Set(baseItems.map((item) => item.id))
+      const recallCandidates = await new Promise<TuffItem[]>((resolve, reject) => {
+        const onAbort = (): void => {
+          signal.removeEventListener('abort', onAbort)
+          resolve([])
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        if (signal.aborted) {
+          onAbort()
+          return
+        }
+        void fileProvider.semanticRecall(query, excludeIds, signal).then(
+          (items) => {
+            signal.removeEventListener('abort', onAbort)
+            resolve(items)
+          },
+          (error) => {
+            signal.removeEventListener('abort', onAbort)
+            reject(error)
+          }
+        )
+      })
+      const recallItems = this.filterCurrentFileScope(recallCandidates)
+      if (recallItems.length === 0 || signal.aborted) return
+      const { sortedItems } = await this.mergeAndRankItems({
+        sessionId,
+        query,
+        items: recallItems,
+        signal,
+        includeCompletion: true,
+        enrichmentMode: 'full'
+      })
+      if (signal.aborted) return
+      sendUpdateToFrontend(sortedItems)
+    } catch (error) {
+      searchEngineLog.debug('Deferred semantic recall skipped', {
+        error,
+        meta: { sessionId }
+      })
+    }
   }
 
   startSearch(query: TuffQuery, context?: SearchRequestContext): SearchExecution {
@@ -1442,6 +1464,19 @@ export class SearchEngineCore
         session.publishUpdate(frontendItems)
       }
 
+      let semanticRecall: Promise<void> | undefined
+      const startSemanticRecall = (): Promise<void> => {
+        semanticRecall ??= this.scheduleDeferredSemanticRecall(
+          sessionId,
+          query,
+          providerFilter,
+          [...publishedItems.values()],
+          AbortSignal.any([gatherController!.signal, session.signal]),
+          (items) => sendUpdateToFrontend(items.filter((item) => !publishedItems.has(item.id)))
+        )
+        return semanticRecall
+      }
+
       searchLogger.logSearchPhase('Initialization', 'Setting up search aggregator')
 
       gatherController = gatherAggregator(providersToSearch, query, async (update) => {
@@ -1570,14 +1605,6 @@ export class SearchEngineCore
                   stageDurations: { ...pipelineDurations }
                 })
 
-                this.scheduleDeferredSemanticRecall(
-                  sessionId,
-                  query,
-                  providerFilter,
-                  sortedItems,
-                  gatherController!.signal,
-                  sendUpdateToFrontend
-                )
                 this.logSearchTrace({
                   event: 'first.result',
                   sessionId,
@@ -1606,6 +1633,8 @@ export class SearchEngineCore
                 resolve(resolvedResult)
               }
             }
+
+            await startSemanticRecall()
 
             // Handle final state and notify frontend
             const totalResults =
@@ -1735,6 +1764,7 @@ export class SearchEngineCore
 
             resolve(initialResult)
             didResolveInitial = true
+            void startSemanticRecall()
           } else if (update.newResults.length > 0) {
             // This is a subsequent update
             const subsequentItems = update.newResults.flatMap((res) => res.items)

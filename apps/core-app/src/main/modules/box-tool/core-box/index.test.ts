@@ -351,9 +351,12 @@ describe('CoreBoxModule', () => {
     expect(toggleHandler).toBeDefined()
     toggleHandler?.()
 
-    expect(mocks.coreBoxManagerTrigger).toHaveBeenCalledWith(true, {
-      triggeredByShortcut: true
-    })
+    expect(mocks.coreBoxManagerTrigger).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        triggeredByShortcut: true
+      })
+    )
     expect(mocks.coreBoxManagerTrigger).not.toHaveBeenCalledWith(false)
   })
 
@@ -427,6 +430,13 @@ describe('CoreBoxModule', () => {
       expect.objectContaining({ id: 2 })
     )
     expect(mocks.coreBoxManagerTrigger).not.toHaveBeenCalledWith(false)
+    expect(mocks.coreBoxManagerTrigger).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        triggeredByShortcut: true,
+        screen: expect.objectContaining({ id: 2 })
+      })
+    )
   })
 
   it('ignores layout updates while CoreBox window is hidden', async () => {

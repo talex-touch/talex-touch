@@ -92,6 +92,7 @@ function createSettingCategoryRoutes(withPerf: typeof withRouteComponentPerf): R
     network: () => import('../views/base/settings/categories/SettingNetworkPage.vue'),
     download: () => import('../views/base/settings/categories/SettingDownloadPage.vue'),
     'storage-usage': () => import('../views/base/settings/categories/SettingStoragePage.vue'),
+    performance: () => import('../views/base/settings/categories/SettingPerformancePage.vue'),
     about: () => import('../views/base/settings/categories/SettingAboutPage.vue')
   }
 
@@ -302,10 +303,10 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/plugin/:name?',
+    path: APP_SURFACE_ROUTES.plugin,
     name: '$I18n:router.plugin',
     component: withRouteComponentPerf(
-      '/plugin/:name?',
+      APP_SURFACE_ROUTES.plugin,
       () => import('../views/base/PluginDetail.vue')
     ),
     meta: {

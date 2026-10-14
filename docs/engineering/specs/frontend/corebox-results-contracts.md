@@ -14,8 +14,9 @@
 - **Data lands in one update; motion follows it.** Rows are opaque from their first frame and
   nothing ready waits for an animation ([Ready results must not wait for reveal
   motion](./component-guidelines.md#ready-results-must-not-wait-for-reveal-motion)).
-- **What the user is looking at keeps its place.** Rows on screen keep their index, an untouched
-  selection stays on row 0, the preview pane waits before it closes.
+- **What the user chose keeps its place.** Existing rows keep their relative order. Before a row is
+  chosen, late semantic hits may insert by score; after a choice, they append. The preview pane
+  waits before it closes.
 - **Result motion stays compositor-only.** Rows and column layout move through `transform`,
   `translate` or `opacity`, never width, height, padding, `filter` or a custom property; keyboard
   scrolling is instant. An action's outcome may morph through
@@ -29,7 +30,7 @@
 
 ```
 hooks/useSearch.ts        res · loading · awaitingFirstResults · searchSettling · boxOptions.focus
-  mergeRenderedItems        append-only merge, keepItemId            → Append-only / reconcile
+  mergeRenderedItems        stable merge, default semantic insertion → Stable merge / reconcile
   settleRefreshReconcile    a same-query refresh settles at the end   → Append-only / reconcile
 box/CoreBox.vue
   [res, focus] watchers     a followed selection stays visible        → Selection follow
@@ -132,7 +133,8 @@ scrollActiveItemIntoView() // useKeyboard: next frame, instant, minimal, clears 
 
 | Situation | Focus | Scroll |
 | --- | --- | --- |
-| Focus 0; a later batch would outscore row 0 | 0, same item on top (append-only) | none |
+| Focus 0; a later non-semantic batch would outscore row 0 | 0, same item on top (append-only) | none |
+| Focus 0; a semantic arrival outscores all unpinned rows | 0, new semantic item on top | none |
 | Focus 0; index-commit refresh | 0 | none |
 | Focus k > 0; a pinned arrival, quota eviction or reconcile removal above it | follows its item | `scrollActiveItemIntoView()` if the row was on screen |
 | Same, but the user had scrolled the row away | follows its item | none |
@@ -275,7 +277,7 @@ boxOptions.visibleGridColumns = columns
 if (rewrap) revealActiveItemAfterReflow()
 ```
 
-## Scenario: Results are append-only; a same-query refresh reconciles at search end
+## Scenario: Results preserve existing order; a same-query refresh reconciles at search end
 
 ### 1. Scope / Trigger
 
@@ -309,15 +311,20 @@ const RECOMMENDATION_TIMEOUT_MS = 400 // executeSearch, recommendation path
 
 ### 3. Contracts
 
-- **Append-only** (user decision 2026-09-26, session talex-touch-51).
-  - A row on screen keeps its index and takes the newer item data.
-  - Arrivals are ranked among themselves (pinned, then `scoring.final`, then arrival order) and
-    appended below everything. Pinned arrivals join the pinned block at the top.
+- **Stable merge** (ordinary arrivals remain append-only per the user decision of 2026-09-26;
+  default semantic insertion added for the user's priority correction on 2026-10-12).
+  - A row on screen takes newer data without re-sorting existing rows.
+  - Ordinary arrivals are ranked among themselves (pinned, then `scoring.final`, then arrival order)
+    and appended. Pinned arrivals join the pinned block at the top.
+  - With no `keepItemId` (untouched focus 0), a new semantic row with a finite positive final score
+    inserts after every existing pin and every stronger or equal-scoring row. Current rows may be
+    unsorted across batches; do not insert before the first weak row if a stronger row follows it.
+  - With `keepItemId` (focus > 0), semantic arrivals append too, retaining the chosen row's place.
   - The quota keeps each source at least `MIN_SLOTS_PER_SOURCE` of the 80 slots and never evicts
     `keepItemId`.
-  - Nothing re-ranks rows across batches. People mostly launch apps, and the deferred file layer
-    (the index and Spotlight) answers after them and reshuffled rows the user had already arrowed
-    to.
+  - Semantic recall uses the main-process enriched sorter: similarity contributes at most 400 match
+    points, below exact file stems (420) and full names (1000). Pins remain above scores. This does
+    not promise global score order for ordinary append-only batches.
 - **A re-run of the query on screen merges.** `isRenderedTextQuery` holds when the key matches and
   `renderedTextQuery.items` is still the array in `searchResults`: an index-commit refresh, or the
   re-run on show. Its fast snapshot merges into the rendered rows instead of replacing them, and its
@@ -364,7 +371,9 @@ View-level outcomes; the full matrix is in the main-process spec.
 
 | Situation | On screen |
 | --- | --- |
-| A deferred batch outscores the rows on screen | Appended below them; no row moves |
+| A non-semantic deferred batch outscores the rows on screen | Appended below them; no row moves |
+| A semantic arrival with untouched focus 0 | Inserts after every stronger/equal row and pin; existing relative order retained |
+| A semantic arrival with focus > 0 | Appended; chosen item and index unchanged |
 | A pinned arrival | Joins the pinned block; rows below shift by one (the list FLIP slides them when it is on) |
 | A refresh snapshot lacks two file rows, an update re-sends one | Both stay on their DOM nodes until completion; then only the other goes |
 | Completion never arrives | Settled at 3500ms, not at 3499ms |
@@ -379,9 +388,9 @@ View-level outcomes; the full matrix is in the main-process spec.
 - Good: while an index builds, an open "wx" query refreshes at most every 5s, its rows keep their
   DOM nodes, and a refresh that changed nothing renders nothing.
 - Base: a deleted file's row goes when the refresh that no longer finds it completes.
-- Bad: replacing the list with the fast snapshot; ranking arrivals in among the rendered rows;
-  reconciling against the capped `items`; settling on the snapshot or on a shorter timeout; writing
-  the reconciled list over rows another path put there.
+- Bad: replacing the list with the fast snapshot; globally re-ranking rendered rows; inserting a
+  semantic row above an already chosen or stronger/equal row; reconciling against the capped
+  `items`; settling on the snapshot or on a shorter timeout; writing over another query's rows.
 
 ### 6. Tests Required
 
@@ -392,8 +401,9 @@ View-level outcomes; the full matrix is in the main-process spec.
 - `hooks/useSearch.core.test.ts` › "a same-query refresh reconciles at completion", › "index-commit
   refreshes back off and wait for a visible CoreBox", and › "the recommendation path keeps what is on
   screen until its snapshot lands" (one-update swap, cleared at the 400ms budget and on failure).
-- `hooks/useSearch.rank.test.ts`: the append-only cases, and "holds the rendered order and the
-  selection through 100 random streamed sessions".
+- `hooks/useSearch.rank.test.ts`: ordinary append-only cases, default semantic promotion, stronger
+  and equal row protection (including unsorted batches), selected-row stability, pins, duplicate
+  ids, and "holds the rendered order and the selection through 100 random streamed sessions".
 
 ### 7. Wrong vs Correct
 
@@ -1037,8 +1047,8 @@ const dy = before.top + (origin.top - entry.origin.top) - after.top
 ```ts
 // box/CoreBox.vue
 const PREVIEW_CLOSE_DELAY_MS = 200
-const addonType = ref<'preview' | undefined>(undefined)
-const addonItem = shallowRef<TuffItem | undefined>(undefined) // the file the pane shows
+const addonType = ref<'preview' | 'plugin' | undefined>(undefined)
+const addonItem = shallowRef<TuffItem | undefined>(undefined) // the file or plugin row the pane shows
 let addonQuery = '' // the query addonItem was selected under
 let rowsQuery = searchVal.value // the query the rows on screen answer
 watch(res, () => (rowsQuery = searchVal.value), { flush: 'sync' })
@@ -1052,6 +1062,15 @@ watch(activeItem, (item) => { /* open, hold or close */ }, { immediate: true })
 
 - **Open at once.** Selecting a file opens the pane on it, or switches the open pane to it, and
   cancels a pending close.
+- **A plugin row is a pane row too (2026-10-13).** An installed plugin's row (`kind: 'plugin'`, a
+  snapshot readable by `readPluginEntitySnapshot`) opens `TuffItemAddon type="plugin"` —
+  `PluginEntityPanel` — under the same open/hold/close rules; "off files" below reads "off pane
+  rows". The pane draws only the row (`meta.extension.pluginEntity` and `actions`), runs its
+  buttons through `useActionPanel.executeAction` (the ⌘K path), and keeps the input focused
+  (`mousedown.prevent`) so Enter stays the list's. After a management step the query is re-run with
+  `{ force: true, preserveSelection: true }`, and the pane redraws from the new row; it never holds
+  state of its own. `previewVisible` stays `addonType === 'preview'`: on a plugin row Enter is still
+  the row's own action (run its first feature, or enable/reload it), so its hint stays.
 - **Close after a rest.** Off files, the pane stays open showing the last file, not the row selected
   now, until the selection has rested off files for 200ms. Every off-file step restarts the wait.
   The results column flips at most once per rest.

@@ -139,12 +139,16 @@ Nexus 为 Motion 提供独立文档章节，包含 Buttons、Card Spreads、3D C
 - 套件分类表：`apps/nexus/scripts/recategorize-component-docs.py`
 - 公开文档：`apps/nexus/content/docs/dev/tools/tuffex.zh.mdc`
 
+## 组件设计原则
+
+- **强制 `border-box` 盒模型**：TuffEx 基础样式（`base.css`）不向全局注入侵入式的 `*` 通配重置规则。为保证组件在各种宿主项目环境（包括原生、UnoCSS、Tailwind 或未设置全局 reset 的页面）中表现一致，所有带有 `width`、`padding` 或 `border` 的组件根容器与内部输入控制区（如 `TxInput`、`TxTextarea`、`TxSelect`、`TxNumberInput` 等）**必须显式声明 `box-sizing: border-box;`**，严禁依赖外部包含块或全局重置，杜绝 `width: 100%` 在 `content-box` 下溢出父容器边框的现象。
+- **受控尺寸与弹性自适应**：组件默认宽度紧凑自洽或 100% 撑满父容器，不写死固定像素宽度破坏响应式。
+
 ## 导出约定
 
 - 推荐使用 `Tx*` 命名导出，例如 `TxButton`、`TxDialog`。
 - 部分模块保留兼容别名（例如同一模块同时导出 `Button` / `TxButton`）。
 - 类型定义可直接从 `@talex-touch/tuffex` 导入。
-
 ## 文档
 
 - 在线文档：[tuffex.tagzxia.com/docs/dev/tuffex](https://tuffex.tagzxia.com/docs/dev/tuffex)

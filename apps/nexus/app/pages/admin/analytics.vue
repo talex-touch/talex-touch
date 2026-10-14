@@ -593,6 +593,8 @@ const formatMessageTime = (value: string) => formatAnalyticsDateTime(value, loca
 const formatExchangeTime = (value: number | null | undefined) => value ? formatAnalyticsDateTime(value, locale.value) : '-'
 const formatRate = formatExchangeRate
 const formatDuration = formatAnalyticsDuration
+/** A 0–1 share of samples, e.g. 0.0123 → "1.23%". */
+const formatShare = (ratio: number) => `${(ratio * 100).toFixed(2)}%`
 
 
 function drilldownCountry(countryCode: string) {
@@ -789,7 +791,7 @@ const hourLabels = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart
       </TxCard>
 
       <!-- UI & Main Performance -->
-      <div v-if="activeSection === 'performance'" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div v-if="activeSection === 'performance'" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <TxCard variant="plain" background="mask" :radius="16" :padding="16">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">{{ t('dashboard.sections.analytics.performance.longTasks') }}</span>
@@ -808,30 +810,48 @@ const hourLabels = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart
 
         <TxCard variant="plain" background="mask" :radius="16" :padding="16">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-medium text-blue-600 dark:text-blue-400">{{ t('dashboard.sections.analytics.performance.frameJank') }}</span>
+            <span class="text-xs font-medium text-blue-600 dark:text-blue-400">{{ t('dashboard.sections.analytics.performance.longAnimationFrames') }}</span>
             <span class="i-carbon-chart-line-smooth text-base text-blue-500" />
           </div>
           <p class="mt-2 text-2xl font-bold text-black dark:text-white">
-            {{ analytics.summary.performance.rafJankAvgMs }}ms
+            {{ analytics.summary.performance.longAnimationFrameAvgMs }}ms
           </p>
           <p class="mt-1 text-xs text-black/45 dark:text-white/45">
-            {{ t('dashboard.sections.analytics.performance.frameJankDetail', {
-              max: analytics.summary.performance.rafJankMaxMs,
-              count: formatNumber(analytics.summary.performance.rafJankCount),
+            {{ t('dashboard.sections.analytics.performance.longAnimationFramesDetail', {
+              max: analytics.summary.performance.longAnimationFrameMaxMs,
+              count: formatNumber(analytics.summary.performance.longAnimationFrameCount),
             }) }}
           </p>
         </TxCard>
 
         <TxCard variant="plain" background="mask" :radius="16" :padding="16">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-medium text-purple-600 dark:text-purple-400">{{ t('dashboard.sections.analytics.performance.mainLoopDelay') }}</span>
+            <span class="text-xs font-medium text-purple-600 dark:text-purple-400">{{ t('dashboard.sections.analytics.performance.mainLoopLag') }}</span>
             <span class="i-carbon-activity text-base text-purple-500" />
           </div>
           <p class="mt-2 text-2xl font-bold text-black dark:text-white">
-            {{ analytics.summary.performance.eventLoopDelayP95AvgMs }}ms
+            {{ formatShare(analytics.summary.performance.eventLoopLagOver100Ratio) }}
           </p>
           <p class="mt-1 text-xs text-black/45 dark:text-white/45">
-            {{ t('dashboard.sections.analytics.performance.maxDuration', { max: analytics.summary.performance.eventLoopDelayMaxMs }) }}
+            {{ t('dashboard.sections.analytics.performance.mainLoopLagDetail', {
+              over250: formatShare(analytics.summary.performance.eventLoopLagOver250Ratio),
+              mean: analytics.summary.performance.eventLoopLagMeanMs,
+              max: analytics.summary.performance.eventLoopLagMaxMs,
+              samples: formatNumber(analytics.summary.performance.eventLoopSamples),
+            }) }}
+          </p>
+        </TxCard>
+
+        <TxCard variant="plain" background="mask" :radius="16" :padding="16">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-sky-600 dark:text-sky-400">{{ t('dashboard.sections.analytics.performance.mainThreadCpu') }}</span>
+            <span class="i-carbon-chip text-base text-sky-500" />
+          </div>
+          <p class="mt-2 text-2xl font-bold text-black dark:text-white">
+            {{ analytics.summary.performance.mainThreadCpuPercent === null ? '—' : `${analytics.summary.performance.mainThreadCpuPercent}%` }}
+          </p>
+          <p class="mt-1 text-xs text-black/45 dark:text-white/45">
+            {{ t('dashboard.sections.analytics.performance.mainThreadCpuDetail') }}
           </p>
         </TxCard>
 

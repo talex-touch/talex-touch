@@ -1,5 +1,5 @@
 import type { AppLocale } from "../../i18n";
-import type { TuffQuery } from "../tuff";
+import type { TuffDeepMatch, TuffQuery } from "../tuff";
 
 export type { TuffQuery } from "../tuff";
 
@@ -85,14 +85,7 @@ export interface PreviewCardPayload {
   warnings?: string[];
   meta?: Record<string, any>;
   confidence?: number;
-  deepMatch?: {
-    kind?: 'semantic' | 'content' | 'code';
-    snippet?: string;
-    pageNumber?: number;
-    lineNumber?: number;
-    matchTerm?: string;
-    score?: number;
-  };
+  deepMatch?: TuffDeepMatch;
 }
 
 export interface PreviewAbilityResult {

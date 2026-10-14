@@ -949,6 +949,7 @@ onBeforeUnmount(() => {
 .tuff-select {
   position: relative;
   display: inline-block;
+  box-sizing: border-box;
   // Compact by default; hosts opt into wider layouts with an explicit width
   // (inline style or class), which the panel follows 1:1.
   width: 240px;
@@ -959,6 +960,7 @@ onBeforeUnmount(() => {
     width: 100%;
     flex: 1 1 auto;
     min-width: 0;
+    box-sizing: border-box;
   }
 
   &__arrow {
@@ -973,6 +975,7 @@ onBeforeUnmount(() => {
     --tuff-select-tag-padding: 4px;
     display: flex;
     align-items: center;
+    box-sizing: border-box;
     width: 100%;
     min-height: 32px;
     min-width: 0;

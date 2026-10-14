@@ -16,6 +16,7 @@ import {
   COREBOX_SCREENSHOT_TRANSLATE_PIN_ACTION_ID
 } from '../../../../../shared/events/corebox-scenes'
 import { estimateMetaPanelHeight } from '../../../../../shared/meta-overlay-geometry'
+import { PLUGIN_ENTITY_ACTION_IDS } from '../../../../../shared/plugin-entity'
 import { CLIPBOARD_HISTORY_SOURCE_ID } from '../adapter/hooks/clipboard-history-item'
 
 /**
@@ -32,14 +33,19 @@ import { CLIPBOARD_HISTORY_SOURCE_ID } from '../adapter/hooks/clipboard-history-
  */
 
 /** The panel's groups, in display order. The primary group carries no title. */
-export type MetaActionSlot = 'primary' | 'open' | 'host' | 'plugin'
+export type MetaActionSlot = 'primary' | 'quick-flow' | 'open' | 'host' | 'plugin'
 
 /**
- * Section order in the panel: the row that runs the item, everything the item can be asked to do
- * under it, then the app-level rows and whatever the plugin brings. Item commands share one
- * section — sub-grouping them by verb split four rows across four headings.
+ * Section order in the panel: the row that runs the item, quick flows, everything the item can be
+ * asked to do under it, then the app-level rows and whatever the plugin brings.
  */
-export const META_ACTION_SLOTS: readonly MetaActionSlot[] = ['primary', 'open', 'host', 'plugin']
+export const META_ACTION_SLOTS: readonly MetaActionSlot[] = [
+  'primary',
+  'quick-flow',
+  'open',
+  'host',
+  'plugin'
+]
 
 export type MetaActionLabel = { key: string } | { text: string }
 
@@ -71,6 +77,8 @@ export type MetaActionGlyph =
   | 'share'
   | 'plugin'
   | 'info'
+  | 'stop'
+  | 'refresh'
 /** Host actions draw a fixed glyph; a plugin's own action may bring its own icon. */
 export type MetaActionIcon = { glyph: MetaActionGlyph } | { icon: ITuffIcon }
 
@@ -166,8 +174,8 @@ function isPinned(item: TuffItem): boolean {
 /** CoreBox's own actions. The chords are the Raycast-aligned set (R6.1) plus the older ones. */
 const BUILTIN_SPECS: Readonly<Record<string, HostActionSpec>> = {
   'reveal-in-finder': {
-    slot: 'open',
-    rank: 20,
+    slot: 'quick-flow',
+    rank: 10,
     label: revealLabel,
     glyph: ({ platform }) => (platform === 'darwin' ? 'finder' : 'folder-open'),
     chord: { code: 'KeyO' }
@@ -192,8 +200,8 @@ const BUILTIN_SPECS: Readonly<Record<string, HostActionSpec>> = {
     chord: { code: 'KeyI' }
   },
   'open-terminal': {
-    slot: 'open',
-    rank: 38,
+    slot: 'quick-flow',
+    rank: 20,
     label: key('corebox.actions.openInTerminal'),
     glyph: glyph('terminal'),
     chord: { code: 'KeyT' }
@@ -205,8 +213,8 @@ const BUILTIN_SPECS: Readonly<Record<string, HostActionSpec>> = {
     glyph: glyph('copy')
   },
   'system-share': {
-    slot: 'open',
-    rank: 48,
+    slot: 'quick-flow',
+    rank: 30,
     label: key('corebox.actions.systemShare'),
     glyph: glyph('share')
   },
@@ -243,8 +251,8 @@ const BUILTIN_SPECS: Readonly<Record<string, HostActionSpec>> = {
     chord: { code: 'KeyT', alt: true }
   },
   [COREBOX_FLOW_TRANSFER_ACTION_ID]: {
-    slot: 'open',
-    rank: 130,
+    slot: 'quick-flow',
+    rank: 40,
     label: key('corebox.actions.flowTransfer'),
     glyph: glyph('flow'),
     chord: { code: 'KeyD', shift: true },
@@ -342,6 +350,38 @@ const PROVIDER_ACTION_SPECS: Readonly<Record<string, HostActionSpec>> = {
     rank: 100,
     label: key('corebox.actions.copyWslPath'),
     glyph: glyph('copy-path')
+  },
+  // An installed plugin's management steps (`PluginEntityProvider`). Enable and disable never
+  // appear together, so they share a rank.
+  [PLUGIN_ENTITY_ACTION_IDS.enable]: {
+    slot: 'open',
+    rank: 20,
+    label: key('corebox.pluginEntity.actions.enable'),
+    glyph: glyph('play')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.disable]: {
+    slot: 'open',
+    rank: 20,
+    label: key('corebox.pluginEntity.actions.disable'),
+    glyph: glyph('stop')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.reload]: {
+    slot: 'open',
+    rank: 25,
+    label: key('corebox.pluginEntity.actions.reload'),
+    glyph: glyph('refresh')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.openFolder]: {
+    slot: 'open',
+    rank: 30,
+    label: key('corebox.pluginEntity.actions.openFolder'),
+    glyph: glyph('folder')
+  },
+  [PLUGIN_ENTITY_ACTION_IDS.openDetail]: {
+    slot: 'open',
+    rank: 35,
+    label: key('corebox.pluginEntity.actions.openDetail'),
+    glyph: glyph('info')
   }
 }
 
@@ -375,6 +415,7 @@ const TYPE_LABEL_KEYS: Readonly<Record<ActionType, string>> = {
 }
 
 const SLOT_TITLE_KEYS: Readonly<Record<Exclude<MetaActionSlot, 'primary'>, string>> = {
+  'quick-flow': 'corebox.actions.groups.quickFlow',
   open: 'corebox.actions.groups.open',
   host: 'corebox.actions.groups.host',
   plugin: 'corebox.actions.groups.plugin'
@@ -483,14 +524,14 @@ export function generateBuiltinActions(item: TuffItem): MetaAction[] {
   const isRevealable = isRevealablePath(filePath)
 
   if ((item.kind === 'app' || item.kind === 'file') && isRevealable) {
-    actions.push(builtin('reveal-in-finder', 'Reveal in file manager', 'open'))
+    actions.push(builtin('reveal-in-finder', 'Reveal in file manager', 'quick-flow'))
   }
   if (item.kind === 'file' && isRevealable) {
     actions.push(builtin('quick-look', 'Quick Look', 'open'))
     actions.push(builtin('get-info', 'Get Info', 'open'))
-    actions.push(builtin('open-terminal', 'Open in terminal', 'open'))
+    actions.push(builtin('open-terminal', 'Open in terminal', 'quick-flow'))
     actions.push(builtin('copy-file', 'Copy file', 'open'))
-    actions.push(builtin('system-share', 'Share', 'open'))
+    actions.push(builtin('system-share', 'Share', 'quick-flow'))
     if (filePath.endsWith('.app') || filePath.endsWith('.bundle')) {
       actions.push(builtin('show-package-contents', 'Show package contents', 'open'))
     }
@@ -509,7 +550,7 @@ export function generateBuiltinActions(item: TuffItem): MetaAction[] {
     actions.push(builtin(COREBOX_SCREENSHOT_TRANSLATE_ACTION_ID, 'Translate image', 'open'))
     actions.push(builtin(COREBOX_SCREENSHOT_TRANSLATE_PIN_ACTION_ID, 'Translate and pin', 'open'))
   }
-  actions.push(builtin(COREBOX_FLOW_TRANSFER_ACTION_ID, 'Transfer to plugin', 'open'))
+  actions.push(builtin(COREBOX_FLOW_TRANSFER_ACTION_ID, 'Transfer to plugin', 'quick-flow'))
   // Every item offers it: settings are about the app, not about whatever the row holds.
   actions.push(builtin('open-settings', 'Open settings', 'host'))
   return actions

@@ -146,7 +146,8 @@ describe('TuffItemPreviewer source row', () => {
     expect(openWith.text()).toContain('Preview')
 
     await openWith.trigger('click')
-    expect(pane.emitted('openItem')).toHaveLength(1)
+    expect(pane.emitted('openWith')).toEqual([['com.apple.Preview']])
+    expect(pane.emitted('openItem')).toBeUndefined()
   })
 
   it('keeps the index source label when the host resolves no application', async () => {
@@ -260,5 +261,48 @@ describe('TuffItemPreviewer deep match snippet', () => {
     expect(text).toContain('fileInfo.deepMatchSemantic')
     expect(text).toContain('Tenant shall not keep any')
     expect(pane.find('mark').text()).toBe('pets')
+  })
+})
+
+describe('TuffItemPreviewer original UTF16 snippet rendering', () => {
+  it('renders hostile markup as literal text and highlights original entity and emoji offsets', async () => {
+    routeHostEvents({ success: true, application: null })
+    const snippet = '<img src=x onerror=alert(1)> &amp; 🐾 pets'
+    const entity = snippet.indexOf('&amp;')
+    const emoji = snippet.indexOf('🐾')
+    const item = fileItem('/Documents/lease.pdf')
+    item.meta!.deepMatch = {
+      kind: 'semantic',
+      snippet,
+      pageNumber: 4,
+      score: 0.94,
+      matchTerm: 'img',
+      highlightRanges: [
+        { start: entity, end: entity + 5 },
+        { start: emoji, end: emoji + 2 }
+      ]
+    }
+    const pane = mountPreviewer(item)
+    await flushPromises()
+    const card = pane.get('.deep-match-snippet')
+    expect(card.element.textContent).toBe(snippet)
+    expect(card.findAll('mark').map((mark) => mark.text())).toEqual(['&amp;', '🐾'])
+    expect(card.find('img').exists()).toBe(false)
+    expect(card.find('script').exists()).toBe(false)
+  })
+
+  it('honors explicit empty ranges instead of inventing literal highlights for semantic terms', async () => {
+    routeHostEvents({ success: true, application: null })
+    const item = fileItem('/Documents/lease.pdf')
+    item.meta!.deepMatch = {
+      kind: 'semantic',
+      snippet: 'No pets are permitted.',
+      matchTerm: 'pets',
+      highlightRanges: []
+    }
+    const pane = mountPreviewer(item)
+    await flushPromises()
+    expect(pane.get('.deep-match-snippet').text()).toBe('No pets are permitted.')
+    expect(pane.get('.deep-match-snippet').findAll('mark')).toEqual([])
   })
 })

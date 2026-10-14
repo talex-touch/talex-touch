@@ -477,7 +477,6 @@ describe('CoreBoxFocusDiagnostics legal focus ownership', () => {
 
   it.each([
     ['flow selector', focusedNative(), { expectedTarget: 'flow' as const, inputFocused: false }],
-    ['history panel', focusedNative(), { expectedTarget: 'history' as const, inputFocused: false }],
     [
       'meta overlay',
       focusedNative({ metaVisible: true, metaFocused: true }),

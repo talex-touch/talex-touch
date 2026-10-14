@@ -62,6 +62,9 @@ export * from './notification'
 // Permission domain types
 export * from './permission'
 
+// Performance report domain types
+export * from './performance'
+
 // Platform domain types
 export * from './platform'
 

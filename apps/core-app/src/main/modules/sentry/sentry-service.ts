@@ -11,7 +11,6 @@ import { sanitizeCoreBoxFocusRecord } from '@talex-touch/utils/core-box/focus-te
 import fs, { type Dir } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { isProxy } from 'node:util/types'
 import * as Sentry from '@sentry/electron/main'
 import { StorageList } from '@talex-touch/utils'
@@ -23,6 +22,7 @@ import { innerRootPath } from '../../core/precore'
 import type { TalexEvents } from '../../core/eventbus/touch-event'
 import { resolveMainRuntime } from '../../core/runtime-accessor'
 import { createLogger } from '../../utils/logger'
+import { takeEventLoopLagWindow } from '../../utils/event-loop-lag-window'
 import { shouldDowngradeRemoteFailure } from '../../utils/network-log-noise'
 import { getAppVersionSafe } from '../../utils/version-util'
 import { BaseModule } from '../abstract-base-module'
@@ -162,6 +162,26 @@ const NEXUS_TELEMETRY_FLUSH_TASK_TIMEOUT_MS =
   NEXUS_TELEMETRY_FLUSH_BUDGET_MS + NEXUS_TELEMETRY_REQUEST_TIMEOUT_MS + 5_000
 const SENTRY_SHUTDOWN_GRACE_MS = 1_500
 
+/**
+ * One main-process performance event per window. 5 minutes is the reporting cadence, not the
+ * sampling rate (the lag monitor samples every 100 ms): 288 events a day per running client
+ * instead of 1,440, and every window's figures stay within the sanitizer's 5-minute duration cap.
+ */
+const PERF_TELEMETRY_WINDOW_MS = 5 * 60_000
+/**
+ * Version 2: additive event-loop lag counters, main-thread CPU and Long Animation Frames replaced
+ * the per-client p95 delay and the requestAnimationFrame jank probe. Nexus reads only v2 fields.
+ */
+const PERF_TELEMETRY_SCHEMA = 2
+
+type ProcessWithThreadCpu = NodeJS.Process & { threadCpuUsage?: () => NodeJS.CpuUsage }
+
+/** The calling thread's own CPU; Electron's main thread runs both Node's and Chromium's loops. */
+function readThreadCpuUsage(): NodeJS.CpuUsage | null {
+  const threadCpuUsage = (process as ProcessWithThreadCpu).threadCpuUsage
+  return threadCpuUsage ? threadCpuUsage.call(process) : null
+}
+
 interface NexusTelemetryEvent {
   eventType: 'search' | 'visit' | 'error' | 'feature_use' | 'performance'
   clientId?: string
@@ -297,7 +317,7 @@ export class SentryServiceModule extends BaseModule {
   private telemetryStatsPersistTimer: NodeJS.Timeout | null = null
   private telemetryStatsHydratePromise: Promise<void> | null = null
 
-  private eventLoopDelay?: ReturnType<typeof monitorEventLoopDelay>
+  private perfWindow: { startedAt: number; cpu: NodeJS.CpuUsage | null } | null = null
   private unresponsiveAt = new Map<number, number>()
   private unresponsiveStats = { count: 0, totalMs: 0, maxMs: 0 }
   private windowPerfListenersReady = false
@@ -434,6 +454,9 @@ export class SentryServiceModule extends BaseModule {
   }
 
   async onDestroy(ctx: ModuleDestroyContext<TalexEvents>): Promise<void> {
+    // The partial performance window is queued while telemetry is still accepted; the outbox
+    // write below persists it and the next launch uploads it, like the rest of the buffer.
+    this.flushPerformanceMetrics()
     // Later module unloads still emit telemetry. Stop accepting it before any await,
     // then persist the already accepted buffer while Storage/Database are still live.
     this.destroying = true
@@ -759,14 +782,9 @@ export class SentryServiceModule extends BaseModule {
 
     this.ensureWindowPerformanceListeners()
 
-    try {
-      this.eventLoopDelay = monitorEventLoopDelay({ resolution: 20 })
-      this.eventLoopDelay.enable()
-    } catch {
-      this.eventLoopDelay = undefined
-    }
+    this.beginPerformanceWindow()
 
-    const flushIntervalMs = 60_000
+    const flushIntervalMs = PERF_TELEMETRY_WINDOW_MS
     this.pollingService.register(SENTRY_PERF_TASK_ID, () => this.flushPerformanceMetrics(), {
       interval: flushIntervalMs,
       unit: 'milliseconds',
@@ -782,16 +800,7 @@ export class SentryServiceModule extends BaseModule {
 
   private stopPerformanceMonitors(): void {
     this.pollingService.unregister(SENTRY_PERF_TASK_ID)
-    if (this.eventLoopDelay) {
-      try {
-        this.eventLoopDelay.disable()
-      } catch {
-        sentryLog.debug('Failed to disable event loop delay monitor', {
-          meta: { code: 'SENTRY_PERF_MONITOR_DISABLE_FAILED' }
-        })
-      }
-      this.eventLoopDelay = undefined
-    }
+    this.perfWindow = null
     this.detachWindowPerformanceListeners()
     this.unresponsiveAt.clear()
     this.unresponsiveStats = { count: 0, totalMs: 0, maxMs: 0 }
@@ -872,19 +881,38 @@ export class SentryServiceModule extends BaseModule {
     }
   }
 
-  private flushPerformanceMetrics(): void {
-    const metadata: Record<string, unknown> = { perfSource: 'main' }
+  /** Starts a window: lag recorded while telemetry was off is not this window's. */
+  private beginPerformanceWindow(): void {
+    takeEventLoopLagWindow()
+    this.perfWindow = { startedAt: Date.now(), cpu: readThreadCpuUsage() }
+  }
 
-    if (this.eventLoopDelay) {
-      const p95 = Number(this.eventLoopDelay.percentile(95)) / 1e6
-      const max = Number(this.eventLoopDelay.max) / 1e6
-      if (Number.isFinite(p95)) {
-        metadata.eventLoopDelayP95Ms = Math.round(p95)
+  private flushPerformanceMetrics(): void {
+    const window = this.perfWindow
+    if (!window) return
+    const lag = takeEventLoopLagWindow()
+    const cpu = readThreadCpuUsage()
+    const now = Date.now()
+    this.perfWindow = { startedAt: now, cpu }
+
+    const metadata: Record<string, unknown> = {
+      perfSource: 'main',
+      perfSchema: PERF_TELEMETRY_SCHEMA,
+      windowMs: Math.min(now - window.startedAt, PERF_TELEMETRY_WINDOW_MS)
+    }
+
+    if (lag.samples > 0) {
+      metadata.eventLoopLagSamples = lag.samples
+      metadata.eventLoopLagOver50Count = lag.over50
+      metadata.eventLoopLagOver100Count = lag.over100
+      metadata.eventLoopLagOver250Count = lag.over250
+      metadata.eventLoopLagOver1000Count = lag.over1000
+      metadata.eventLoopLagTotalMs = Math.round(lag.totalMs)
+      metadata.eventLoopLagMaxMs = Math.round(lag.maxMs)
+      if (cpu && window.cpu) {
+        const usedMicros = cpu.user - window.cpu.user + (cpu.system - window.cpu.system)
+        metadata.mainThreadCpuMs = Math.max(0, Math.round(usedMicros / 1000))
       }
-      if (Number.isFinite(max)) {
-        metadata.eventLoopDelayMaxMs = Math.round(max)
-      }
-      this.eventLoopDelay.reset()
     }
 
     if (this.unresponsiveStats.count > 0) {
@@ -894,8 +922,7 @@ export class SentryServiceModule extends BaseModule {
       this.unresponsiveStats = { count: 0, totalMs: 0, maxMs: 0 }
     }
 
-    const hasPayload = Object.keys(metadata).some((key) => key !== 'perfSource')
-    if (!hasPayload) return
+    if (lag.samples === 0 && metadata.unresponsiveCount === undefined) return
 
     this.queueNexusTelemetry({
       eventType: 'performance',
@@ -918,22 +945,25 @@ export class SentryServiceModule extends BaseModule {
       return Math.min(Math.round(value), 1_000_000)
     }
 
-    const metadata: Record<string, unknown> = { perfSource: 'renderer' }
-    const longTaskTotalMs = pickMs('longTaskTotalMs')
-    const longTaskMaxMs = pickMs('longTaskMaxMs')
-    const rafJankTotalMs = pickMs('rafJankTotalMs')
-    const rafJankMaxMs = pickMs('rafJankMaxMs')
-    const longTaskCount = pickCount('longTaskCount')
-    const rafJankCount = pickCount('rafJankCount')
+    const metadata: Record<string, unknown> = {
+      perfSource: 'renderer',
+      perfSchema: PERF_TELEMETRY_SCHEMA
+    }
+    for (const key of [
+      'longTaskTotalMs',
+      'longTaskMaxMs',
+      'longAnimationFrameTotalMs',
+      'longAnimationFrameMaxMs'
+    ]) {
+      const value = pickMs(key)
+      if (value !== undefined) metadata[key] = value
+    }
+    for (const key of ['longTaskCount', 'longAnimationFrameCount']) {
+      const value = pickCount(key)
+      if (value !== undefined) metadata[key] = value
+    }
 
-    if (longTaskTotalMs !== undefined) metadata.longTaskTotalMs = longTaskTotalMs
-    if (longTaskCount !== undefined) metadata.longTaskCount = longTaskCount
-    if (longTaskMaxMs !== undefined) metadata.longTaskMaxMs = longTaskMaxMs
-    if (rafJankTotalMs !== undefined) metadata.rafJankTotalMs = rafJankTotalMs
-    if (rafJankCount !== undefined) metadata.rafJankCount = rafJankCount
-    if (rafJankMaxMs !== undefined) metadata.rafJankMaxMs = rafJankMaxMs
-
-    const hasPayload = Object.keys(metadata).some((key) => key !== 'perfSource')
+    const hasPayload = Object.keys(metadata).length > 2
     if (!hasPayload) return
 
     this.queueNexusTelemetry({ eventType: 'performance', metadata })

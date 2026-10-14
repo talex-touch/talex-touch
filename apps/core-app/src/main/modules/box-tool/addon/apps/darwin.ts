@@ -10,6 +10,7 @@ import type { AppDisplayNameQuality, ScannedAppInfo } from './app-types'
 import { resolveScannedAppCreatedAt } from './app-types'
 import { readLocalizedStringsFile } from './localized-strings-parser'
 import { createLogger } from '../../../../utils/logger'
+import { getLocale } from '../../../../utils/i18n-helper'
 
 const darwinAppLog = createLogger('AppScanner').child('Darwin')
 
@@ -141,52 +142,96 @@ function isNonUserFacingCoreServiceApp(
   return isTruthyPlistFlag(plistData.LSBackgroundOnly) || isTruthyPlistFlag(plistData.LSUIElement)
 }
 
-// Helper to get localized display name from .lproj directories
-async function getLocalizedDisplayName(appPath: string): Promise<string | null> {
+// Helper to get localized display names from .lproj directories (both Chinese and English)
+interface LocalizedNameCandidates {
+  zh: string | null
+  en: string | null
+  primary: string | null
+}
+
+async function getLocalizedDisplayNames(appPath: string): Promise<LocalizedNameCandidates> {
   const resourcesPath = path.join(appPath, 'Contents', 'Resources')
+  const zhLprojs = ['zh-Hans.lproj', 'zh_CN.lproj', 'zh-Hant.lproj', 'zh_TW.lproj']
+  const enLprojs = ['en.lproj', 'en_US.lproj', 'en_GB.lproj', 'Base.lproj']
 
-  // Priority order: zh-Hans (Simplified Chinese), zh_CN, zh-Hant, zh_TW, Base, en
-  const lprojPriority = [
-    'zh-Hans.lproj',
-    'zh_CN.lproj',
-    'zh-Hant.lproj',
-    'zh_TW.lproj',
-    'Base.lproj',
-    'en.lproj'
-  ]
-
+  let zhName: string | null = null
+  let enName: string | null = null
   try {
-    const files = await fs.readdir(resourcesPath).catch(() => [])
-
-    // Find available lproj directories
-    const availableLprojs = files.filter((f) => f.endsWith('.lproj'))
-
-    // Try in priority order
-    for (const lproj of lprojPriority) {
-      if (!availableLprojs.includes(lproj)) continue
-
-      const stringsPath = path.join(resourcesPath, lproj, 'InfoPlist.strings')
-      try {
-        // 优先使用 simple-plist（兼容可直接解析的格式）
-        const data = await readPlistAsync(stringsPath)
-        const localizedName = extractLocalizedDisplayName(data)
-        if (localizedName) return localizedName
-      } catch {
-        // simple-plist 无法解析 .strings 时回退到轻量解析器
-        try {
-          const parsed = await readLocalizedStringsFile(stringsPath)
-          const localizedName = extractLocalizedDisplayName(parsed)
-          if (localizedName) return localizedName
-        } catch {
-          // File doesn't exist or can't be read, continue to next
+    // 1. Prioritize modern macOS system application InfoPlist.loctable
+    const loctablePath = path.join(resourcesPath, 'InfoPlist.loctable')
+    try {
+      const loctable = await readPlistAsync(loctablePath)
+      if (loctable && typeof loctable === 'object') {
+        const zhKeys = ['zh_CN', 'zh-Hans', 'zh_Hans', 'zh_HK', 'zh_TW', 'zh-Hant']
+        const enKeys = ['en', 'en_US', 'en_GB', 'en_AU', 'en_CA', 'Base']
+        for (const key of zhKeys) {
+          const entry = loctable[key] as Record<string, unknown> | undefined
+          if (entry && typeof entry === 'object') {
+            const name = extractLocalizedDisplayName(entry)
+            if (name) {
+              zhName = name
+              break
+            }
+          }
+        }
+        for (const key of enKeys) {
+          const entry = loctable[key] as Record<string, unknown> | undefined
+          if (entry && typeof entry === 'object') {
+            const name = extractLocalizedDisplayName(entry)
+            if (name) {
+              enName = name
+              break
+            }
+          }
         }
       }
+    } catch {
+      // InfoPlist.loctable does not exist or failed to parse, continue to lproj directories
+    }
+
+    // 2. Check traditional .lproj directories if names were not found in loctable
+    if (!zhName || !enName) {
+      const files = await fs.readdir(resourcesPath).catch(() => [])
+      const availableLprojs = files.filter((f) => f.endsWith('.lproj'))
+
+      const readLprojName = async (lprojs: string[]): Promise<string | null> => {
+        for (const lproj of lprojs) {
+          if (!availableLprojs.includes(lproj)) continue
+          const stringsPath = path.join(resourcesPath, lproj, 'InfoPlist.strings')
+          try {
+            const data = await readPlistAsync(stringsPath)
+            const name = extractLocalizedDisplayName(data)
+            if (name) return name
+          } catch {
+            try {
+              const parsed = await readLocalizedStringsFile(stringsPath)
+              const name = extractLocalizedDisplayName(parsed)
+              if (name) return name
+            } catch {
+              // continue
+            }
+          }
+        }
+        return null
+      }
+
+      if (!zhName) zhName = await readLprojName(zhLprojs)
+      if (!enName) enName = await readLprojName(enLprojs)
     }
   } catch {
     // Resources directory doesn't exist
   }
 
-  return null
+  const isZh = (() => {
+    try {
+      return getLocale().startsWith('zh')
+    } catch {
+      return true
+    }
+  })()
+
+  const primary = isZh ? zhName || enName : enName || zhName
+  return { zh: zhName, en: enName, primary }
 }
 
 // The core logic for fetching app info, designed to throw errors on failure.
@@ -216,8 +261,9 @@ async function getAppInfoUnstable(appPath: string): Promise<ScannedAppInfo | nul
   const bundleName = getValueFromPlist(plistContent, 'CFBundleName')
   const fileName = path.basename(appPath, '.app')
 
-  // Try to get localized display name (e.g., "聊天应用" for ChatApp)
-  const localizedName = await getLocalizedDisplayName(appPath)
+  // Try to get localized display names (both Chinese and English)
+  const localized = await getLocalizedDisplayNames(appPath)
+  const localizedName = localized.primary
 
   // mdls display-name corrections are handled by the background mdls scan.
   const displayNameMeta = resolveDarwinDisplayName(
@@ -228,7 +274,8 @@ async function getAppInfoUnstable(appPath: string): Promise<ScannedAppInfo | nul
   )
   const displayName = displayNameMeta.displayName
   const alternateNames = collectAlternateDisplayNames(displayName, [
-    localizedName,
+    localized.zh,
+    localized.en,
     plistDisplayName,
     bundleName,
     fileName

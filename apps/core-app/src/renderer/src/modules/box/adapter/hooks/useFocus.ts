@@ -38,12 +38,7 @@ export function useFocus(options: UseFocusOptions) {
     const inputFocused = inputPresent && document.activeElement === input
     const documentFocused = document.hasFocus()
     const expectedTarget = options.getExpectedTarget()
-    const panel =
-      expectedTarget === 'flow'
-        ? document.querySelector('.FlowSelector')
-        : expectedTarget === 'history'
-          ? document.querySelector('.PreviewHistoryPanel.is-visible')
-          : null
+    const panel = expectedTarget === 'flow' ? document.querySelector('.FlowSelector') : null
     const expectedTargetPresent = expectedTarget === 'input' ? inputPresent : panel !== null
     // These modal pickers own window-level keys while open; DOM input focus is not required.
     const expectedTargetFocused =

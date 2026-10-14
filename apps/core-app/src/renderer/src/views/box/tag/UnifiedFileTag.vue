@@ -1,10 +1,12 @@
 <script name="UnifiedFileTag" setup lang="ts">
 import type { IClipboardItem } from '../../../modules/box/adapter/hooks/types'
 import { displayBasename, displayExtension } from '@talex-touch/utils/common/utils/safe-path'
-import { computed } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createRendererLogger } from '~/utils/renderer-log'
-import { toTfileUrl } from '@talex-touch/utils/network'
+import { isElectronRenderer } from '@talex-touch/utils/env'
+import { useTuffTransport } from '@talex-touch/utils/transport'
+import { AppEvents } from '@talex-touch/utils/transport/events'
 
 /**
  * Unified file tag component that handles both FILE mode and clipboard files
@@ -17,10 +19,14 @@ const props = defineProps<{
   iconPath?: string | null
   /** Clipboard data object (clipboard files) */
   clipboardData?: IClipboardItem | null
+  /** Captured record identity retained when clipboard files enter FILE mode. */
+  clipboardId?: number
+  preparedThumbnail?: string | null
 }>()
 const { t } = useI18n()
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif', 'bmp', 'ico'])
 const unifiedFileTagLog = createRendererLogger('UnifiedFileTag')
+const transport = isElectronRenderer() ? useTuffTransport() : null
 
 /**
  * Validate if a string is a valid file path
@@ -87,35 +93,76 @@ const firstFileName = computed(() => {
   return displayBasename(filePaths.value[0])
 })
 
-/**
- * File preview (image only) using tfile:// protocol
- */
-const fileIconUrl = computed(() => {
-  // Priority 1: Explicit icon path (for FILE mode)
+// Select the candidate, but never assign a bare original path to an image element.
+const previewPath = computed(() => {
   if (props.iconPath && isValidFilePath(props.iconPath) && isImagePath(props.iconPath)) {
-    return toTfileUrl(props.iconPath)
+    return props.iconPath
   }
-
-  // Priority 2: First file path
-  if (firstFilePath.value && isImagePath(firstFilePath.value)) {
-    return toTfileUrl(firstFilePath.value)
-  }
-
-  return null
+  return firstFilePath.value && isImagePath(firstFilePath.value) ? firstFilePath.value : null
 })
+const fileIconUrl = ref('')
+const failedThumbnailUrl = ref('')
+let previewRequestVersion = 0
+
+/**
+ * Thumbnail from clipboard data (for video files, etc.)
+ */
+const thumbnail = computed(() => {
+  const source = props.preparedThumbnail || props.clipboardData?.thumbnail
+  // Captured sidecar thumbnails are already prepared data URLs. A stored arbitrary local
+  // thumbnail pointer is not a second route around original-resource authorization.
+  return typeof source === 'string' &&
+    source.startsWith('data:image/') &&
+    source !== failedThumbnailUrl.value
+    ? source
+    : null
+})
+
+watch(
+  () => [previewPath.value, props.clipboardId ?? props.clipboardData?.id, thumbnail.value] as const,
+  async ([filePath, clipboardId, prepared]) => {
+    const version = ++previewRequestVersion
+    fileIconUrl.value = ''
+    if (!filePath || prepared || !transport) return
+
+    // Parent props update one at a time; invalidate synchronously, then request only the final selection.
+    await nextTick()
+    if (version !== previewRequestVersion) return
+
+    try {
+      const result = await transport.send(AppEvents.fileIndex.previewResource, {
+        path: filePath,
+        ...(clipboardId === undefined ? {} : { clipboardId })
+      })
+      if (version === previewRequestVersion && result.success && result.tfileUrl) {
+        fileIconUrl.value = result.tfileUrl
+      }
+    } catch {
+      // No permission or unavailable resource: retain the file glyph, never fetch the raw path.
+    }
+  },
+  { immediate: true, flush: 'sync' }
+)
+
+onUnmounted(() => {
+  previewRequestVersion += 1
+})
+
+function handlePreviewError(event: Event): void {
+  const image = event.currentTarget as HTMLImageElement | null
+  const source = image?.getAttribute('src')
+  if (source && source === thumbnail.value) {
+    failedThumbnailUrl.value = source
+  } else if (source && source === fileIconUrl.value) {
+    fileIconUrl.value = ''
+  }
+}
 
 /**
  * Whether files are still loading/unavailable
  */
 const isLoading = computed(() => {
   return fileCount.value === 0 && (props.paths !== null || props.clipboardData !== null)
-})
-
-/**
- * Thumbnail from clipboard data (for video files, etc.)
- */
-const thumbnail = computed(() => {
-  return props.clipboardData?.thumbnail || null
 })
 </script>
 
@@ -128,6 +175,7 @@ const thumbnail = computed(() => {
         :src="thumbnail"
         class="file-icon thumbnail"
         alt="file thumbnail"
+        @error="handlePreviewError"
       />
       <!-- Priority 2: File icon via tfile:// protocol -->
       <img
@@ -135,6 +183,7 @@ const thumbnail = computed(() => {
         :src="fileIconUrl"
         class="file-icon"
         alt="file icon"
+        @error="handlePreviewError"
       />
       <!-- Priority 3: Fallback icon -->
       <i v-else class="i-ri-file-line file-icon-fallback" />

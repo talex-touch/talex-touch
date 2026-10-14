@@ -1,13 +1,23 @@
 import type { IProviderActivate, TuffItem, TuffQuery, TuffSearchResult } from '@talex-touch/utils'
+import { TuffSearchResultBuilder } from '@talex-touch/utils'
 import * as schema from '../../../db/schema'
 import type * as SearchActivity from './search-activity'
 import type { SearchIndexCommitHub } from './search-index-commit-hub'
+import type { SearchExecution } from './search-session'
+import type * as SearchIndexReadWorkerModule from './workers/search-index-read-worker-client'
+import type { SearchIndexReadWorkerClientOptions } from './workers/search-index-read-worker-client'
+import { getSearchIndexReadWorkerTestPath } from './workers/search-index-read-worker.test-harness'
 import type { ActiveAppInfo } from '../../system/active-app'
 import type * as DbUtilsModule from '../../../db/utils'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
+import { EmbeddingService } from '../addon/files/embedding-service'
+import { FileProviderSearchResultService } from '../addon/files/services/file-provider-search-result-service'
+import { LOCAL_EMBEDDING_MODEL_KEY } from '../../ai/local-embedding-model'
 type PinnedItem = typeof schema.pinnedItems.$inferSelect
 type ItemUsageStat = typeof schema.itemUsageStats.$inferSelect
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -132,6 +142,10 @@ vi.mock('../../../core/eventbus/touch-event', () => ({
 }))
 
 vi.mock('../../../db/utils', () => ({ createDbUtils: state.createDbUtils }))
+// Only the neural-model boundary is replaced; the late-recall cases run real SQLite consumers.
+vi.mock('../../ai/intelligence-sdk', () => ({
+  tuffIntelligence: { embedding: { generate: vi.fn(), generateLocalImage: vi.fn() } }
+}))
 vi.mock('../../system/active-app', () => ({
   activeAppService: { getActiveApp: async () => state.foregroundApp }
 }))
@@ -332,11 +346,21 @@ vi.mock('./search-index-service', () => ({
     waitUntilReadable = vi.fn(async () => undefined)
   }
 }))
-vi.mock('./workers/search-index-read-worker-client', () => ({
-  SearchIndexReadWorkerClient: class {
-    close = state.readWorkerClose
+vi.mock('./workers/search-index-read-worker-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof SearchIndexReadWorkerModule>()
+  return {
+    ...actual,
+    SearchIndexReadWorkerClient: vi.fn(function (
+      databasePath: string,
+      options?: SearchIndexReadWorkerClientOptions
+    ) {
+      if (options?.workerPath) {
+        return new actual.SearchIndexReadWorkerClient(databasePath, options)
+      }
+      return { close: state.readWorkerClose }
+    })
   }
-}))
+})
 vi.mock('./search-logger', () => ({
   searchLogger: {
     gathererStart: vi.fn(),
@@ -453,6 +477,99 @@ function buildProvider(id: string, onSearch: () => Promise<TuffSearchResult>) {
     supportedInputTypes: ['text'],
     type: 'app'
   }
+}
+
+async function installLateImageRecall(provider: {
+  semanticRecall: (
+    query: TuffQuery,
+    excludeIds: Set<string>,
+    signal: AbortSignal
+  ) => Promise<TuffItem[]>
+}) {
+  const workerPath = await getSearchIndexReadWorkerTestPath()
+  const directory = await mkdtemp(join(tmpdir(), 'tuff-late-image-recall-'))
+  const databasePath = join(directory, 'search-index.sqlite')
+  const client = createClient({ url: `file:${databasePath}` })
+  await client.execute(`CREATE TABLE files (
+    id INTEGER PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL,
+    display_name TEXT, extension TEXT, size INTEGER, mtime INTEGER NOT NULL,
+    ctime INTEGER NOT NULL, last_indexed_at INTEGER NOT NULL,
+    is_dir INTEGER NOT NULL, type TEXT NOT NULL, content TEXT, embedding_status TEXT NOT NULL
+  )`)
+  await client.execute(
+    'CREATE TABLE file_extensions (id INTEGER PRIMARY KEY, file_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL)'
+  )
+  await client.execute(`CREATE TABLE embeddings (
+    id INTEGER PRIMARY KEY, source_id TEXT NOT NULL, source_type TEXT NOT NULL,
+    embedding TEXT NOT NULL, model TEXT NOT NULL, content_hash TEXT, created_at INTEGER NOT NULL
+  )`)
+  const path = '/scope/IMG_2048.png'
+  await client.execute({
+    sql: "INSERT INTO files VALUES (17, ?, 'IMG_2048.png', NULL, '.png', 64, 2, 2, 0, 0, 'file', NULL, 'completed')",
+    args: [path]
+  })
+  await client.execute({
+    sql: "INSERT INTO embeddings VALUES (1, '17', 'file', '[1,0,0]', ?, 'image-identity', 0)",
+    args: [LOCAL_EMBEDDING_MODEL_KEY]
+  })
+  const db = drizzle(client, { schema })
+  const entered = Promise.withResolvers<void>()
+  const answer = Promise.withResolvers<void>()
+  const settled = Promise.withResolvers<void>()
+  const embedding = new EmbeddingService(
+    {
+      isSplitEnabled: () => false,
+      getReadDb: () => db,
+      getDatabasePath: () => databasePath,
+      getPrimaryDb: () => db,
+      execWrite: async () => {
+        throw new Error('READ_ONLY_RECALL_WROTE_TO_SQLITE')
+      }
+    },
+    async (text) => {
+      if (text !== 'test') {
+        entered.resolve()
+        await answer.promise
+      }
+      return { vector: [1, 0, 0], model: LOCAL_EMBEDDING_MODEL_KEY }
+    },
+    { workerPath }
+  )
+  const results = new FileProviderSearchResultService({
+    providerId: 'file-provider',
+    getDbUtils: () => ({ getDb: () => db, getFileIndexReadDb: () => db }) as never,
+    getSearchIndex: () => null,
+    isContentIndexingEnabled: () => true,
+    isPathAdmitted: (candidate) => candidate.startsWith('/scope/'),
+    buildItem: (file) => ({
+      id: file.path,
+      kind: 'file',
+      source: { id: 'file-provider', name: 'Files', type: 'file' },
+      render: { mode: 'default', basic: { title: file.name } },
+      meta: { file: { path: file.path } }
+    }),
+    normalizeItem: (item) => item,
+    sanitizeExtensions: (extensions) => extensions,
+    cleanupStaleCandidates: () => {},
+    semanticSearch: (query, limit, signal) => embedding.semanticSearch(query, limit, signal),
+    logDebug: () => {},
+    formatDuration: (duration) => `${duration}ms`
+  })
+  const recall = vi
+    .spyOn(provider, 'semanticRecall')
+    .mockImplementation(async (query, excluded, signal) => {
+      try {
+        return await results.semanticRecall(query, excluded, signal)
+      } finally {
+        settled.resolve()
+      }
+    })
+  const close = async () => {
+    await embedding.close()
+    client.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+  return { client, path, entered, answer, settled, recall, close }
 }
 
 describe('SearchEngineCore facade contracts', () => {
@@ -1118,6 +1235,357 @@ describe('SearchEngineCore facade contracts', () => {
       await operation.completed
     }
   })
+
+  it.each(['猫', '宠物'])(
+    'publishes a late real SQLite image recall after all fast providers finished for %s',
+    async (text) => {
+      // beforeEach resets modules: bind the real recall consumer to the provider this core loaded.
+      const { fileProvider } = await import('../addon/files/file-provider')
+      const fixture = await installLateImageRecall(fileProvider)
+      core.registerProvider(
+        buildProvider(
+          'image-fast-contract',
+          async () =>
+            ({
+              items: [buildItem('initial-app', 'image-fast-contract', 'Unrelated application')]
+            }) as TuffSearchResult
+        ) as never
+      )
+      core.activateProviders([{ id: 'image-fast-contract' }] as IProviderActivate[])
+      const streamed: TuffItem[] = []
+      const lifecycle: string[] = []
+      const operation = core.startSearch({ text, inputs: [] } as TuffQuery, {
+        caller: { kind: 'core-box', id: 'cjk-image-contract' },
+        sink: {
+          snapshot: () => {
+            lifecycle.push('snapshot')
+          },
+          update: (payload) => {
+            streamed.push(...payload.items)
+            if (payload.items.some((item) => item.id === fixture.path)) lifecycle.push('image')
+          },
+          complete: () => {
+            lifecycle.push('complete')
+          }
+        }
+      })
+      try {
+        expect((await operation.result).items.map((item) => item.id)).toEqual(['initial-app'])
+        // A broken gate or prematurely completed session loses this race and fails without a sleep.
+        await Promise.race([fixture.entered.promise, operation.completed])
+        expect(lifecycle).not.toContain('complete')
+        fixture.answer.resolve()
+        await operation.completed
+        expect(
+          streamed
+            .filter((item) => item.id === fixture.path)
+            .map((item) => ({
+              id: item.id,
+              title: item.render.basic?.title,
+              match: item.meta?.deepMatch
+            }))
+        ).toEqual([
+          {
+            id: fixture.path,
+            title: 'IMG_2048.png',
+            match: { kind: 'semantic', score: 1 }
+          }
+        ])
+        expect(lifecycle.indexOf('image')).toBeLessThan(lifecycle.indexOf('complete'))
+        expect(
+          (await fixture.client.execute('SELECT path, content FROM files WHERE id = 17')).rows
+        ).toEqual([{ path: fixture.path, content: null }])
+      } finally {
+        operation.cancel()
+        fixture.answer.resolve()
+        await operation.completed
+        if (fixture.recall.mock.calls.length > 0) await fixture.settled.promise
+        fixture.recall.mockRestore()
+        await fixture.close()
+      }
+    }
+  )
+
+  it('publishes late SQLite semantic files on the common score scale with pinned rows ranked first', async () => {
+    // resetModules gives this core a fresh provider; a static import would bind the old instance.
+    const { fileProvider } = await import('../addon/files/file-provider')
+    const fixture = await installLateImageRecall(fileProvider)
+    const pinnedPath = '/scope/IMG_b7c1.png'
+    let operation: SearchExecution | undefined
+
+    try {
+      await fixture.client.execute({
+        sql: "INSERT INTO files VALUES (18, ?, 'IMG_b7c1.png', NULL, '.png', 64, 2, 2, 0, 0, 'file', NULL, 'completed')",
+        args: [pinnedPath]
+      })
+      await fixture.client.execute({
+        sql: "INSERT INTO embeddings VALUES (2, '18', 'file', ?, ?, 'pinned-image-identity', 0)",
+        args: [JSON.stringify([0.73, Math.sqrt(1 - 0.73 ** 2), 0]), LOCAL_EMBEDDING_MODEL_KEY]
+      })
+      state.getAllPinnedItems.mockResolvedValue([
+        {
+          itemId: pinnedPath,
+          order: 0,
+          pinnedAt: new Date('2026-10-01T00:00:00Z'),
+          sourceId: 'file-provider',
+          sourceType: 'file'
+        }
+      ])
+      const providerId = 'semantic-ranking-fast-contract'
+      const file = (id: string, title: string): TuffItem => ({
+        ...buildItem(id, providerId, title),
+        kind: 'file',
+        source: { id: providerId, name: 'Files', type: 'file' },
+        meta: { file: { path: id } }
+      })
+      core.registerProvider(
+        buildProvider(
+          providerId,
+          async () =>
+            ({
+              items: [
+                file('/scope/deploy.sh', 'deploy.sh'),
+                file('/scope/a pet cat.png', 'a pet cat.png')
+              ]
+            }) as TuffSearchResult
+        ) as never
+      )
+      core.activateProviders([{ id: providerId }] as IProviderActivate[])
+      const updates: TuffItem[][] = []
+      operation = core.startSearch({ text: 'a pet cat', inputs: [] } as TuffQuery, {
+        caller: { kind: 'core-box', id: 'semantic-ranking-consumer' },
+        sink: {
+          update: (payload) => {
+            updates.push(payload.items)
+          }
+        }
+      })
+
+      const firstScreen = await operation.result
+      expect(firstScreen.items.map((item) => item.id)).toEqual([
+        '/scope/a pet cat.png',
+        '/scope/deploy.sh'
+      ])
+      await Promise.race([fixture.entered.promise, operation.completed])
+      fixture.answer.resolve()
+      await operation.completed
+
+      expect(updates.map((items) => items.map((item) => item.id))).toEqual([
+        [pinnedPath, fixture.path]
+      ])
+      const [pinnedSemantic, strongerSemantic] = updates[0]
+      const [exactStem, historyOnly] = firstScreen.items
+      // The lower-similarity pin wins the published batch, but numeric scores still share
+      // the initial file match scale. Neither raw cosine scores nor un-enriched recall pass.
+      expect(pinnedSemantic.scoring!.final!).toBeGreaterThan(historyOnly.scoring!.final!)
+      expect(pinnedSemantic.scoring!.final!).toBeLessThan(strongerSemantic.scoring!.final!)
+      expect(strongerSemantic.scoring!.final!).toBeLessThan(exactStem.scoring!.final!)
+    } finally {
+      operation?.cancel()
+      fixture.answer.resolve()
+      if (operation) await operation.completed
+      if (fixture.recall.mock.calls.length > 0) await fixture.settled.promise
+      fixture.recall.mockRestore()
+      await fixture.close()
+    }
+  })
+
+  it('appends a late SQLite image recall after a first screen of 25 applications without reordering it', async () => {
+    // beforeEach resets modules: static imports would bind a provider outside this core's graph.
+    const { fileProvider } = await import('../addon/files/file-provider')
+    const fixture = await installLateImageRecall(fileProvider)
+    const providerId = 'crowded-app-image-contract'
+    const applications = Array.from({ length: 25 }, (_, index) =>
+      buildItem(`cat-app-${index}`, providerId, 'Cat application')
+    )
+    core.registerProvider(
+      buildProvider(providerId, async () => ({ items: applications }) as TuffSearchResult) as never
+    )
+    core.activateProviders([{ id: providerId }] as IProviderActivate[])
+    const consumerItems: TuffItem[] = []
+    const deliveries: Array<{ kind: 'snapshot' | 'update' | 'complete'; ids: string[] }> = []
+    const operation = core.startSearch({ text: 'cat', inputs: [] } as TuffQuery, {
+      caller: { kind: 'core-box', id: 'crowded-app-image' },
+      sink: {
+        snapshot: (result) => {
+          consumerItems.splice(0, consumerItems.length, ...result.items)
+          deliveries.push({ kind: 'snapshot', ids: result.items.map((item) => item.id) })
+        },
+        update: (payload) => {
+          consumerItems.push(...payload.items)
+          deliveries.push({ kind: 'update', ids: payload.items.map((item) => item.id) })
+        },
+        complete: () => {
+          deliveries.push({ kind: 'complete', ids: consumerItems.map((item) => item.id) })
+        }
+      }
+    })
+
+    try {
+      const firstScreenIds = (await operation.result).items.map((item) => item.id)
+      expect([...firstScreenIds].sort()).toEqual(applications.map((item) => item.id).sort())
+      // An application-heavy baseline must reach the consumer before semantic inference
+      // settles, but must not complete the session and suppress the later file result.
+      await Promise.race([fixture.entered.promise, operation.completed])
+      expect(deliveries).toEqual([{ kind: 'snapshot', ids: firstScreenIds }])
+      fixture.answer.resolve()
+      await operation.completed
+
+      expect(deliveries).toEqual([
+        { kind: 'snapshot', ids: firstScreenIds },
+        { kind: 'update', ids: [fixture.path] },
+        { kind: 'complete', ids: [...firstScreenIds, fixture.path] }
+      ])
+      expect(consumerItems.at(-1)).toMatchObject({
+        id: fixture.path,
+        kind: 'file',
+        source: { id: 'file-provider', type: 'file' },
+        render: { basic: { title: 'IMG_2048.png' } },
+        meta: { file: { path: fixture.path }, deepMatch: { kind: 'semantic', score: 1 } }
+      })
+    } finally {
+      operation.cancel()
+      fixture.answer.resolve()
+      await operation.completed
+      if (fixture.recall.mock.calls.length > 0) await fixture.settled.promise
+      fixture.recall.mockRestore()
+      await fixture.close()
+    }
+  })
+
+  it('publishes early-fast image recall while a deferred provider is still answering', async () => {
+    // Use the provider from this test's reset module graph, not a stale static singleton.
+    const { fileProvider } = await import('../addon/files/file-provider')
+    const fixture = await installLateImageRecall(fileProvider)
+    const deferred = Promise.withResolvers<void>()
+    core.registerProvider(
+      buildProvider(
+        'early-image-fast',
+        async () =>
+          ({
+            items: [buildItem('early-app', 'early-image-fast', 'Unrelated application')]
+          }) as TuffSearchResult
+      ) as never
+    )
+    core.registerProvider({
+      ...buildProvider('early-image-deferred', async () => {
+        await deferred.promise
+        return new TuffSearchResultBuilder({ text: '宠物', inputs: [] } as TuffQuery)
+          .setItems([])
+          .build()
+      }),
+      priority: 'deferred',
+      type: 'file'
+    } as never)
+    core.activateProviders([
+      { id: 'early-image-fast' },
+      { id: 'early-image-deferred' }
+    ] as IProviderActivate[])
+    const streamed: TuffItem[] = []
+    let completed = false
+    const operation = core.startSearch({ text: '宠物', inputs: [] } as TuffQuery, {
+      caller: { kind: 'core-box', id: 'early-deferred-image' },
+      sink: {
+        update: (payload) => {
+          streamed.push(...payload.items)
+        },
+        complete: () => {
+          completed = true
+        }
+      }
+    })
+    try {
+      expect((await operation.result).items.map((item) => item.id)).toEqual(['early-app'])
+      await vi.waitFor(() => expect(fixture.recall).toHaveBeenCalled())
+      await Promise.race([fixture.entered.promise, fixture.settled.promise])
+      fixture.answer.resolve()
+      await vi.waitFor(() => expect(streamed.map((item) => item.id)).toContain(fixture.path))
+      expect(completed).toBe(false)
+      expect(streamed.find((item) => item.id === fixture.path)?.meta?.deepMatch).toEqual({
+        kind: 'semantic',
+        score: 1
+      })
+      deferred.resolve()
+      await operation.completed
+      expect(completed).toBe(true)
+    } finally {
+      fixture.answer.resolve()
+      deferred.resolve()
+      await operation.completed
+      if (fixture.recall.mock.calls.length > 0) await fixture.settled.promise
+      fixture.recall.mockRestore()
+      await fixture.close()
+    }
+  })
+
+  it('completes a cancelled all-fast search without waiting for late image inference or publishing it', async () => {
+    // A static import would refer to the provider before the fixture's module-boundary reset.
+    const { fileProvider } = await import('../addon/files/file-provider')
+    const fixture = await installLateImageRecall(fileProvider)
+    core.registerProvider(
+      buildProvider('image-cancel-fast', async () =>
+        new TuffSearchResultBuilder({ text: '猫', inputs: [] } as TuffQuery).setItems([]).build()
+      ) as never
+    )
+    core.activateProviders([{ id: 'image-cancel-fast' }] as IProviderActivate[])
+    const streamed: TuffItem[] = []
+    let cancelled = false
+    const operation = core.startSearch({ text: '猫', inputs: [] } as TuffQuery, {
+      caller: { kind: 'core-box', id: 'cancel-late-image' },
+      sink: {
+        update: (payload) => {
+          streamed.push(...payload.items)
+        },
+        complete: (payload) => {
+          cancelled = payload.cancelled === true
+        }
+      }
+    })
+    try {
+      await operation.result
+      await Promise.race([fixture.entered.promise, operation.completed])
+      expect(operation.cancel()).toBe(true)
+      await operation.completed
+      expect(cancelled).toBe(true)
+      expect(streamed.map((item) => item.id)).not.toContain(fixture.path)
+      fixture.answer.resolve()
+      await fixture.settled.promise
+      expect(streamed.map((item) => item.id)).not.toContain(fixture.path)
+    } finally {
+      operation.cancel()
+      fixture.answer.resolve()
+      await operation.completed
+      if (fixture.recall.mock.calls.length > 0) await fixture.settled.promise
+      fixture.recall.mockRestore()
+      await fixture.close()
+    }
+  })
+
+  it.each(['ab', '🐈'])(
+    'does not launch semantic inference for the short non-Han engine query %s',
+    async (text) => {
+      // A static import would retain the provider from before beforeEach's module-boundary reset.
+      const { fileProvider } = await import('../addon/files/file-provider')
+      const recall = vi.spyOn(fileProvider, 'semanticRecall').mockResolvedValue([])
+      core.registerProvider(
+        buildProvider('short-query-contract', async () =>
+          new TuffSearchResultBuilder({ text, inputs: [] } as TuffQuery).setItems([]).build()
+        ) as never
+      )
+      core.activateProviders([{ id: 'short-query-contract' }] as IProviderActivate[])
+      const operation = core.startSearch({ text, inputs: [] } as TuffQuery, {
+        caller: { kind: 'core-box', id: 'short-query-contract' }
+      })
+      try {
+        expect((await operation.result).items).toEqual([])
+        await operation.completed
+        expect(recall).not.toHaveBeenCalled()
+      } finally {
+        await operation.completed
+        recall.mockRestore()
+      }
+    }
+  )
 
   it('caches what the session ended with so a repeat query keeps the deferred batch', async () => {
     const fastSearch = vi.fn(

@@ -482,7 +482,11 @@ export class WindowManager {
    * Show CoreBox window
    * @param triggeredByShortcut - Whether this show was triggered by keyboard shortcut
    */
-  public show(triggeredByShortcut: boolean = false, existingSummonId?: string): void {
+  public show(
+    triggeredByShortcut: boolean = false,
+    existingSummonId?: string,
+    targetScreen?: Electron.Display
+  ): void {
     const summonId =
       existingSummonId ??
       this.focusDiagnostics.start(triggeredByShortcut ? 'shortcut' : 'programmatic')
@@ -496,14 +500,14 @@ export class WindowManager {
     }
     if (this.creationPromise) {
       void this.creationPromise
-        .then(() => this.show(triggeredByShortcut, summonId))
+        .then(() => this.show(triggeredByShortcut, summonId, targetScreen))
         .catch(createFailed)
       return
     }
     const window = this.current
     if (!window || window.window.isDestroyed()) {
       void this.ensureCreated()
-        .then(() => this.show(triggeredByShortcut, summonId))
+        .then(() => this.show(triggeredByShortcut, summonId, targetScreen))
         .catch(createFailed)
       return
     }
@@ -525,7 +529,7 @@ export class WindowManager {
     captureForegroundAppSnapshot()
     this.focusPolicy.clearPendingBlurHide()
     this.boundsController.stopAnimation()
-    this.updatePosition(window)
+    this.updatePosition(window, targetScreen)
 
     const shouldFocus =
       triggeredByShortcut || coreBoxManager.isUIMode || this.pluginViewController.hasView()

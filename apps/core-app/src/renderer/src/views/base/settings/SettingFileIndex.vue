@@ -20,12 +20,17 @@ import {
   IndexedSourceResetReasons,
   IndexedSourceScanReasons
 } from '@talex-touch/utils/search'
+import { TxAlert } from '@talex-touch/tuffex/alert'
 import { TxButton } from '@talex-touch/tuffex/button'
 import { TxDrawer } from '@talex-touch/tuffex/drawer'
 import { TxInput } from '@talex-touch/tuffex/input'
 import { TxPopover } from '@talex-touch/tuffex/popover'
 import { sleep } from '@talex-touch/utils/common'
-import { DEFAULT_FILE_INDEX_CONTENT_SETTINGS } from '@talex-touch/utils/transport/events/types'
+import {
+  DEFAULT_FILE_INDEX_CONTENT_SETTINGS,
+  FILE_CONTENT_INDEX_MIN_FREE_BYTES,
+  FILE_CONTENT_INDEX_RESUME_FREE_BYTES
+} from '@talex-touch/utils/transport/events/types'
 import { useSettingsSdk } from '@talex-touch/utils/renderer'
 import type { CoreBoxIndexingDiagnosticsResponse } from '@talex-touch/utils/transport/events/types'
 import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -114,13 +119,58 @@ const contentIndexDialogSource = computed<HTMLElement | null>(() => {
   const element = contentIndexSwitchRef.value?.$el
   return element instanceof HTMLElement ? element : null
 })
-const contentIndexDescription = computed(() =>
+const contentIndexStorage = computed(() => contentIndexSettings.value.storage)
+const contentIndexStorageIssue = computed(() => {
+  if (contentIndexStorage.value?.status === 'low-space') {
+    return t('settings.settingFileIndex.contentIndexStorageLow')
+  }
+  if (contentIndexStorage.value?.status === 'unavailable') {
+    return t('settings.settingFileIndex.contentIndexStorageUnavailable')
+  }
+  return t('settings.settingFileIndex.contentIndexStoragePending')
+})
+const contentIndexSpaceFormatter = computed(
+  () => new Intl.NumberFormat(locale.value, { maximumFractionDigits: 2 })
+)
+function formatContentIndexSpace(bytes: number | null): string {
+  if (bytes === null) return t('settings.settingFileIndex.contentIndexSpaceUnknown')
+  return t('settings.settingFileIndex.contentIndexSpaceGiB', {
+    value: contentIndexSpaceFormatter.value.format(bytes / 1024 ** 3)
+  })
+}
+const contentIndexStoragePolicy = computed(() =>
+  t('settings.settingFileIndex.contentIndexStoragePolicy', {
+    minimum: formatContentIndexSpace(FILE_CONTENT_INDEX_MIN_FREE_BYTES),
+    resume: formatContentIndexSpace(FILE_CONTENT_INDEX_RESUME_FREE_BYTES)
+  })
+)
+const contentIndexStorageSummary = computed(() => {
+  const storage = contentIndexStorage.value
+  if (!storage) return t('settings.settingFileIndex.contentIndexStoragePending')
+  return t('settings.settingFileIndex.contentIndexStorageSummary', {
+    available: formatContentIndexSpace(storage.availableBytes),
+    required: formatContentIndexSpace(storage.requiredBytes)
+  })
+})
+const contentIndexStorageRecovery = computed(() =>
   t(
+    contentIndexStorage.value?.status === 'low-space'
+      ? 'settings.settingFileIndex.contentIndexStorageRecovery'
+      : 'settings.settingFileIndex.contentIndexStorageCheckRecovery'
+  )
+)
+const contentIndexDescription = computed(() => {
+  if (contentIndexSettings.value.state === 'paused') {
+    return t('settings.settingFileIndex.contentIndexPausedDesc', {
+      reason: contentIndexStorageIssue.value
+    })
+  }
+  return t(
     contentIndexSettings.value.state === 'indexing'
       ? 'settings.settingFileIndex.contentIndexingDesc'
       : 'settings.settingFileIndex.contentIndexDesc'
   )
-)
+})
 const sourceDiagnostics = ref<CoreBoxIndexingDiagnosticsResponse | null>(null)
 const sourceDiagnosticsLoading = ref(false)
 const sourceDiagnosticsCheckedAt = ref<Date | null>(null)
@@ -279,7 +329,8 @@ async function checkStatus() {
     if (typeof indexStatus.value?.contentIndexingEnabled === 'boolean') {
       contentIndexSettings.value = {
         contentIndexingEnabled: indexStatus.value.contentIndexingEnabled,
-        state: indexStatus.value.contentIndexingState ?? 'disabled'
+        state: indexStatus.value.contentIndexingState ?? 'disabled',
+        storage: indexStatus.value.contentIndexStorage
       }
       contentIndexingEnabled.value = indexStatus.value.contentIndexingEnabled
     }
@@ -612,17 +663,49 @@ async function saveContentIndexSettings(enabled: boolean) {
     })
     contentIndexSettings.value = updated
     contentIndexingEnabled.value = updated.contentIndexingEnabled
-    toast.success(
-      t(
-        updated.contentIndexingEnabled
-          ? 'settings.settingFileIndex.contentIndexEnabled'
-          : 'settings.settingFileIndex.contentIndexDisabled'
+    if (updated.contentIndexingEnabled && updated.state === 'paused') {
+      toast.warning(
+        `${contentIndexDescription.value} ${contentIndexStorageSummary.value} ${contentIndexStorageRecovery.value}`
       )
-    )
+    } else {
+      toast.success(
+        t(
+          updated.contentIndexingEnabled
+            ? 'settings.settingFileIndex.contentIndexEnabled'
+            : 'settings.settingFileIndex.contentIndexDisabled'
+        )
+      )
+    }
     await checkStatus()
-  } catch {
+  } catch (error: unknown) {
     contentIndexSettings.value = previous
     contentIndexingEnabled.value = previous.contentIndexingEnabled
+    const failure =
+      typeof error === 'object' && error !== null
+        ? (error as { code?: unknown; errorCode?: unknown; message?: unknown })
+        : null
+    const capacityWriteRejected =
+      failure?.code === 'FILE_CONTENT_STORAGE_PAUSED' ||
+      failure?.errorCode === 'FILE_CONTENT_STORAGE_PAUSED' ||
+      (typeof failure?.message === 'string' &&
+        /(?:^|[^A-Z0-9_])FILE_CONTENT_STORAGE_PAUSED(?:$|[^A-Z0-9_])/.test(failure.message)) ||
+      (typeof error === 'string' &&
+        /(?:^|[^A-Z0-9_])FILE_CONTENT_STORAGE_PAUSED(?:$|[^A-Z0-9_])/.test(error))
+    if (capacityWriteRejected) {
+      try {
+        const settings = await settingsSdk.fileIndex.getSettings()
+        contentIndexSettings.value = settings
+        contentIndexingEnabled.value = settings.contentIndexingEnabled
+      } catch {
+        settingFileIndexLog.error('Failed to refresh content indexing setting', {
+          operation: 'getContentIndexSettingsAfterCapacityFailure'
+        })
+      }
+      toast.warning(
+        `${t('settings.settingFileIndex.contentIndexStorageSaveBlocked')} ${contentIndexStorageSummary.value} ${t('settings.settingFileIndex.contentIndexStorageSaveRecovery')}`
+      )
+      return
+    }
     settingFileIndexLog.error('Failed to update content indexing setting', {
       operation: 'updateContentIndexSettings'
     })
@@ -636,6 +719,7 @@ function handleContentIndexChange(enabled: boolean) {
   if (enabled) {
     contentIndexingEnabled.value = false
     contentIndexConfirmVisible.value = true
+    void loadContentIndexSettings()
     return
   }
   void saveContentIndexSettings(false)
@@ -1328,6 +1412,19 @@ async function triggerRebuild() {
       :loading="contentIndexSettingsSaving || contentIndexSettings.state === 'clearing'"
       @change="handleContentIndexChange"
     />
+
+    <TxAlert
+      v-if="contentIndexSettings.state === 'paused'"
+      type="warning"
+      :title="contentIndexStorageIssue"
+      :closable="false"
+      :show-icon="true"
+      role="status"
+    >
+      <span class="text-[var(--tx-text-color-primary)]">
+        {{ contentIndexStorageSummary }} {{ contentIndexStorageRecovery }}
+      </span>
+    </TxAlert>
 
     <TuffBlockSlot
       v-if="isIndexing"
@@ -2190,6 +2287,23 @@ async function triggerRebuild() {
             <span class="i-carbon-meter" aria-hidden="true" />
             {{ t('settings.settingFileIndex.contentIndexResources') }}
           </p>
+          <p>
+            <span class="i-carbon-data-base" aria-hidden="true" />
+            {{ contentIndexStoragePolicy }}
+            {{ contentIndexStorageSummary }}
+          </p>
+          <TxAlert
+            v-if="!contentIndexStorage || contentIndexStorage.status !== 'ready'"
+            type="warning"
+            :title="contentIndexStorageIssue"
+            :closable="false"
+            :show-icon="true"
+            role="status"
+          >
+            <span class="text-[var(--tx-text-color-primary)]">
+              {{ t('settings.settingFileIndex.contentIndexStorageConfirmPaused') }}
+            </span>
+          </TxAlert>
           <p>
             <span class="i-carbon-clean" aria-hidden="true" />
             {{ t('settings.settingFileIndex.contentIndexCleanup') }}

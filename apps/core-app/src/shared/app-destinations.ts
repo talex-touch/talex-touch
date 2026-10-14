@@ -28,6 +28,7 @@ export type AppDestinationId =
   | 'settings-file-index'
   | 'settings-network'
   | 'settings-update'
+  | 'settings-performance'
   | 'settings-about'
 
 export interface AppDestinationDefinition {
@@ -90,7 +91,8 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
         'show tuff',
         'focus tuff',
         'back to tuff',
-        'return to tuff'
+        'return to tuff',
+        'tuff'
       ],
       zh: [
         '主窗口',
@@ -104,7 +106,8 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
         '返回 tuff',
         '回到 tuff',
         '返回塔芙',
-        '回到塔芙'
+        '回到塔芙',
+        'tuff'
       ],
       pinyin: ['zhuchuangkou', 'zck', 'zhujiemian', 'zjm', 'fanhuitafu', 'fhtf']
     },
@@ -217,9 +220,11 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
         'installed extensions',
         'my plugins',
         'local plugins',
-        'manage plugins'
+        'manage plugins',
+        'plugin list',
+        'plugins list'
       ],
-      zh: ['已安装插件', '已装插件', '我的插件', '本地插件', '插件管理', '管理插件'],
+      zh: ['已安装插件', '已装插件', '我的插件', '本地插件', '插件管理', '管理插件', '插件列表'],
       pinyin: [
         'yianzhuangchajian',
         'yazcj',
@@ -228,7 +233,9 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
         'wodechajian',
         'wdchajian',
         'bendichajian',
-        'bdchajian'
+        'bdchajian',
+        'chajianliebiao',
+        'cjlb'
       ]
     },
     searchable: true,
@@ -264,10 +271,41 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
         'options',
         'config',
         'configuration',
-        'open settings'
+        'open settings',
+        'tuff settings',
+        'tuff preferences',
+        'tuff config',
+        'tuff options'
       ],
-      zh: ['设置', '偏好设置', '设置总览', '应用设置', '选项', '配置', '打开设置'],
-      pinyin: ['shezhi', 'sz', 'pianhaoshezhi', 'phsz']
+      zh: [
+        '设置',
+        '偏好设置',
+        '设置总览',
+        '应用设置',
+        '选项',
+        '配置',
+        '打开设置',
+        'tuff 设置',
+        'tuff 偏好设置',
+        'tuff 选项',
+        'tuff 配置',
+        'tuff设置',
+        'tuff偏好设置',
+        '塔芙设置',
+        '塔芙偏好设置'
+      ],
+      pinyin: [
+        'shezhi',
+        'sz',
+        'pianhaoshezhi',
+        'phsz',
+        'tuff sz',
+        'tuffsz',
+        'tuff shezhi',
+        'tuffshezhi',
+        'tfsz',
+        'tfshezhi'
+      ]
     },
     searchable: true,
     advanced: false,
@@ -446,6 +484,21 @@ const APP_DESTINATION_LIST: readonly AppDestinationDefinition[] = [
     commonSetting: true
   },
   {
+    id: 'settings-performance',
+    route: '/setting/performance',
+    titleKey: 'settingsNav.category.performance',
+    subtitleKey: 'settingPerformance.description',
+    icon: 'i-ri-pulse-line',
+    aliases: {
+      en: ['performance', 'performance settings', 'tuff performance', 'resource usage'],
+      zh: ['性能', '性能设置', '资源占用'],
+      pinyin: ['xingneng', 'xn', 'xingnengshezhi', 'xnsz', 'ziyuanzhanyong', 'zyzy']
+    },
+    searchable: true,
+    advanced: false,
+    commonSetting: false
+  },
+  {
     id: 'settings-about',
     route: '/setting/about',
     titleKey: 'settingsNav.category.about',
@@ -554,7 +607,27 @@ export function resolveAppDestinationQuery(value: string): AppDestinationDefinit
     return null
   }
 
-  return DESTINATION_BY_ALIAS.get(key) ?? null
+  const direct = DESTINATION_BY_ALIAS.get(key)
+  if (direct) {
+    return direct
+  }
+
+  // Support "tuff" or "塔芙" prefix for any destination: e.g. "tuff 通用" -> "settings-general"
+  if (key.startsWith('tuff') && key.length > 4) {
+    const sub = DESTINATION_BY_ALIAS.get(key.slice(4))
+    if (sub) {
+      return sub
+    }
+  }
+
+  if (key.startsWith('塔芙') && key.length > 2) {
+    const sub = DESTINATION_BY_ALIAS.get(key.slice(2))
+    if (sub) {
+      return sub
+    }
+  }
+
+  return null
 }
 
 /**

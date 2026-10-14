@@ -1,3 +1,5 @@
+import type { FileParserChunk } from '../electron/file-parsers/types'
+
 export interface IndexedWorkerProgressLike {
   status: string
   progress: number
@@ -18,6 +20,7 @@ export interface IndexedWorkerFileUpdateLike {
   embeddingStatus: string
   embeddings?: IndexedWorkerEmbeddingLike[] | null
   contentHash?: string | null
+  chunks?: FileParserChunk[]
 }
 
 export interface IndexedWorkerPersistEntryLike {
@@ -31,6 +34,7 @@ export interface IndexedWorkerPersistEntryLike {
     embeddingStatus: string
     embeddings?: IndexedWorkerEmbeddingLike[]
     contentHash: string | null
+    chunks?: FileParserChunk[]
   } | null
   progress: {
     status: string
@@ -75,6 +79,7 @@ export class IndexedWorkerPersistEntryMapperService {
         vector: embedding.vector,
       })),
       contentHash: fileUpdate.contentHash ?? null,
+      chunks: fileUpdate.chunks,
     }
   }
 

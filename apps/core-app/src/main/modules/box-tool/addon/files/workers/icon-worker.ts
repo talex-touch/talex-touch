@@ -14,7 +14,7 @@ import {
   FILE_ICON_MAX_BYTES,
   readFileIconPngDimensions
 } from '../../../../../service/file-icon-artifact'
-import { getWorkerMemorySnapshot } from './worker-status'
+import { getWorkerMemorySnapshot, readWorkerThreadCpuUsage } from './worker-status'
 
 type ExtractFileIcon = (filePath: string, size?: number) => Buffer | null
 
@@ -47,7 +47,7 @@ function buildMetricsPayload(): WorkerMetricsPayload {
   return {
     timestamp: Date.now(),
     memory: getWorkerMemorySnapshot(memory),
-    cpuUsage: process.cpuUsage(),
+    cpuUsage: readWorkerThreadCpuUsage(),
     eventLoop: eventLoop
       ? {
           active: eventLoop.active,

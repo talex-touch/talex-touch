@@ -91,6 +91,7 @@ const rows = await resolveCurrentAuxDb()?.select(...)  // reads: same live home
   (cross-home FK/id-collision class: 171+3181 FK failures in validation run 3).
 - App catalog stays primary-homed (user-authored manual entries are not rebuildable);
   the push pipeline bridges it into the worker-owned index.
+- File opener associations describe applications, so their bundle/name/icon lookup and icon-pointer writes stay on the primary app catalog (`dbUtils.getDb()`), even when ordinary file indexing uses the search home. Do not use split-routed `addFileExtension` with an application id: identical primary/search ids identify unrelated rows. Resolve bundle metadata and its optional icon in one bounded primary query; write through `scheduleDbWrite`.
 - **Every out-of-band schema fixup must run on every home that runs the migrations**
   (`initSearchDatabase` applies provider_id + scan_progress fixups; drizzle
   migrations alone are NOT primary-parity — the V1 `no such column` lesson).
@@ -107,7 +108,10 @@ const rows = await resolveCurrentAuxDb()?.select(...)  // reads: same live home
   The writer gets a short graceful-close window, then is terminated and detached; an unconfirmed
   termination during app exit is diagnostic evidence, not a reason to exceed the outer quit budget.
   Ordinary runtime termination timeouts remain failures.
+- Foreground preemption is a maintenance deferral, not a persistence failure. A buffered content flush retains its exact durable batch and completed publication/embedding/completion stages, releases the old source lease after active writes settle, then resumes under a fresh maintenance lease once foreground activity is idle. Waiting and real-error retry backoff happen outside source ownership. Retained entries count as inflight only; canceled/reset/stale/low-space generations cannot publish late results. Genuine SQL failures keep their normal diagnostic and retry policy.
 - Watch-event task history is diagnostic state, not indexing correctness: update it in memory immediately, coalesce durable saves in a bounded leading-edge window, and flush the latest snapshot during shutdown. Scan/reconcile/reset task state remains awaited and durable before the operation returns; never apply the watch coalescing rule to those terminal records.
+- Image semantic enrichment uses the same opt-in file content policy and embedding home as text. Worker image results carry pending metadata with NULL content, never invented captions or chunks. Host inference alone reads a bounded O_NOFOLLOW snapshot through the pinned local encoder; IPC metadata cannot forge image authority. Keep the exact filesystem mtime for inference, but retain the database's second-resolution version in the SQL id/path/mtime/size/content/status fence. Recheck the live file after inference, and check that fence again in the existing sole-writer transaction before updating vector and progress.
+- Deferred semantic recall starts after the first snapshot without delaying it. A session completes only after its recall publishes or cancellation settles; abort must not wait for a model that ignores its signal. Already published rows retain their positions and deduplicate subsequent recall.
 
 ### 7. Boot-time maintenance writers
 

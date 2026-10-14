@@ -1,4 +1,4 @@
-export const COREBOX_FOCUS_TARGETS = ['input', 'flow', 'history', 'plugin', 'meta-overlay', 'none'] as const
+export const COREBOX_FOCUS_TARGETS = ['input', 'flow', 'plugin', 'meta-overlay', 'none'] as const
 export type CoreBoxFocusTarget = (typeof COREBOX_FOCUS_TARGETS)[number]
 export const COREBOX_FOCUS_STAGES = [
   'summon', 'show', 'native-focus', 'renderer-focus', 'sample', 'complete', 'cancel',

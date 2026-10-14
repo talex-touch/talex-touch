@@ -584,8 +584,7 @@ Host chords (`BUILTIN_SPECS`, `PROVIDER_ACTION_SPECS`; Mod = ⌘ on macOS, Ctrl 
 - **Scope.** `'panel'` runs any enabled row. `'list'` (panel closed) runs only rows with
   `runsFromList`: never a plugin row (only main can reach the plugin), not `flow-transfer`.
   `runResultListActionShortcut` runs outside plugin UI mode and DivisionBox only, after plugin-view
-  and widget forwarding, and not while `window.__coreboxHistoryVisible` or a `.FlowSelector` owns
-  the keyboard.
+  and widget forwarding, and not while a `.FlowSelector` owns the keyboard.
 - **A key that names nothing is left alone** — not prevented, not stopped. Mod↵ on an item without a
   secondary falls through to the ordinary Enter path.
 - **Auto-repeat runs nothing.** A held chord runs once and its repeats are prevented. In the panel a

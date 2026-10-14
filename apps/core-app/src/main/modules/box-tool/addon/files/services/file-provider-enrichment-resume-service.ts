@@ -1,7 +1,8 @@
 import type { IndexedWorkerScheduleResult } from '@talex-touch/utils/search'
-import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull, notInArray, or } from 'drizzle-orm'
 import type { DbUtils } from '../../../../../db/utils'
 import { fileIndexProgress, files as filesSchema } from '../../../../../db/schema'
+import { IMAGE_EMBEDDING_EXTENSIONS } from '../constants'
 import type { FileProviderIndexSchedulerFile } from './file-provider-index-scheduler-service'
 
 const RESUME_BATCH_SIZE = 200
@@ -22,8 +23,8 @@ export const ENRICHMENT_RESUME_ROUND_COOLDOWN_MS = 45_000
 const SCHEDULER_DISPATCH_FAILED = 'INDEXED_WORKER_SCHEDULER_DISPATCH_FAILED'
 
 /**
- * How a round ended. `wrapped` reached the end of the table after starting
- * mid-table, so the rows before its starting cursor still need a pass.
+ * How a round ended. `wrapped` reached the end of a lane after starting
+ * mid-lane, so the rows before its starting cursor still need a pass.
  */
 type ResumeRoundOutcome = 'completed' | 'wrapped' | 'paused' | 'stopped'
 
@@ -32,6 +33,7 @@ export interface FileProviderEnrichmentResumeServiceDeps {
   isSearchIndexAvailable: () => boolean
   isShuttingDown: () => boolean
   isEnabled: () => boolean
+  isImageEmbeddingReady?: () => boolean
   withMutationLease: <T>(operation: (leaseId: string) => Promise<T>) => Promise<T>
   scheduleIndexing: (
     files: FileProviderIndexSchedulerFile[],
@@ -49,23 +51,25 @@ export interface FileProviderEnrichmentResumeServiceDeps {
  * records. It deliberately does not alter scan_progress: that table proves
  * filesystem coverage, while this service repairs only unfinished enrichment.
  *
- * The resume cursor advances only over a page the scheduler admitted entirely
- * (`deferred === 0`). A page suffix the scheduler could not admit is NOT skipped:
- * it stays durably pending and the same range is re-queried after the admitted
- * work drains.
+ * Fresh files without progress, unfinished retries, and legacy disabled-image
+ * backfill have independent keyset cursors. Each round starts with fresh work
+ * and rotates fresh → retry → legacy, giving each lane at most one page per
+ * turn, including after a partial admission. A cursor advances only over a
+ * fully admitted page (`deferred === 0`), so an unadmitted suffix stays pending
+ * in its own lane.
  *
- * The cursor is kept across rounds and wraps to 0 only when a round reaches the
- * end of the table, so a new round continues where the last one stopped instead
- * of re-reading the head of the table. Rounds are spaced by
- * ENRICHMENT_RESUME_ROUND_COOLDOWN_MS: a single unref'd timer starts the one
- * follow-up round that requests during a round or its cooldown, a paused round,
- * or a mid-table wrap call for.
+ * A lane's cursor survives across rounds and resets to 0 at its end. Within
+ * that round, subsequent probes still use its last scanned id, not 0: new work
+ * can interrupt backfill without re-reading the head until the next round.
+ * Empty lanes are probed again only after another lane admits work or moves
+ * past a stuck page. Rounds share the existing cooldown and single unref'd
+ * follow-up timer; a paused round or mid-lane wrap also requests a follow-up.
  */
 export class FileProviderEnrichmentResumeService {
   private resumePromise: Promise<void> | null = null
   private rerunRequested = false
-  /** Keyset cursor (files.id) shared by every round; see the class comment. */
-  private cursor = 0
+  /** Independent keyset cursors (files.id) shared by every round. */
+  private readonly cursors = { fresh: 0, retry: 0, legacy: 0 }
   private lastRoundEndedAt: number | null = null
   private cooldownTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -124,7 +128,7 @@ export class FileProviderEnrichmentResumeService {
         // pass would otherwise wait for some unrelated mutation.
         const followUp = this.rerunRequested || outcome === 'paused' || outcome === 'wrapped'
         this.rerunRequested = false
-        if (followUp && !this.deps.isShuttingDown()) {
+        if (followUp && !this.deps.isShuttingDown() && this.deps.isEnabled()) {
           this.scheduleFollowUp(ENRICHMENT_RESUME_ROUND_COOLDOWN_MS, 'follow-up')
         }
       })
@@ -153,14 +157,74 @@ export class FileProviderEnrichmentResumeService {
     if (!dbUtils || !this.deps.isSearchIndexAvailable() || !this.deps.isEnabled()) return 'stopped'
 
     const label = `enrichment-resume.${reason}`
-    const startedAt = this.cursor
+    const lanes = {
+      fresh: {
+        cursor: this.cursors.fresh,
+        startedAt: this.cursors.fresh,
+        exhausted: false,
+        reachedEnd: false,
+        failedPageIds: null as number[] | null
+      },
+      retry: {
+        cursor: this.cursors.retry,
+        startedAt: this.cursors.retry,
+        exhausted: false,
+        reachedEnd: false,
+        failedPageIds: null as number[] | null
+      },
+      legacy: {
+        cursor: this.cursors.legacy,
+        startedAt: this.cursors.legacy,
+        exhausted: false,
+        reachedEnd: false,
+        failedPageIds: null as number[] | null
+      }
+    }
+    const laneOrder = ['fresh', 'retry', 'legacy'] as const
+    let laneIndex = 0
+    const imageExtensions = [...IMAGE_EMBEDDING_EXTENSIONS]
     let outcome: ResumeRoundOutcome = 'stopped'
     let scheduled = 0
     let noAdmitRounds = 0
     let failedPages = 0
-    // Ids of a partially admitted page whose dispatch failed; see the loop below.
-    let failedPageIds: number[] | null = null
     while (!this.deps.isShuttingDown() && this.deps.isEnabled()) {
+      if (laneOrder.every((name) => lanes[name].exhausted)) {
+        outcome = laneOrder.some((name) => lanes[name].reachedEnd && lanes[name].startedAt > 0)
+          ? 'wrapped'
+          : 'completed'
+        break
+      }
+      const lane = laneOrder[laneIndex]!
+      const state = lanes[lane]
+      if (state.exhausted) {
+        laneIndex = (laneIndex + 1) % laneOrder.length
+        continue
+      }
+      const imageReady = this.deps.isImageEmbeddingReady?.() ?? true
+      if (lane === 'legacy' && !imageReady) {
+        // Model unavailability is not the end of this lane; retain its cursor.
+        state.exhausted = true
+        laneIndex = (laneIndex + 1) % laneOrder.length
+        continue
+      }
+      const nonImage = or(
+        isNull(filesSchema.extension),
+        notInArray(filesSchema.extension, imageExtensions)
+      )
+      const unfinished =
+        lane === 'fresh'
+          ? isNull(fileIndexProgress.fileId)
+          : inArray(fileIndexProgress.status, ['pending', 'processing'])
+      const recoverable =
+        lane === 'legacy'
+          ? and(
+              inArray(filesSchema.extension, imageExtensions),
+              eq(fileIndexProgress.status, 'skipped'),
+              eq(fileIndexProgress.lastError, 'content-indexing-disabled')
+            )
+          : imageReady
+            ? unfinished
+            : and(unfinished, nonImage)
       const rows = await dbUtils
         .getFileIndexReadDb()
         .select({
@@ -175,38 +239,34 @@ export class FileProviderEnrichmentResumeService {
         })
         .from(filesSchema)
         .leftJoin(fileIndexProgress, eq(fileIndexProgress.fileId, filesSchema.id))
-        .where(
-          and(
-            eq(filesSchema.type, 'file'),
-            gt(filesSchema.id, this.cursor),
-            or(
-              isNull(fileIndexProgress.fileId),
-              inArray(fileIndexProgress.status, ['pending', 'processing'])
-            )
-          )
-        )
+        .where(and(eq(filesSchema.type, 'file'), gt(filesSchema.id, state.cursor), recoverable))
         .orderBy(filesSchema.id)
         .limit(RESUME_BATCH_SIZE)
 
       if (rows.length === 0) {
-        // End of the table. The next round starts from the beginning; a round
-        // that began mid-table has not visited the rows before its start yet.
-        this.cursor = 0
-        outcome = startedAt > 0 ? 'wrapped' : 'completed'
-        break
+        // Keep this round's scan position for probes of newly added higher ids.
+        // The durable cursor stays wrapped for the next round's head recovery.
+        this.cursors[lane] = 0
+        state.reachedEnd = true
+        state.exhausted = true
+        laneIndex = (laneIndex + 1) % laneOrder.length
+        continue
       }
 
-      if (failedPageIds && isSamePage(rows, failedPageIds)) {
-        // The failed dispatch left every row of this page pending: a worker that
-        // died, not per-file failures (those are terminal). Offering the page
-        // again would fail again, so step past it; its rows stay pending and the
-        // pass after the wrap retries them.
-        this.cursor = rows[rows.length - 1]!.id
-        failedPageIds = null
+      if (state.failedPageIds && isSamePage(rows, state.failedPageIds)) {
+        // The failed dispatch left this entire lane's page pending. Step past
+        // it for now; the pass after the wrap retries these durable rows.
+        state.cursor = rows[rows.length - 1]!.id
+        if (!state.reachedEnd) this.cursors[lane] = state.cursor
+        state.failedPageIds = null
+        for (const peer of laneOrder) {
+          if (peer !== lane) lanes[peer].exhausted = false
+        }
+        laneIndex = (laneIndex + 1) % laneOrder.length
         await this.deps.yieldToEventLoop()
         continue
       }
-      failedPageIds = null
+      state.failedPageIds = null
 
       const { result, dispatchFailed } = await this.deps.withMutationLease(async (leaseId) => {
         // A successor scan/reset must not hold the gate while waiting for this
@@ -221,6 +281,13 @@ export class FileProviderEnrichmentResumeService {
         // Nothing schedulable (provider closed or index unavailable): stop.
         break
       }
+      // Only admitted work can make empty peer lanes worth probing again.
+      if (result.accepted > 0) {
+        for (const peer of laneOrder) {
+          if (peer !== lane) lanes[peer].exhausted = false
+        }
+      }
+      laneIndex = (laneIndex + 1) % laneOrder.length
 
       if (result.deferred > 0) {
         scheduled += result.accepted
@@ -233,9 +300,9 @@ export class FileProviderEnrichmentResumeService {
           outcome = 'paused'
           break
         }
-        // Do not advance the cursor: the unadmitted suffix is still pending and is
-        // re-queried once the admitted work above has drained.
-        if (dispatchFailed) failedPageIds = rows.map((row) => row.id)
+        // Leave this lane's cursor before the unadmitted suffix, but give the
+        // other lanes their next pages before retrying the durable remainder.
+        if (dispatchFailed) state.failedPageIds = rows.map((row) => row.id)
         await this.deps.yieldToEventLoop()
         continue
       }
@@ -243,8 +310,9 @@ export class FileProviderEnrichmentResumeService {
       scheduled += result.accepted
       noAdmitRounds = 0
       // A fully admitted page is done even when a chunk failed (failed files are
-      // terminal), so a failure moves the round on instead of ending it.
-      this.cursor = rows[rows.length - 1]!.id
+      // terminal). Do not overwrite a wrap already owed to the next round.
+      state.cursor = rows[rows.length - 1]!.id
+      if (!state.reachedEnd) this.cursors[lane] = state.cursor
       await this.deps.yieldToEventLoop()
     }
 

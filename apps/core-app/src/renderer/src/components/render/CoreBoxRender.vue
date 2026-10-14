@@ -41,10 +41,6 @@ const customPayload = computed<PreviewCardPayload | undefined>(() => {
   return render.value?.custom?.data as PreviewCardPayload | undefined
 })
 
-function handleShowHistory(): void {
-  window.dispatchEvent(new CustomEvent('corebox:show-calculation-history', { detail: props.item }))
-}
-
 function handleCopyPrimary(): void {
   const value = customPayload.value?.primaryValue
   if (!value) return
@@ -72,7 +68,6 @@ function handleHostAction(payload: { actionId: string; payload?: Record<string, 
           :renderer-id="customRendererId!"
           :item="item"
           :payload="customPayload"
-          @show-history="handleShowHistory"
           @copy-primary="handleCopyPrimary"
           @host-action="handleHostAction"
         />

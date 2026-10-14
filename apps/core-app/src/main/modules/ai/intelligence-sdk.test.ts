@@ -26,7 +26,11 @@ import { intelligenceCapabilityRegistry } from './intelligence-capability-regist
 import { markOuterGovernedInvocation } from './intelligence-invoke-governance'
 import { intelligenceQuotaManager } from './intelligence-quota-manager'
 import { strategyManager } from './intelligence-strategy-manager'
+import { getLocalEmbeddingRuntime } from './local-embedding-runtime'
+import type { LocalEmbeddingGeneration } from './local-embedding-runtime'
+import { LOCAL_EMBEDDING_MODEL_KEY } from './local-embedding-model'
 import {
+  getIntelligenceProviderManager,
   setIntelligenceAutonomousRuntimeAdapter,
   setIntelligenceProviderManager,
   TuffIntelligenceSDK
@@ -4610,5 +4614,286 @@ describe('tuffIntelligenceSDK invoke', () => {
         }
       })
     )
+  })
+})
+
+describe('TuffIntelligenceSDK explicit offline embedding governance', () => {
+  it('surfaces local runtime failure without uploading the text through a configured cloud fallback', async () => {
+    intelligenceCapabilityRegistry.register({
+      id: 'embedding.generate',
+      type: IntelligenceCapabilityType.EMBEDDING,
+      name: 'Embedding',
+      description: 'Offline failure boundary',
+      supportedProviders: [IntelligenceProviderType.CUSTOM]
+    })
+    const provider = createProvider(
+      {
+        id: 'cloud-fallback',
+        type: IntelligenceProviderType.CUSTOM,
+        name: 'Cloud fallback',
+        enabled: true,
+        priority: 1,
+        models: [{ id: 'remote-embedding' }],
+        capabilities: ['embedding.generate']
+      },
+      vi.fn()
+    )
+    const upload = vi.fn(async () => {
+      throw new Error('PRIVATE_TEXT_UPLOADED')
+    })
+    provider.embedding = upload
+    const previousManager = getIntelligenceProviderManager()
+    setIntelligenceProviderManager(new FakeProviderManager([provider]))
+    const localFailure = new Error('LOCAL_EMBEDDING_HELPER_UNAVAILABLE')
+    vi.spyOn(getLocalEmbeddingRuntime(), 'generate').mockRejectedValue(localFailure)
+    const sdk = new TuffIntelligenceSDK({
+      enableAudit: false,
+      enableQuota: false,
+      enableCache: false
+    })
+    try {
+      await expect(
+        sdk.embedding.generate(
+          { text: 'Private tenant animals policy' },
+          { metadata: { localEmbeddingRuntime: 'llama.cpp' } }
+        )
+      ).rejects.toBe(localFailure)
+      expect(upload).not.toHaveBeenCalled()
+    } finally {
+      setIntelligenceProviderManager(previousManager)
+    }
+  })
+
+  it('refuses a quota-exhausted caller before launching offline model inference', async () => {
+    intelligenceCapabilityRegistry.register({
+      id: 'embedding.generate',
+      type: IntelligenceCapabilityType.EMBEDDING,
+      name: 'Embedding',
+      description: 'Offline quota boundary',
+      supportedProviders: [IntelligenceProviderType.LOCAL]
+    })
+    const inference = vi
+      .spyOn(getLocalEmbeddingRuntime(), 'generate')
+      .mockRejectedValue(new Error('MODEL_LAUNCHED_AFTER_REFUSAL'))
+    const sdk = new TuffIntelligenceSDK({
+      enableAudit: false,
+      enableQuota: true,
+      enableCache: false
+    })
+    vi.spyOn(intelligenceQuotaManager, 'checkQuota').mockResolvedValue({
+      allowed: false,
+      reason: 'Tenant indexing quota exhausted'
+    })
+    await expect(
+      sdk.embedding.generate(
+        { text: 'Private tenant animals policy' },
+        { metadata: { localEmbeddingRuntime: 'llama.cpp', caller: 'offline-indexing-refused' } }
+      )
+    ).rejects.toThrow(/Quota exceeded: Tenant indexing quota exhausted/)
+    expect(inference).not.toHaveBeenCalled()
+  })
+})
+
+describe('TuffIntelligenceSDK host-only image embedding', () => {
+  const image = { path: '/Downloads/IMG_2048.png', mtime: 1_000, size: 68 }
+
+  function imageSdk(enableQuota = false): TuffIntelligenceSDK {
+    intelligenceCapabilityRegistry.register({
+      id: 'embedding.generate',
+      type: IntelligenceCapabilityType.EMBEDDING,
+      name: 'Embedding',
+      description: 'Host image security boundary',
+      supportedProviders: [IntelligenceProviderType.LOCAL, IntelligenceProviderType.CUSTOM]
+    })
+    return new TuffIntelligenceSDK({
+      enableAudit: false,
+      enableQuota,
+      enableCache: true
+    })
+  }
+
+  it('ignores image paths forged in ordinary metadata and keeps the text payload contract', async () => {
+    const local = getLocalEmbeddingRuntime()
+    vi.spyOn(local, 'generate').mockResolvedValue({
+      vector: [0, 1, 0],
+      modelKey: LOCAL_EMBEDDING_MODEL_KEY
+    })
+    const imageRead = vi
+      .spyOn(local, 'generateImage')
+      .mockRejectedValue(new Error('IMAGE_PATH_READ_WITHOUT_HOST_AUTHORITY'))
+    const sdk = imageSdk()
+    const options = {
+      metadata: {
+        localEmbeddingRuntime: 'llama.cpp',
+        image,
+        localEmbeddingImage: image,
+        localEmbeddingImageInput: image,
+        imagePath: image.path
+      }
+    }
+    const result = await sdk.embedding.generate({ text: '猫' }, options)
+    expect(result.result).toEqual([0, 1, 0])
+    expect(result.model).toBe(LOCAL_EMBEDDING_MODEL_KEY)
+    await expect(
+      sdk.invoke(
+        'embedding.generate',
+        { image },
+        {
+          ...options,
+          signal: new AbortController().signal
+        }
+      )
+    ).rejects.toThrow('LOCAL_EMBEDDING_TEXT_REQUIRED')
+    expect(imageRead).not.toHaveBeenCalled()
+  })
+
+  it.each(['image', 'text'] as const)(
+    'accepts registered host-local %s work with an AbortSignal through real invoke',
+    async (mode) => {
+      vi.spyOn(getLocalEmbeddingRuntime(), 'generateImage').mockResolvedValue({
+        vector: [1, 0, 0],
+        modelKey: LOCAL_EMBEDDING_MODEL_KEY
+      })
+      vi.spyOn(getLocalEmbeddingRuntime(), 'generate').mockResolvedValue({
+        vector: [0, 1, 0],
+        modelKey: LOCAL_EMBEDDING_MODEL_KEY
+      })
+      const sdk = imageSdk()
+      const signal = new AbortController().signal
+      // Neither public host method is mocked: this must cross invoke's actual cancellation gate.
+      const result =
+        mode === 'image'
+          ? await sdk.embedding.generateLocalImage(image, { signal })
+          : await sdk.embedding.generate(
+              { text: '猫' },
+              {
+                signal,
+                metadata: { localEmbeddingRuntime: 'llama.cpp' }
+              }
+            )
+      expect(result.result).toEqual(mode === 'image' ? [1, 0, 0] : [0, 1, 0])
+      expect(result.model).toBe(LOCAL_EMBEDDING_MODEL_KEY)
+      expect(result.provider).toBe(IntelligenceProviderType.LOCAL)
+    }
+  )
+
+  it('does not grant remote embedding cancellation through forged image metadata', async () => {
+    await expect(
+      imageSdk().invoke(
+        'embedding.generate',
+        { text: '猫' },
+        {
+          signal: new AbortController().signal,
+          metadata: { image, localEmbeddingImageInput: image, imagePath: image.path }
+        }
+      )
+    ).rejects.toMatchObject({ code: 'INTELLIGENCE_CANCELLATION_UNSUPPORTED' })
+  })
+
+  it('delivers host image cancellation to the model operation so it can settle without a vector', async () => {
+    const entered = deferred<void>()
+    vi.spyOn(getLocalEmbeddingRuntime(), 'generateImage').mockImplementation((_input, signal) => {
+      if (!signal) return Promise.reject(new Error('MODEL_CANCELLATION_NOT_REGISTERED'))
+      const pending = Promise.withResolvers<LocalEmbeddingGeneration>()
+      const abort = () =>
+        pending.reject(Object.assign(new Error('model cancelled'), { name: 'AbortError' }))
+      signal.addEventListener('abort', abort, { once: true })
+      entered.resolve()
+      return pending.promise
+    })
+    const controller = new AbortController()
+    const operation = imageSdk().embedding.generateLocalImage(image, { signal: controller.signal })
+    try {
+      await Promise.race([entered.promise, operation])
+      const cancelled = expect(operation).rejects.toMatchObject({
+        code: 'INTELLIGENCE_OPERATION_CANCELLED'
+      })
+      controller.abort()
+      await cancelled
+    } finally {
+      controller.abort()
+      await operation.catch(() => undefined)
+    }
+  })
+
+  it('does not cache image vectors across file versions at the same path', async () => {
+    vi.spyOn(getLocalEmbeddingRuntime(), 'generateImage')
+      .mockResolvedValueOnce({ vector: [1, 0, 0], modelKey: LOCAL_EMBEDDING_MODEL_KEY })
+      .mockResolvedValueOnce({ vector: [0, 1, 0], modelKey: LOCAL_EMBEDDING_MODEL_KEY })
+    const sdk = imageSdk()
+    const first = await sdk.embedding.generateLocalImage(image)
+    const replaced = await sdk.embedding.generateLocalImage({ ...image, mtime: 2_000 })
+    expect(first.result).toEqual([1, 0, 0])
+    expect(replaced.result).toEqual([0, 1, 0])
+    expect(replaced.model).toBe(first.model)
+  })
+
+  it('surfaces missing media instead of falling back to a configured cloud provider', async () => {
+    const sdk = imageSdk()
+    const provider = createProvider(
+      {
+        id: 'image-cloud-fallback',
+        type: IntelligenceProviderType.CUSTOM,
+        name: 'Image cloud fallback',
+        enabled: true,
+        priority: 1,
+        models: [{ id: 'remote-embedding' }],
+        capabilities: ['embedding.generate']
+      },
+      vi.fn()
+    )
+    let uploaded = false
+    provider.embedding = async () => {
+      uploaded = true
+      throw new Error('PRIVATE_IMAGE_UPLOADED')
+    }
+    const previousManager = getIntelligenceProviderManager()
+    setIntelligenceProviderManager(new FakeProviderManager([provider]))
+    const unavailable = new Error('LOCAL_EMBEDDING_MEDIA_UNAVAILABLE')
+    vi.spyOn(getLocalEmbeddingRuntime(), 'generateImage').mockRejectedValue(unavailable)
+    try {
+      await expect(sdk.embedding.generateLocalImage(image)).rejects.toBe(unavailable)
+      expect(uploaded).toBe(false)
+    } finally {
+      setIntelligenceProviderManager(previousManager)
+    }
+  })
+
+  it('refuses quota-exhausted image work before the host reads the image', async () => {
+    vi.spyOn(intelligenceQuotaManager, 'checkQuota').mockResolvedValue({
+      allowed: false,
+      reason: 'Image indexing quota exhausted'
+    })
+    const imageRead = vi
+      .spyOn(getLocalEmbeddingRuntime(), 'generateImage')
+      .mockRejectedValue(new Error('IMAGE_READ_AFTER_QUOTA_REFUSAL'))
+    await expect(
+      imageSdk(true).embedding.generateLocalImage(image, {
+        metadata: { caller: 'core.files.embedding' }
+      })
+    ).rejects.toThrow('Quota exceeded: Image indexing quota exhausted')
+    expect(imageRead).not.toHaveBeenCalled()
+  })
+
+  it('does not return a late image vector after the invocation has been cancelled', async () => {
+    const entered = deferred<void>()
+    const answer = deferred<{ vector: number[]; modelKey: string }>()
+    vi.spyOn(getLocalEmbeddingRuntime(), 'generateImage').mockImplementation(async () => {
+      entered.resolve()
+      return answer.promise
+    })
+    const controller = new AbortController()
+    const operation = imageSdk().embedding.generateLocalImage(image, { signal: controller.signal })
+    // A rejected registration gate must fail immediately, not park forever on the model signal.
+    try {
+      await Promise.race([entered.promise, operation])
+      controller.abort()
+      answer.resolve({ vector: [1, 0, 0], modelKey: LOCAL_EMBEDDING_MODEL_KEY })
+      await expect(operation).rejects.toMatchObject({ code: 'INTELLIGENCE_OPERATION_CANCELLED' })
+    } finally {
+      controller.abort()
+      answer.resolve({ vector: [1, 0, 0], modelKey: LOCAL_EMBEDDING_MODEL_KEY })
+      await operation.catch(() => undefined)
+    }
   })
 })

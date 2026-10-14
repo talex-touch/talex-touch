@@ -12,17 +12,23 @@ export interface AnalyticsData {
     avgFirstResultMs: number
     searchSlowCount: number
     avgExecuteLatency: number
+    /** Mirrors `TelemetryPerformanceSummary` in server/utils/telemetryStore.ts. */
     performance: {
       longTaskCount: number
       longTaskTotalMs: number
       longTaskMaxMs: number
       longTaskAvgMs: number
-      rafJankCount: number
-      rafJankTotalMs: number
-      rafJankMaxMs: number
-      rafJankAvgMs: number
-      eventLoopDelayP95AvgMs: number
-      eventLoopDelayMaxMs: number
+      longAnimationFrameCount: number
+      longAnimationFrameTotalMs: number
+      longAnimationFrameMaxMs: number
+      longAnimationFrameAvgMs: number
+      eventLoopSamples: number
+      eventLoopLagOver100Ratio: number
+      eventLoopLagOver250Ratio: number
+      eventLoopLagOver1000Count: number
+      eventLoopLagMeanMs: number
+      eventLoopLagMaxMs: number
+      mainThreadCpuPercent: number | null
       unresponsiveCount: number
       unresponsiveTotalMs: number
       unresponsiveMaxMs: number

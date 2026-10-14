@@ -785,6 +785,18 @@ describe('plugin feature command matching', () => {
     )
   })
 
+  it('matches over commands by exact keyword or prefix with space', () => {
+    const cmd = command('over', ['fy', '翻译', 'translate'])
+    expect(isCommandMatch(cmd, 'fy')).toBe(true)
+    expect(isCommandMatch(cmd, 'FY')).toBe(true)
+    expect(isCommandMatch(cmd, 'fy hello')).toBe(true)
+    expect(isCommandMatch(cmd, 'translate text')).toBe(true)
+    expect(isCommandMatch(cmd, '翻译 苹果')).toBe(true)
+    expect(isCommandMatch(cmd, 'f')).toBe(false)
+    expect(isCommandMatch(cmd, 'fyi')).toBe(false)
+    expect(isCommandMatch(cmd, 'weather')).toBe(false)
+  })
+
   it('keeps match, contain and over behaving as before', () => {
     expect(isCommandMatch(command('match', 'calc'), 'calc 1+1')).toBe(true)
     expect(isCommandMatch(command('match', 'calc'), 'my calc')).toBe(false)

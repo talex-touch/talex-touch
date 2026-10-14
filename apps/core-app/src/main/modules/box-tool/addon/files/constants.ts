@@ -23,6 +23,14 @@ export interface ExtensionMetadata {
 }
 
 const DEFAULT_CONTENT_SIZE_LIMIT_MB = 25
+export function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  const safeChunkSize = Math.max(1, Math.floor(chunkSize))
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += safeChunkSize) {
+    chunks.push(items.slice(i, i + safeChunkSize))
+  }
+  return chunks
+}
 
 export const EXTENSION_METADATA: Record<string, ExtensionMetadata> = {
   // Text & documents
@@ -538,6 +546,15 @@ export const CONTENT_INDEXABLE_EXTENSIONS = new Set(
     .map(([ext]) => ext)
 )
 
+/** Image formats handled by the local EmbeddingGemma media encoder. */
+export const IMAGE_EMBEDDING_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.tiff'
+])
 export function getContentSizeLimitMB(extension: string): number {
   const metadata = EXTENSION_METADATA[extension]
   if (!metadata) return DEFAULT_CONTENT_SIZE_LIMIT_MB

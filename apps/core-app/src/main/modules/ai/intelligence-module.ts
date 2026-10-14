@@ -89,6 +89,7 @@ import {
   setIntelligenceProviderManager,
   tuffIntelligence
 } from './intelligence-sdk'
+import { getLocalEmbeddingRuntime } from './local-embedding-runtime'
 import { intelligenceTtsService } from './intelligence-tts-service'
 import { intelligenceWorkflowService } from './intelligence-workflow-service'
 import { createCustomProvider, createLocalProvider } from './provider-factory'
@@ -851,7 +852,7 @@ export class IntelligenceModule extends BaseModule<TalexEvents> {
   }
 
   async onDestroy(): Promise<void> {
-    intelligenceLog.info('Destroying Intelligence module')
+    getLocalEmbeddingRuntime().close()
     closeSystemTranslation()
     stopPricingCatalogSchedule()
     // Only wait for a runtime that was actually started. waitForAgentRuntime() starts one on

@@ -1,3 +1,15 @@
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  unlink,
+  writeFile
+} from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { fetchMock, handleMock, unhandleMock } = vi.hoisted(() => ({
@@ -126,78 +138,69 @@ describe('file-protocol canonical tfile parsing', () => {
     )
   })
 
-  it('streams off-policy files only through their exact unexpired preview grant', async () => {
+  it('streams exact canonical grant bytes and rejects bare, wrong-path, and expired grants', async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'tfile-grant-')))
+    const approvedPath = path.join(directory, '截图 中文.png')
+    await writeFile(approvedPath, 'approved preview')
     const now = 1_000
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now)
-
     try {
-      const approvedPath = '/Users/demo/Downloads/approved.txt'
       const grant = issueTfilePreviewGrant(approvedPath, now)
-      const response = new Response('approved preview')
-      fetchMock.mockResolvedValue(response)
+      fetchMock.mockImplementation(
+        async (url: string) => new Response(await readFile(new URL(url)))
+      )
       fileProtocolModule.onInit()
-
-      const handler = handleMock.mock.calls.at(-1)?.[1] as
-        | ((request: { url: string }) => Promise<Response>)
-        | undefined
-      expect(handler).toBeTypeOf('function')
-
-      const valid = await handler?.({ url: grant.tfileUrl })
-      expect(valid).toBe(response)
-
-      const wrongPath = new URL(grant.tfileUrl)
-      wrongPath.pathname = '/Users/demo/Downloads/other.txt'
-      await expect(handler?.({ url: wrongPath.toString() })).resolves.toMatchObject({ status: 403 })
-
-      const expiredGrant = issueTfilePreviewGrant('/Users/demo/Downloads/expired.txt', now)
-      nowSpy.mockReturnValue(now + previewGrantTest.PREVIEW_GRANT_TTL_MS)
-      await expect(handler?.({ url: expiredGrant.tfileUrl })).resolves.toMatchObject({
+      const handler = handleMock.mock.calls.at(-1)![1] as (request: {
+        url: string
+      }) => Promise<Response>
+      const response = await handler({ url: grant.tfileUrl })
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe('approved preview')
+      await expect(handler({ url: `tfile://${approvedPath}` })).resolves.toMatchObject({
         status: 403
       })
-
+      const wrongPath = new URL(grant.tfileUrl)
+      wrongPath.pathname = path.join(directory, 'other.png')
+      await expect(handler({ url: wrongPath.toString() })).resolves.toMatchObject({ status: 403 })
+      nowSpy.mockReturnValue(now + previewGrantTest.PREVIEW_GRANT_TTL_MS)
+      await expect(handler({ url: grant.tfileUrl })).resolves.toMatchObject({ status: 403 })
       expect(fetchMock).toHaveBeenCalledTimes(1)
     } finally {
       nowSpy.mockRestore()
+      await rm(directory, { recursive: true, force: true })
     }
   })
 
-  it('authorizes lower-case and canonical Darwin Users paths through one preview grant', async () => {
-    const now = 1_000
-    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now)
-    const originalPlatform = process.platform
-    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
-
-    try {
-      const grant = issueTfilePreviewGrant('/users/demo/Downloads/approved.txt', now)
-      const canonicalUrl = new URL(grant.tfileUrl)
-      canonicalUrl.pathname = '/Users/demo/Downloads/approved.txt'
-      const lowerCaseUrl = new URL(grant.tfileUrl)
-      lowerCaseUrl.pathname = '/users/demo/Downloads/approved.txt'
-      const response = new Response('canonical preview')
-      fetchMock.mockResolvedValue(response)
-      fileProtocolModule.onInit()
-
-      const handler = handleMock.mock.calls.at(-1)?.[1] as
-        | ((request: { url: string }) => Promise<Response>)
-        | undefined
-      expect(handler).toBeTypeOf('function')
-
-      await expect(handler?.({ url: canonicalUrl.toString() })).resolves.toBe(response)
-      await expect(handler?.({ url: lowerCaseUrl.toString() })).resolves.toBe(response)
-      expect(fetchMock).toHaveBeenCalledWith('file:///Users/demo/Downloads/approved.txt', {
-        bypassCustomProtocolHandlers: true
-      })
-      expect(fetchMock).toHaveBeenCalledWith('file:///Users/demo/Downloads/approved.txt', {
-        bypassCustomProtocolHandlers: true
-      })
-    } finally {
-      nowSpy.mockRestore()
-      Object.defineProperty(process, 'platform', {
-        value: originalPlatform,
-        configurable: true
-      })
+  it.each(['directory', 'missing', 'parent-symlink'] as const)(
+    'denies a grant whose canonical file becomes %s',
+    async (replacement) => {
+      const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'tfile-canonical-')))
+      const approvedPath = path.join(directory, 'approved.png')
+      await writeFile(approvedPath, 'approved bytes')
+      const grant = issueTfilePreviewGrant(approvedPath)
+      try {
+        await unlink(approvedPath)
+        if (replacement === 'directory') await mkdir(approvedPath)
+        let requestedGrant = grant
+        if (replacement === 'parent-symlink') {
+          await mkdir(path.join(directory, 'actual'))
+          await writeFile(path.join(directory, 'actual', 'approved.png'), 'secret bytes')
+          await symlink(path.join(directory, 'actual'), path.join(directory, 'alias'))
+          requestedGrant = issueTfilePreviewGrant(path.join(directory, 'alias', 'approved.png'))
+        }
+        fileProtocolModule.onInit()
+        const request = handleMock.mock.calls.at(-1)![1] as (request: {
+          url: string
+        }) => Promise<Response>
+        await expect(request({ url: requestedGrant.tfileUrl })).resolves.toMatchObject({
+          status: 403
+        })
+        expect(fetchMock).not.toHaveBeenCalled()
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
     }
-  })
+  )
 })
 
 describe('file-protocol error-log dedupe bound', () => {

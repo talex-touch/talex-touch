@@ -48,6 +48,7 @@ export interface IndexedWriteFlushRuntimeServiceDeps<
 > {
   getPendingSize: () => number;
   getInflightSize: () => number;
+  hasWork?: () => boolean;
   isAvailable: () => boolean;
   executeFlush: () => Promise<TResult>;
   recordIdle: (input: {
@@ -58,6 +59,8 @@ export interface IndexedWriteFlushRuntimeServiceDeps<
   getFlushDelay: (pendingSize: number) => number;
   resolveFailure: (input: IndexedWriteFlushRuntimeRetryInput) => TDecision;
   handleFailure: (input: { error: unknown; decision: TDecision }) => void;
+  /** Handles a lifecycle deferral without changing failure retry accounting. */
+  handleDeferredFailure?: (error: unknown) => boolean;
   shouldRescheduleAfterResult?: (
     result: TResult,
   ) => IndexedWriteFlushRuntimeRescheduleDecision | null;
@@ -91,6 +94,7 @@ export class IndexedWriteFlushRuntimeService<
 > {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushing = false;
+  private disposed = false;
   private retryCount = 0;
   private readonly flushDeferMs: number;
 
@@ -104,7 +108,18 @@ export class IndexedWriteFlushRuntimeService<
     this.flushDeferMs = normalizeRuntimeCount(deps.config?.flushDeferMs, 300);
   }
 
+  dispose(): void {
+    this.disposed = true;
+    this.cancelScheduledFlush();
+  }
+
+  cancelScheduledFlush(): void {
+    clearTimeout(this.flushTimer ?? undefined);
+    this.flushTimer = null;
+  }
+
   scheduleFlush(delayMs: number, reason: string): void {
+    if (this.disposed || !this.deps.isAvailable()) return;
     if (this.flushTimer) {
       return;
     }
@@ -119,12 +134,12 @@ export class IndexedWriteFlushRuntimeService<
   }
 
   async flush(): Promise<void> {
-    if (!this.deps.isAvailable()) {
+    if (this.disposed || !this.deps.isAvailable()) {
       this.recordIdle("unavailable");
       return;
     }
 
-    if (this.getPendingSize() === 0) {
+    if (!(this.deps.hasWork?.() ?? this.getPendingSize() > 0)) {
       this.recordIdle("no-pending");
       return;
     }
@@ -147,6 +162,7 @@ export class IndexedWriteFlushRuntimeService<
         this.scheduleFlush(reschedule.delayMs, reschedule.reason);
       }
     } catch (error) {
+      if (this.deps.handleDeferredFailure?.(error)) return;
       const decision = this.deps.resolveFailure({
         error,
         pendingSize: this.getPendingSize(),
@@ -159,9 +175,8 @@ export class IndexedWriteFlushRuntimeService<
     } finally {
       this.flushing = false;
     }
-
     const pendingSize = this.getPendingSize();
-    if (flushSucceeded && pendingSize > 0) {
+    if (flushSucceeded && (this.deps.hasWork?.() ?? pendingSize > 0)) {
       this.scheduleFlush(
         this.deps.getFlushDelay(pendingSize),
         "drain-remaining",

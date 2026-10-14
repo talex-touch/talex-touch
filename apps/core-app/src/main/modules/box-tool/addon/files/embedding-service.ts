@@ -1,37 +1,58 @@
+import type { BatchItem } from 'drizzle-orm/batch'
+import { tuffIntelligence } from '../../../ai/intelligence-sdk'
+import {
+  getLocalEmbeddingRuntime,
+  type LocalEmbeddingImageInput
+} from '../../../ai/local-embedding-runtime'
+import { LOCAL_EMBEDDING_MODEL_KEY } from '../../../ai/local-embedding-model'
+import type { FileParserChunk } from '@talex-touch/utils/electron/file-parsers'
+import { hashFileContentChunk } from './services/file-content-match'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 import type * as schema from '../../../../db/schema'
-import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
-import { eq, and, sql } from 'drizzle-orm'
+import { stat } from 'node:fs/promises'
+import { eq, and, isNull, sql } from 'drizzle-orm'
 import { getLogger } from '@talex-touch/utils/common/logger'
-import { embeddings as embeddingsSchema } from '../../../../db/schema'
+import {
+  embeddings as embeddingsSchema,
+  fileIndexProgress,
+  files as filesSchema
+} from '../../../../db/schema'
 import { scheduleDbWrite } from '../../../../db/db-write'
-import { tuffIntelligence } from '../../../ai/intelligence-sdk'
 import { onUsageLimitsChanged, readUsageLimitInfo } from '../../../ai/usage-ledger/usage-limits'
 import { enterPerfContext } from '../../../../utils/perf-context'
+import {
+  SearchIndexReadWorkerClient,
+  type SearchIndexReadWorkerClientOptions
+} from '../../search-engine/workers/search-index-read-worker-client'
 
 const logger = getLogger('EmbeddingService')
 
 const SOURCE_TYPE = 'file'
 const MAX_TEXT_LENGTH = 8000
-const BATCH_SIZE = 5
 const EMBEDDING_CACHE_TTL = 30 * 60 * 1000 // 30 min
-const SEMANTIC_SEARCH_SCAN_LIMIT = 1000
 /**
  * Stable usage-ledger caller for every file-content embedding, the availability probe included
  * (audit rebuild design §1.4). A fresh object per call: options travel by reference.
  */
-function filesEmbeddingOptions(): { metadata: { caller: string } } {
-  return { metadata: { caller: 'core.files.embedding' } }
+function filesEmbeddingOptions(): { metadata: { caller: string; localEmbeddingRuntime?: string } } {
+  return {
+    metadata: {
+      caller: 'core.files.embedding',
+      ...(getLocalEmbeddingRuntime().isReady() ? { localEmbeddingRuntime: 'llama.cpp' } : {})
+    }
+  }
 }
 
 interface EmbeddingSearchResult {
   sourceId: string
   score: number
+  contentHash?: string | null
 }
 
 interface CachedEmbedding {
   vector: number[]
+  model: string
   timestamp: number
 }
 
@@ -44,10 +65,14 @@ interface CachedEmbedding {
  * resolver-timing trap class) cannot leave this service writing a stale file.
  */
 export interface EmbeddingDbRouting {
+  checkContentCapacity?: () => Promise<boolean>
+  recordStorageFailure?: (error: unknown) => boolean
   /** Call-time split decision — mirrors DbUtilsSplitContext.enabled. */
   isSplitEnabled(): boolean
   /** Read connection: the search file when the split is on (falls back to primary until ready). */
   getReadDb(): LibSQLDatabase<typeof schema>
+  /** Call-time physical read home; semantic SQL and scoring never execute on the main thread. */
+  getDatabasePath(): string
   /** Primary connection: builds compiled statements and runs split-off scheduled writes. */
   getPrimaryDb(): LibSQLDatabase<typeof schema>
   /** Split-on writes: forward compiled statements to the worker — the sole writer of its file. */
@@ -57,7 +82,7 @@ export interface EmbeddingDbRouting {
   ): Promise<unknown>
 }
 
-interface CompilableQuery {
+type CompilableQuery = BatchItem<'sqlite'> & {
   toSQL(): { sql: string; params: unknown[] }
 }
 
@@ -75,18 +100,105 @@ export interface EmbeddingUsageLimitPause {
 }
 
 /** What one `indexFileOutcome` call did; `paused` files count as skipped. */
-type IndexFileOutcome = 'done' | 'paused'
+type IndexFileOutcome = 'done' | 'paused' | 'skipped' | 'failed'
+
+export interface EmbeddingFileInput {
+  fileId: string
+  /** Text payload; image inputs intentionally carry no content. */
+  content?: string | null
+  chunks?: FileParserChunk[]
+  fileVersion?: number
+  fileSize?: number | null
+  image?: LocalEmbeddingImageInput
+}
+
+export type FileEmbeddingGenerator = (
+  text: string,
+  signal?: AbortSignal,
+  purpose?: 'document' | 'query'
+) => Promise<{ vector: number[]; model: string }>
+
+async function generateFileEmbedding(
+  text: string,
+  signal?: AbortSignal,
+  purpose: 'document' | 'query' = 'document'
+): Promise<{ vector: number[]; model: string }> {
+  const options = { ...filesEmbeddingOptions(), signal }
+  // EmbeddingGemma's retrieval task prompt is part of query encoding, not document content.
+  const input =
+    purpose === 'query' && options.metadata.localEmbeddingRuntime === 'llama.cpp'
+      ? `task: search result | query: ${text}`
+      : text
+  const result = await tuffIntelligence.embedding.generate({ text: input }, options)
+  return { vector: result.result, model: result.model || 'unknown' }
+}
+
+function usableVector(vector: number[]): boolean {
+  return (
+    Array.isArray(vector) &&
+    vector.length > 0 &&
+    vector.every(Number.isFinite) &&
+    vector.some((value) => value !== 0)
+  )
+}
 
 export class EmbeddingService {
   private available: boolean | null = null
   private queryCache = new Map<string, CachedEmbedding>()
   private usageLimitPause: EmbeddingUsageLimitPause | null = null
+  private imageOperationController = new AbortController()
+  private imageOperation: Promise<unknown> | null = null
+  private semanticReader: { path: string; client: SearchIndexReadWorkerClient } | null = null
+  private closed = false
 
-  constructor(private readonly routing: EmbeddingDbRouting) {
+  /** Lightweight media capability probe; never starts or upgrades the runtime. */
+  isImageReady(): boolean {
+    return getLocalEmbeddingRuntime().isImageReady()
+  }
+
+  /** Abort in-flight text/image generation when content indexing is disabled or shutting down. */
+  cancelPending(): void {
+    this.imageOperationController.abort(new Error('FILE_EMBEDDING_CANCELLED'))
+    this.imageOperationController = new AbortController()
+  }
+
+  private async waitForImageOperation(): Promise<void> {
+    const operation = this.imageOperation
+    if (!operation) return
+    await operation.catch(() => undefined)
+  }
+
+  constructor(
+    private readonly routing: EmbeddingDbRouting,
+    private readonly generate: FileEmbeddingGenerator = generateFileEmbedding,
+    private readonly readerOptions: SearchIndexReadWorkerClientOptions = {}
+  ) {
     // Raising or clearing the limit is the user saying "go on": the pause lifts now, not at the
     // reset time. If a limit still binds, the next call is refused before any provider work and
     // pauses again — one refusal, no loop.
     onUsageLimitsChanged(() => this.liftUsageLimitPause())
+  }
+
+  async close(): Promise<void> {
+    this.closed = true
+    this.cancelPending()
+    const reader = this.semanticReader
+    this.semanticReader = null
+    this.queryCache.clear()
+    await reader?.client.close()
+  }
+
+  private getSemanticReader(): SearchIndexReadWorkerClient {
+    if (this.closed) throw new Error('FILE_EMBEDDING_SERVICE_CLOSED')
+    const path = this.routing.getDatabasePath()
+    if (this.semanticReader?.path === path) return this.semanticReader.client
+    void this.semanticReader?.client.close()
+    const client = new SearchIndexReadWorkerClient(path, {
+      ...this.readerOptions,
+      lane: 'semantic'
+    })
+    this.semanticReader = { path, client }
+    return client
   }
 
   /** Lifts a usage-limit pause because the limits changed; a no-op when none is held. */
@@ -141,23 +253,46 @@ export class EmbeddingService {
     label: string,
     queries: CompilableQuery[],
     mode: 'single' | 'transaction' = 'single'
-  ): Promise<void> {
-    if (queries.length === 0) return
+  ): Promise<number> {
+    if (queries.length === 0) return 0
+    if (
+      label === 'embedding.index' &&
+      this.routing.checkContentCapacity &&
+      !(await this.routing.checkContentCapacity())
+    )
+      throw new Error('FILE_CONTENT_STORAGE_PAUSED')
 
     if (this.routing.isSplitEnabled()) {
       const statements = queries.map((query) => {
         const compiled = query.toSQL()
         return { sql: compiled.sql, args: compiled.params }
       })
-      await this.routing.execWrite(statements, mode)
-      return
+      return this.lastWriteCount(await this.routing.execWrite(statements, mode))
     }
 
-    await scheduleDbWrite(label, async () => {
-      for (const query of queries) {
-        await (query as unknown as Promise<unknown>)
+    return await scheduleDbWrite(label, async () => {
+      if (
+        label === 'embedding.index' &&
+        this.routing.checkContentCapacity &&
+        !(await this.routing.checkContentCapacity())
+      )
+        throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+      const [first, ...rest] = queries
+      if (!first) return 0
+      if (mode === 'transaction') {
+        return this.lastWriteCount(await this.routing.getPrimaryDb().batch([first, ...rest]))
       }
+      const results = []
+      for (const query of queries) results.push(await query)
+      return this.lastWriteCount(results)
     })
+  }
+
+  private lastWriteCount(result: unknown): number {
+    if (!Array.isArray(result) || result.length === 0) return 0
+    const last: unknown = result[result.length - 1]
+    if (!last || typeof last !== 'object' || !('rowsAffected' in last)) return 0
+    return typeof last.rowsAffected === 'number' ? last.rowsAffected : 0
   }
 
   /**
@@ -172,17 +307,15 @@ export class EmbeddingService {
     try {
       const disposeCheck = enterPerfContext('Embedding.isAvailable', { textLength: 4 })
       try {
-        const result = await tuffIntelligence.embedding.generate(
-          { text: 'test' },
-          filesEmbeddingOptions()
-        )
-        this.available = Array.isArray(result?.result) && result.result.length > 0
+        const result = await this.generate('test')
+        this.available = usableVector(result.vector)
       } finally {
         disposeCheck()
       }
     } catch (error) {
       // Not cached: the limit says nothing about whether embedding works once it resets.
       if (this.pauseOnUsageLimit(error)) return false
+      if (this.routing.recordStorageFailure?.(error)) return false
       this.available = false
     }
 
@@ -193,6 +326,7 @@ export class EmbeddingService {
   /** Reset availability cache (e.g. after config change). */
   resetAvailability(): void {
     this.available = null
+    this.queryCache.clear()
   }
 
   /**
@@ -200,41 +334,87 @@ export class EmbeddingService {
    * Skips if content hash hasn't changed.
    */
   async indexFile(fileId: string, content: string): Promise<void> {
-    await this.indexFileOutcome(fileId, content)
+    const outcome = await this.indexFileOutcome({ fileId, content })
+    if (outcome === 'failed') throw new Error('FILE_EMBEDDING_INDEX_FAILED')
   }
 
-  private async indexFileOutcome(fileId: string, content: string): Promise<IndexFileOutcome> {
-    if (!(await this.isAvailable())) return this.usageLimitPause ? 'paused' : 'done'
-    if (!content?.trim()) return 'done'
-
-    const truncated = content.slice(0, MAX_TEXT_LENGTH)
-    const contentHash = this.hashContent(truncated)
-
-    // Check if embedding already exists with same hash
-    const existing = await this.routing
-      .getReadDb()
-      .select({ id: embeddingsSchema.id, contentHash: embeddingsSchema.contentHash })
-      .from(embeddingsSchema)
-      .where(
-        and(eq(embeddingsSchema.sourceId, fileId), eq(embeddingsSchema.sourceType, SOURCE_TYPE))
-      )
-      .limit(1)
-
-    if (existing.length > 0 && existing[0].contentHash === contentHash) {
-      return 'done' // Content unchanged, skip
-    }
-
+  private async indexFileOutcome(
+    input: EmbeddingFileInput,
+    signal?: AbortSignal
+  ): Promise<IndexFileOutcome> {
+    if (input.image) return await this.indexImageFileOutcome(input, signal)
+    if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+      return 'paused'
+    if (!(await this.isAvailable())) return this.usageLimitPause ? 'paused' : 'skipped'
+    if (!input.content?.trim()) return 'skipped'
+    const { fileId, content } = input
+    const chunks = input.chunks?.length
+      ? input.chunks
+      : [{ text: content.slice(0, MAX_TEXT_LENGTH) }]
+    const hashes = chunks.map(hashFileContentChunk)
     try {
-      const result = await tuffIntelligence.embedding.generate(
-        { text: truncated },
-        filesEmbeddingOptions()
+      if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+        return 'paused'
+      const first = await this.generate(chunks[0].text, signal)
+      if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+        return 'paused'
+      if (!usableVector(first.vector) || !first.model)
+        throw new Error('FILE_EMBEDDING_INVALID_VECTOR')
+      const existing = await this.routing
+        .getReadDb()
+        .select({
+          contentHash: embeddingsSchema.contentHash,
+          model: embeddingsSchema.model
+        })
+        .from(embeddingsSchema)
+        .where(
+          and(eq(embeddingsSchema.sourceId, fileId), eq(embeddingsSchema.sourceType, SOURCE_TYPE))
+        )
+      if (
+        existing.length === hashes.length &&
+        existing.every(
+          (row, index) => row.model === first.model && row.contentHash === hashes[index]
+        )
       )
-      const vector = result.result
+        return 'done'
 
-      // Upsert: delete old then insert new (one atomic transaction on the
-      // worker path so the delete/insert pair cannot tear).
+      const generated = [first]
+      for (let index = 1; index < chunks.length; index++) {
+        if (this.getUsageLimitPause()) return 'paused'
+        if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+          return 'paused'
+        const result = await this.generate(chunks[index].text, signal)
+        if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+          return 'paused'
+        if (
+          !usableVector(result.vector) ||
+          result.model !== first.model ||
+          result.vector.length !== first.vector.length
+        ) {
+          throw new Error('FILE_EMBEDDING_MODEL_CHANGED')
+        }
+        generated.push(result)
+      }
+
+      const fileFence = and(
+        eq(filesSchema.id, Number(fileId)),
+        eq(filesSchema.content, content),
+        input.fileVersion == null ? undefined : eq(filesSchema.mtime, new Date(input.fileVersion)),
+        input.fileSize == null ? undefined : eq(filesSchema.size, input.fileSize)
+      )
+      const current = await this.routing
+        .getReadDb()
+        .select({ id: filesSchema.id })
+        .from(filesSchema)
+        .where(fileFence)
+        .limit(1)
+      if (current.length === 0) return 'skipped'
       const writeDb = this.routing.getPrimaryDb()
-      await this.runWrite(
+      const exists = sql`EXISTS (SELECT 1 FROM ${filesSchema} WHERE ${fileFence})`
+      // SQL SELECT follows the embeddings schema column order, including its
+      // generated id and created_at. Each insert checks the fence in the writer,
+      // not just in the earlier read, so queued cleanup cannot be undone.
+      const written = await this.runWrite(
         'embedding.index',
         [
           writeDb
@@ -242,61 +422,167 @@ export class EmbeddingService {
             .where(
               and(
                 eq(embeddingsSchema.sourceId, fileId),
-                eq(embeddingsSchema.sourceType, SOURCE_TYPE)
+                eq(embeddingsSchema.sourceType, SOURCE_TYPE),
+                exists
               )
             ),
-          writeDb.insert(embeddingsSchema).values({
-            sourceId: fileId,
-            sourceType: SOURCE_TYPE,
-            embedding: vector,
-            model: result.model || 'unknown',
-            contentHash
-          })
+          ...generated.map((result, index) =>
+            writeDb.insert(embeddingsSchema).select(sql`
+          SELECT NULL, ${fileId}, ${SOURCE_TYPE}, ${JSON.stringify(result.vector)},
+            ${result.model}, ${hashes[index]}, strftime('%s', 'now')
+          FROM ${filesSchema} WHERE ${fileFence}
+        `)
+          ),
+          writeDb.update(filesSchema).set({ embeddingStatus: 'completed' }).where(fileFence)
         ],
         'transaction'
       )
-    } catch (err) {
-      // The usage limit pauses embedding instead of failing file after file into the log.
-      if (this.pauseOnUsageLimit(err)) return 'paused'
-      logger.warn(`Failed to index embedding for file ${fileId}: ${err}`)
+      return written > 0 ? 'done' : 'skipped'
+    } catch (error) {
+      if (this.pauseOnUsageLimit(error)) return 'paused'
+      if (
+        this.routing.recordStorageFailure?.(error) ||
+        (error instanceof Error && error.message === 'FILE_CONTENT_STORAGE_PAUSED')
+      )
+        return 'paused'
+      const code =
+        error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+          ? error.code
+          : 'FILE_EMBEDDING_INDEX_FAILED'
+      logger.warn('File embedding failed', { code })
+      return 'failed'
     }
-    return 'done'
+  }
+
+  private async indexImageFileOutcome(
+    input: EmbeddingFileInput,
+    signal?: AbortSignal
+  ): Promise<IndexFileOutcome> {
+    const image = input.image
+    if (!image || !this.isImageReady() || signal?.aborted) return 'skipped'
+    if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+      return 'paused'
+    const operationSignal = AbortSignal.any([
+      this.imageOperationController.signal,
+      ...(signal ? [signal] : [])
+    ])
+    if (operationSignal.aborted) return 'skipped'
+    try {
+      const operation = tuffIntelligence.embedding.generateLocalImage(image, {
+        signal: operationSignal,
+        metadata: { caller: 'core.files.embedding' }
+      })
+      this.imageOperation = operation
+      const generated = await operation
+      if (this.imageOperation === operation) this.imageOperation = null
+      if (operationSignal.aborted) return 'skipped'
+      if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity()))
+        return 'paused'
+      if (generated.model !== LOCAL_EMBEDDING_MODEL_KEY || !usableVector(generated.result))
+        throw new Error('FILE_EMBEDDING_IMAGE_INVALID_VECTOR')
+      const currentImage = await stat(image.path)
+      if (
+        !currentImage.isFile() ||
+        currentImage.mtimeMs !== image.mtime ||
+        currentImage.size !== image.size
+      )
+        return 'skipped'
+      const fileId = input.fileId
+      const fileFence = and(
+        eq(filesSchema.id, Number(fileId)),
+        eq(filesSchema.path, image.path),
+        eq(filesSchema.mtime, new Date(input.fileVersion ?? image.mtime)),
+        eq(filesSchema.size, image.size),
+        isNull(filesSchema.content),
+        eq(filesSchema.embeddingStatus, 'pending')
+      )
+      const current = await this.routing
+        .getReadDb()
+        .select({ id: filesSchema.id })
+        .from(filesSchema)
+        .where(fileFence)
+        .limit(1)
+      if (current.length === 0 || operationSignal.aborted) return 'skipped'
+      const writeDb = this.routing.getPrimaryDb()
+      const exists = sql`EXISTS (SELECT 1 FROM ${filesSchema} WHERE ${fileFence})`
+      const written = await this.runWrite(
+        'embedding.index',
+        [
+          writeDb
+            .delete(embeddingsSchema)
+            .where(
+              and(
+                eq(embeddingsSchema.sourceId, fileId),
+                eq(embeddingsSchema.sourceType, SOURCE_TYPE),
+                exists
+              )
+            ),
+          writeDb.insert(embeddingsSchema).select(sql`
+            SELECT NULL, ${fileId}, ${SOURCE_TYPE}, ${JSON.stringify(generated.result)},
+              ${generated.model}, NULL, strftime('%s', 'now')
+            FROM ${filesSchema} WHERE ${fileFence}
+          `),
+          writeDb
+            .update(fileIndexProgress)
+            .set({
+              status: 'completed',
+              progress: 100,
+              lastError: null,
+              updatedAt: new Date()
+            })
+            .where(and(eq(fileIndexProgress.fileId, Number(fileId)), exists)),
+          writeDb.update(filesSchema).set({ embeddingStatus: 'completed' }).where(fileFence)
+        ],
+        'transaction'
+      )
+      return written > 0 && !operationSignal.aborted ? 'done' : 'skipped'
+    } catch (error) {
+      this.imageOperation = null
+      if (operationSignal.aborted) return 'skipped'
+      if (this.routing.recordStorageFailure?.(error)) return 'paused'
+      logger.warn('File image embedding failed', {
+        code: error instanceof Error ? error.message : 'FILE_EMBEDDING_IMAGE_FAILED'
+      })
+      return 'failed'
+    }
   }
 
   /**
    * Batch index multiple files. Processes in chunks to avoid overloading.
    */
   async indexFiles(
-    files: Array<{ fileId: string; content: string }>
+    files: EmbeddingFileInput[],
+    signal?: AbortSignal
   ): Promise<{ indexed: number; skipped: number; failed: number }> {
-    if (!(await this.isAvailable())) {
+    if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity())) {
       return { indexed: 0, skipped: files.length, failed: 0 }
     }
-
+    const hasText = files.some((file) => !file.image)
+    if (hasText && !(await this.isAvailable()))
+      return { indexed: 0, skipped: files.length, failed: 0 }
+    const operationSignal = AbortSignal.any([
+      this.imageOperationController.signal,
+      ...(signal ? [signal] : [])
+    ])
     const start = performance.now()
     let indexed = 0
-    let skipped = 0
     let failed = 0
-
-    for (let i = 0; i < files.length; i += BATCH_SIZE) {
-      // Paused by the usage limit: the rest of the run waits for the reset — no retry loop.
-      if (this.getUsageLimitPause()) break
-      const batch = files.slice(i, i + BATCH_SIZE)
-      const results = await Promise.allSettled(
-        batch.map(({ fileId, content }) => this.indexFileOutcome(fileId, content))
-      )
-
-      for (const r of results) {
-        if (r.status === 'rejected') failed++
-        else if (r.value === 'done') indexed++
-      }
+    // One file's vectors at a time; chunks must commit atomically, not multiply
+    // the retained model buffers by concurrent files.
+    for (const file of files) {
+      if (operationSignal.aborted || this.getUsageLimitPause()) break
+      if (this.routing.checkContentCapacity && !(await this.routing.checkContentCapacity())) break
+      const outcome = await this.indexFileOutcome(file, operationSignal)
+      if (outcome === 'done') indexed++
+      if (outcome === 'failed') failed++
     }
-
-    skipped = files.length - indexed - failed
-    logger.info(
-      `Batch embedding: ${indexed} indexed, ${skipped} skipped, ${failed} failed ` +
-        `in ${(performance.now() - start).toFixed(0)}ms`
-    )
+    const skipped = files.length - indexed - failed
+    logger.info('Batch embedding finished', {
+      indexed,
+      skipped,
+      failed,
+      durationMs: Math.round(performance.now() - start)
+    })
     return { indexed, skipped, failed }
   }
 
@@ -319,64 +605,43 @@ export class EmbeddingService {
     )
   }
 
-  /**
-   * Semantic search: embed the query, then find top-K similar files
-   * using cosine similarity computed in application code.
-   */
-  async semanticSearch(query: string, limit = 20): Promise<EmbeddingSearchResult[]> {
+  /** Embed the query locally/configured-provider, then read and score on an independent worker. */
+  async semanticSearch(
+    query: string,
+    limit = 20,
+    signal?: AbortSignal
+  ): Promise<EmbeddingSearchResult[]> {
+    const resultLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0
+    if (
+      this.closed ||
+      !query?.trim() ||
+      resultLimit === 0 ||
+      signal?.aborted ||
+      this.getUsageLimitPause()
+    )
+      return []
     const disposeSearch = enterPerfContext('Embedding.semanticSearch', {
-      queryLength: query?.length ?? 0,
-      limit
+      queryLength: query.length,
+      limit: resultLimit
     })
     try {
-      if (!(await this.isAvailable())) return []
-      if (!query?.trim()) return []
-
-      const start = performance.now()
-
-      // Generate query embedding (with cache)
-      const queryVector = await this.getQueryEmbedding(query)
-      if (!queryVector) return []
-
-      // Bound best-effort semantic recall. The local SQLite vector store has
-      // no ANN index, so scoring every persisted file embedding can spike CPU
-      // and memory on large file indexes.
-      const scanLimit = Math.max(limit, SEMANTIC_SEARCH_SCAN_LIMIT)
-      const rows = await this.routing
-        .getReadDb()
-        .select({
-          sourceId: embeddingsSchema.sourceId,
-          embedding: embeddingsSchema.embedding
-        })
-        .from(embeddingsSchema)
-        .where(eq(embeddingsSchema.sourceType, SOURCE_TYPE))
-        .limit(scanLimit)
-
-      if (rows.length === 0) return []
-
-      // Compute cosine similarity for each
-      const disposeScore = enterPerfContext('Embedding.semanticScore', { rows: rows.length })
-      const scored: EmbeddingSearchResult[] = []
+      this.cancelPending()
+      await this.waitForImageOperation()
+      const queryEmbedding = await this.getQueryEmbedding(query, signal)
+      if (this.closed || !queryEmbedding || signal?.aborted) return []
+      const reader = this.getSemanticReader()
+      if (signal?.aborted) return []
       try {
-        for (const row of rows) {
-          const score = cosineSimilarity(queryVector, row.embedding)
-          if (score > 0.3) {
-            scored.push({ sourceId: row.sourceId, score })
-          }
-        }
-      } finally {
-        disposeScore()
+        return await reader.semanticSearch(
+          queryEmbedding.vector,
+          queryEmbedding.model,
+          resultLimit,
+          signal
+        )
+      } catch (error) {
+        if (signal?.aborted) return []
+        throw error
       }
-
-      // Sort by score descending, take top-K
-      scored.sort((a, b) => b.score - a.score)
-      const results = scored.slice(0, limit)
-
-      logger.debug(
-        `Semantic search: "${query}" → ${results.length}/${rows.length} matches ` +
-          `in ${(performance.now() - start).toFixed(0)}ms`
-      )
-      return results
     } finally {
       disposeSearch()
     }
@@ -386,71 +651,37 @@ export class EmbeddingService {
    * Get embedding count for monitoring.
    */
   async getEmbeddingCount(): Promise<number> {
-    const result = await this.routing
-      .getReadDb()
-      .select({ count: sql<number>`count(*)` })
-      .from(embeddingsSchema)
-      .where(eq(embeddingsSchema.sourceType, SOURCE_TYPE))
+    const reader = this.getSemanticReader()
+    const result = await reader.all<{ count: number }>(
+      sql`SELECT count(*) AS count FROM embeddings WHERE source_type = ${SOURCE_TYPE}`
+    )
     return result[0]?.count ?? 0
   }
 
-  private async getQueryEmbedding(query: string): Promise<number[] | null> {
-    const cacheKey = query.trim().toLowerCase()
+  private async getQueryEmbedding(
+    query: string,
+    signal?: AbortSignal
+  ): Promise<CachedEmbedding | null> {
+    const localKey = getLocalEmbeddingRuntime().isReady()
+      ? LOCAL_EMBEDDING_MODEL_KEY
+      : 'configured-provider'
+    const cacheKey = `${localKey}:${query.trim().toLowerCase()}`
     const cached = this.queryCache.get(cacheKey)
-
-    if (cached && Date.now() - cached.timestamp < EMBEDDING_CACHE_TTL) {
-      return cached.vector
-    }
-
+    if (cached && Date.now() - cached.timestamp < EMBEDDING_CACHE_TTL) return cached
     try {
-      const result = await tuffIntelligence.embedding.generate(
-        { text: query },
-        filesEmbeddingOptions()
-      )
-      const vector = result.result
-
-      this.queryCache.set(cacheKey, { vector, timestamp: Date.now() })
-
-      // Evict old cache entries
+      const result = await this.generate(query, signal, 'query')
+      if (!usableVector(result.vector) || !result.model) return null
+      const entry = { vector: result.vector, model: result.model, timestamp: Date.now() }
+      this.queryCache.set(cacheKey, entry)
       if (this.queryCache.size > 100) {
-        const oldest = [...this.queryCache.entries()]
-          .sort((a, b) => a[1].timestamp - b[1].timestamp)
-          .slice(0, 20)
-        for (const [key] of oldest) {
-          this.queryCache.delete(key)
-        }
+        const oldest = this.queryCache.keys().next().value
+        if (oldest != null) this.queryCache.delete(oldest)
       }
-
-      return vector
-    } catch (err) {
-      if (this.pauseOnUsageLimit(err)) return null
-      logger.warn(`Failed to generate query embedding: ${err}`)
+      return entry
+    } catch (error) {
+      if (this.pauseOnUsageLimit(error)) return null
+      logger.warn('Query embedding failed')
       return null
     }
   }
-
-  private hashContent(content: string): string {
-    return createHash('sha256').update(content).digest('hex').slice(0, 16)
-  }
-}
-
-/**
- * Cosine similarity between two vectors.
- * Returns value in [-1, 1], higher = more similar.
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0
-
-  let dot = 0
-  let normA = 0
-  let normB = 0
-
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i]
-    normA += a[i] * a[i]
-    normB += b[i] * b[i]
-  }
-
-  const denom = Math.sqrt(normA) * Math.sqrt(normB)
-  return denom === 0 ? 0 : dot / denom
 }

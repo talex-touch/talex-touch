@@ -108,6 +108,7 @@ export function buildClipboardQueryInputs(
 ): TuffQueryInput[] {
   const {
     clipboardItem,
+    queryText,
     filePaths = [],
     useFileMode = false,
     includeClipboardImage = true
@@ -157,7 +158,8 @@ export function buildClipboardQueryInputs(
 
   const { item, forceAttach } = resolvedTextClipboard
   const content = item.content ?? ''
-  const shouldAttachText = forceAttach || contentShouldAttach(item)
+  const shouldAttachText =
+    forceAttach || !queryText || !queryText.trim() || contentShouldAttach(item)
 
   if (!shouldAttachText) {
     return inputs

@@ -242,6 +242,177 @@
     "title": "存储",
     "description": "查看应用存储详情"
   },
+  "settingPerformance": {
+    "description": "查看 Tuff 自身的 CPU、内存、进程与线程占用。",
+    "samplingNote": "本页只在打开且可见时每 2 秒采样一次，离开或窗口隐藏即停止。",
+    "sampleCost": "上次采样耗时 {collectMs} ms · 测量窗口 {windowMs} ms",
+    "capturedAt": "上次采样：{time}",
+    "running": "正在采样",
+    "inactive": "页面不可见，采样已停止",
+    "paused": "采样已暂停",
+    "pause": "暂停",
+    "resume": "继续",
+    "reportError": "采样失败，保留上次有效结果；可重试，或等待下一次采样。",
+    "retry": "重试",
+    "overview": "概览",
+    "trends": "趋势",
+    "historyNote": "保留最近 60 次采样；CPU 按单核百分比计，时间轴保留暂停与隐藏期间的间隔。",
+    "trendEmpty": "等待有效采样",
+    "cpuShare": "单核百分比 · 占 {cores} 个逻辑核心总量的 {share}",
+    "cpuNote": "CPU 百分比以一个核心为基准，可超过 100%。",
+    "metrics": {
+      "cpu": "CPU",
+      "memory": "工作集内存",
+      "wakeups": "空闲唤醒 / 秒",
+      "mainThreadCpu": "主线程 CPU",
+      "processCount": "进程数",
+      "workerCount": "Node Worker 数"
+    },
+    "processes": "进程",
+    "processRole": "角色与用途",
+    "processNote": "按 CPU 从高到低排序；CPU 条表示该进程占 Tuff 全部进程 CPU 的比例。空闲唤醒不可用时显示 —。",
+    "processEmpty": "当前没有进程数据",
+    "pid": "PID",
+    "unknownPlugin": "未命名插件",
+    "processRoles": {
+      "browser": {
+        "name": "主进程",
+        "description": "窗口、模块、数据库与插件调度。"
+      },
+      "gpu": {
+        "name": "GPU 进程",
+        "description": "窗口合成与毛玻璃等图形绘制。"
+      },
+      "renderer": {
+        "name": "渲染进程",
+        "description": "界面渲染。"
+      },
+      "network-service": {
+        "name": "网络服务",
+        "description": "Chromium 网络沙箱。"
+      },
+      "plugin-runtime": {
+        "name": "插件运行时",
+        "description": "执行插件后台逻辑。"
+      },
+      "pi-agent-runtime": {
+        "name": "Pi Agent 运行时",
+        "description": "Pi Agent 工具执行沙箱。"
+      },
+      "ocr-runtime": {
+        "name": "OCR 进程",
+        "description": "系统 OCR 一次性进程。"
+      },
+      "utility": {
+        "name": "辅助服务",
+        "description": "其他 Chromium 服务。"
+      },
+      "other": {
+        "name": "其他进程",
+        "description": "未归类的应用进程。"
+      }
+    },
+    "surfaces": {
+      "corebox": "CoreBox 搜索框",
+      "main-window": "主窗口",
+      "meta-overlay": "动作面板",
+      "plugin-view": "插件 {pluginName}",
+      "devtools": "开发者工具",
+      "other": "其他界面"
+    },
+    "threads": "线程",
+    "nodeWorkers": "Node Worker 线程",
+    "workerRole": "角色与任务",
+    "threadId": "线程 ID",
+    "workerElu": "事件循环利用率",
+    "heap": "堆已用 / 上限",
+    "uptime": "运行时间",
+    "workerNote": "文件 Worker 按需启动，空闲时退出；没有对应线程是正常状态。— 表示首次采样或该指标暂不可用。",
+    "workerEmpty": "当前没有活跃的 Node Worker",
+    "workerRoles": {
+      "file-scan": {
+        "name": "文件扫描",
+        "description": "遍历监听目录，按批交出文件条目。"
+      },
+      "file-index": {
+        "name": "文件索引",
+        "description": "抽取文件特征并写入索引。"
+      },
+      "file-reconcile": {
+        "name": "文件对账",
+        "description": "对比磁盘与索引的差异。"
+      },
+      "file-icon": {
+        "name": "文件图标",
+        "description": "提取文件与应用图标。"
+      },
+      "file-thumbnail": {
+        "name": "文件缩略图",
+        "description": "生成图片缩略图。"
+      },
+      "search-index-writer": {
+        "name": "搜索索引写入",
+        "description": "搜索索引唯一写入者（libSQL / FTS）。"
+      },
+      "search-index-reader": {
+        "name": "搜索索引读取",
+        "description": "搜索索引只读查询；实例标记对应查询通道。"
+      },
+      "plugin-sqlite": {
+        "name": "插件数据库",
+        "description": "插件私有 SQLite。"
+      },
+      "plugin-image-tools": {
+        "name": "插件图片处理",
+        "description": "插件图片处理，用完即退。"
+      }
+    },
+    "readerLanes": {
+      "fast": "交互快通道",
+      "deferred": "后台通道",
+      "default": "后台通道",
+      "semantic": "语义检索通道"
+    },
+    "nativeRuntimes": "原生运行时",
+    "tokioBudget": "Tokio 运行时每个 {workerThreads} 个工作线程。",
+    "budgetSources": {
+      "host-budget": "Tuff 上限",
+      "environment": "来自 TOKIO_WORKER_THREADS"
+    },
+    "tokioDefault": "未设上限时每个运行时按 CPU 核数创建线程（本机 {logicalCpuCount} 个）。",
+    "builtRuntimes": "已构建的运行时",
+    "runtimeEmpty": "尚未加载对应原生模块。",
+    "runtimeNames": {
+      "libsql": "libSQL：数据库驱动",
+      "clipboard": "Clipboard：剪贴板监听",
+      "screenshot": "Screenshot：截图原生模块"
+    },
+    "threadComposition": "主进程线程构成",
+    "compositionNote": "结构说明，并非实时线程计数；具体数量可手动深度采样。",
+    "threadKinds": {
+      "chromium": "Chromium 线程池（ThreadPool*）：浏览器后台任务。",
+      "io": "IO 线程：Chromium 进程间通信与 I/O 调度。",
+      "v8": "V8 平台线程：垃圾回收与编译。",
+      "libuv": "libuv 线程池：文件与 DNS 异步 I/O。",
+      "node": "Node Worker：上表列出的应用任务。",
+      "tokio": "Tokio 运行时：上卡列出的原生异步任务。",
+      "actor": "截图 / 辅助功能 actor 线程：串行处理原生平台操作。"
+    },
+    "deepSampling": "深度采样",
+    "sampleTree": "深度采样",
+    "samplingTree": "正在深度采样…",
+    "treeNote": "仅点击时查询整个进程树，不会自动刷新。CPU 为系统进程树快照，不等同于上方的采样窗口。",
+    "treeEmpty": "点击深度采样查看线程总数与子进程。",
+    "treeUnsupported": "当前平台不支持进程树线程查询；常规采样仍可使用。",
+    "treeError": "深度采样失败，保留上次结果；请点击深度采样重试。",
+    "treeCapturedAt": "深度采样时间：{time} · 耗时 {collectMs} ms",
+    "totalThreads": "已知线程总数：{count}",
+    "unknownThreadCounts": "另有 {count} 个进程未提供线程数，未计入总数。",
+    "command": "命令",
+    "threadCount": "线程数",
+    "rss": "驻留内存（RSS）",
+    "electronManaged": "Electron 管理"
+  },
   "privacyData": {
     "title": "隐私与数据",
     "description": "查看本地保留策略，导出或删除所选数据，并管理加密凭据备份。",
@@ -1840,7 +2011,9 @@
       "noProvider": "还没有可用的 AI 提供商，去「设置 · AI」配置一个再试",
       "agentToolsSync": "无法连接工具网关，智能体工具保持关闭",
       "empty": "模型没有返回任何内容",
-      "generic": "这轮回复失败了"
+      "generic": "这轮回复失败了",
+      "codeLabel": "错误代码",
+      "noDetail": "没有更多错误细节，请重试；如果持续失败，请提供此错误代码。"
     },
     "opening": {
       "prompt": "你是塔芙（Tuff），用户电脑上的个人助理。用户刚打开一段新对话，还没开口。下一条消息是 Tuff 整理的本机摘要，不是用户写的话。请你先开口：用一句话说说你能帮忙做什么——找文件和读文件、整理资料、写作与翻译、分析数据、在项目里配合本机代理干活——再点出摘要里一两件具体的事，问用户想先推进哪一件。要求：不超过 3 句；口语化，像熟悉的同事；只提摘要里真实出现的名字，绝不编造；不列清单，不用 Markdown，不给整段话加引号；摘要里没有具体内容时，只简短介绍你能做什么。",
@@ -1985,6 +2158,7 @@
       "network": "网络",
       "download": "下载",
       "storage": "存储",
+      "performance": "性能",
       "about": "关于"
     }
   },
@@ -3738,7 +3912,8 @@
     "deepMatchSemantic": "语义匹配",
     "deepMatchContent": "正文匹配",
     "deepMatchCode": "代码匹配",
-    "deepMatchScore": "相关度 {score}%"
+    "deepMatchScore": "相关度 {score}%",
+    "deepMatchNavigationUnsupported": "此应用不支持跳转到命中位置。行号请使用支持的编辑器，PDF 页码请使用 Skim。"
   },
   "download": {
     "migration": {
@@ -4509,11 +4684,24 @@
       "groupTitle": "文件索引",
       "groupDesc": "管理文件搜索索引",
       "contentIndexTitle": "索引文件内容",
-      "contentIndexDesc": "默认关闭。开启后会读取支持的本地文件正文，并增加 CPU、内存、磁盘读取与索引体积。",
-      "contentIndexingDesc": "正在从已有文件元数据补齐正文索引，不会重新扫描磁盘目录。",
+      "contentIndexDesc": "默认关闭。开启后会读取支持的本地文件正文与图片；图片语义搜索需要已配置的本地图像编码器，并增加 CPU、内存、磁盘读取与索引体积。",
+      "contentIndexingDesc": "正在从已有文件元数据补齐正文与图片语义索引，不会重新扫描磁盘目录。",
+      "contentIndexPausedDesc": "正文与向量索引已暂停：{reason}。开关仍保持开启，已有索引数据保留。",
+      "contentIndexStorageLow": "磁盘可用空间不足",
+      "contentIndexStorageUnavailable": "磁盘空间检查失败",
+      "contentIndexStoragePending": "尚未完成磁盘空间检查",
+      "contentIndexSpaceUnknown": "未知",
+      "contentIndexSpaceGiB": "{value} GiB",
+      "contentIndexStorageSummary": "索引所在磁盘：可用 {available}；启动或恢复需要 {required}。",
+      "contentIndexStoragePolicy": "正文与向量索引至少需要 {minimum} 可用空间；因空间不足暂停后，需达到 {resume} 才会自动恢复。",
+      "contentIndexStorageRecovery": "请释放索引所在磁盘的空间，直至达到上方要求。Tuff 会定期检查并自动恢复，已有数据与文件名等基础搜索不受影响，不会自动删除文件或索引数据。",
+      "contentIndexStorageCheckRecovery": "Tuff 会定期检查磁盘空间，检查成功且空间充足后自动恢复。开关仍保持开启，已有数据与文件名等基础搜索保留。",
+      "contentIndexStorageConfirmPaused": "可以保存开启意图，但正文与向量索引会保持暂停，直到磁盘空间检查成功且满足容量要求；不会自动删除文件或索引数据。",
+      "contentIndexStorageSaveBlocked": "磁盘可写空间不足，开关未保存，正文与向量索引未启动。",
+      "contentIndexStorageSaveRecovery": "请释放磁盘空间后重新保存设置；原有开关状态与已有索引数据保持不变。",
       "contentIndexConfirmTitle": "开启文件内容索引",
-      "contentIndexConfirmDesc": "这是一项高资源、本地正文读取功能。仅在确实需要按正文搜索时开启。",
-      "contentIndexPrivacy": "Tuff 会读取支持的本地文件正文，并把可搜索内容保存在设备本地索引中。",
+      "contentIndexConfirmDesc": "这是一项高资源、本地文件内容读取功能。仅在需要按正文或图片内容搜索时开启。",
+      "contentIndexPrivacy": "Tuff 会读取索引目录内支持的文件正文与图片，保存正文或图片语义向量。图片仅使用已配置的本地图像编码器，不会自动下载模型或上传图片。",
       "contentIndexResources": "首次补齐会持续使用 CPU、内存和磁盘；低配置设备可能明显变慢。",
       "contentIndexCleanup": "关闭后会删除正文、文件向量和正文进度，但保留文件名、路径与其他基础元数据。",
       "contentIndexConfirmAction": "确认开启",
@@ -5863,16 +6051,10 @@
     "later": "稍后处理",
     "dontRemindAgain": "不再提醒"
   },
-  "previewHistory": {
-    "copyResult": "复制结果",
-    "resultLabel": "结果",
-    "recentTitle": "最近处理",
-    "countSummary": "共 {count} 条",
-    "noRecords": "暂无记录"
-  },
   "previewCard": {
     "common": {
       "result": "结果",
+      "copyResult": "复制结果",
       "expression": "表达式",
       "details": "详情",
       "conversion": "{from} → {to}"
@@ -7065,6 +7247,39 @@
       "updateSubtitle": "版本、更新通道与更新日志",
       "aboutSubtitle": "版本、致谢与开源许可"
     },
+    "pluginEntity": {
+      "subtitle": "插件 · {state} · v{version}",
+      "state": {
+        "enabled": "运行中",
+        "disabled": "已停用",
+        "loading": "加载中",
+        "failed": "加载失败",
+        "crashed": "已崩溃",
+        "dev-disconnected": "开发服务器已断开"
+      },
+      "actions": {
+        "runFeature": "打开「{name}」",
+        "enable": "启用插件",
+        "disable": "停用插件",
+        "reload": "重新加载插件",
+        "openFolder": "打开插件目录",
+        "openDetail": "在主窗口查看详情",
+        "run": "运行"
+      },
+      "manage": "插件管理",
+      "features": "功能 · {count}",
+      "noFeatures": "这个插件没有能在 CoreBox 里运行的功能。",
+      "featuresNeedEnable": "启用插件后才能运行这些功能。",
+      "dev": "开发模式",
+      "feedback": {
+        "enabled": "已启用「{name}」",
+        "disabled": "已停用「{name}」",
+        "reloaded": "已重新加载「{name}」",
+        "folderOpened": "已打开「{name}」的插件目录",
+        "permissionRequired": "请在主窗口确认「{name}」需要的权限，确认后会自动启用",
+        "failed": "「{name}」的操作没有完成"
+      }
+    },
     "reason": {
       "pinned": "已固定",
       "frequent": "常用",
@@ -7232,6 +7447,7 @@
       "empty": "没有匹配的操作",
       "failed": "操作失败",
       "groups": {
+        "quickFlow": "快速流转",
         "open": "基本操作",
         "host": "应用设置",
         "plugin": "插件"

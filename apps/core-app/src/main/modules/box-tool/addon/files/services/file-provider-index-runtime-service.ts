@@ -22,6 +22,7 @@ import {
   type FileProviderIndexFlushFailureDecision,
   FileProviderIndexFlushRetryService
 } from './file-provider-index-flush-retry-service'
+import { IndexMaintenanceDeferredError } from '../../../search-engine/index-maintenance-context'
 
 const INDEX_FLUSH_FAILURE_LOG_THROTTLE_MS = 30_000
 const FILE_INDEX_PERSIST_BARRIER_TIMEOUT_MS = 30_000
@@ -35,10 +36,20 @@ export interface FileProviderIndexBufferSnapshot {
 }
 
 export type FileProviderIndexFlushSnapshot = Omit<IndexedWriteFlushSnapshot, 'status'> & {
-  status: 'idle' | 'flushed' | 'worker-not-ready' | 'failed'
+  status: 'idle' | 'flushed' | 'worker-not-ready' | 'failed' | 'foreground-deferred'
 }
 
 export interface FileProviderIndexRuntimeServiceDeps {
+  checkContentCapacity?: () => Promise<boolean>
+  isContentAdmissionEnabled?: () => boolean
+  recordStorageFailure?: (error: unknown) => boolean
+  /** Uses the existing source gate; idle waiting must occur before taking the lease. */
+  resumeDeferredFlush: (
+    operation: (leaseId: string) => Promise<void>,
+    signal: AbortSignal
+  ) => Promise<void>
+  prepareDeferredEntries: (entries: IndexWorkerFileResult[], leaseId: string) => Promise<boolean>
+  isMutationLeaseCancelled?: (leaseId: string) => boolean
   flushBatchScheduler: { currentSize: number; recordDuration: (durationMs: number) => void }
   getDbUtils: () => unknown | null
   getSearchIndex: () => unknown | null
@@ -78,9 +89,19 @@ export class FileProviderIndexRuntimeService {
   private readonly logWarn: FileProviderIndexRuntimeServiceDeps['logWarn']
   private readonly now: () => number
   private readonly config: Required<NonNullable<FileProviderIndexRuntimeServiceDeps['config']>>
+  private readonly deps: FileProviderIndexRuntimeServiceDeps
+  private disposed = false
   private explicitFlushNotBefore = 0
   private activeFlushes = 0
   private failureLogState: { signature: string; loggedAt: number; suppressed: number } | null = null
+  private foregroundDeferred = false
+  private deferredResumeController: AbortController | null = null
+  private readonly detachedLeases = new Set<string>()
+  private readonly revokedLeases = new Set<string>()
+  private resumeLeaseId: string | null = null
+  private cancellationInProgress = false
+  private flushGeneration = 0
+  private activeFlushGeneration = 0
   private readonly bufferService: FileProviderIndexFlushBufferService
   private readonly retryService: FileProviderIndexFlushRetryService
   private readonly flushExecutor: FileProviderIndexFlushExecutorService
@@ -94,6 +115,7 @@ export class FileProviderIndexRuntimeService {
     new IndexedWriteFlushSnapshotService<FileProviderIndexFlushSnapshot>()
 
   constructor(deps: FileProviderIndexRuntimeServiceDeps) {
+    this.deps = deps
     this.flushBatchScheduler = deps.flushBatchScheduler
     this.getDbUtils = deps.getDbUtils
     this.getSearchIndex = deps.getSearchIndex
@@ -132,15 +154,33 @@ export class FileProviderIndexRuntimeService {
       busyRetryMaxMs: this.config.busyRetryMaxMs
     })
     this.flushExecutor = new FileProviderIndexFlushExecutorService({
+      checkContentCapacity: deps.checkContentCapacity,
+      isAvailable: () =>
+        !this.disposed &&
+        this.activeFlushGeneration === this.flushGeneration &&
+        (deps.isContentAdmissionEnabled?.() ?? true),
       flushBatchScheduler: this.flushBatchScheduler,
       getDbUtils: this.getDbUtils,
       getSearchIndex: this.getSearchIndex,
       buffer: this.bufferService,
+      prepareBatch: async (entries) => {
+        const leaseId = this.resumeLeaseId
+        if (leaseId) {
+          if (this.isLeaseCancelled(leaseId)) return false
+          const ready = await deps.prepareDeferredEntries(entries, leaseId)
+          if (ready && this.activeFlushGeneration === this.flushGeneration) {
+            for (const entry of entries) entry.mutationLeaseId = leaseId
+          }
+          return ready
+        }
+        return !entries.some((entry) => this.isLeaseCancelled(entry.mutationLeaseId))
+      },
       ensureSearchIndexWorkerReady: this.ensureSearchIndexWorkerReady,
       getSearchIndexWorker: this.getSearchIndexWorker,
       buildPersistEntries: this.buildPersistEntries,
       publishRecords: this.publishRecords,
       indexEmbeddings: this.indexEmbeddings,
+      recordStorageFailure: deps.recordStorageFailure,
       logDebug: this.logDebug,
       config: {
         dbBackpressureMaxQueued: this.config.dbBackpressureMaxQueued
@@ -149,9 +189,17 @@ export class FileProviderIndexRuntimeService {
     this.flushRuntime = new IndexedWriteFlushRuntimeService({
       getPendingSize: () => this.bufferService.pendingSize,
       getInflightSize: () => this.bufferService.inflightSize,
-      isAvailable: () => Boolean(this.getDbUtils() && this.getSearchIndex()),
+      hasWork: () => this.hasBufferedWork(),
+      isAvailable: () =>
+        !this.disposed &&
+        Boolean(this.getDbUtils() && this.getSearchIndex()) &&
+        !this.foregroundDeferred &&
+        (deps.isContentAdmissionEnabled?.() ?? true),
       executeFlush: () => this.executeFlush(),
-      recordIdle: (input) => this.recordFlushSnapshot(buildIndexedWriteFlushIdleSnapshot(input)),
+      recordIdle: (input) => {
+        if (!this.foregroundDeferred)
+          this.recordFlushSnapshot(buildIndexedWriteFlushIdleSnapshot(input))
+      },
       getFlushDelay: (pendingSize) => this.retryService.getFlushDelay(pendingSize),
       resolveFailure: (input) =>
         this.retryService.resolveFailure({
@@ -160,6 +208,20 @@ export class FileProviderIndexRuntimeService {
           retryCount: input.retryCount
         }),
       handleFailure: ({ error, decision }) => this.handleFlushFailure(error, decision),
+      handleDeferredFailure: (error) => {
+        if (
+          this.disposed ||
+          this.activeFlushGeneration !== this.flushGeneration ||
+          this.deps.isContentAdmissionEnabled?.() === false
+        ) {
+          this.cancelDeferredFlush()
+          return true
+        }
+        if (!(error instanceof IndexMaintenanceDeferredError)) return false
+        this.markForegroundDeferred()
+        this.startDeferredResume()
+        return true
+      },
       shouldRescheduleAfterResult: (result) =>
         result.status === 'worker-not-ready'
           ? { delayMs: this.config.backlogDelayMs, reason: 'worker-not-ready' }
@@ -177,10 +239,41 @@ export class FileProviderIndexRuntimeService {
     await this.ensureSearchIndexWorkerReady('index-runtime.init')
   }
 
+  dispose(): void {
+    this.disposed = true
+    this.cancelDeferredFlush()
+    this.flushRuntime.dispose()
+  }
+
+  /** Cleanup waits only for the bounded active writer, not paused parser payloads. */
+  async waitForInFlight(timeoutMs = FILE_INDEX_PERSIST_BARRIER_TIMEOUT_MS): Promise<void> {
+    const deadline = this.now() + timeoutMs
+    while (this.activeFlushes > 0 && this.now() < deadline) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, FILE_INDEX_PERSIST_BARRIER_INTERVAL_MS)
+      )
+    }
+    if (this.activeFlushes > 0) throw new Error('FILE_INDEX_PERSIST_BARRIER_TIMEOUT')
+  }
+
   handleIndexWorkerFile(payload: IndexWorkerFileResult): void {
     if (!payload || typeof payload.fileId !== 'number') {
       return
     }
+    if (
+      this.disposed ||
+      this.cancellationInProgress ||
+      this.deps.isContentAdmissionEnabled?.() === false ||
+      this.isLeaseCancelled(payload.mutationLeaseId)
+    )
+      return
+    if (
+      this.deps.getPendingResults().get(payload.fileId) === payload ||
+      this.deps.getInflightResults().get(payload.fileId) === payload
+    )
+      return
+    if (this.foregroundDeferred && payload.mutationLeaseId)
+      this.detachedLeases.add(payload.mutationLeaseId)
 
     const pendingSize = this.bufferService.enqueue(payload)
     this.scheduleFlush(this.retryService.getFlushDelay(pendingSize), 'worker-payload')
@@ -203,20 +296,22 @@ export class FileProviderIndexRuntimeService {
     }
   }
 
-  /**
-   * Durable completion barrier: resolves only once no worker result is still
-   * pending or inflight, i.e. every result has been persisted AND published.
-   * Used as the worker client's `afterBatch` so scheduler admission credit is
-   * not released early. It drives only this runtime's own flush — never the
-   * scheduler's drain.
+  /** Returns false on foreground handoff, after the active writer has actually settled.
+   * Durable pending rows and retained payloads then belong to the idle resume, not this lease.
    */
-  async waitForPersisted(timeoutMs = FILE_INDEX_PERSIST_BARRIER_TIMEOUT_MS): Promise<void> {
+  async waitForPersisted(timeoutMs = FILE_INDEX_PERSIST_BARRIER_TIMEOUT_MS): Promise<boolean> {
     const deadline = this.now() + timeoutMs
     while (
       this.activeFlushes > 0 ||
       this.bufferService.pendingSize > 0 ||
       this.bufferService.inflightSize > 0
     ) {
+      if (this.disposed) throw new Error('FILE_INDEX_RUNTIME_DISPOSED')
+      if (this.deps.isContentAdmissionEnabled?.() === false) {
+        this.flushRuntime.cancelScheduledFlush()
+        throw new Error('FILE_CONTENT_STORAGE_PAUSED')
+      }
+      if (this.foregroundDeferred && this.activeFlushes === 0) return false
       this.scheduleFlush(0, 'batch-completion-barrier')
       if (this.now() >= deadline) break
       await new Promise<void>((resolve) =>
@@ -230,9 +325,169 @@ export class FileProviderIndexRuntimeService {
     ) {
       throw new Error('FILE_INDEX_PERSIST_BARRIER_TIMEOUT')
     }
+    return true
+  }
+
+  isMutationLeaseDetached(leaseId: string): boolean {
+    return this.activeFlushes === 0 && this.detachedLeases.has(leaseId)
+  }
+
+  /** Capacity/settings cancellation leaves durable pending progress as the recovery source. */
+  cancelDeferredFlush(): void {
+    this.deferredResumeController?.abort(new Error('FILE_INDEX_DEFERRED_CANCELLED'))
+    this.foregroundDeferred = false
+    this.flushGeneration += 1
+    this.cancellationInProgress = this.activeFlushes > 0
+    this.flushRuntime.cancelScheduledFlush()
+    for (const entry of [
+      ...this.deps.getPendingResults().values(),
+      ...this.deps.getInflightResults().values()
+    ]) {
+      if (entry.mutationLeaseId) this.revokedLeases.add(entry.mutationLeaseId)
+    }
+    this.deps.getPendingResults().clear()
+    this.detachedLeases.clear()
+    this.flushExecutor.discardRetainedBatch()
+  }
+
+  private isLeaseCancelled(leaseId?: string): boolean {
+    return Boolean(
+      leaseId && (this.revokedLeases.has(leaseId) || this.deps.isMutationLeaseCancelled?.(leaseId))
+    )
+  }
+
+  private markForegroundDeferred(): void {
+    this.foregroundDeferred = true
+    this.flushRuntime.cancelScheduledFlush()
+    for (const entry of [
+      ...this.deps.getPendingResults().values(),
+      ...this.deps.getInflightResults().values()
+    ]) {
+      if (entry.mutationLeaseId) this.detachedLeases.add(entry.mutationLeaseId)
+    }
+    this.recordFlushSnapshot({
+      status: 'foreground-deferred',
+      entries: this.flushExecutor.retainedEntries.length,
+      pending: this.bufferService.pendingSize,
+      inflight: this.bufferService.inflightSize,
+      reason: 'foreground-deferred'
+    })
+  }
+
+  private hasBufferedWork(): boolean {
+    return this.bufferService.pendingSize > 0 || this.flushExecutor.retainedEntries.length > 0
+  }
+
+  private async waitForDeferredRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted()
+    await new Promise<void>((resolve, reject) => {
+      const abort = (): void => {
+        clearTimeout(timer)
+        reject(signal.reason)
+      }
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', abort)
+        resolve()
+      }, delayMs)
+      signal.addEventListener('abort', abort, { once: true })
+    })
+  }
+
+  private startDeferredResume(): void {
+    if (this.deferredResumeController || this.disposed) return
+    const controller = new AbortController()
+    const generation = this.flushGeneration
+    this.deferredResumeController = controller
+    void (async () => {
+      let retryCount = 0
+      try {
+        while (
+          this.foregroundDeferred &&
+          !controller.signal.aborted &&
+          generation === this.flushGeneration
+        ) {
+          if (this.deps.isContentAdmissionEnabled?.() === false) {
+            this.cancelDeferredFlush()
+            return
+          }
+          let retryDelayMs = 0
+          try {
+            await this.deps.resumeDeferredFlush(async (leaseId) => {
+              controller.signal.throwIfAborted()
+              if (this.disposed || this.deps.isContentAdmissionEnabled?.() === false) {
+                this.cancelDeferredFlush()
+                return
+              }
+              this.resumeLeaseId = leaseId
+              try {
+                // No timer may inherit this lease: every deferred attempt is awaited here.
+                while (this.hasBufferedWork()) {
+                  controller.signal.throwIfAborted()
+                  const result = await this.executeFlush()
+                  controller.signal.throwIfAborted()
+                  if (result.status === 'worker-not-ready') {
+                    retryDelayMs = this.config.backlogDelayMs
+                    return
+                  }
+                  retryCount = 0
+                }
+                this.foregroundDeferred = false
+                this.detachedLeases.clear()
+              } finally {
+                this.resumeLeaseId = null
+              }
+            }, controller.signal)
+          } catch (error) {
+            if (controller.signal.aborted || generation !== this.flushGeneration) throw error
+            if (this.disposed || this.deps.isContentAdmissionEnabled?.() === false) {
+              this.cancelDeferredFlush()
+              return
+            }
+            if (error instanceof IndexMaintenanceDeferredError) {
+              this.markForegroundDeferred()
+            } else {
+              const decision = this.retryService.resolveFailure({
+                error,
+                pendingSize:
+                  this.bufferService.pendingSize + this.flushExecutor.retainedEntries.length,
+                retryCount
+              })
+              retryCount = decision.nextRetryCount
+              retryDelayMs = decision.delayMs
+              this.handleFlushFailure(error, decision)
+            }
+          }
+          // Worker readiness and SQL backoff both wait after releasing source ownership.
+          if (this.foregroundDeferred && retryDelayMs > 0) {
+            await this.waitForDeferredRetry(retryDelayMs, controller.signal)
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted && !this.disposed) {
+          this.logWarn('Deferred index flush resume failed', error)
+        }
+      } finally {
+        if (this.deferredResumeController === controller) {
+          this.deferredResumeController = null
+          if (
+            this.foregroundDeferred &&
+            !this.disposed &&
+            this.deps.isContentAdmissionEnabled?.() !== false
+          ) {
+            this.startDeferredResume()
+          }
+        }
+      }
+    })()
   }
 
   scheduleFlush(delayMs: number, reason: string): void {
+    if (
+      this.disposed ||
+      this.foregroundDeferred ||
+      this.deps.isContentAdmissionEnabled?.() === false
+    )
+      return
     this.flushRuntime.scheduleFlush(delayMs, reason)
   }
 
@@ -246,7 +501,18 @@ export class FileProviderIndexRuntimeService {
   }
 
   private async executeFlush(): Promise<FileProviderIndexFlushExecutorResult> {
+    if (this.activeFlushes > 0) {
+      return {
+        status: 'idle',
+        entries: 0,
+        withContent: 0,
+        pending: this.bufferService.pendingSize,
+        inflight: this.bufferService.inflightSize,
+        reason: 'flush-in-progress'
+      }
+    }
     this.activeFlushes += 1
+    this.activeFlushGeneration = this.flushGeneration
     try {
       const result = await this.flushExecutor.execute()
       this.recordFlushExecutorResult(result)
@@ -257,8 +523,29 @@ export class FileProviderIndexRuntimeService {
         })
       }
       return result
+    } catch (error) {
+      const cancelled = error instanceof Error && error.message === 'INDEXED_WRITE_FLUSH_CANCELLED'
+      if (!cancelled && !(error instanceof IndexMaintenanceDeferredError))
+        this.deps.recordStorageFailure?.(error)
+      if (
+        this.deps.isContentAdmissionEnabled?.() === false ||
+        this.activeFlushGeneration !== this.flushGeneration ||
+        this.disposed
+      ) {
+        this.flushRuntime.cancelScheduledFlush()
+        this.deps.getPendingResults().clear()
+      }
+      throw error
     } finally {
       this.activeFlushes -= 1
+      this.cancellationInProgress = false
+      if (
+        this.disposed ||
+        this.deps.isContentAdmissionEnabled?.() === false ||
+        this.activeFlushGeneration !== this.flushGeneration
+      ) {
+        this.flushExecutor.discardRetainedBatch()
+      }
     }
   }
 

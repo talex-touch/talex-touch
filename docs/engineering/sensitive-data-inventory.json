@@ -1,6 +1,6 @@
 {
   "schema": "talex.touch.sensitive-data-inventory/v1",
-  "updatedAt": "2026-10-07",
+  "updatedAt": "2026-10-12",
   "verificationCommand": "corepack pnpm privacy:inventory:verify",
   "entries": [
     {
@@ -209,23 +209,26 @@
     },
     {
       "id": "search-index-maintenance",
-      "classification": "sensitive-device-metadata",
-      "owner": "FileProvider/IndexMaintenanceRunner/SearchIndexService",
+      "classification": "sensitive-device-metadata-and-derived-user-content",
+      "owner": "FileProvider/IndexMaintenanceRunner/SearchIndexService/EmbeddingService",
       "storageLocations": [
-        "current file-index home: search_index_meta, search_index_maintenance_progress, search_index_file_maintenance, search_index_pending_commits"
+        "current file-index home: search_index_meta, search_index_maintenance_progress, search_index_file_maintenance, search_index_pending_commits",
+        "current file-index home: file embeddings from explicitly enabled text/image content indexing; image files retain NULL content without synthetic captions"
       ],
       "writers": ["existing worker sole writer when split-on; existing primary scheduler when split-off"],
-      "readers": ["bounded index maintenance and publication replay; current-scope file search admission"],
-      "exportPolicy": "local derived work only; never portable, synced or ordinary-exported; raw paths and expected-record payloads never included in telemetry",
-      "deletionPolicy": "source clear/index-data reset removes queued candidates and publication receipts through the same owner; acknowledged actual commits delete their exact receipt; physical replay never deletes files or a new document version",
-      "retentionPolicy": "until the current validated task commits and publishes, or explicit source/index-data reset; cursors advance only at committed boundaries",
+      "readers": ["bounded index maintenance and publication replay; current-scope file search admission", "deferred text-to-image semantic recall under the current directory policy"],
+      "exportPolicy": "local derived work only; never portable, synced or ordinary-exported; raw paths and expected-record payloads never included in telemetry; image inference is local-only with no cloud fallback",
+      "deletionPolicy": "source clear/index-data reset removes queued candidates and publication receipts through the same owner; acknowledged actual commits delete their exact receipt; physical replay never deletes files or a new document version; content indexing off or source deletion clears file vectors and cancellation rejects late image publication",
+      "retentionPolicy": "maintenance until the current validated task commits and publishes, or explicit source/index-data reset; cursors advance only at committed boundaries; image vectors until source replacement, deletion, content indexing off or index reset",
       "rendererExposure": "only existing committed-index and bounded diagnostics DTOs; no task payload, fingerprint or native path authority",
       "portable": false,
       "migrationStatus": "owner-bound",
       "evidence": [
         "apps/core-app/src/main/modules/box-tool/search-engine/search-index-document-store.ts#symbol=SearchIndexDocumentStore",
         "apps/core-app/src/main/modules/box-tool/search-engine/index-maintenance-runner.ts#symbol=IndexMaintenanceRunner",
-        "apps/core-app/src/main/modules/box-tool/search-engine/file-index-persistence-repository.ts#symbol=removeFileRecordsInTransaction"
+        "apps/core-app/src/main/modules/box-tool/search-engine/file-index-persistence-repository.ts#symbol=removeFileRecordsInTransaction",
+        "apps/core-app/src/main/modules/box-tool/addon/files/embedding-service.ts#symbol=EmbeddingService",
+        "apps/core-app/src/main/modules/box-tool/addon/files/file-provider.ts#symbol=clearContentIndexingDataWithLease"
       ]
     },
     {
@@ -419,19 +422,20 @@
     {
       "id": "temporary-files",
       "classification": "transient-user-content",
-      "owner": "TempFileService",
-      "storageLocations": ["registered fixed namespaces below canonical temp root"],
-      "writers": ["trusted main owners and activation-scoped plugin temp SDK"],
-      "readers": ["owning operation only"],
+      "owner": "TempFileService/LocalEmbeddingRuntime",
+      "storageLocations": ["registered fixed namespaces below canonical temp root", "private OS temporary directory containing one bounded normalized PNG snapshot for local image inference"],
+      "writers": ["trusted main owners and activation-scoped plugin temp SDK", "host-only local image encoder using a bounded O_NOFOLLOW source descriptor"],
+      "readers": ["owning operation only", "pinned local image helper for its private inference snapshot"],
       "exportPolicy": "none",
-      "deletionPolicy": "eager owner release, namespace cleanup, cancellation, or startup fallback cleanup",
-      "retentionPolicy": "fixed namespace retention; unregistered/traversal/symlink targets rejected",
+      "deletionPolicy": "registered namespaces use eager owner release, namespace cleanup, cancellation or startup fallback cleanup; local image snapshots are removed after success, failure, timeout or cancellation without deleting user originals",
+      "retentionPolicy": "fixed namespace retention; unregistered/traversal/symlink targets rejected; private image snapshots last only for one bounded inference request",
       "rendererExposure": "opaque operation results, never arbitrary native paths",
       "portable": false,
       "migrationStatus": "namespace-registered",
       "evidence": [
         "apps/core-app/src/main/service/temp-file.service.ts#symbol=TempFileService",
-        "apps/core-app/src/main/modules/privacy/privacy-production-wiring.test.ts#test=routes auxiliary and core tables to their exact production clients"
+        "apps/core-app/src/main/modules/privacy/privacy-production-wiring.test.ts#test=routes auxiliary and core tables to their exact production clients",
+        "apps/core-app/src/main/modules/ai/local-embedding-runtime.ts#symbol=generateImage"
       ]
     }
   ]

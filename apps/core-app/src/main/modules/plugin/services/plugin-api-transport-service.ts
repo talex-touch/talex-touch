@@ -39,6 +39,31 @@ export interface PluginApiTransportContext {
   toErrorMessage: (error: unknown) => string
 }
 
+/**
+ * Enable or disable one plugin and tell every window, the one path shared by the store's switch
+ * and CoreBox's plugin rows. A window that only hears the transport reply would leave the others
+ * showing the old state.
+ */
+export async function setPluginEnabledAndBroadcast(
+  manager: Pick<IPluginManager, 'enablePlugin' | 'disablePlugin' | 'plugins'>,
+  transport: Pick<ITuffTransportMain, 'broadcast'>,
+  name: string,
+  enabled: boolean
+): Promise<boolean> {
+  const success = enabled ? await manager.enablePlugin(name) : await manager.disablePlugin(name)
+  if (success) {
+    const plugin = manager.plugins.get(name)
+    if (plugin) {
+      transport.broadcast(PluginEvents.push.stateChanged, {
+        type: 'status-changed',
+        name,
+        status: plugin.status
+      })
+    }
+  }
+  return success
+}
+
 /** Registers plugin API, dev-server, content, performance, and store transport handlers. */
 export function registerPluginApiTransportHandlers(
   context: PluginApiTransportContext
@@ -297,17 +322,7 @@ export function registerPluginApiTransportHandlers(
           return { success: false, error: 'Plugin name is required' }
         }
 
-        const success = await manager.enablePlugin(name)
-        if (success) {
-          const plugin = manager.plugins.get(name)
-          if (plugin) {
-            transport.broadcast(PluginEvents.push.stateChanged, {
-              type: 'status-changed',
-              name,
-              status: plugin.status
-            })
-          }
-        }
+        const success = await setPluginEnabledAndBroadcast(manager, transport, name, true)
         return { success }
       } catch (error) {
         logIpcHandlerError('plugin:api:enable', error)
@@ -322,17 +337,7 @@ export function registerPluginApiTransportHandlers(
           return { success: false, error: 'Plugin name is required' }
         }
 
-        const success = await manager.disablePlugin(name)
-        if (success) {
-          const plugin = manager.plugins.get(name)
-          if (plugin) {
-            transport.broadcast(PluginEvents.push.stateChanged, {
-              type: 'status-changed',
-              name,
-              status: plugin.status
-            })
-          }
-        }
+        const success = await setPluginEnabledAndBroadcast(manager, transport, name, false)
         return { success }
       } catch (error) {
         logIpcHandlerError('plugin:api:disable', error)

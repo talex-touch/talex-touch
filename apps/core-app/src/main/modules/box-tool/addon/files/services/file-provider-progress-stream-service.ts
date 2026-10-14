@@ -271,6 +271,18 @@ export class FileProviderProgressStateService {
     this.startTime = null
     this.stats = this.initialStats('idle')
     this.estimator.reset()
+    this.publisher.emit({
+      stage: 'idle',
+      current: 0,
+      total: 0,
+      progress: 0,
+      startTime: null,
+      estimatedRemainingMs: null,
+      averageItemsPerSecond: 0,
+      estimateStatus: 'none',
+      speedSampleCount: 0,
+      estimateBasis: 'none'
+    })
   }
 
   getSnapshot(isIndexing: boolean): FileProviderProgressStatusSnapshot {
@@ -285,8 +297,16 @@ export class FileProviderProgressStateService {
       estimatedRemainingMs = 0
     }
 
+    const progress = isIndexing
+      ? { ...this.progress, progress: this.overallProgress }
+      : {
+          ...this.progress,
+          stage: this.progress.stage === 'completed' ? 'completed' : 'idle',
+          progress: this.progress.stage === 'completed' ? 100 : 0
+        }
+
     return {
-      progress: { ...this.progress, progress: this.overallProgress },
+      progress,
       startTime: this.startTime,
       estimatedCompletion,
       estimatedRemainingMs,

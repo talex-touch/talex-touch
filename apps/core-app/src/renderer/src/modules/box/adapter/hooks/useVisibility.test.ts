@@ -19,7 +19,8 @@ const state = vi.hoisted(() => ({
         time: 5
       }
     }
-  }
+  },
+  latestClipboard: null as IClipboardItem | null
 }))
 
 vi.mock('@talex-touch/utils/transport', () => ({
@@ -51,7 +52,7 @@ vi.mock('~/modules/telemetry/renderer-activity', () => ({
 }))
 
 vi.mock('./useClipboardChannel', () => ({
-  getLatestClipboard: vi.fn(async () => null)
+  getLatestClipboard: vi.fn(async () => state.latestClipboard)
 }))
 
 function createBoxOptions(overrides?: Partial<IBoxOptions>): IBoxOptions {
@@ -80,18 +81,30 @@ function createClipboardOptions(item?: IClipboardItem | null): IClipboardOptions
   }
 }
 
-function createVisibilityHarness(options?: { autoClear?: number; lastHidden?: number }) {
+function createVisibilityHarness(options?: {
+  autoClear?: number
+  lastHidden?: number
+  boxOptions?: IBoxOptions
+  clipboardOptions?: IClipboardOptions
+  handlePaste?: (options?: {
+    overrideDismissed?: boolean
+    triggerSearch?: boolean
+    attemptAutoFill?: boolean
+  }) => void
+}) {
   state.appSetting.tools.autoClear = options?.autoClear ?? 300
-  const boxOptions = createBoxOptions({ lastHidden: options?.lastHidden ?? Date.now() })
-  const clipboardOptions = createClipboardOptions()
+  const boxOptions =
+    options?.boxOptions ?? createBoxOptions({ lastHidden: options?.lastHidden ?? Date.now() })
+  const clipboardOptions = options?.clipboardOptions ?? createClipboardOptions()
   const searchVal = ref('clipboard query')
   const deactivateAllProviders = vi.fn(async () => undefined)
+  const handlePaste = options?.handlePaste ?? vi.fn()
 
   const hook = useVisibility({
     boxOptions,
     searchVal,
     clipboardOptions,
-    handlePaste: vi.fn(),
+    handlePaste,
     boxInputRef: ref(null),
     deactivateAllProviders
   })
@@ -201,6 +214,122 @@ describe('useVisibility auto clear session reset', () => {
     await Promise.resolve()
 
     expect(state.setRendererActivity).toHaveBeenLastCalledWith(false)
+    hook.cleanup()
+  })
+})
+
+describe('useVisibility clipboard autoPaste and dismissal on show', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.listeners.clear()
+    state.send.mockResolvedValue(undefined)
+    state.latestClipboard = null
+    state.appSetting.tools.autoPaste.enable = true
+    state.appSetting.tools.autoPaste.time = 5
+  })
+
+  it('does not auto-paste or attach stale clipboard image (> 5s)', async () => {
+    const staleImage: IClipboardItem = {
+      id: 99,
+      type: 'image',
+      content: 'tfile:///tmp/img.png',
+      thumbnail: 'data:image/png;base64,abc',
+      timestamp: new Date().toISOString(),
+      freshnessBaseAt: Date.now() - 10_000,
+      autoPasteEligible: true
+    }
+    state.latestClipboard = staleImage
+
+    const handlePaste = vi.fn()
+    const boxOptions = createBoxOptions()
+    const clipboardOptions = createClipboardOptions(null)
+    const { hook } = createVisibilityHarness({
+      boxOptions,
+      clipboardOptions,
+      handlePaste
+    })
+
+    const triggerShortcut = state.listeners.get(CoreBoxEvents.ui.shortcutTriggered.toEventName())
+    const triggerShow = state.listeners.get(CoreBoxEvents.ui.trigger.toEventName())
+
+    triggerShortcut?.()
+    triggerShow?.({ show: true })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(handlePaste).not.toHaveBeenCalled()
+    expect(clipboardOptions.last).toBeNull()
+    hook.cleanup()
+  })
+
+  it('does not re-attach clipboard content dismissed by ESC', async () => {
+    const timestamp = new Date().toISOString()
+    const image: IClipboardItem = {
+      id: 100,
+      type: 'image',
+      content: 'tfile:///tmp/img.png',
+      thumbnail: 'data:image/png;base64,abc',
+      timestamp,
+      freshnessBaseAt: Date.now() - 1000,
+      autoPasteEligible: true
+    }
+    state.latestClipboard = image
+
+    const handlePaste = vi.fn()
+    const boxOptions = createBoxOptions()
+    const clipboardOptions = createClipboardOptions(null)
+    clipboardOptions.lastClearedTimestamp = timestamp
+
+    const { hook } = createVisibilityHarness({
+      boxOptions,
+      clipboardOptions,
+      handlePaste
+    })
+
+    const triggerShortcut = state.listeners.get(CoreBoxEvents.ui.shortcutTriggered.toEventName())
+    const triggerShow = state.listeners.get(CoreBoxEvents.ui.trigger.toEventName())
+
+    triggerShortcut?.()
+    triggerShow?.({ show: true })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(handlePaste).not.toHaveBeenCalled()
+    expect(clipboardOptions.last).toBeNull()
+    hook.cleanup()
+  })
+
+  it('auto-pastes fresh clipboard content on shortcut trigger', async () => {
+    const image: IClipboardItem = {
+      id: 101,
+      type: 'image',
+      content: 'tfile:///tmp/img.png',
+      thumbnail: 'data:image/png;base64,abc',
+      timestamp: new Date().toISOString(),
+      freshnessBaseAt: Date.now() - 1000,
+      autoPasteEligible: true
+    }
+    state.latestClipboard = image
+
+    const handlePaste = vi.fn()
+    const boxOptions = createBoxOptions()
+    const clipboardOptions = createClipboardOptions(null)
+
+    const { hook } = createVisibilityHarness({
+      boxOptions,
+      clipboardOptions,
+      handlePaste
+    })
+
+    const triggerShortcut = state.listeners.get(CoreBoxEvents.ui.shortcutTriggered.toEventName())
+    const triggerShow = state.listeners.get(CoreBoxEvents.ui.trigger.toEventName())
+
+    triggerShortcut?.()
+    triggerShow?.({ show: true })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(handlePaste).toHaveBeenCalledWith({ triggerSearch: true, attemptAutoFill: true })
     hook.cleanup()
   })
 })
