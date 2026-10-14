@@ -564,3 +564,37 @@ export function assertDashScopeProvider(provider: ProviderRegistryRecord | null)
   }
   return provider
 }
+
+export async function createDashScopeEphemeralToken(
+  event: H3Event,
+  provider: ProviderRegistryRecord,
+  expireInSeconds = 300,
+  fetcher: typeof fetch = fetch
+): Promise<{ token: string; expiresAt: number }> {
+  const credential = await getProviderCredential(event, provider.authRef!)
+  const apiKey = readProviderApiKey(credential)
+  const baseUrl = resolveDashScopeBaseUrl(provider)
+  const tokenUrl = new URL(resolveTaskUrl(baseUrl, 'tokens'))
+  tokenUrl.searchParams.set('expire_in_seconds', String(Math.max(60, Math.min(1800, expireInSeconds))))
+
+  const response = await fetcher(tokenUrl.toString(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new DashScopeAsrError('ASR_PROVIDER_REJECTED', false)
+  }
+
+  const payload = (await response.json()) as Record<string, unknown>
+  if (!payload || typeof payload.token !== 'string' || typeof payload.expires_at !== 'number') {
+    throw new DashScopeAsrError('ASR_PROVIDER_RESPONSE_INVALID', false)
+  }
+
+  return {
+    token: payload.token,
+    expiresAt: payload.expires_at,
+  }
+}

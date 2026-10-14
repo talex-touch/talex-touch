@@ -30,6 +30,29 @@
         { "id": "nexus-audio-transcribe", "label": "Nexus ASR", "languages": ["zh-CN"] }
       ],
       "limits": { "maxBytes": 20971520, "maxDurationSec": 600, "timeoutMs": 600000 }
+    },
+    {
+      "id": "tuff-nexus-realtime",
+      "displayName": {
+        "default": "Nexus Realtime",
+        "locales": { "zh-CN": "Nexus 通义实时流", "en-US": "Nexus Realtime" }
+      },
+      "protocol": "nexus-pack",
+      "transport": "ws-realtime",
+      "endpoint": {
+        "baseUrl": "https://tuff.tagzxia.com",
+        "submitPath": "/api/v1/ai/audio/token"
+      },
+      "auth": { "mode": "nexus-session" },
+      "request": {
+        "body": "raw-bytes",
+        "contentTypePolicy": "audio/*",
+        "idempotencyHeader": "x-idempotency-key"
+      },
+      "models": [
+        { "id": "qwen3-asr-flash-realtime", "label": "通义千问实时语音", "languages": ["zh-CN", "en-US"] }
+      ],
+      "limits": { "maxBytes": 20971520, "maxDurationSec": 600, "timeoutMs": 600000 }
     }
   ]
 }

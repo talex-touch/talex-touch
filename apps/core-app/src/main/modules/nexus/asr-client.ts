@@ -546,3 +546,87 @@ export async function transcribeNexusAudio(
     clearTimeout(timer)
   }
 }
+
+export interface NexusVoiceToken {
+  token: string
+  expiresAt: number
+  websocketUrl: string
+  model: string
+  sessionId: string
+}
+
+let cachedVoiceToken: NexusVoiceToken | null = null
+
+export async function requestNexusVoiceToken(
+  options: { signal?: AbortSignal } = {}
+): Promise<NexusVoiceToken> {
+  const now = Date.now()
+  if (cachedVoiceToken && cachedVoiceToken.expiresAt * 1000 - now > 30_000) {
+    return cachedVoiceToken
+  }
+
+  const baseUrl = getRuntimeNexusBaseUrl()
+  const response = await performNexusRequestWithAuth(
+    {
+      url: `${baseUrl.replace(/\/+$/, '')}/api/v1/ai/audio/token`,
+      method: 'POST',
+      context: 'voice.asr.builtin'
+    },
+    {
+      signal: options.signal,
+      timeoutMs: 5_000,
+      trustedBaseUrl: baseUrl
+    }
+  )
+
+  if (!response) {
+    throw createError('NEXUS_AUTH_REQUIRED', 'Nexus requires a signed-in account.')
+  }
+  if (response.status < 200 || response.status >= 300) {
+    throw createError(
+      'NETWORK_FAILURE',
+      `Failed to obtain voice token from Nexus: HTTP ${response.status}`
+    )
+  }
+
+  const body = response.body as Record<string, unknown>
+  if (!body || typeof body.token !== 'string' || typeof body.websocketUrl !== 'string') {
+    throw createError('INVALID_RESPONSE', 'Nexus returned an invalid token response.')
+  }
+
+  cachedVoiceToken = {
+    token: body.token,
+    expiresAt: Number(body.expiresAt) || Math.floor((now + 300_000) / 1000),
+    websocketUrl: body.websocketUrl,
+    model: typeof body.model === 'string' ? body.model : 'qwen3-asr-flash-realtime',
+    sessionId: typeof body.sessionId === 'string' ? body.sessionId : randomUUID()
+  }
+
+  return cachedVoiceToken
+}
+
+export async function settleNexusVoiceUsage(input: {
+  sessionId: string
+  durationMs: number
+  transcriptUnits: number
+  requestId?: string
+}): Promise<void> {
+  try {
+    const baseUrl = getRuntimeNexusBaseUrl()
+    await performNexusRequestWithAuth(
+      {
+        url: `${baseUrl.replace(/\/+$/, '')}/api/v1/ai/audio/settle`,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+        context: 'voice.asr.builtin'
+      },
+      {
+        timeoutMs: 5_000,
+        trustedBaseUrl: baseUrl
+      }
+    )
+  } catch (error) {
+    asrLog.warn('Failed to settle Nexus voice usage; user recognition unaffected', { error })
+  }
+}

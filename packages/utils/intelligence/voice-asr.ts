@@ -4,6 +4,8 @@ export const VOICE_ASR_PROTOCOLS = [
   'doubao',
   'local-offline',
   'nexus-pack',
+  'nexus-realtime',
+  'dynamic-script',
 ] as const
 
 export type VoiceAsrProtocol = (typeof VOICE_ASR_PROTOCOLS)[number]
@@ -50,6 +52,8 @@ export interface VoiceAsrMetadata {
   protocol: VoiceAsrProtocol
   /** Public Doubao resource identifier; Bailian derives workspace from Base URL. */
   resourceId?: string
+  /** Dynamic adapter script for sandboxed execution (e.g. reverse-engineered protocols). */
+  scriptContent?: string
 }
 
 const MAX_RESOURCE_ID_LENGTH = 256
@@ -76,10 +80,18 @@ export function normalizeVoiceAsrMetadata(value: unknown): VoiceAsrMetadata | un
   }
   if (record.protocol === 'nexus-pack')
     return { protocol: record.protocol }
+  if (record.protocol === 'nexus-realtime')
+    return { protocol: record.protocol }
   // Local inference carries no endpoint and no credential: the model identifier lives in
   // the route's own `model` field, so there is nothing else worth retaining here.
   if (record.protocol === 'local-offline')
     return { protocol: record.protocol }
+  if (record.protocol === 'dynamic-script') {
+    const scriptContent = typeof record.scriptContent === 'string' && record.scriptContent.trim()
+      ? record.scriptContent
+      : undefined
+    return scriptContent ? { protocol: record.protocol, scriptContent } : undefined
+  }
   return undefined
 }
 

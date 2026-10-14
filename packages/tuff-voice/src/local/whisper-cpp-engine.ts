@@ -253,10 +253,14 @@ export function buildWhisperArgs(
     args.push('-nt')
   }
 
-  if (primer) {
+  const hotwordsPrompt
+    = options.hotwords && options.hotwords.length > 0 ? options.hotwords.join(', ') : undefined
+  const effectivePrompt
+    = primer && hotwordsPrompt ? `${primer} 常用词: ${hotwordsPrompt}` : (primer ?? hotwordsPrompt)
+  if (effectivePrompt) {
     // `--carry-initial-prompt` keeps the primer attached to later windows; without it a
     // long dictation drifts back to Traditional after the first segment.
-    args.push('--prompt', primer, '--carry-initial-prompt')
+    args.push('--prompt', effectivePrompt, '--carry-initial-prompt')
   }
   return args
 }

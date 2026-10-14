@@ -78,7 +78,7 @@ function asClientResponse(request: AsrRequestRecord, transcript?: string): AsrTr
   }
 }
 
-async function resolveDashScopeAsrProvider(event: H3Event, userId: string) {
+export async function resolveDashScopeAsrProvider(event: H3Event, userId: string) {
   const resolution = await resolveSceneProviderCandidates(event, {
     sceneId: resolveCapabilitySceneId('audio.transcribe'),
     capability: 'audio.transcribe',

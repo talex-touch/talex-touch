@@ -468,6 +468,54 @@ describe('VoiceService.streamDictation via provider', () => {
     expect(applyVoiceText).not.toHaveBeenCalled()
   })
 
+  it('runs polish and replaces live delivered text when livePolish is enabled', async () => {
+    vi.clearAllMocks()
+    isAccessibilityTrusted.mockReturnValue(true)
+    typeText.mockResolvedValue({ ok: true })
+    applyVoiceText.mockResolvedValue({ success: true })
+    getActiveApp.mockResolvedValue({
+      name: 'Notes',
+      bundleId: 'com.apple.Notes',
+      processId: 123,
+      executablePath: null,
+      platform: 'macos',
+      windowTitle: null,
+      lastUpdated: Date.now()
+    })
+    drainCapture.mockReturnValue({ pcm: pcm(16_384), sampleRate: 16_000, channels: 1 })
+    pollCapture.mockReturnValue({ active: true, durationMs: 0, stoppedReason: null })
+    const rawText = '明天去超市带上苹果、香蕉和菠萝'
+    const polishedText = '明天去超市，买苹果、香蕉和菠萝。'
+    fake = createFakeConnection(rawText)
+    resolveAsrProvider.mockReturnValue({
+      model: 'fake-model',
+      provider: {
+        id: 'fake',
+        defaultStreamModel: 'fake-model',
+        createStream: vi.fn(async () => fake.connection)
+      }
+    })
+    invoke.mockResolvedValue({ result: polishedText })
+
+    const controller = new AbortController()
+    const collected = collect(
+      new VoiceService().streamDictation(
+        { delivery: 'active-app', deliveryTiming: 'live', livePolish: true },
+        undefined,
+        { stopSignal: controller.signal }
+      )
+    )
+    await Promise.resolve()
+
+    fake.push({ type: 'partial', text: rawText })
+    controller.abort()
+    const events = await collected
+
+    expect(events.find((event) => event.type === 'final')).toMatchObject({ text: polishedText })
+    expect(invoke).toHaveBeenCalled()
+    expect(typeText).toHaveBeenCalledWith('\u0008'.repeat(Array.from(rawText).length))
+  })
+
   /** The default gesture still delivers once, at the end, and still gets polished. */
   it('delivers once at the end when the timing is final', async () => {
     vi.clearAllMocks()

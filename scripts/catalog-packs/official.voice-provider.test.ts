@@ -51,5 +51,14 @@ describe('official.voice-provider catalog pack', () => {
     // Same-origin with the shipped Nexus base URL: the runtime freezes the route to it.
     expect(descriptor.endpoint.baseUrl).toBe('https://tuff.tagzxia.com')
     expect(descriptor.models.map(model => model.id)).toContain(NEXUS_AUDIO_TRANSCRIBE_MODEL)
+
+    const realtimeDescriptor = pack.providers.find(provider => provider.id === 'tuff-nexus-realtime')
+    expect(realtimeDescriptor).toBeTruthy()
+    if (realtimeDescriptor) {
+      expect(realtimeDescriptor.protocol).toBe('nexus-pack')
+      expect(realtimeDescriptor.transport).toBe('ws-realtime')
+      expect(realtimeDescriptor.endpoint.submitPath).toBe('/api/v1/ai/audio/token')
+      expect(realtimeDescriptor.models.map(m => m.id)).toContain('qwen3-asr-flash-realtime')
+    }
   })
 })

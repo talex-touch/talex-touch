@@ -239,4 +239,16 @@ describe('the language whisper-cli is handed', () => {
 
     expect(args[args.indexOf('--prompt') + 1]).toBe('以下是普通话的句子，请使用简体中文。')
   })
+
+  it('injects hotwords into the prompt when provided in transcribe options', async () => {
+    const model = await resolvedModel({ languages: ['zh'], requiresSimplifiedConversion: true })
+    const args = buildWhisperArgs(model, '/tmp/input.wav', '/tmp/result', {
+      language: 'zh-CN',
+      hotwords: ['SGLang', 'vLLM', 'DeepSeek'],
+    })
+
+    const prompt = args[args.indexOf('--prompt') + 1]
+    expect(prompt).toContain('以下是普通话的句子，请使用简体中文。')
+    expect(prompt).toContain('SGLang, vLLM, DeepSeek')
+  })
 })

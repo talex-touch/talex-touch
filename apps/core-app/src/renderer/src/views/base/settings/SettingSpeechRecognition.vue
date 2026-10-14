@@ -103,6 +103,25 @@ const noiseSuppression = computed({
     ;(appSetting.voiceInput as VoiceInputSetting).noiseSuppression = value
   }
 })
+const customWordsInput = ref(
+  Array.isArray((appSetting.voiceInput as VoiceInputSetting)?.customWords)
+    ? ((appSetting.voiceInput as VoiceInputSetting).customWords as string[]).join(', ')
+    : ''
+)
+
+function saveCustomWords(): void {
+  ensureVoiceInputSetting(appSetting as Record<string, unknown>)
+  const seen: Record<string, true> = {}
+  const list: string[] = []
+  for (const part of customWordsInput.value.split(/[,，\n]/)) {
+    const trimmed = part.trim()
+    if (trimmed && !seen[trimmed]) {
+      seen[trimmed] = true
+      list.push(trimmed)
+    }
+  }
+  ;(appSetting.voiceInput as VoiceInputSetting).customWords = list
+}
 
 watch(
   () => appSetting.voiceInput,
@@ -253,6 +272,31 @@ useEventListener(window, 'focus', () => {
       default-icon="i-carbon-waveform"
       active-icon="i-carbon-waveform"
     />
+    <TuffBlockSlot
+      data-testid="voice-custom-words"
+      default-icon="i-carbon-character-patterns"
+      active-icon="i-carbon-character-patterns"
+      :title="t('settingSpeechRecognition.customWords.title', '热词与专有词库')"
+      :description="
+        t(
+          'settingSpeechRecognition.customWords.description',
+          '输入专用术语、人名或英文缩写（逗号分隔），提高语音识别与AI润色准确率'
+        )
+      "
+    >
+      <input
+        v-model="customWordsInput"
+        class="custom-words-input"
+        type="text"
+        :placeholder="
+          t(
+            'settingSpeechRecognition.customWords.placeholder',
+            '例如: SGLang, vLLM, DeepSeek, Qwen'
+          )
+        "
+        @change="saveCustomWords"
+      />
+    </TuffBlockSlot>
   </TuffGroupBlock>
   <VoiceProviderCatalogSettings />
   <SpeechModelSettings :source="voiceSource" />
@@ -277,6 +321,23 @@ useEventListener(window, 'focus', () => {
   :deep(.TBlockSlot-Label > p) {
     line-height: 1.5;
     overflow-wrap: anywhere;
+  }
+
+  .custom-words-input {
+    width: 260px;
+    max-width: 100%;
+    padding: 6px 10px;
+    font-size: 13px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+    background: var(--surface-color, rgba(255, 255, 255, 0.05));
+    color: inherit;
+    outline: none;
+    transition: border-color 0.15s ease;
+
+    &:focus {
+      border-color: var(--primary-color, #409eff);
+    }
   }
 }
 </style>

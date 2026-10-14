@@ -421,11 +421,11 @@ function normalizeProvider(value: unknown): VoiceProviderDescriptorV1 {
   const request = normalizeRequest(record.request)
   if (
     protocol === 'nexus-pack' &&
-    (transport !== 'http-upload' ||
+    ((transport !== 'http-upload' && transport !== 'ws-realtime') ||
       auth.mode !== 'nexus-session' ||
       request.body !== 'raw-bytes' ||
       request.idempotencyHeader !== 'x-idempotency-key' ||
-      !endpoint.pollPath)
+      (transport === 'http-upload' && !endpoint.pollPath))
   ) {
     reject('bad-protocol', 'Nexus voice catalog route has an incompatible descriptor shape')
   }

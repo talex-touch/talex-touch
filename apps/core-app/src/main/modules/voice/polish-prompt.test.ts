@@ -29,6 +29,13 @@ describe('polish-prompt', () => {
       expect(prompt).toContain('Messaging and chat apps')
       expect(prompt).toContain('Document and email tools')
     })
+    it('provides domain and technical vocabulary instructions', () => {
+      const prompt = getVoicePolishPrompt('natural')
+      expect(prompt).toContain('Domain and technical vocabulary')
+      expect(prompt).toContain('SGLang')
+      expect(prompt).toContain('vLLM')
+      expect(prompt).toContain('DeepSeek')
+    })
 
     it('differentiates editing strengths', () => {
       const natural = getVoicePolishPrompt('natural')
@@ -82,6 +89,16 @@ describe('polish-prompt', () => {
         transcription: '你好',
         targetApp: 'WeChat',
         targetCategory: 'chat-messaging'
+      })
+    })
+    it('injects technical vocabulary/terms into the wrapped payload', () => {
+      const wrapped = wrapTranscription('运行 s g lang 推理', {
+        terms: ['SGLang', 'vLLM', 'DeepSeek']
+      })
+      const parsed = JSON.parse(wrapped)
+      expect(parsed).toEqual({
+        transcription: '运行 s g lang 推理',
+        vocabulary: ['SGLang', 'vLLM', 'DeepSeek']
       })
     })
   })

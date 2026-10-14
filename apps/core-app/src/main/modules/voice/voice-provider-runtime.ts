@@ -2,7 +2,13 @@ import type {
   IntelligenceProviderConfig,
   IntelligenceProviderRoute
 } from '@talex-touch/tuff-intelligence'
-import type { ResolvedLocalModel, VoiceProviderAdapter } from '@talex-touch/tuff-voice'
+import type {
+  ResolvedLocalModel,
+  VoiceProviderAdapter,
+  VoiceStreamConnection,
+  VoiceStreamRequest,
+  VoiceUsage
+} from '@talex-touch/tuff-voice'
 import type {
   CatalogStatus,
   VoiceProviderDescriptorV1,
@@ -29,6 +35,7 @@ import {
   createNodeVoiceSocketFactory,
   DashscopeQwenAsrRealtimeVoiceProvider,
   DoubaoVoiceProvider,
+  DynamicScriptVoiceProvider,
   loadInstalledModelSync,
   LocalOfflineVoiceProvider,
   resolveModelStoreRoot,
@@ -52,7 +59,12 @@ import { resolveProviderCredential } from '../ai/provider-credential-runtime'
 import { getAuthToken, getSanitizedAuthSessionState } from '../auth'
 import { getCatalogService } from '../catalog'
 import { getMainConfig } from '../storage'
-import { transcribeNexusAudio } from '../nexus/asr-client'
+import {
+  transcribeNexusAudio,
+  requestNexusVoiceToken,
+  settleNexusVoiceUsage,
+  type NexusVoiceToken
+} from '../nexus/asr-client'
 import { getRuntimeNexusBaseUrl } from '../nexus/runtime-base'
 import { createBufferedSttVoiceProvider } from './buffered-stt-provider'
 
@@ -201,11 +213,23 @@ function capabilityStatus(
   const metadata = getVoiceAsrMetadata(route.provider.metadata)
   if (capabilityType === 'asr' && metadata?.protocol === 'nexus-pack') {
     try {
-      resolveNexusPackRoute(route, true)
-      return { ready: true, mode: 'buffered' }
+      const resolved = resolveNexusPackRoute(route, true)
+      return {
+        ready: true,
+        mode: resolved?.descriptor.transport === 'ws-realtime' ? 'realtime' : 'buffered'
+      }
     } catch (error) {
       return recognitionFailure(error)
     }
+  }
+  if (capabilityType === 'asr' && metadata?.protocol === 'nexus-realtime') {
+    return { ready: true, mode: 'realtime' }
+  }
+  if (capabilityType === 'asr' && metadata?.protocol === 'dynamic-script') {
+    if (!metadata.scriptContent) {
+      return { ready: false, reason: 'VOICE_ASR_PROVIDER_UNAVAILABLE' }
+    }
+    return { ready: true }
   }
   return { ready: true }
 }
@@ -276,12 +300,12 @@ function resolveNexusPackRoute(
   if (!descriptor) throw packFailure('VOICE_ASR_PACK_NOT_CONFIGURED')
   if (
     descriptor.protocol !== 'nexus-pack' ||
-    descriptor.transport !== 'http-upload' ||
+    (descriptor.transport !== 'http-upload' && descriptor.transport !== 'ws-realtime') ||
     descriptor.auth.mode !== 'nexus-session' ||
     descriptor.request.body !== 'raw-bytes' ||
     descriptor.request.contentTypePolicy !== 'audio/*' ||
     !descriptor.request.idempotencyHeader ||
-    !descriptor.endpoint.pollPath ||
+    (descriptor.transport === 'http-upload' && !descriptor.endpoint.pollPath) ||
     descriptor.limits.maxBytes <= 44 ||
     descriptor.limits.maxDurationSec <= 0 ||
     descriptor.limits.timeoutMs < 100
@@ -342,6 +366,85 @@ function createNexusPackBufferedProvider(
         }
       }
     })
+  }
+}
+
+function createNexusRealtimeStreamProvider(
+  providerId: string,
+  model: string,
+  authorityCheck: () => boolean
+): ConfiguredAsrProvider {
+  const fallbackBuffered = createBufferedSttVoiceProvider({
+    providerId,
+    model,
+    authorityCheck
+  })
+
+  const wrappedAdapter: VoiceProviderAdapter = {
+    id: providerId,
+    capabilities: { stream: true, upload: true, formats: ['pcm', 'wav'] },
+    transcribeUpload: (req) => fallbackBuffered.transcribeUpload(req),
+    createStream: async (req: VoiceStreamRequest): Promise<VoiceStreamConnection> => {
+      if (!authorityCheck()) {
+        throw new VoiceProviderError('NEXUS_AUTH_REQUIRED', 'Nexus authorization check failed.')
+      }
+
+      let token: NexusVoiceToken
+      try {
+        token = await requestNexusVoiceToken({ signal: req.signal })
+      } catch {
+        return fallbackBuffered.createStream(req)
+      }
+
+      const realtimeProvider = new DashscopeQwenAsrRealtimeVoiceProvider({
+        credentials: { apiKey: token.token },
+        socketFactory: createNodeVoiceSocketFactory(),
+        endpoint: token.websocketUrl,
+        streamOptions: { model: token.model }
+      })
+
+      const connection = await realtimeProvider.createStream({
+        ...req,
+        model: token.model
+      })
+
+      return {
+        ...connection,
+        events: {
+          async *[Symbol.asyncIterator]() {
+            let lastUsage: VoiceUsage | undefined
+            let lastText = ''
+            for await (const event of connection.events) {
+              if (event.type === 'final') {
+                lastText = event.text
+                if (event.usage) lastUsage = event.usage
+              }
+              if (event.type === 'end' && event.usage) {
+                lastUsage = event.usage
+              }
+              yield event
+            }
+
+            const durationMs = lastUsage?.durationMs ?? 0
+            if (token.sessionId && durationMs > 0) {
+              void settleNexusVoiceUsage({
+                sessionId: token.sessionId,
+                durationMs,
+                transcriptUnits: lastText.length,
+                requestId: req.requestId
+              })
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    model,
+    location: 'cloud',
+    mode: 'realtime',
+    provider: wrappedAdapter
   }
 }
 
@@ -479,9 +582,30 @@ export function getConfiguredAsrProvider(): ConfiguredAsrProvider {
       const expectedUserId = getSanitizedAuthSessionState().user?.id
       if (!expectedUserId) throw new Error('VOICE_ASR_CREDENTIAL_UNAVAILABLE')
       const expectedBaseUrl = getRuntimeNexusBaseUrl()
+      if (resolved.descriptor.transport === 'ws-realtime') {
+        return createNexusRealtimeStreamProvider(
+          route.provider.id,
+          resolved.model,
+          () =>
+            getSanitizedAuthSessionState().user?.id === expectedUserId &&
+            getRuntimeNexusBaseUrl() === expectedBaseUrl
+        )
+      }
       return createNexusPackBufferedProvider(
         route,
         resolved,
+        () =>
+          getSanitizedAuthSessionState().user?.id === expectedUserId &&
+          getRuntimeNexusBaseUrl() === expectedBaseUrl
+      )
+    }
+    case 'nexus-realtime': {
+      const expectedUserId = getSanitizedAuthSessionState().user?.id
+      if (!expectedUserId) throw new Error('VOICE_ASR_CREDENTIAL_UNAVAILABLE')
+      const expectedBaseUrl = getRuntimeNexusBaseUrl()
+      return createNexusRealtimeStreamProvider(
+        route.provider.id,
+        model,
         () =>
           getSanitizedAuthSessionState().user?.id === expectedUserId &&
           getRuntimeNexusBaseUrl() === expectedBaseUrl
@@ -528,5 +652,35 @@ export function getConfiguredAsrProvider(): ConfiguredAsrProvider {
           streamOptions: { model }
         })
       }
+    case 'dynamic-script': {
+      if (!metadata.scriptContent) {
+        const buffered = resolveNexusBufferedSttProvider(source)
+        if (buffered) return buffered
+        throw new Error('VOICE_ASR_PROVIDER_UNAVAILABLE')
+      }
+      try {
+        const dynamicProvider = new DynamicScriptVoiceProvider({
+          scriptContent: metadata.scriptContent,
+          providerId: route.provider.id,
+          contextConfig: {
+            apiKey: credential,
+            baseUrl: route.provider.baseUrl,
+            ...(route.provider.metadata ?? {})
+          },
+          httpClient: createFetchHttpClient(),
+          socketFactory: createNodeVoiceSocketFactory()
+        })
+        return {
+          model,
+          location: 'cloud',
+          mode: dynamicProvider.capabilities.stream ? 'realtime' : 'buffered',
+          provider: dynamicProvider
+        }
+      } catch {
+        const buffered = resolveNexusBufferedSttProvider(source)
+        if (buffered) return buffered
+        throw new Error('VOICE_ASR_PROVIDER_UNAVAILABLE')
+      }
+    }
   }
 }

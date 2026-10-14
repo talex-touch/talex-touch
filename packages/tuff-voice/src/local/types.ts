@@ -179,6 +179,8 @@ export interface LocalTranscribeOptions {
   timeoutMs?: number
   /** Leading text that the user has already committed; engines may use it as decode context. */
   initialText?: string
+  /** Domain terminology and custom hotwords to bias decoding. */
+  hotwords?: readonly string[]
 }
 
 export interface LocalTranscribeSegment {

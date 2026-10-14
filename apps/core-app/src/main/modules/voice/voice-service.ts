@@ -451,6 +451,50 @@ function activeAppKey(info: ActiveAppInfo | null): string | null {
  * cannot disagree about what kind of application this is. Returns undefined when nothing is
  * known, which leaves the polish pass with no target hints rather than with invented ones.
  */
+const DEFAULT_TECHNICAL_VOCABULARY: readonly string[] = [
+  'SGLang',
+  'vLLM',
+  'DeepSeek',
+  'Qwen',
+  'FlashAttention',
+  'LoRA',
+  'PyTorch',
+  'TensorFlow',
+  'CUDA',
+  'Docker',
+  'Kubernetes',
+  'Ollama',
+  'HuggingFace',
+  'LangChain',
+  'OpenAI',
+  'Claude'
+]
+
+export function resolveVoiceVocabulary(): string[] {
+  try {
+    const setting = getMainConfig(StorageList.APP_SETTING) as
+      | {
+          voiceInput?: { customWords?: unknown; vocabulary?: unknown }
+        }
+      | undefined
+    const configured = setting?.voiceInput?.customWords ?? setting?.voiceInput?.vocabulary
+    const userWords = Array.isArray(configured)
+      ? configured.filter((w): w is string => typeof w === 'string' && Boolean(w.trim()))
+      : []
+    const seen: Record<string, true> = {}
+    const combined = [...userWords, ...DEFAULT_TECHNICAL_VOCABULARY]
+    const deduplicated: string[] = []
+    for (const term of combined) {
+      if (!seen[term]) {
+        seen[term] = true
+        deduplicated.push(term)
+      }
+    }
+    return deduplicated
+  } catch {
+    return [...DEFAULT_TECHNICAL_VOCABULARY]
+  }
+}
 function polishContextFromActiveApp(info: ActiveAppInfo | null): PolishContext | undefined {
   const formatContext = appFormatContextFromActiveApp(info)
   if (!formatContext) return undefined
@@ -459,7 +503,8 @@ function polishContextFromActiveApp(info: ActiveAppInfo | null): PolishContext |
     ...(formatContext.appName ? { appName: formatContext.appName } : {}),
     ...(formatContext.bundleId ? { bundleId: formatContext.bundleId } : {}),
     category: profile.id,
-    ...(formatContext.windowTitle ? { windowTitle: formatContext.windowTitle } : {})
+    ...(formatContext.windowTitle ? { windowTitle: formatContext.windowTitle } : {}),
+    vocabulary: resolveVoiceVocabulary()
   }
 }
 
@@ -1269,6 +1314,31 @@ export class VoiceService {
     if (fallback.success) return { method: 'autopaste' }
     return await this.copyVoiceTextFallback(outgoing, fallback.code ?? 'autopaste-failed')
   }
+  private async replaceDeliveredText(
+    oldText: string,
+    newText: string,
+    targetKey: string | null
+  ): Promise<VoiceDeliveryResult> {
+    if (!targetKey || !oldText || oldText === newText) {
+      return { method: 'none', reason: 'no-change' }
+    }
+    const activeApp = await activeAppService.getActiveApp({ forceRefresh: true })
+    if (activeAppKey(activeApp) !== targetKey) {
+      return { method: 'none', reason: 'target-changed' }
+    }
+
+    const count = Array.from(oldText).length
+    const native = nativeAudio as unknown as {
+      typeText?: (value: string) => Promise<{ ok: boolean; reason?: string }>
+    }
+    if (count > 0 && typeof native.typeText === 'function') {
+      const backspaces = '\u0008'.repeat(count)
+      await native.typeText(backspaces)
+      return await this.deliverText(newText, targetKey, { allowPaste: true, format: false })
+    }
+
+    return { method: 'none', reason: 'unsupported' }
+  }
 
   /** One-shot dictation backed by the canonical Voice Session owner. */
   async dictate(
@@ -1510,7 +1580,9 @@ export class VoiceService {
   ): AsyncGenerator<VoiceAsrStreamEvent> {
     const maxDurationMs = payload.maxDurationMs ?? DEFAULT_MAX_DURATION_MS
     const silenceStopMs = payload.silenceStopMs ?? DEFAULT_SILENCE_STOP_MS
-    const cleanup = payload.cleanup !== false && payload.deliveryTiming !== 'live'
+    const cleanup =
+      payload.cleanup !== false &&
+      (payload.deliveryTiming !== 'live' || payload.livePolish === true)
     // Live delivery skips tidy-up by design — the raw words are already typed, so a polished
     // version would duplicate them. That is invisible from the outside, and indistinguishable
     // from tidy-up being broken, so say which branch was taken and why.
@@ -1541,7 +1613,8 @@ export class VoiceService {
       requestId,
       signal,
       timeoutMs: requestTimeoutMs,
-      enableDdc: payload.cleanup ?? true
+      enableDdc: payload.cleanup ?? true,
+      hotwords: resolveVoiceVocabulary()
     }
     // Open the native capture and provider connection together. Yielding capture readiness before
     // the provider handshake prevents a slow network from being misreported as a slow microphone;
@@ -1706,6 +1779,13 @@ export class VoiceService {
           : payload.delivery === 'active-app'
             ? await this.deliverText(text, session.targetKey)
             : undefined
+        if (live && payload.livePolish && polishedText && polishedText !== normalized) {
+          delivery = await this.replaceDeliveredText(
+            live.delivered(),
+            polishedText,
+            session.targetKey
+          )
+        }
         if (live && delivery?.method === 'none' && payload.delivery === 'active-app') {
           delivery = await this.copyVoiceTextFallback(
             text,

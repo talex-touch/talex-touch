@@ -640,6 +640,8 @@ export interface VoiceInputSetting {
   historyEnabled?: boolean
   noiseSuppression?: boolean
   enabledSource?: VoiceInputEnabledSource
+  /** User-defined specialized vocabulary or hotwords for speech recognition and polish biasing. */
+  customWords?: string[]
 }
 
 function isSettingRecord(value: unknown): value is Record<string, unknown> {

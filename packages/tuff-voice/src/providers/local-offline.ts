@@ -280,6 +280,9 @@ export class LocalOfflineVoiceProvider implements VoiceProviderAdapter {
 
     if (upload && 'enableTimestamps' in request && request.enableTimestamps !== undefined)
       options.timestamps = request.enableTimestamps
+    if ('hotwords' in request && Array.isArray(request.hotwords)) {
+      options.hotwords = request.hotwords
+    }
     return options
   }
 }

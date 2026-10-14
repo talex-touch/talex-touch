@@ -298,4 +298,19 @@ describe('SettingSpeechRecognition', () => {
 
     wrapper.unmount()
   })
+
+  it('saves custom words when input changes', async () => {
+    const wrapper = mountSettings()
+    await flushPromises()
+
+    const input = wrapper.find('[data-testid="voice-custom-words"] input')
+    expect(input.exists()).toBe(true)
+
+    await input.setValue('SGLang, vLLM, DeepSeek, SGLang')
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(settings.voiceInput?.customWords).toEqual(['SGLang', 'vLLM', 'DeepSeek'])
+    wrapper.unmount()
+  })
 })

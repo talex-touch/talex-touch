@@ -302,6 +302,8 @@ export interface VoiceAsrStreamPayload {
   delivery?: VoiceDeliveryMode
   /** When delivery reaches the target. Defaults to `final`. */
   deliveryTiming?: VoiceDeliveryTiming
+  /** Runs AI polish at session end and replaces the typed raw text in-place. */
+  livePolish?: boolean
   /** Main-selected provider id; omitted uses the configured provider priority. */
   providerId?: string
   /**

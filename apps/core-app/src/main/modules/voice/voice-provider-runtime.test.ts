@@ -40,11 +40,16 @@ const settings = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
   readError: null as Error | null
 }))
-const nexusClient = vi.hoisted(() => ({ transcribeNexusAudio: vi.fn() }))
+const nexusClient = vi.hoisted(() => ({
+  transcribeNexusAudio: vi.fn(),
+  requestNexusVoiceToken: vi.fn(),
+  settleNexusVoiceUsage: vi.fn()
+}))
 const adapterOptions = vi.hoisted(() => ({
   bailian: [] as Array<Record<string, unknown>>,
   qwen: [] as Array<Record<string, unknown>>,
-  doubao: [] as Array<Record<string, unknown>>
+  doubao: [] as Array<Record<string, unknown>>,
+  dynamicScript: [] as Array<Record<string, unknown>>
 }))
 // The on-device store the local-offline branch reads: no test may touch the real filesystem.
 const localStore = vi.hoisted(() => ({
@@ -126,6 +131,14 @@ vi.mock('@talex-touch/tuff-voice', () => ({
     constructor(options: Record<string, unknown>) {
       adapterOptions.qwen.push(options)
     }
+
+    createStream = vi.fn(async () => ({
+      ready: Promise.resolve(),
+      events: (async function* () {})(),
+      writePcm: vi.fn(async () => {}),
+      end: vi.fn(async () => {}),
+      abort: vi.fn(async () => {})
+    }))
   },
   DoubaoVoiceProvider: class {
     readonly id = 'doubao'
@@ -141,6 +154,17 @@ vi.mock('@talex-touch/tuff-voice', () => ({
 
     constructor(options: Record<string, unknown>) {
       localStore.providerOptions.push(options)
+    }
+  },
+  DynamicScriptVoiceProvider: class {
+    readonly id = 'dynamic-script'
+    readonly capabilities = { stream: true, upload: true, formats: [] }
+
+    constructor(options: Record<string, unknown>) {
+      if ((options.scriptContent as string)?.includes('throw_on_construct')) {
+        throw new Error('Script constructor failed')
+      }
+      adapterOptions.dynamicScript.push(options)
     }
   },
   loadInstalledModelSync: localStore.loadInstalledModelSync,
@@ -386,9 +410,12 @@ describe('capability-bound voice ASR provider resolution', () => {
     catalog.registry = null
     catalog.status = null
     nexusClient.transcribeNexusAudio.mockReset()
+    nexusClient.requestNexusVoiceToken.mockReset()
+    nexusClient.settleNexusVoiceUsage.mockReset()
     adapterOptions.bailian = []
     adapterOptions.qwen = []
     adapterOptions.doubao = []
+    adapterOptions.dynamicScript = []
     localStore.providerOptions = []
     localStore.loadInstalledModelSync.mockReset()
     // Every case opts into the dictation preference it depends on; nothing inherits one.
@@ -470,6 +497,131 @@ describe('capability-bound voice ASR provider resolution', () => {
 
     expect(() => getConfiguredAsrProvider()).toThrow('VOICE_ASR_MODEL_UNSUPPORTED')
     expect(adapterOptions.qwen).toEqual([])
+  })
+  it('constructs DynamicScriptVoiceProvider from scriptContent metadata in sandbox', () => {
+    const scriptContent =
+      'module.exports = { createSession: () => ({ writePcm: () => {}, end: () => {} }) }'
+    configure(
+      {
+        scriptChan: channel('scriptChan', {
+          models: ['wechat-v1'],
+          metadata: { voiceAsr: { protocol: 'dynamic-script', scriptContent } }
+        })
+      },
+      { 'audio.asr': [{ providerId: 'scriptChan', priority: 1, models: ['wechat-v1'] }] },
+      { scriptChan: 'script-secret-key' }
+    )
+
+    const configured = getConfiguredAsrProvider()
+    expect(configured.model).toBe('wechat-v1')
+    expect(configured.provider.id).toBe('dynamic-script')
+    expect(configured.mode).toBe('realtime')
+    expect(adapterOptions.dynamicScript).toEqual([
+      expect.objectContaining({
+        scriptContent,
+        providerId: 'scriptChan'
+      })
+    ])
+  })
+
+  it('silently falls back to buffered Nexus provider when dynamic-script construction fails', () => {
+    const brokenScript = 'throw_on_construct'
+    configure(
+      {
+        brokenScriptChan: channel('brokenScriptChan', {
+          models: ['broken-v1'],
+          metadata: { voiceAsr: { protocol: 'dynamic-script', scriptContent: brokenScript } }
+        }),
+        'tuff-nexus-default': nexusSttChannel()
+      },
+      {
+        'audio.asr': [{ providerId: 'brokenScriptChan', priority: 1, models: ['broken-v1'] }],
+        'audio.stt': [nexusSttBinding()]
+      },
+      { brokenScriptChan: 'key-1' }
+    )
+
+    const configured = getConfiguredAsrProvider()
+    expect(configured.model).toBe(NEXUS_AUDIO_TRANSCRIBE_MODEL)
+    expect(configured.mode).toBe('buffered')
+    expect(configured.location).toBe('cloud')
+  })
+
+  it('routes nexus-realtime to direct DashScope Qwen realtime provider with signed ephemeral token', async () => {
+    nexusClient.requestNexusVoiceToken.mockResolvedValueOnce({
+      token: 'st-ephemeral-123',
+      expiresAt: Math.floor(Date.now() / 1000) + 300,
+      websocketUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+      model: 'qwen3-asr-flash-realtime',
+      sessionId: 'sess-nexus-direct'
+    })
+
+    configure(
+      {
+        'tuff-nexus-default': channel('tuff-nexus-default', {
+          models: ['qwen3-asr-flash-realtime'],
+          type: DEFAULT_PROVIDERS.NEXUS,
+          metadata: { voiceAsr: { protocol: 'nexus-realtime' } }
+        })
+      },
+      {
+        'audio.asr': [
+          { providerId: 'tuff-nexus-default', priority: 1, models: ['qwen3-asr-flash-realtime'] }
+        ]
+      }
+    )
+
+    const configured = getConfiguredAsrProvider()
+    expect(configured.model).toBe('qwen3-asr-flash-realtime')
+    expect(configured.mode).toBe('realtime')
+    expect(configured.location).toBe('cloud')
+
+    await configured.provider.createStream({
+      model: 'qwen3-asr-flash-realtime',
+      audio: { format: 'pcm', sampleRate: 16000, channels: 1, bitsPerSample: 16 },
+      requestId: 'req-direct-qwen'
+    })
+
+    expect(nexusClient.requestNexusVoiceToken).toHaveBeenCalled()
+    expect(adapterOptions.qwen).toEqual([
+      expect.objectContaining({
+        credentials: { apiKey: 'st-ephemeral-123' },
+        endpoint: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+        streamOptions: { model: 'qwen3-asr-flash-realtime' }
+      })
+    ])
+  })
+
+  it('routes nexus-pack with ws-realtime transport to direct realtime stream', () => {
+    catalog.registry = {
+      packId: PACK_PROVIDER_ID,
+      version: '2026.09.21',
+      minSdkApi: CATALOG_CLIENT_SDKAPI,
+      get: () =>
+        catalogDescriptor({
+          transport: 'ws-realtime',
+          models: [{ id: 'qwen3-asr-flash-realtime', label: 'Qwen Realtime' }]
+        })
+    }
+    configure(
+      {
+        'tuff-nexus-default': channel('tuff-nexus-default', {
+          models: ['qwen3-asr-flash-realtime'],
+          metadata: { origin: 'tuff-nexus', voiceAsr: { protocol: 'nexus-pack' } }
+        })
+      },
+      {
+        'audio.asr': [
+          { providerId: 'tuff-nexus-default', priority: 1, models: ['qwen3-asr-flash-realtime'] }
+        ]
+      }
+    )
+
+    const status = getRecognitionStatus()
+    expect(status.asr).toEqual({ ready: true, mode: 'realtime' })
+
+    const configured = getConfiguredAsrProvider()
+    expect(configured.mode).toBe('realtime')
   })
 
   it('routes a voice-metadata custom provider when its generic adapter lacks audio.asr support', () => {
