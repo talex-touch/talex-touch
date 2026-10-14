@@ -1,11 +1,14 @@
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { defineConfig } from 'tsup'
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url))
 const workspaceRoot = path.resolve(packageRoot, '../..')
 const piDesktopReuse = /^@talex-touch\/pi-desktop-reuse(?:\/|$)/
+const execFileAsync = promisify(execFile)
 
 export default defineConfig({
   entry: [
@@ -69,7 +72,7 @@ export default defineConfig({
     }
     // Ship the original sources, not a second implementation. The workspace-shaped tree
     // lets recipients edit the Library and relink the same public entry points with tsup.
-    for (const file of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', 'LICENSE', 'patches']) {
+    for (const file of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'LICENSE', 'patches']) {
       await cp(path.join(workspaceRoot, file), path.join(sourceRoot, file), { recursive: true })
     }
     for (const file of ['package.json', 'LICENSE', 'COPYING', 'NOTICE', 'BUILDING.md', 'sources.json', 'src']) {
@@ -79,19 +82,23 @@ export default defineConfig({
     for (const file of ['package.json', ...manifest.files.filter(file => file !== 'dist')]) {
       await cp(path.join(packageRoot, file), path.join(sourceRoot, 'packages/utils', file), { recursive: true })
     }
+    // npm's file filtering drops nested declaration sources; archive the complete
+    // corresponding tree before packing so rebuilding does not depend on that filter.
+    await execFileAsync('tar', ['-czf', path.join(legalRoot, 'source.tar.gz'), '-C', sourceRoot, '.'])
+    await rm(sourceRoot, { recursive: true, force: true })
     await writeFile(path.join(legalRoot, 'BUILDING.txt'), [
       '@talex-touch/utils bundles selected PI-Desktop modules and their declarations.',
       'The Library is LGPL-3.0-only; Tuff-owned utils source remains MPL-2.0.',
       'LICENSE and COPYING contain the LGPL/GPL terms; NOTICE and sources.json retain attribution and the pinned upstream mapping.',
       'The Electron-specific packaging instructions in the original NOTICE do not describe this npm distribution.',
-      'For this npm Combined Work, LGPL section 4(d)(0) is served by source/: the original Library, corresponding utils application code, licenses, build configuration and locked dependency inputs.',
+      'For this npm Combined Work, LGPL section 4(d)(0) is served by source.tar.gz: the original Library, corresponding utils application code, licenses, build configuration and locked dependency inputs.',
       'No release signature or private registry package is needed to modify or recombine this distribution.',
       '',
       'To rebuild with a modified Library:',
-      '1. Copy source/ to a writable directory outside node_modules.',
+      '1. Extract source.tar.gz to a writable directory outside node_modules.',
       '2. Edit packages/pi-desktop-reuse/src/; retain source headers and update sources.json for changed mappings.',
-      '3. Use Node >=26 and the pnpm version declared by source/package.json.',
-      '4. From source/, run pnpm --filter @talex-touch/utils... install --frozen-lockfile --ignore-scripts.',
+      '3. Use Node >=26 and the pnpm version declared by the extracted package.json.',
+      '4. From the extracted root, run pnpm --filter @talex-touch/utils... install --frozen-lockfile --ignore-scripts.',
       '5. Run npm_config_verify_deps_before_run=false pnpm_config_verify_deps_before_run=false pnpm --filter @talex-touch/utils run build.',
       '6. Replace the installed @talex-touch/utils/dist directory with packages/utils/dist, or pack the rebuilt workspace package with pnpm pack and install that tarball.',
       'This regenerates both executable modules and declarations from the modified Library.',

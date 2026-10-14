@@ -19,6 +19,7 @@
   "main": "index.ts",
   "module": "./index.ts",
   "files": [
+    "LICENSE",
     "account",
     "analytics",
     "animation",
@@ -46,10 +47,9 @@
     "service",
     "store",
     "transport",
-    "types",
-    "tsup.config.ts",
     "tsconfig.build.json",
-    "LICENSE"
+    "tsup.config.ts",
+    "types"
   ],
   "engines": {
     "node": ">=26.0.0"
