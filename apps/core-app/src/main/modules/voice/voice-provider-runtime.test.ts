@@ -49,6 +49,7 @@ const adapterOptions = vi.hoisted(() => ({
   bailian: [] as Array<Record<string, unknown>>,
   qwen: [] as Array<Record<string, unknown>>,
   doubao: [] as Array<Record<string, unknown>>,
+  doubaoIme: [] as Array<Record<string, unknown>>,
   dynamicScript: [] as Array<Record<string, unknown>>
 }))
 // The on-device store the local-offline branch reads: no test may touch the real filesystem.
@@ -146,6 +147,14 @@ vi.mock('@talex-touch/tuff-voice', () => ({
 
     constructor(options: Record<string, unknown>) {
       adapterOptions.doubao.push(options)
+    }
+  },
+  DoubaoImeVoiceProvider: class {
+    readonly id = 'doubao-ime'
+    readonly capabilities = { stream: true, upload: false, formats: ['pcm', 'wav', 'opus'] }
+
+    constructor(options: Record<string, unknown>) {
+      adapterOptions.doubaoIme.push(options)
     }
   },
   LocalOfflineVoiceProvider: class {
@@ -415,6 +424,7 @@ describe('capability-bound voice ASR provider resolution', () => {
     adapterOptions.bailian = []
     adapterOptions.qwen = []
     adapterOptions.doubao = []
+    adapterOptions.doubaoIme = []
     adapterOptions.dynamicScript = []
     localStore.providerOptions = []
     localStore.loadInstalledModelSync.mockReset()
@@ -674,6 +684,27 @@ describe('capability-bound voice ASR provider resolution', () => {
 
     expect(() => getConfiguredAsrProvider()).toThrow('VOICE_ASR_MODEL_UNSUPPORTED')
     expect(adapterOptions.bailian).toEqual([])
+  })
+  it('configures DoubaoImeVoiceProvider when protocol is doubao-ime', () => {
+    configure(
+      {
+        'doubao-ime-chan': channel('doubao-ime-chan', {
+          baseUrl: 'https://ime.doubao.com',
+          models: ['bigmodel'],
+          metadata: { voiceAsr: { protocol: 'doubao-ime' } }
+        })
+      },
+      {
+        'audio.asr': [{ providerId: 'doubao-ime-chan', priority: 1, models: ['bigmodel'] }]
+      },
+      { 'doubao-ime-chan': 'auto-token-exempt' }
+    )
+
+    const configured = getConfiguredAsrProvider()
+    expect(configured.provider.id).toBe('doubao-ime')
+    expect(configured.location).toBe('cloud')
+    expect(configured.mode).toBe('realtime')
+    expect(adapterOptions.doubaoIme.length).toBe(1)
   })
 
   it('does not fall back to an enabled custom channel that lacks the audio.asr binding', () => {

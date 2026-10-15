@@ -164,4 +164,27 @@ describe('createLiveDelivery', () => {
     expect(live.delivered()).toBe('')
     expect(sink.calls).toEqual([])
   })
+  it('advances up to explicit frozenOffset without waiting for consecutive partials', async () => {
+    const sink = typist()
+    const live = createLiveDelivery(sink.send)
+
+    // With WeChat-style frozenOffset, first partial with frozenOffset 2 immediately delivers 2 chars
+    await live.offerPartial('今天天气', 2)
+    expect(sink.typed()).toBe('今天')
+    expect(live.frozenOffset()).toBe(2)
+
+    // Advance frozenOffset to 4
+    await live.offerPartial('今天天气很好', 4)
+    expect(sink.typed()).toBe('今天天气')
+    expect(live.frozenOffset()).toBe(4)
+  })
+
+  it('speculatively emits text with aggressiveMargin', async () => {
+    const sink = typist()
+    const live = createLiveDelivery(sink.send, { aggressiveMargin: 1 })
+
+    // "今天天气" has 4 chars, aggressiveMargin: 1 commits 3 chars immediately
+    await live.offerPartial('今天天气')
+    expect(sink.typed()).toBe('今天天')
+  })
 })
