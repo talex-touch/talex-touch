@@ -3,6 +3,7 @@ import process from 'node:process'
 import { getNativeOcrSupport, recognizeImageText } from '@talex-touch/tuff-native'
 import type { NativeOcrOptions } from '@talex-touch/tuff-native'
 import type { OcrProcessRequest, OcrProcessSuccessMessage } from './ocr-process-client'
+import { prepareOcrImage } from './ocr-image'
 
 interface UtilityParentPort {
   once(event: 'message', listener: (event: { data: unknown }) => void): void
@@ -95,7 +96,20 @@ async function run(): Promise<void> {
           return
         }
 
-        const result = await recognizeImageText(toNativeOptions(request.options))
+        const options = toNativeOptions(request.options)
+        const prepared = await prepareOcrImage(options.image)
+        options.image = prepared.image
+        const result = await recognizeImageText(options)
+        if (prepared.scaleX !== 1 || prepared.scaleY !== 1) {
+          for (const block of result.blocks ?? []) {
+            const box = block.boundingBox
+            if (!box) continue
+            box[0] *= prepared.scaleX
+            box[1] *= prepared.scaleY
+            box[2] *= prepared.scaleX
+            box[3] *= prepared.scaleY
+          }
+        }
         const success: OcrProcessSuccessMessage = {
           type: 'ocr.success',
           requestId,
