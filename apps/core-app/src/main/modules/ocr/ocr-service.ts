@@ -95,6 +95,8 @@ const ocrDashboardEvent = defineRawEvent<
   }
 >('ocr:dashboard')
 const WORKER_CONCURRENCY = 1
+const OCR_MIN_START_INTERVAL_MS = 10_000
+const OCR_COMPLETION_COOLDOWN_MS = 5_000
 
 const MAX_OCR_IMAGE_BYTES = 8 * 1024 * 1024
 const MAX_OCR_RESULT_RAW_CHARS = 2000
@@ -181,6 +183,7 @@ class OcrService {
   private pollTaskId = 'ocr-service:dispatcher'
   private processing = false
   private activeJobs = new Map<number, Promise<void>>()
+  private nextDispatchAt = 0
   private queueDisabledUntil: number | null = null
   private queueDisableReason: string | null = null
   private queueDisableStrike = 0
@@ -748,6 +751,7 @@ class OcrService {
   private async processQueue(): Promise<void> {
     if (this.processing) return
     if (!this.db) return
+    if (Date.now() < this.nextDispatchAt) return
 
     // Claimed before the first await. isQueueDisabled() reads config, so two callers arriving
     // during it both used to pass the check above and both enter the loop, dispatching the same
@@ -758,6 +762,7 @@ class OcrService {
       if (await this.isQueueDisabled()) return
 
       while (this.activeJobs.size < WORKER_CONCURRENCY) {
+        if (Date.now() < this.nextDispatchAt) break
         if (await this.isQueueDisabled()) {
           break
         }
@@ -817,11 +822,14 @@ class OcrService {
           at: new Date().toISOString()
         })
 
+        this.nextDispatchAt = Date.now() + OCR_MIN_START_INTERVAL_MS
         const task = this.runAgentJob(job.id!, job).finally(() => {
           this.activeJobs.delete(job.id!)
-          setImmediate(() => {
-            this.processQueue().catch(() => {})
-          })
+          // The existing dispatcher poll resumes pending jobs; no immediate drain or extra timer.
+          this.nextDispatchAt = Math.max(
+            this.nextDispatchAt,
+            Date.now() + OCR_COMPLETION_COOLDOWN_MS
+          )
         })
 
         this.activeJobs.set(job.id!, task)

@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import type { DataTableColumn, DataTableEmits, DataTableFilterOption, DataTableFilterState, DataTableProps, DataTableSortState } from './types'
+import type { DataTableColumn, DataTableEmits, DataTableFilterOption, DataTableFilterState, DataTableLabels, DataTableProps, DataTableSortState } from './types'
 import { computed, ref, watch } from 'vue'
 
 export function getCellValue<T>(row: T, column: DataTableColumn<T>): unknown {
@@ -30,12 +30,18 @@ function defaultSorter(a: unknown, b: unknown): number {
   return sa.localeCompare(sb)
 }
 
-export const DATE_FILTER_PRESETS = [
-  { label: '今天', value: 'today' },
-  { label: '近 3 天', value: '3d' },
-  { label: '近 7 天', value: '7d' },
-  { label: '近 30 天', value: '30d' },
+// The filter values are the public contract (`filter: { time: '7d' }`); the
+// visible text comes from `labels`, so a host localizes without remapping values.
+export const DATE_FILTER_PRESETS: ReadonlyArray<{ value: string, label: keyof DataTableLabels }> = [
+  { value: 'today', label: 'filterToday' },
+  { value: '3d', label: 'filterLast3Days' },
+  { value: '7d', label: 'filterLast7Days' },
+  { value: '30d', label: 'filterLast30Days' },
 ]
+
+function optionLabelOf(value: unknown): string {
+  return typeof value === 'object' && value && 'label' in value ? String((value as { label: unknown }).label) : String(value)
+}
 
 // Owns semantic-column defaults and filtering, while the table retains selection,
 // expansion, layout and sorting interaction. Props and sort remain live reactive inputs.
@@ -58,11 +64,10 @@ export function useDataTableData<T>(
         if (col.align === undefined) {
           next.align = 'right'
         }
+        // No default width: a nowrap column without one hugs its buttons, so
+        // the column is as wide as what the host puts in it.
         if (col.nowrap === undefined) {
           next.nowrap = true
-        }
-        if (col.width === undefined && col.minWidth === undefined) {
-          next.width = 140
         }
         next.type = next.type || 'actions'
         return next
@@ -171,15 +176,22 @@ export function useDataTableData<T>(
   function getColumnFilterOptions(col: DataTableColumn): DataTableFilterOption[] {
     if (col.filterOptions && col.filterOptions.length > 0)
       return col.filterOptions
-    const values = new Set<string>()
+    const counts = new Map<string, number>()
     for (const row of props.data) {
       const v = getCellValue(row, col)
       if (v != null && v !== '') {
-        const label = typeof v === 'object' && v && 'label' in v ? String((v as { label: unknown }).label) : String(v)
-        if (label) values.add(label)
+        const label = optionLabelOf(v)
+        if (label) counts.set(label, (counts.get(label) ?? 0) + 1)
       }
     }
-    return Array.from(values).map(val => ({ label: val, value: val }))
+    // Gathered from the rows, so the rows can count them — but only while the
+    // rows are the whole set; with server-side filtering `data` is one page.
+    return Array.from(counts, ([val, count]) => (props.filterOnClient ? { label: val, value: val, count } : { label: val, value: val }))
+  }
+
+  // "All" counts the rows only when the options were counted from those rows.
+  function getAllOptionCount(col: DataTableColumn): number | undefined {
+    return props.filterOnClient && !col.filterOptions?.length ? props.data.length : undefined
   }
 
   function getFilteredTagOptions(col: DataTableColumn): DataTableFilterOption[] {
@@ -219,21 +231,20 @@ export function useDataTableData<T>(
     setColumnFilter(colKey, next.length ? next : undefined)
   }
 
-  function getNumberFilterVal(colKey: string, bound: 'min' | 'max'): string | number {
+  function getNumberFilterVal(colKey: string, bound: 'min' | 'max'): number | null {
     const current = activeFilter.value[colKey]
-    if (typeof current === 'object' && current !== null) {
-      const val = (current as Record<string, unknown>)[bound]
-      return (val as string | number) ?? ''
-    }
-    if (bound === 'min' && typeof current === 'number') return current
-    return ''
+    const val = typeof current === 'object' && current !== null
+      ? (current as Record<string, unknown>)[bound]
+      : bound === 'min' ? current : undefined
+    const num = val == null || val === '' ? Number.NaN : Number(val)
+    return Number.isNaN(num) ? null : num
   }
 
-  function setNumberFilterVal(colKey: string, bound: 'min' | 'max', rawVal: string) {
+  function setNumberFilterVal(colKey: string, bound: 'min' | 'max', rawVal: string | number | null) {
     const current = typeof activeFilter.value[colKey] === 'object' && activeFilter.value[colKey] !== null
       ? { ...(activeFilter.value[colKey] as Record<string, unknown>) }
       : {}
-    const num = rawVal.trim() === '' ? undefined : Number(rawVal)
+    const num = rawVal == null || String(rawVal).trim() === '' ? undefined : Number(rawVal)
     if (num === undefined || Number.isNaN(num)) {
       delete current[bound]
     } else {
@@ -343,6 +354,7 @@ export function useDataTableData<T>(
     isColumnFiltered,
     isTagAllSelected,
     getColumnFilterOptions,
+    getAllOptionCount,
     getFilteredTagOptions,
     isTagOptionSelected,
     toggleTagFilter,

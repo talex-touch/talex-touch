@@ -222,7 +222,7 @@ export class ClipboardCapturePipeline {
       : '0:0'
     const quickImageSignature = hasImageFormats
       ? await trackPhaseAsync(phaseDurations, 'signature.imageQuick', async () =>
-          helper.getImageQuickSignature(await readPrefetchedImage())
+          helper.getImageQuickSignature(await readPrefetchedImage(), prefetchedPng)
         )
       : ''
     const quickHash = trackPhase(phaseDurations, 'signature.hashBuild', () => {

@@ -4,10 +4,12 @@ import type {
   DataTableColumn,
   DataTableColumnType,
   DataTableFilterOption,
+  DataTableFilterSlotProps,
   DataTableFilterState,
   DataTableEmits,
   DataTableHeaderSlotProps,
   DataTableKey,
+  DataTableLabels,
   DataTableLayout,
   DataTableLoadingVariant,
   DataTableProps,
@@ -22,6 +24,7 @@ import TxDataTable from './src/TxDataTable.vue'
 
 const DataTable = withInstall(TxDataTable)
 
+export { DATA_TABLE_DEFAULT_LABELS } from './src/types'
 export { DataTable, TxDataTable }
 export type {
   DataTableAlign,
@@ -29,10 +32,12 @@ export type {
   DataTableColumn,
   DataTableColumnType,
   DataTableFilterOption,
+  DataTableFilterSlotProps,
   DataTableFilterState,
   DataTableEmits,
   DataTableHeaderSlotProps,
   DataTableKey,
+  DataTableLabels,
   DataTableLayout,
   DataTableLoadingVariant,
   DataTableProps,

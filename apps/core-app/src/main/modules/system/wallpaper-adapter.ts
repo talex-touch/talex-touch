@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import { withOSAdapter } from '@talex-touch/utils/electron/env-tool'
 
 const execFileAsync = promisify(execFile)
+const WALLPAPER_CACHE_TTL_MS = 60_000
 
 export interface WallpaperAdapter {
   getDesktopWallpaperPath(): Promise<string | null>
@@ -10,7 +11,11 @@ export interface WallpaperAdapter {
 
 async function execFileOutput(command: string, args: string[]): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync(command, args)
+    const { stdout } = await execFileAsync(command, args, {
+      timeout: 2_000,
+      maxBuffer: 64 * 1024,
+      windowsHide: true
+    })
     return typeof stdout === 'string' ? stdout.trim() : null
   } catch {
     return null
@@ -18,7 +23,30 @@ async function execFileOutput(command: string, args: string[]): Promise<string |
 }
 
 class DesktopWallpaperAdapter implements WallpaperAdapter {
+  private cache: { path: string | null; expiresAt: number } | null = null
+  private inFlight: Promise<string | null> | null = null
+
   async getDesktopWallpaperPath(): Promise<string | null> {
+    if (this.cache && Date.now() < this.cache.expiresAt) return this.cache.path
+
+    if (!this.inFlight) {
+      this.inFlight = this.resolveDesktopWallpaperPath()
+        .catch(() => null)
+        .then((path) => {
+          // Cache absence/failure too, otherwise an unavailable desktop spawns a query per caller.
+          this.cache = { path, expiresAt: Date.now() + WALLPAPER_CACHE_TTL_MS }
+          return path
+        })
+        .finally(() => {
+          this.inFlight = null
+        })
+    }
+
+    // Cold reads share one query. Warm readers never wait on an OS refresh.
+    return this.cache ? this.cache.path : await this.inFlight
+  }
+
+  private async resolveDesktopWallpaperPath(): Promise<string | null> {
     const resolver = withOSAdapter<void, Promise<string | null>>({
       win32: () => this.getWindowsWallpaperPath(),
       darwin: () => this.getMacOSWallpaperPath(),

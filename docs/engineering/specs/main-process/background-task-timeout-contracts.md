@@ -163,6 +163,18 @@ run a second native worker first or fall back to native recognition on main.
   exit after the N-API callback has unwound (`setImmediate`, not inline exit).
 - Settle once. Late frames cannot turn timeout/abort into success; an observed
   failing/exited child must not receive a second kill.
+- Image preparation stays inside the OCR child. Inputs longer than 2000 pixels on
+  either axis are resized proportionally (never enlarged); smaller inputs retain
+  their original bytes. Sharp resizing uses one thread in this one-shot process.
+  Native layout boxes are mapped back with the actual per-axis pixel ratios,
+  including integer rounding, before replying. Clipboard originals are untouched.
+- Background `OcrService` admission is serial, with at least 10 seconds between
+  starts and at least 5 seconds after each job settles (success or failure).
+  All enqueue/start/poll paths use the same gate, before selecting a pending job
+  or incrementing attempts. The existing five-second dispatcher poll resumes
+  work; completion does not immediately drain the next job or add another timer.
+  Rate-limited jobs remain pending in SQLite; they are not discarded or charged
+  another attempt. This is a background queue policy, not a global manual OCR quota.
 
 ### 4. Validation & Error Matrix
 
@@ -201,6 +213,14 @@ run a second native worker first or fall back to native recognition on main.
   `SIGABRT`, the same main PID returned the same text in a new child in 175 ms.
   This proves normal recognition and post-fault recovery; one slow first sample
   does not establish a per-request cold-start cost. The default deadline stays 30 s.
+- 2026-10-14 input-bound smoke reduced a real 4000×2000 PNG to 2000×1000 and
+  retained the same Buffer for an already-bounded image. Native recognition in
+  the isolated Node host did not establish a quality or speed improvement: the
+  original-size control failed with Apple Vision `CRImageReaderError`; bounded
+  synthetic and real screenshot requests exceeded the 30-second ceiling. No
+  second Electron instance was launched alongside the user's default-profile app.
+  Do not interpret the pixel limit as proof of unchanged recognition accuracy or
+  a measured reduction in Activity Monitor energy impact.
 
 ### 7. Wrong vs Correct
 
@@ -211,6 +231,23 @@ await workerNativeOcr().catch(() => recognizeImageText(options))
 // Correct: provider selection stays authoritative; native OCR lives in a child.
 await recognizeImageTextIsolated(options, { timeoutMs, signal })
 ```
+
+## Desktop wallpaper reads: cache absence and merge refreshes
+
+`DesktopWallpaperAdapter.getDesktopWallpaperPath()` shares one in-flight OS
+query on cold reads. Cache both paths and `null` for 60 seconds from completion.
+Expired warm reads return the previous value immediately while one shared query
+refreshes it. The next request sees the refreshed result; no background polling
+is added, and a system wallpaper change may remain stale until a subsequent read.
+
+Platform commands remain asynchronous, with a two-second deadline and 64 KiB
+output bound. Command failures cache `null` too, preventing retries per UI caller.
+The IPC response shape and platform path parsing are unchanged.
+
+macOS live smoke: three cold callers shared one `osascript` query (~226 ms),
+100 cached reads took ~0.04 ms total, and two expired-cache reads returned stale
+data while sharing one refresh. This machine returned no available wallpaper
+path; successful-path replacement is covered separately by deterministic tests.
 
 ## PollingService: bounded by default
 

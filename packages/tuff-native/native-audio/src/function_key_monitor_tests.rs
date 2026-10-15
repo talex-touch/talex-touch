@@ -222,12 +222,12 @@ fn escape_projects_down_up_and_invalidates_fn_before_its_own_projection() {
 }
 
 #[test]
-fn escape_capture_suppresses_escape_edges_only_when_enabled() {
+fn escape_is_observed_globally_and_never_suppressed() {
     let escape_down = MonitorInput::KeyDown { key_code: 53 };
     let escape_up = MonitorInput::KeyUp { key_code: 53 };
 
-    assert!(should_suppress_escape(true, escape_down));
-    assert!(should_suppress_escape(true, escape_up));
+    assert!(!should_suppress_escape(true, escape_down));
+    assert!(!should_suppress_escape(true, escape_up));
     assert!(!should_suppress_escape(false, escape_down));
     assert!(!should_suppress_escape(false, escape_up));
 }

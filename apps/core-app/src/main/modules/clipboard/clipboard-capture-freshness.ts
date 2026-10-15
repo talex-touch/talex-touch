@@ -153,8 +153,16 @@ export class ClipboardHelper {
     if (!image || image.isEmpty()) return ''
 
     const size = image.getSize()
-    const tiny = image.resize({ width: 16, height: 16 })
-    const fingerprint = tiny.toDataURL().substring(0, 200)
+    const tiny = image.resize({ width: 16, height: 16 }) as unknown as {
+      getBitmap?: () => Buffer
+      toDataURL?: () => string
+    }
+    const fingerprint =
+      typeof tiny?.getBitmap === 'function'
+        ? tiny.getBitmap()
+        : typeof tiny?.toDataURL === 'function'
+          ? tiny.toDataURL().substring(0, 200)
+          : ''
     return `${size.width}x${size.height}:${crypto.createHash('sha1').update(fingerprint).digest('hex')}`
   }
 
@@ -177,8 +185,19 @@ export class ClipboardHelper {
     return `${files.length}:${digest.digest('hex')}`
   }
 
-  public getImageQuickSignature(image: NativeImage | null | undefined): string {
+  public getImageQuickSignature(
+    image: NativeImage | null | undefined,
+    rawPng?: Buffer | null
+  ): string {
     if (!image || image.isEmpty()) return ''
+    if (rawPng && rawPng.length > 0) {
+      const size = image.getSize()
+      const edge = 256
+      const head = rawPng.subarray(0, edge)
+      const tail = rawPng.length > edge ? rawPng.subarray(-edge) : Buffer.alloc(0)
+      const digest = crypto.createHash('sha1').update(head).update(tail).digest('hex')
+      return `${size.width}x${size.height}:${rawPng.length}:${digest}`
+    }
     return this.getImageHash(image)
   }
 

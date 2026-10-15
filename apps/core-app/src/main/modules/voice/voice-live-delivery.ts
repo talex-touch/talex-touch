@@ -63,23 +63,35 @@ export interface LiveDeliverySink {
   /** Types one delta. Never pastes: a paste per partial would thrash the clipboard. */
   (delta: string): Promise<VoiceDeliveryResult>
 }
+export interface LiveDeliveryOptions {
+  /**
+   * Speculative prediction margin in code points (WeChat aggressiveResultLen algorithm).
+   * When configured, the engine speculatively commits up to (len - margin)
+   * without waiting for consecutive identical partials.
+   */
+  aggressiveMargin?: number
+}
 
 export interface LiveDelivery {
-  /** Offer the newest partial. Delivers whatever it and the previous one agree on. */
-  offerPartial: (partial: string) => Promise<void>
+  /** Offer the newest partial. Delivers whatever it and the previous one agree on, or using frozenOffset. */
+  offerPartial: (partial: string, frozenOffset?: number) => Promise<void>
   /** Deliver the remainder of a finished segment and report how the last write went. */
   finish: (finalText: string) => Promise<VoiceDeliveryResult>
   /** The exact concatenation of successfully typed deltas. Never rewinds. */
   delivered: () => string
+  /** The currently acknowledged/frozen prefix length. */
+  frozenOffset: () => number
 }
-
-export function createLiveDelivery(send: LiveDeliverySink): LiveDelivery {
+export function createLiveDelivery(
+  send: LiveDeliverySink,
+  options?: LiveDeliveryOptions
+): LiveDelivery {
   let delivered = ''
   let previousPartial = ''
+  let maxFrozenOffset = 0
   let lastResult: VoiceDeliveryResult = { method: 'none', reason: 'empty' }
   /** One failed write stops the session: past that point the target is not listening. */
   let broken = false
-
   async function advanceTo(target: string): Promise<VoiceDeliveryResult> {
     if (broken) return lastResult
     const offset = committedPrefixEnd(delivered, target)
@@ -96,11 +108,31 @@ export function createLiveDelivery(send: LiveDeliverySink): LiveDelivery {
       return lastResult
     }
     delivered += delta
+    maxFrozenOffset = Math.max(maxFrozenOffset, delivered.length)
     return lastResult
   }
 
   return {
-    async offerPartial(partial: string): Promise<void> {
+    async offerPartial(partial: string, frozenOffset?: number): Promise<void> {
+      if (typeof frozenOffset === 'number' && frozenOffset >= 0) {
+        const safeOffset = Math.min(frozenOffset, partial.length)
+        previousPartial = partial
+        await advanceTo(partial.slice(0, safeOffset))
+        return
+      }
+      if (typeof options?.aggressiveMargin === 'number' && options.aggressiveMargin >= 0) {
+        const margin = options.aggressiveMargin
+        const eagerEnd = Math.max(0, codePoints(partial).length - margin)
+        const eagerTarget = codePoints(partial).slice(0, eagerEnd).join('')
+        const agreed = commonPrefix(previousPartial, partial)
+        previousPartial = partial
+        const target =
+          eagerTarget.length > agreed.length && eagerTarget.startsWith(agreed)
+            ? eagerTarget
+            : agreed
+        await advanceTo(target)
+        return
+      }
       const agreed = commonPrefix(previousPartial, partial)
       previousPartial = partial
       await advanceTo(agreed)
@@ -111,6 +143,7 @@ export function createLiveDelivery(send: LiveDeliverySink): LiveDelivery {
       return advanceTo(finalText)
     },
 
-    delivered: () => delivered
+    delivered: () => delivered,
+    frozenOffset: () => maxFrozenOffset
   }
 }

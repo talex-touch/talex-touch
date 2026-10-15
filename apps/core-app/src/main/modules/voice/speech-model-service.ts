@@ -137,8 +137,30 @@ function verifyServedDigest(body: string, header: string | undefined): void {
     )
 }
 
-export async function fetchSpeechCatalog(): Promise<ParsedSpeechModelCatalog> {
+let cachedSpeechCatalog: {
+  catalog: ParsedSpeechModelCatalog
+  expiresAt: number
+  baseUrl: string
+} | null = null
+const SPEECH_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+export function clearSpeechCatalogCache(): void {
+  cachedSpeechCatalog = null
+}
+
+export async function fetchSpeechCatalog(options?: {
+  bypassCache?: boolean
+}): Promise<ParsedSpeechModelCatalog> {
   const baseUrl = getRuntimeNexusBaseUrl()
+  const now = Date.now()
+  if (
+    !options?.bypassCache &&
+    cachedSpeechCatalog &&
+    cachedSpeechCatalog.baseUrl === baseUrl &&
+    now < cachedSpeechCatalog.expiresAt
+  ) {
+    return cachedSpeechCatalog.catalog
+  }
   let response: NexusResponsePayload | null
   try {
     response = await performNexusRequestWithAuth(
@@ -212,7 +234,9 @@ export async function fetchSpeechCatalog(): Promise<ParsedSpeechModelCatalog> {
 
   try {
     verifyServedDigest(response.body, response.headers['x-content-sha256'])
-    return parseSpeechModelCatalog(JSON.parse(response.body))
+    const catalog = parseSpeechModelCatalog(JSON.parse(response.body))
+    cachedSpeechCatalog = { catalog, expiresAt: Date.now() + SPEECH_CATALOG_CACHE_TTL_MS, baseUrl }
+    return catalog
   } catch (error) {
     throw new SpeechCatalogClientError(
       VOICE_SPEECH_CATALOG_ERROR_CODES.invalid,
