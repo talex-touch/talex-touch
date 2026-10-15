@@ -37,6 +37,72 @@ code: |
 ---
 ::
 
+### 排序
+数字与日期列自动可排序，其他列用 `sortable` 开启；`defaultSort` 设初始排序，`sortCycle` 决定第三次点击是否取消。
+::TuffDemoWrapper{demo="DataTableSortingDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  const columns = [
+    { key: 'title', title: 'Track', sortable: true },
+    { key: 'artist', title: 'Artist' },
+    { key: 'duration', title: 'Length', type: 'number', format: formatDuration },
+    { key: 'plays', title: 'Plays', type: 'number' },
+    { key: 'releasedAt', title: 'Released', type: 'date' },
+  ]
+  </script>
+
+  <template>
+    <TxDataTable
+      :columns="columns"
+      :data="rows"
+      row-key="id"
+      :default-sort="{ key: 'plays', order: 'desc' }"
+      sort-cycle="bi"
+      @update:sort="sort = $event"
+    />
+  </template>
+---
+::
+
+### 筛选
+`filter: true` 按列类型给出文本搜索、标签多选、数值区间或日期预设；`filter-<key>` 插槽换成自定义面板，`v-model:filter` 让父级持有筛选状态。
+::TuffDemoWrapper{demo="DataTableFiltersDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  const filter = ref({})
+
+  const columns = [
+    { key: 'title', title: 'Track', filter: true },
+    { key: 'artist', title: 'Artist', type: 'tag', filter: true },
+    { key: 'duration', title: 'Length', type: 'number', filter: true },
+    { key: 'plays', title: 'Plays', type: 'number', filter: true },
+    { key: 'updatedAt', title: 'Updated', type: 'datetime', filter: true },
+  ]
+
+  // A preset writes the { min, max } shape a number column already filters by.
+  const RANGES = { short: { max: 180 }, mid: { min: 180, max: 240 }, long: { min: 240 } }
+  </script>
+
+  <template>
+    <TxDataTable v-model:filter="filter" :columns="columns" :data="rows" :labels="labels" row-key="id">
+      <template #filter-duration="{ filterValue, setFilter, close }">
+        <TxFlatRadio
+          :model-value="bucketOf(filterValue)"
+          @update:model-value="value => { setFilter(RANGES[value]); close() }"
+        >
+          <TxFlatRadioItem value="all" label="All" />
+          <TxFlatRadioItem value="short" label="Under 3 min" />
+          <TxFlatRadioItem value="mid" label="3–4 min" />
+          <TxFlatRadioItem value="long" label="Over 4 min" />
+        </TxFlatRadio>
+      </template>
+    </TxDataTable>
+  </template>
+---
+::
+
 ### 行选择
 `selectable` 增加选择列，`v-model:selected-keys` 同步选中行。
 ::TuffDemoWrapper{demo="DataTableDataTableSelectableDemo" code-lang="vue"}
@@ -49,24 +115,6 @@ code: |
       :data="data"
       row-key="id"
       selectable
-    />
-  </template>
----
-::
-
-### 骨架加载
-`loadingVariant="skeleton"` 在无行时画骨架行；已有行时刷新，只在表头下显示进度条。
-::TuffDemoWrapper{demo="DataTableSkeletonLoadingDemo" code-lang="vue"}
----
-code: |
-  <template>
-    <TxDataTable
-      :columns="columns"
-      :data="rows"
-      :loading="loading"
-      loading-variant="skeleton"
-      :skeleton-rows="pageSize"
-      row-key="id"
     />
   </template>
 ---
@@ -88,6 +136,74 @@ code: |
     >
       <template #expanded="{ row }">
         {{ row.note }}
+      </template>
+    </TxDataTable>
+  </template>
+---
+::
+
+### 列宽自适应
+未声明宽度的不换行列贴合内容，其余列分走剩余宽度；操作列默认固定在右侧，放不下时横向滚动。
+::TuffDemoWrapper{demo="DataTableColumnWidthsDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  // No column declares a width; the one that wraps gets a floor.
+  const columns = [
+    { key: 'code', title: 'Code', fixed: 'left', nowrap: true },
+    { key: 'title', title: 'Track', minWidth: 160 },
+    { key: 'artist', title: 'Artist', type: 'tag' },
+    { key: 'plays', title: 'Plays', type: 'number' },
+    { key: 'source', title: 'Source', type: 'source' },
+    { key: 'actions', title: 'Actions' },
+  ]
+  </script>
+
+  <template>
+    <TxDataTable :columns="columns" :data="rows" row-key="id" selectable scroll-x>
+      <template #cell-actions>
+        <TxButton variant="secondary" size="sm">Edit</TxButton>
+        <TxIconButton icon="i-carbon-overflow-menu-horizontal" size="sm" label="More" />
+      </template>
+    </TxDataTable>
+  </template>
+---
+::
+
+### 加载状态
+`loadingVariant` 选择遮罩、骨架或光带；骨架与光带只在没有行时画占位行，刷新时保留已有的行。
+::TuffDemoWrapper{demo="DataTableSkeletonLoadingDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <!-- variant: 'overlay' | 'skeleton' | 'shimmer' -->
+    <TxDataTable
+      :columns="columns"
+      :data="rows"
+      :loading="loading"
+      :loading-variant="variant"
+      :skeleton-rows="pageSize"
+      row-key="id"
+    />
+  </template>
+---
+::
+
+### 空状态
+`#empty` 插槽替换无行时的空状态，可以放说明和操作；只改文案时传 `emptyText`。
+::TuffDemoWrapper{demo="DataTableEmptyStateDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <TxDataTable :columns="columns" :data="visibleRows" row-key="id">
+      <template #empty>
+        <TxEmptyState
+          variant="search-empty"
+          size="small"
+          :title="`No tracks match “${query}”`"
+          :primary-action="{ label: 'Clear search', variant: 'secondary' }"
+          @primary="query = ''"
+        />
       </template>
     </TxDataTable>
   </template>
@@ -161,11 +277,13 @@ code: |
 ### 最佳实践
 
 - 业务列表传稳定的 `rowKey`；跨页保留选择时用业务 id 驱动 `selectedKeys`，不依赖默认的 index。
-- 服务端加载的列表用 `loadingVariant="skeleton"`，并把 `skeletonRows` 设为每页条数；本地短暂等待用默认的 `overlay`。
-- 固定列给数值 px 的 `width` / `minWidth`；横向滚动只保留一层：开 `scrollX`，或外包 `overflow-x: auto`。
+- 服务端加载的列表用 `loadingVariant="skeleton"` 或 `"shimmer"`，并把 `skeletonRows` 设为每页条数；本地短暂等待用默认的 `overlay`。
+- 列宽交给内容：不换行的列不声明宽度即可贴合，会换行的长文本列给 `minWidth` 作为换行下限。
+- 固定列的偏移按实际列宽测量；同一侧固定多列时给数值 `width`，首帧与服务端渲染才能对齐。横向滚动只保留一层：开 `scrollX`，或外包 `overflow-x: auto`。
 - 吸顶、吸底需要 `maxHeight` 或已有滚动祖先；不要放进默认模式的 `TxScroll`，transform 滚动会让 sticky 失效。
 - 按时间戳、序号等可比较字段排序，不按格式化后的相对时间文本排序。
-- 远程筛选设置 `filterOnClient=false`，结合分页处理 `filterChange`；受控 `filter` 的状态归父级所有。
+- 远程筛选设置 `filterOnClient=false`，结合分页处理 `filterChange`，标签选项的行数通过 `filterOptions` 的 `count` 传入；受控 `filter` 的状态归父级所有。
+- 筛选控件默认显示英文；中文界面传 `labels`，可用的键见 `DATA_TABLE_DEFAULT_LABELS`。
 - `date` 列把 `YYYY-MM-DD` 作为本地日历日期；`datetime` 保留带时区值的真实时间点。`today` 的上界为下一个本地午夜，包含夏令时切换。
 
 ## API 参考
@@ -178,8 +296,8 @@ code: |
 | `data` | `any[]` | `[]` | 数据源。 |
 | `rowKey` | `keyof T \| (row: T, index: number) => string \| number` | `index` | 行唯一标识。 |
 | `loading` | `boolean` | `false` | 加载状态。 |
-| `loadingVariant` | `'overlay' \| 'skeleton'` | `'overlay'` | `overlay` 盖遮罩与转圈；`skeleton` 画骨架行，已有行时只显示进度条。 |
-| `skeletonRows` | `number` | `5` | 首批数据到达前的骨架行数；设为每页条数，到达时不跳动。 |
+| `loadingVariant` | `'overlay' \| 'skeleton' \| 'shimmer'` | `'overlay'` | `overlay` 盖遮罩与转圈；`skeleton` 画骨架行，已有行时只显示进度条；`shimmer` 让光带逐行扫过占位行或已有的行。 |
+| `skeletonRows` | `number` | `5` | `skeleton` 与 `shimmer` 在首批数据到达前的占位行数；设为每页条数，到达时不跳动。高度由宿主决定时，占位行补到表格底部。 |
 | `emptyText` | `string` | `'No data'` | 空数据提示。 |
 | `striped` | `boolean` | `false` | 斑马纹。 |
 | `bordered` | `boolean` | `false` | 表格边框。 |
@@ -209,6 +327,7 @@ code: |
 | `filter` | `DataTableFilterState` | - | 按列 key 的受控筛选值，可绑定 `v-model:filter`。 |
 | `filterOnClient` | `boolean` | `true` | 默认本地筛选；`false` 时由调用方获取匹配行。 |
 | `autoStickyActions` | `boolean` | `true` | 默认将操作列固定到右侧；列上显式 `fixed` 优先。 |
+| `labels` | `Partial<DataTableLabels>` | - | 筛选控件的文案；只传要替换的键，其余保持英文默认值。 |
 
 ### 事件
 
@@ -230,7 +349,7 @@ code: |
 |------|------|
 | `header-<columnKey>` | 自定义表头；接收 `{ column, sorted, order, toggle }`，`toggle` 按排序循环推进该列。 |
 | `cell-<columnKey>` | 自定义单元格；接收 `{ row, column, value, index }`。 |
-| `filter-<columnKey>` | 自定义筛选器，接收 `{ column, filterValue, setFilter, clearFilter }`。 |
+| `filter-<columnKey>` | 自定义筛选面板，接收 `{ column, filterValue, setFilter, clearFilter, close }`；`close` 关闭面板。 |
 | `expanded` | 展开详情，横跨全部列；接收 `{ row, index }`。 |
 | `footer` | 整行汇总，自行提供可跨列的 `<td>`；有任一 footer 插槽才渲染 `<tfoot>`。 |
 | `footer-<columnKey>` | 按列填充汇总单元格；接收 `{ column, data }`，与 `footer` 同在时以 `footer` 为准。 |
@@ -244,35 +363,54 @@ code: |
 | `title` | `string` | 表头文本。 |
 | `type` | `'text' \| 'number' \| 'datetime' \| 'date' \| 'tag' \| 'source' \| 'actions'` | 语义展示、排序与筛选；单元格插槽和 `format` 优先。 |
 | `dataIndex` | `string` | 数据字段名。 |
-| `width` | `string \| number` | 列宽。 |
+| `width` | `string \| number` | 列宽；不声明时，不换行的列贴合内容，其余列分走剩余宽度。 |
 | `minWidth` | `string \| number` | 列最小宽度。 |
 | `maxWidth` | `string \| number` | 列最大宽度。 |
 | `auto` | `boolean` | 强制列宽为 `auto`。 |
-| `fixed` | `boolean \| 'left' \| 'right'` | 固定方向，`true` 即 `'left'`；左固定偏移已计入展开列与选择列。 |
+| `fixed` | `boolean \| 'left' \| 'right'` | 固定方向，`true` 即 `'left'`；偏移按实际列宽测量，左侧已计入展开列与选择列。 |
 | `nowrap` | `boolean` | 当前列不换行。 |
 | `align` | `'left' \| 'center' \| 'right'` | 对齐方式。 |
 | `sortable` | `boolean` | 可排序。 |
 | `sorter` | `(a, b) => number` | 自定义排序器。 |
 | `filter` | `boolean` | 增加匹配类型的表头筛选器，默认关闭。 |
-| `filterOptions` | `DataTableFilterOption[]` | 自定义标签筛选选项，含 `label`、`value` 与可选 `tone`。 |
+| `filterOptions` | `DataTableFilterOption[]` | 自定义标签筛选选项，含 `label`、`value`，可选 `tone` 与 `count`（选项旁显示的行数）。 |
 | `format` | `(value, row, index) => string` | 默认文本格式化。 |
 | `headerClass` | `string` | 表头 class。 |
 | `cellClass` | `string` | 单元格 class。 |
 
+### DataTableLabels
+
+| 键 | 默认值 | 说明 |
+|------|------|------|
+| `filter` | `'Filter {column}'` | 筛选按钮的可访问名称，`{column}` 替换为列标题。 |
+| `filterAll` | `'All'` | 清除标签筛选的选项。 |
+| `filterAnyTime` | `'Any time'` | 清除日期筛选的选项。 |
+| `filterToday` | `'Today'` | 日期预设：今天。 |
+| `filterLast3Days` | `'Last 3 days'` | 日期预设：近 3 天。 |
+| `filterLast7Days` | `'Last 7 days'` | 日期预设：近 7 天。 |
+| `filterLast30Days` | `'Last 30 days'` | 日期预设：近 30 天。 |
+| `filterSearch` | `'Search'` | 文本筛选与长标签列表搜索框的占位文本。 |
+| `filterMin` | `'Min'` | 数值区间下限。 |
+| `filterMax` | `'Max'` | 数值区间上限。 |
+| `filterReset` | `'Reset'` | 清空数值区间。 |
+| `filterApply` | `'Done'` | 关闭数值区间面板。 |
+
 ## 概述
 
 - `sort`、`expandedKeys` 一经传入（含 `null`、`[]`）即受控：组件只派发更新事件，渲染父级回传的值。
-- `filter` 一经传入也为受控。标签可传单值或多值数组，数值使用 `{ min, max }`，日期使用 `today`、`3d`、`7d`、`30d` 或时间戳 `{ start, end }`；文本筛选由自定义筛选插槽或受控状态驱动。
+- `filter` 一经传入也为受控。标签可传单值或多值数组，数值使用 `{ min, max }`，日期使用 `today`、`3d`、`7d`、`30d` 或时间戳 `{ start, end }`；文本列按不区分大小写的包含关系匹配。
+- 标签筛选的选项来自数据时，本地筛选会给每项标出行数；选项达到 8 个时面板顶部出现搜索框。
 - 可排序表头带 `scope="col"` 与 `aria-sort`，点击、Enter、Space 按 `sortCycle` 循环。
 - 部分选中时全选框为 `indeterminate`（`aria-checked="mixed"`）；选择与展开单元格的点击不触发 `rowClick`。
-- `loading` 在 `<table>` 上设置 `aria-busy`，加载期间不显示空状态。
-- 骨架行 `aria-hidden`，与单行文本行等高；刷新进度条在减少动态效果时静止。
+- `loading` 在 `<table>` 上设置 `aria-busy`，加载期间不显示空状态；`overlay` 只盖住表格的可见区域，没有行时表格保持空状态的高度。
+- 占位行 `aria-hidden`，与单行文本行等高；减少动态效果时，刷新进度条静止，光带改为静止的浅色底。
 - 开启 `stickyHeader`、`stickyFooter` 或 `maxHeight` 时改用 `border-collapse: separate`；末行不画下边框，`tfoot` 上方的分隔线保留。
 
 ## 技术实现
 
 - 骨架变体渲染 `TxSkeleton`：按需样式插件会一并加载；手动引入样式时另引 `@talex-touch/tuffex/skeleton/style.css`。
-- 语义默认值、筛选和排序共用内部 `useDataTableData`；筛选面板使用 `TxPopover`，Teleport 后仍由组件的 BEM 样式控制。
+- 语义默认值、筛选和排序共用内部 `useDataTableData`；列宽、固定列偏移、遮罩高度与光带位置由内部 `useDataTableLayout` 测量。
+- 标签与日期筛选使用 `TxDropdownMenu` / `TxDropdownItem`，数值与文本筛选使用 `TxPopover`；面板 Teleport 后仍由组件的 BEM 样式控制。
 - 源码：`packages/tuffex/packages/components/src/data-table/`。
 
 <TuffDocSourceLink />

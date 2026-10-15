@@ -19,6 +19,12 @@ export interface DataTableFilterOption {
   label: string
   value: unknown
   tone?: string
+  /**
+   * Rows behind the option, shown beside its label. Options gathered from the
+   * rows count themselves while filtering runs on the client; pass it for
+   * server-side counts.
+   */
+  count?: number
 }
 
 export type DataTableFilterState = Record<string, unknown>
@@ -34,12 +40,54 @@ export type DataTableSortCycle = 'tri' | 'bi'
 /**
  * What `loading` draws.
  *
- * - `overlay`: a blurred veil and a spinner over the whole table, rows or not.
+ * - `overlay`: a blurred veil and a spinner over the visible table, rows or not.
  * - `skeleton`: placeholder rows shaped like the columns while there are no rows
  *   yet; once rows exist they stay as they are, and a thin bar under the header
  *   says a refresh is running.
+ * - `shimmer`: a band of light sweeps across each row in turn — over placeholder
+ *   rows before the first rows land, over the rows themselves during a refresh.
  */
-export type DataTableLoadingVariant = 'overlay' | 'skeleton'
+export type DataTableLoadingVariant = 'overlay' | 'skeleton' | 'shimmer'
+
+/**
+ * Every string the table renders around the data. TuffEx owns no message
+ * catalog, so a host localizes by passing the slice it needs through `labels`.
+ */
+export interface DataTableLabels {
+  /** Accessible name of a column's filter button; `{column}` becomes the column title. */
+  filter: string
+  /** Option that clears a tag filter. */
+  filterAll: string
+  /** Option that clears a date filter. */
+  filterAnyTime: string
+  filterToday: string
+  filterLast3Days: string
+  filterLast7Days: string
+  filterLast30Days: string
+  /** Placeholder of the text filter, and of the option search a long tag filter gets. */
+  filterSearch: string
+  filterMin: string
+  filterMax: string
+  /** Clears a number range. */
+  filterReset: string
+  /** Closes a number range. */
+  filterApply: string
+}
+
+export const DATA_TABLE_DEFAULT_LABELS: DataTableLabels = {
+  filter: 'Filter {column}',
+  filterAll: 'All',
+  filterAnyTime: 'Any time',
+  filterToday: 'Today',
+  filterLast3Days: 'Last 3 days',
+  filterLast7Days: 'Last 7 days',
+  filterLast30Days: 'Last 30 days',
+  filterSearch: 'Search',
+  filterMin: 'Min',
+  filterMax: 'Max',
+  filterReset: 'Reset',
+  filterApply: 'Done',
+}
 
 /**
  * Class contribution for a row: anything Vue's `class` binding accepts.
@@ -57,6 +105,20 @@ export interface DataTableHeaderSlotProps<T = any> {
   order: DataTableSortOrder
   /** Advances this column through the configured sort cycle. */
   toggle: () => void
+}
+
+/**
+ * Scope handed to a `filter-<key>` slot, which replaces the column's built-in
+ * filter panel.
+ */
+export interface DataTableFilterSlotProps<T = any> {
+  column: DataTableColumn<T>
+  /** This column's entry in the active filter state. */
+  filterValue: unknown
+  setFilter: (value: unknown) => void
+  clearFilter: () => void
+  /** Closes the panel. */
+  close: () => void
 }
 
 export interface DataTableColumn<T = any> {
@@ -96,14 +158,17 @@ export interface DataTableProps<T = any> {
   rowKey?: DataTableRowKey<T>
   loading?: boolean
   /**
-   * How `loading` is drawn. `skeleton` renders placeholder rows only while there
-   * is no row to show, and keeps existing rows untouched during a refresh.
+   * How `loading` is drawn. `skeleton` and `shimmer` render placeholder rows only
+   * while there is no row to show, and keep existing rows in place during a
+   * refresh.
    * @default 'overlay'
    */
   loadingVariant?: DataTableLoadingVariant
   /**
-   * Placeholder rows drawn by the `skeleton` variant before the first rows land.
-   * Match it to the page size so nothing moves when the data arrives.
+   * Placeholder rows drawn by the `skeleton` and `shimmer` variants before the
+   * first rows land. Match it to the page size so nothing moves when the data
+   * arrives. A table whose height is set by its host adds rows until the
+   * placeholders reach its bottom edge.
    * @default 5
    */
   skeletonRows?: number
@@ -222,6 +287,11 @@ export interface DataTableProps<T = any> {
    * @default true
    */
   autoStickyActions?: boolean
+  /**
+   * Text for the filter controls. Pass only the strings to replace; the rest
+   * keep their English defaults (see `DATA_TABLE_DEFAULT_LABELS`).
+   */
+  labels?: Partial<DataTableLabels>
 }
 
 export interface DataTableEmits<T = any> {

@@ -140,7 +140,7 @@ describe('txDataTable loading variants', () => {
 
   it('treats an unknown variant as the overlay, so the table still reads as busy', () => {
     const wrapper = mount(TxDataTable, {
-      props: { columns, data: [], loading: true, loadingVariant: 'shimmer' as never },
+      props: { columns, data: [], loading: true, loadingVariant: 'pulse' as never },
     })
     expect(wrapper.find('.tx-data-table__loading').exists()).toBe(true)
     expect(wrapper.findAll(skeletonRows)).toHaveLength(0)
