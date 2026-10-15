@@ -70,6 +70,19 @@ export interface DropdownItemProps {
   closeOnSelect?: boolean
   /** Per-item override of the menu-level activation feedback. */
   activationFeedback?: boolean
+  /**
+   * Makes the row checkable: it becomes a `menuitemcheckbox` (or
+   * `menuitemradio`, see `checkType`) whose `aria-checked` follows this value,
+   * and a check mark sits at the right edge while it is `true`. Left unset, the
+   * row stays a plain command.
+   */
+  checked?: boolean
+  /**
+   * The role a checkable row takes: `checkbox` for an independent toggle,
+   * `radio` for one choice out of a group.
+   * @default 'checkbox'
+   */
+  checkType?: 'checkbox' | 'radio'
 }
 
 export interface DropdownSubmenuProps {

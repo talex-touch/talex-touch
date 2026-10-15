@@ -205,6 +205,8 @@ code: |
 | `arrow` | `boolean` | `false` | 没有 `right` 插槽时显示右侧箭头。 |
 | `closeOnSelect` | `boolean` | `undefined` | 逐项覆盖菜单级 `closeOnSelect`。 |
 | `activationFeedback` | `boolean` | `undefined` | 逐项覆盖菜单级确认反馈。 |
+| `checked` | `boolean` | `undefined` | 传入（含 `false`）即为可勾选行：角色变为 `menuitemcheckbox` 或 `menuitemradio`，`aria-checked` 跟随此值；为 `true` 时标签变为强调色，右侧显示勾选标记。 |
+| `checkType` | `'checkbox' \| 'radio'` | `'checkbox'` | 可勾选行的角色：`checkbox` 为独立开关，`radio` 为一组中的单选。 |
 
 #### 事件
 
@@ -217,7 +219,7 @@ code: |
 | 插槽名 | 参数 | 说明 |
 |------|------|------|
 | `default` | - | 主标签。 |
-| `right` | - | 替换 `arrow` 生成的右侧箭头。 |
+| `right` | - | 替换 `arrow` 生成的右侧箭头；可勾选行的勾选标记排在其后。 |
 
 ### TxDropdownSubmenu
 

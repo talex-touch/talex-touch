@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DropdownItemProps, DropdownMenuContext } from './types'
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import { useMenuActivationFeedback } from '../../../../utils/menu-activation-feedback'
 import TxCardItem from '../../card-item/src/TxCardItem.vue'
 import TxIcon from '../../icon/src/TxIcon.vue'
@@ -14,6 +14,8 @@ const props = withDefaults(defineProps<DropdownItemProps>(), {
   arrow: false,
   closeOnSelect: undefined,
   activationFeedback: undefined,
+  checked: undefined,
+  checkType: 'checkbox',
 })
 
 const emit = defineEmits<{
@@ -29,6 +31,10 @@ const { activate, phase: activationPhase } = useMenuActivationFeedback({
   onClose: () => ctx?.close(),
 })
 
+// `checked` set at all — even to false — is what makes the row checkable, so an
+// unchecked option still announces itself as one and keeps its check column.
+const checkable = computed(() => props.checked !== undefined)
+
 function onClick() {
   if (props.disabled)
     return
@@ -43,11 +49,14 @@ function onClick() {
     :class="{
       'is-disabled': disabled,
       'is-danger': danger,
+      'is-checkable': checkable,
+      'is-checked': checked === true,
       'is-activation-feedback': activationPhase !== 'idle',
       'is-activation-clear': activationPhase === 'clear',
       'is-activation-confirm': activationPhase === 'confirm',
     }"
-    role="menuitem"
+    :role="checkable ? `menuitem${checkType}` : 'menuitem'"
+    :aria-checked="checkable ? String(checked) : undefined"
     :clickable="true"
     :active="activationPhase === 'confirm'"
     :disabled="disabled"
@@ -58,10 +67,17 @@ function onClick() {
       <slot />
     </template>
 
-    <template v-if="$slots.right || arrow" #right>
+    <template v-if="$slots.right || arrow || checkable" #right>
       <slot name="right">
-        <TxIcon name="chevron-down" class="tx-dropdown-item__arrow" aria-hidden="true" />
+        <TxIcon v-if="arrow" name="chevron-down" class="tx-dropdown-item__arrow" aria-hidden="true" />
       </slot>
+      <!-- The column stays reserved while unchecked, so toggling a row moves
+           nothing and the marks of a group line up. -->
+      <span v-if="checkable" class="tx-dropdown-item__check" aria-hidden="true">
+        <svg v-show="checked" viewBox="0 0 24 24" width="16" height="16">
+          <path fill="currentColor" d="M10 15.172L19.192 5.979L20.607 7.393L10 18L3.636 11.636L5.05 10.222L10 15.172Z" />
+        </svg>
+      </span>
     </template>
   </TxCardItem>
 </template>
@@ -99,6 +115,18 @@ function onClick() {
 
 .tx-dropdown-item.is-danger :deep(.tx-card-item__title) {
   color: var(--tx-color-danger, #f56c6c);
+}
+
+// A checked row reads the way a selected TxSelect option does: accent label
+// and an accent check, no filled row, so the hover state stays distinct.
+.tx-dropdown-item.is-checked :deep(.tx-card-item__title),
+.tx-dropdown-item__check {
+  color: var(--tx-color-primary, #409eff);
+}
+
+.tx-dropdown-item__check {
+  display: inline-flex;
+  width: 16px;
 }
 
 .tx-dropdown-item.is-disabled {
