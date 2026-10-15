@@ -239,18 +239,19 @@ describe('txDataTable row expansion', () => {
       expect(selectedCells[1].classes()).toContain('tx-data-table__footer-cell--select')
     })
 
-    it('offsets a fixed-left column past the expand and select columns', () => {
+    it('offsets a fixed-left column past the expand and select columns, which pin with it', () => {
       const fixedColumns = [{ key: 'a', title: 'A', fixed: 'left' as const, width: 100 }]
+      const pinned = (wrapper: VueWrapper) => wrapper.findAll('thead th.is-fixed-left').map(th => th.attributes('style'))
 
       const expandOnly = mount(TxDataTable, {
         props: { columns: fixedColumns, data, rowKey: 'id', expandable: true },
       })
-      expect(expandOnly.find('thead .is-fixed-left').attributes('style')).toContain('left: 40px')
+      expect(pinned(expandOnly)).toEqual(['left: 0px;', expect.stringContaining('left: 40px')])
 
       const withSelection = mount(TxDataTable, {
         props: { columns: fixedColumns, data, rowKey: 'id', expandable: true, selectable: true },
       })
-      expect(withSelection.find('thead .is-fixed-left').attributes('style')).toContain('left: 82px')
+      expect(pinned(withSelection)).toEqual(['left: 0px;', 'left: 40px;', expect.stringContaining('left: 82px')])
     })
   })
 

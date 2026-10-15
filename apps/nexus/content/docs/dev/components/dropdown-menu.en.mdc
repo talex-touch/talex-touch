@@ -205,6 +205,8 @@ code: |
 | `arrow` | `boolean` | `false` | Shows a trailing arrow when there is no `right` slot. |
 | `closeOnSelect` | `boolean` | `undefined` | Per-item override of the menu's `closeOnSelect`. |
 | `activationFeedback` | `boolean` | `undefined` | Per-item override of the menu's confirmation feedback. |
+| `checked` | `boolean` | `undefined` | Passed at all (even `false`), the row becomes checkable: a `menuitemcheckbox` or `menuitemradio` whose `aria-checked` follows this value. While `true`, the label takes the accent color and a check mark sits at the right edge. |
+| `checkType` | `'checkbox' \| 'radio'` | `'checkbox'` | Role of a checkable row: `checkbox` for an independent toggle, `radio` for one choice in a group. |
 
 #### Events
 
@@ -217,7 +219,7 @@ code: |
 | Slot | Props | Description |
 |------|-------|-------------|
 | `default` | - | Main label. |
-| `right` | - | Replaces the trailing arrow drawn by `arrow`. |
+| `right` | - | Replaces the trailing arrow drawn by `arrow`; a checkable row's check mark follows it. |
 
 ### TxDropdownSubmenu
 

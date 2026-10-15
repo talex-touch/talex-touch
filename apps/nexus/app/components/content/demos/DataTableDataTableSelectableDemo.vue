@@ -61,7 +61,7 @@ const data = computed<RowData[]>(() => {
 </script>
 
 <template>
-  <div class="group">
+  <div class="group not-prose">
     <div style="margin-bottom: 10px; font-size: 12px; color: var(--tx-text-color-secondary, #909399);">
       {{ labels.selected }}：{{ selectedKeys.length ? selectedKeys.length : labels.empty }} {{ labels.rows }}
     </div>

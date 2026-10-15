@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { DATA_TABLE_ZH_LABELS } from './data-table-demo-labels'
 
 interface RowData {
   id: number
@@ -10,6 +11,8 @@ interface RowData {
 }
 
 const { locale } = useI18n()
+
+const labels = computed(() => (locale.value === 'zh' ? DATA_TABLE_ZH_LABELS : undefined))
 
 const columns = computed(() => {
   if (locale.value === 'zh') {
@@ -47,7 +50,7 @@ const data = computed<RowData[]>(() => {
 </script>
 
 <template>
-  <div class="group">
-    <TxDataTable :columns="columns" :data="data" striped bordered />
+  <div class="group not-prose">
+    <TxDataTable :columns="columns" :data="data" :labels="labels" striped bordered />
   </div>
 </template>

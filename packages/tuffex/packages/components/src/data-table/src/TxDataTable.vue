@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import type { DataTableColumn, DataTableEmits, DataTableHeaderSlotProps, DataTableKey, DataTableProps, DataTableSortOrder, DataTableSortState } from './types'
-import { computed, getCurrentInstance, ref, useId, useSlots, watch } from 'vue'
+import type { DataTableColumn, DataTableEmits, DataTableHeaderSlotProps, DataTableKey, DataTableLabels, DataTableProps, DataTableSortOrder, DataTableSortState } from './types'
+import { computed, getCurrentInstance, provide, ref, useId, useSlots, watch } from 'vue'
 import { TxCheckbox } from '../../checkbox'
 import { TxEmptyState } from '../../empty-state'
-import { TxPopover } from '../../popover'
 import { TxSkeleton } from '../../skeleton'
 import { TxSpinner } from '../../spinner'
-import { DATE_FILTER_PRESETS, getCellValue, useDataTableData } from './use-data-table-data'
+import { DATA_TABLE_FILTER_CONTEXT } from './context'
+import TxDataTableColumnFilter from './TxDataTableColumnFilter.vue'
+import { DATA_TABLE_DEFAULT_LABELS } from './types'
+import { getCellValue, useDataTableData } from './use-data-table-data'
+import { useDataTableLayout } from './use-data-table-layout'
+
 defineOptions({ name: 'TxDataTable' })
 
-// Kept in step with `.tx-data-table__th--select` / `--expand` in the style block:
-// a fixed-left column sticks after them, so their widths are part of the offset.
+// The rendered widths of `.tx-data-table__th--select` / `--expand` in the style
+// block. A fixed-left column sticks after them, so they stand in for the measured
+// widths until the first layout pass.
 const SELECT_COLUMN_WIDTH = 42
 const EXPAND_COLUMN_WIDTH = 40
 
@@ -50,6 +55,8 @@ const props = withDefaults(defineProps<DataTableProps<any>>(), {
 const emit = defineEmits<DataTableEmits<any>>()
 
 const slots = useSlots()
+
+const labels = computed<DataTableLabels>(() => ({ ...DATA_TABLE_DEFAULT_LABELS, ...props.labels }))
 
 // A row is keyboard-interactive when explicitly opted in, or whenever a rowClick
 // listener is attached — so the documented rowClick event is reachable by keyboard
@@ -137,13 +144,16 @@ function toggleSort(column: DataTableColumn) {
     setSort({ key: column.key, order: 'asc' })
 }
 
-function headerSlotProps(column: DataTableColumn): DataTableHeaderSlotProps {
+function getColumnSortOrder(column: DataTableColumn): DataTableSortOrder {
   const current = sortState.value
-  const active = current?.key === column.key
-  const order = active ? normalizeSortOrder(current!.order) : null
+  return current?.key === column.key ? normalizeSortOrder(current.order) : null
+}
+
+function headerSlotProps(column: DataTableColumn): DataTableHeaderSlotProps {
+  const order = getColumnSortOrder(column)
   return {
     column,
-    sorted: active && order !== null,
+    sorted: order !== null,
     order,
     toggle: () => toggleSort(column),
   }
@@ -152,42 +162,29 @@ function headerSlotProps(column: DataTableColumn): DataTableHeaderSlotProps {
 function getColumnAriaSort(column: DataTableColumn): 'ascending' | 'descending' | 'none' | undefined {
   if (!column.sortable)
     return undefined
-  const current = sortState.value
-  if (current?.key !== column.key)
-    return 'none'
-  const order = normalizeSortOrder(current.order)
+  const order = getColumnSortOrder(column)
   if (!order)
     return 'none'
   return order === 'desc' ? 'descending' : 'ascending'
 }
 
-const {
-  effectiveColumns,
-  displayRows,
-  filterOpenState,
-  tagFilterQueries,
-  activeFilter,
-  setColumnFilter,
-  clearColumnFilter,
-  isColumnFiltered,
-  isTagAllSelected,
-  getColumnFilterOptions,
-  getFilteredTagOptions,
-  isTagOptionSelected,
-  toggleTagFilter,
-  getNumberFilterVal,
-  setNumberFilterVal,
-} = useDataTableData(props, sortState, emit)
+const tableData = useDataTableData(props, sortState, emit)
+const { effectiveColumns, displayRows, isColumnFiltered } = tableData
+
+// Each filterable header renders its own control, which reads and writes the
+// filter state kept here.
+provide(DATA_TABLE_FILTER_CONTEXT, { ...tableData, labels })
 
 // --- Loading ---------------------------------------------------------------
-// Anything but an explicit `skeleton` keeps the overlay, so a mistyped variant
-// still shows that the table is busy.
-const isSkeletonLoading = computed(() => props.loading && props.loadingVariant === 'skeleton')
-const showOverlay = computed(() => props.loading && props.loadingVariant !== 'skeleton')
+// Anything but an explicit `skeleton` or `shimmer` keeps the overlay, so a
+// mistyped variant still shows that the table is busy.
+const isRowLoading = computed(() => props.loading && (props.loadingVariant === 'skeleton' || props.loadingVariant === 'shimmer'))
+const isShimmer = computed(() => props.loading && props.loadingVariant === 'shimmer')
+const showOverlay = computed(() => props.loading && !isRowLoading.value)
 // Placeholder rows only stand in for rows that do not exist yet. A refresh keeps
-// the rows on screen and says so with the bar under the header instead.
-const showSkeleton = computed(() => isSkeletonLoading.value && !displayRows.value.length)
-const showRefreshBar = computed(() => isSkeletonLoading.value && displayRows.value.length > 0)
+// the rows on screen and says so with the bar under the header, or the bands.
+const showSkeleton = computed(() => isRowLoading.value && !displayRows.value.length)
+const showRefreshBar = computed(() => props.loading && props.loadingVariant === 'skeleton' && displayRows.value.length > 0)
 
 const skeletonRowCount = computed(() => {
   const count = Math.floor(Number(props.skeletonRows))
@@ -294,6 +291,10 @@ function toCssUnit(value: string | number | undefined): string | undefined {
   return typeof value === 'number' ? `${value}px` : value
 }
 
+// --- Column layout ---------------------------------------------------------
+// Header cells run [expand][select][...columns]; a column's position in that
+// row is how its measured width and sticky offset are looked up.
+
 function getFixedSide(column: DataTableColumn): 'left' | 'right' | null {
   if (column.fixed === true || column.fixed === 'left')
     return 'left'
@@ -312,34 +313,143 @@ function getStickyWidth(column: DataTableColumn): number {
   return match ? Number(match[1]) : 0
 }
 
-const fixedColumnOffsets = computed(() => {
-  const left = new Map<string, string>()
-  const right = new Map<string, string>()
-  // The leading utility columns are not part of `columns`, so a fixed-left
-  // column has to start after them or it sticks over the toggle / checkbox.
-  let leftOffset = (props.expandable ? EXPAND_COLUMN_WIDTH : 0) + (props.selectable ? SELECT_COLUMN_WIDTH : 0)
-  let rightOffset = 0
+const leadingCells = computed(() => (props.expandable ? 1 : 0) + (props.selectable ? 1 : 0))
+const hasFixedColumns = computed(() => effectiveColumns.value.some(column => Boolean(getFixedSide(column))))
+// The expand and select columns pin along with a fixed-left column: left to
+// scroll, they would leave a gap the content shows through beside it.
+const pinsLeading = computed(() => effectiveColumns.value.some(column => getFixedSide(column) === 'left'))
 
-  for (const column of effectiveColumns.value) {
-    if (getFixedSide(column) !== 'left')
-      continue
-    left.set(column.key, `${leftOffset}px`)
-    leftOffset += getStickyWidth(column)
+const stickyCells = computed(() => {
+  const cells: number[] = []
+  if (pinsLeading.value) {
+    for (let position = 0; position < leadingCells.value; position++)
+      cells.push(position)
   }
-
-  for (const column of [...effectiveColumns.value].reverse()) {
-    if (getFixedSide(column) !== 'right')
-      continue
-    right.set(column.key, `${rightOffset}px`)
-    rightOffset += getStickyWidth(column)
-  }
-
-  return { left, right }
+  effectiveColumns.value.forEach((column, index) => {
+    if (getFixedSide(column))
+      cells.push(leadingCells.value + index)
+  })
+  return cells
 })
 
-const hasFixedColumns = computed(() => effectiveColumns.value.some(column => Boolean(getFixedSide(column))))
+// Every column hugs its content once nothing makes it wrap: a nowrap column
+// without a declared width collapses to its widest cell. Some column has to take
+// the space left over, so when none is free to, the first text column does.
+const hugColumns = computed(() => {
+  const hug = new Set<string>()
+  if (props.tableLayout !== 'auto')
+    return hug
+  let absorbs = false
+  for (const column of effectiveColumns.value) {
+    if (column.width !== undefined)
+      continue
+    if (!column.auto && column.minWidth === undefined && (props.nowrap || column.nowrap))
+      hug.add(column.key)
+    else
+      absorbs = true
+  }
+  if (!absorbs && hug.size) {
+    const candidates = effectiveColumns.value.filter(column => hug.has(column.key))
+    const grow = candidates.find(column => !column.type || column.type === 'text')
+      ?? candidates.find(column => column.type !== 'actions')
+      ?? candidates[0]!
+    hug.delete(grow.key)
+  }
+  return hug
+})
 
-function columnStyle(column: DataTableColumn): Record<string, string> {
+// Sticky cells need a scroll container, and a sticky <th> loses its borders
+// under `border-collapse: collapse`. Both switches ride on this one class so
+// tables that opt out render exactly as before.
+const isStickyShell = computed(() =>
+  props.stickyHeader || props.stickyFooter || props.maxHeight !== undefined,
+)
+
+const shellStyle = computed(() => {
+  if (props.maxHeight === undefined)
+    return undefined
+  return { maxHeight: toCssUnit(props.maxHeight) }
+})
+
+const isScroller = computed(() => props.scrollX || isStickyShell.value)
+
+const rootRef = ref<HTMLElement | null>(null)
+const tableRef = ref<HTMLTableElement | null>(null)
+
+const {
+  cellWidths,
+  overflowLeft,
+  overflowRight,
+  viewportHeight,
+  fillRows,
+  shimmerLayer,
+  track,
+} = useDataTableLayout({
+  root: rootRef,
+  table: tableRef,
+  stickyCells: () => stickyCells.value,
+  scroller: () => isScroller.value,
+  overlay: () => showOverlay.value,
+  placeholders: () => showSkeleton.value,
+  shimmer: () => isShimmer.value,
+})
+
+// A host-sized table fills its height with placeholders instead of leaving a
+// blank band under five rows.
+const placeholderRowCount = computed(() => Math.max(skeletonRowCount.value, fillRows.value))
+
+track(() => [
+  stickyCells.value.join(),
+  hugColumns.value.size,
+  displayRows.value,
+  expandedSet.value.size,
+  props.loading,
+  props.loadingVariant,
+  placeholderRowCount.value,
+])
+
+const fixedLayout = computed(() => {
+  const offsets = new Map<number, string>()
+  let leftEdge = -1
+  let rightEdge = -1
+  const widthAt = (position: number, fallback: number) => cellWidths.value[position] ?? fallback
+
+  let left = 0
+  if (pinsLeading.value) {
+    for (let position = 0; position < leadingCells.value; position++) {
+      offsets.set(position, `${left}px`)
+      const expandCell = props.expandable && position === 0
+      left += widthAt(position, expandCell ? EXPAND_COLUMN_WIDTH : SELECT_COLUMN_WIDTH)
+    }
+  }
+  effectiveColumns.value.forEach((column, index) => {
+    if (getFixedSide(column) !== 'left')
+      return
+    const position = leadingCells.value + index
+    offsets.set(position, `${left}px`)
+    left += widthAt(position, getStickyWidth(column))
+    leftEdge = position
+  })
+
+  let right = 0
+  for (let index = effectiveColumns.value.length - 1; index >= 0; index--) {
+    const column = effectiveColumns.value[index]!
+    if (getFixedSide(column) !== 'right')
+      continue
+    const position = leadingCells.value + index
+    offsets.set(position, `${right}px`)
+    right += widthAt(position, getStickyWidth(column))
+    rightEdge = position
+  }
+
+  return { offsets, leftEdge, rightEdge }
+})
+
+function leadingCellStyle(position: number) {
+  return pinsLeading.value ? { left: fixedLayout.value.offsets.get(position) ?? '0px' } : undefined
+}
+
+function columnStyle(column: DataTableColumn, position: number): Record<string, string> {
   const style: Record<string, string> = {}
   if (column.auto)
     style.width = 'auto'
@@ -353,28 +463,30 @@ function columnStyle(column: DataTableColumn): Record<string, string> {
     style.textAlign = column.align
 
   const fixedSide = getFixedSide(column)
-  if (fixedSide === 'left')
-    style.left = fixedColumnOffsets.value.left.get(column.key) ?? '0px'
-  else if (fixedSide === 'right')
-    style.right = fixedColumnOffsets.value.right.get(column.key) ?? '0px'
+  if (fixedSide)
+    style[fixedSide] = fixedLayout.value.offsets.get(position) ?? '0px'
 
   return style
 }
 
-function columnClass(column: DataTableColumn, type: 'header' | 'cell') {
+function columnClass(column: DataTableColumn, type: 'header' | 'cell', position: number) {
   const fixedSide = getFixedSide(column)
   return [
     type === 'header' ? column.headerClass : column.cellClass,
     {
       'is-auto': column.auto,
+      'is-hug': hugColumns.value.has(column.key),
       'is-fixed': Boolean(fixedSide),
       'is-fixed-left': fixedSide === 'left',
       'is-fixed-right': fixedSide === 'right',
+      'is-fixed-left-edge': fixedLayout.value.leftEdge === position,
+      'is-fixed-right-edge': fixedLayout.value.rightEdge === position,
       'is-nowrap': props.nowrap || column.nowrap,
       'is-sortable': type === 'header' && column.sortable,
       'is-sorted': type === 'header' && sortState.value?.key === column.key,
       'has-filter': type === 'header' && Boolean(column.filter),
       'is-filtered': isColumnFiltered(column.key),
+      [`is-align-${column.align}`]: type === 'header' && Boolean(column.align),
       [`is-type-${column.type}`]: Boolean(column.type),
       'is-numeric': column.type === 'number',
     },
@@ -382,7 +494,7 @@ function columnClass(column: DataTableColumn, type: 'header' | 'cell') {
 }
 
 const colspan = computed(
-  () => effectiveColumns.value.length + (props.selectable ? 1 : 0) + (props.expandable ? 1 : 0),
+  () => effectiveColumns.value.length + leadingCells.value,
 )
 
 // Plain functions, not computeds: slot presence is read at render time, so a
@@ -405,17 +517,12 @@ function rowClasses(row: any, index: number) {
   ]
 }
 
-// Sticky cells need a scroll container, and a sticky <th> loses its borders
-// under `border-collapse: collapse`. Both switches ride on this one class so
-// tables that opt out render exactly as before.
-const isStickyShell = computed(() =>
-  props.stickyHeader || props.stickyFooter || props.maxHeight !== undefined,
-)
-
-const shellStyle = computed(() => {
-  if (props.maxHeight === undefined)
-    return undefined
-  return { maxHeight: toCssUnit(props.maxHeight) }
+// The veil pins to the visible part of the root, so a tall or scrolled table is
+// covered where the reader is looking. Before the first measurement it falls
+// back to covering the root's box.
+const overlayStyle = computed(() => {
+  const height = viewportHeight.value
+  return height ? { position: 'sticky' as const, height: `${height}px`, marginBottom: `-${height}px` } : undefined
 })
 
 function emitRowClick(row: any, index: number) {
@@ -435,6 +542,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 <template>
   <div
+    ref="rootRef"
     class="tx-data-table"
     :class="{
       'is-striped': striped,
@@ -442,25 +550,56 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
       'is-hover': hover,
       'is-nowrap': nowrap,
       'has-fixed-columns': hasFixedColumns,
+      'has-overflow-left': overflowLeft,
+      'has-overflow-right': overflowRight,
       'is-scroll-x': scrollX,
       'is-sticky-shell': isStickyShell,
+      'is-scroller': isScroller,
       'has-sticky-header': stickyHeader,
       'has-sticky-footer': stickyFooter,
       'is-highlight-selected': highlightSelected,
       'is-expandable': expandable,
+      'is-shimmer': isShimmer,
       [`is-layout-${tableLayout}`]: true,
     }"
     :style="shellStyle"
   >
-    <div v-if="showOverlay" class="tx-data-table__loading" aria-live="polite">
+    <div v-if="showOverlay" class="tx-data-table__loading" :style="overlayStyle" aria-live="polite">
       <TxSpinner :size="20" />
     </div>
 
-    <table class="tx-data-table__table" :style="{ tableLayout }" :aria-busy="loading">
+    <!-- One band per visible row, laid over the table at its measured rows. -->
+    <div
+      v-if="shimmerLayer"
+      class="tx-data-table__shimmer"
+      :style="{ top: `${shimmerLayer.top}px`, left: `${shimmerLayer.left}px`, width: `${shimmerLayer.width}px`, height: `${shimmerLayer.height}px` }"
+      aria-hidden="true"
+    >
+      <span
+        v-for="band in shimmerLayer.bands"
+        :key="band.index"
+        class="tx-data-table__shimmer-row"
+        :style="{ 'top': `${band.top}px`, 'height': `${band.height}px`, '--tx-data-table-shimmer-index': band.index % 16 }"
+      />
+    </div>
+
+    <table ref="tableRef" class="tx-data-table__table" :style="{ tableLayout }" :aria-busy="loading">
       <thead>
         <tr>
-          <th v-if="expandable" class="tx-data-table__th tx-data-table__th--expand" scope="col" />
-          <th v-if="selectable" class="tx-data-table__th tx-data-table__th--select" scope="col">
+          <th
+            v-if="expandable"
+            class="tx-data-table__th tx-data-table__th--expand"
+            :class="pinsLeading && 'is-fixed is-fixed-left'"
+            :style="leadingCellStyle(0)"
+            scope="col"
+          />
+          <th
+            v-if="selectable"
+            class="tx-data-table__th tx-data-table__th--select"
+            :class="pinsLeading && 'is-fixed is-fixed-left'"
+            :style="leadingCellStyle(leadingCells - 1)"
+            scope="col"
+          >
             <TxCheckbox
               :model-value="allSelected"
               :indeterminate="someSelected"
@@ -469,180 +608,56 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
             />
           </th>
           <th
-            v-for="column in effectiveColumns"
+            v-for="(column, columnIndex) in effectiveColumns"
             :key="column.key"
             class="tx-data-table__th"
             scope="col"
-            :class="columnClass(column, 'header')"
-            :style="columnStyle(column)"
+            :class="columnClass(column, 'header', leadingCells + columnIndex)"
+            :style="columnStyle(column, leadingCells + columnIndex)"
             :aria-sort="getColumnAriaSort(column)"
           >
-            <div v-if="column.filter" class="tx-data-table__th-wrap" :class="`is-align-${column.align || 'left'}`">
+            <div v-if="column.sortable || column.filter" class="tx-data-table__th-inner">
+              <!-- The button's ::after stretches over the whole cell, so the
+                   header is one hit area; the filter button sits above it. -->
               <button
                 v-if="column.sortable"
                 type="button"
                 class="tx-data-table__sort-button"
-                :class="`is-align-${column.align || 'left'}`"
                 @click="toggleSort(column)"
               >
                 <slot :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
                   {{ column.title }}
                 </slot>
-                <span class="tx-data-table__sort" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'asc' }">
-                    <path fill="currentColor" d="M7 14l5-5 5 5z" />
-                  </svg>
-                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'desc' }">
-                    <path fill="currentColor" d="M7 10l5 5 5-5z" />
-                  </svg>
-                </span>
-              </button>
-              <slot v-else :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
-                <span class="tx-data-table__th-title">{{ column.title }}</span>
-              </slot>
-
-              <TxPopover
-                v-model="filterOpenState[column.key]"
-                placement="bottom-start"
-                :offset="6"
-                :match-reference-width="false"
-                :min-width="130"
-                panel-background="pure"
-                :panel-radius="12"
-                :panel-padding="4"
-                panel-shadow="soft"
-                class="tx-data-table__filter-popover"
-              >
-                <template #reference>
-                  <button
-                    type="button"
-                    class="tx-data-table__filter-trigger"
-                    :class="{ 'is-active': isColumnFiltered(column.key) }"
-                    :aria-label="`Filter ${column.title}`"
-                    @click.stop
-                  >
-                    <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
-                      <path fill="currentColor" d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
-                    </svg>
-                  </button>
-                </template>
-
-                <div class="tx-data-table__filter-panel" @click.stop>
-                  <slot
-                    :name="`filter-${column.key}`"
-                    :column="column"
-                    :filter-value="activeFilter[column.key]"
-                    :set-filter="(v: unknown) => setColumnFilter(column.key, v)"
-                    :clear-filter="() => clearColumnFilter(column.key)"
-                  >
-                    <div v-if="column.type === 'tag'" class="tx-data-table__tag-filter">
-                      <input
-                        v-if="getColumnFilterOptions(column).length >= 8"
-                        v-model="tagFilterQueries[column.key]"
-                        class="tx-data-table__filter-search"
-                        placeholder="搜索..."
-                      />
-                      <div class="tx-data-table__filter-options">
-                        <button
-                          type="button"
-                          class="tx-data-table__filter-option"
-                          :class="{ 'is-selected': isTagAllSelected(column.key) }"
-                          @click="clearColumnFilter(column.key)"
-                        >
-                          <span>全部</span>
-                        </button>
-                        <button
-                          v-for="opt in getFilteredTagOptions(column)"
-                          :key="String(opt.value)"
-                          type="button"
-                          class="tx-data-table__filter-option"
-                          :class="{ 'is-selected': isTagOptionSelected(column.key, opt.value) }"
-                          @click="toggleTagFilter(column.key, opt.value)"
-                        >
-                          <span>{{ opt.label }}</span>
-                          <span v-if="isTagOptionSelected(column.key, opt.value)" class="tx-data-table__filter-check">✓</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div v-else-if="column.type === 'datetime' || column.type === 'date'" class="tx-data-table__date-filter">
-                      <div class="tx-data-table__filter-options">
-                        <button
-                          type="button"
-                          class="tx-data-table__filter-option"
-                          :class="{ 'is-selected': !activeFilter[column.key] }"
-                          @click="clearColumnFilter(column.key)"
-                        >
-                          全部时间
-                        </button>
-                        <button
-                          v-for="opt in DATE_FILTER_PRESETS"
-                          :key="opt.value"
-                          type="button"
-                          class="tx-data-table__filter-option"
-                          :class="{ 'is-selected': activeFilter[column.key] === opt.value }"
-                          @click="setColumnFilter(column.key, opt.value)"
-                        >
-                          {{ opt.label }}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div v-else-if="column.type === 'number'" class="tx-data-table__number-filter">
-                      <div class="tx-data-table__number-inputs">
-                        <input
-                          type="number"
-                          class="tx-data-table__range-input"
-                          placeholder="Min"
-                          :value="getNumberFilterVal(column.key, 'min')"
-                          @input="setNumberFilterVal(column.key, 'min', ($event.target as HTMLInputElement).value)"
-                        />
-                        <span class="tx-data-table__range-sep">~</span>
-                        <input
-                          type="number"
-                          class="tx-data-table__range-input"
-                          placeholder="Max"
-                          :value="getNumberFilterVal(column.key, 'max')"
-                          @input="setNumberFilterVal(column.key, 'max', ($event.target as HTMLInputElement).value)"
-                        />
-                      </div>
-                      <div class="tx-data-table__filter-actions">
-                        <button type="button" class="tx-data-table__btn-reset" @click="clearColumnFilter(column.key)">
-重置
-</button>
-                        <button type="button" class="tx-data-table__btn-confirm" @click="filterOpenState[column.key] = false">
-完成
-</button>
-                      </div>
-                    </div>
-                  </slot>
-                </div>
-              </TxPopover>
-            </div>
-            <template v-else>
-              <button
-                v-if="column.sortable"
-                type="button"
-                class="tx-data-table__sort-button"
-                :class="`is-align-${column.align || 'left'}`"
-                @click="toggleSort(column)"
-              >
-                <slot :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
-                  {{ column.title }}
-                </slot>
-                <span class="tx-data-table__sort" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'asc' }">
-                    <path fill="currentColor" d="M7 14l5-5 5 5z" />
-                  </svg>
-                  <svg viewBox="0 0 24 24" width="10" height="10" :class="{ 'is-active': sortState?.key === column.key && sortState?.order === 'desc' }">
-                    <path fill="currentColor" d="M7 10l5 5 5-5z" />
-                  </svg>
-                </span>
+                <svg
+                  class="tx-data-table__sort"
+                  :class="getColumnSortOrder(column) && `is-${getColumnSortOrder(column)}`"
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 6.5 8 3.5l3 3" />
+                  <path d="M5 9.5l3 3 3-3" />
+                </svg>
               </button>
               <slot v-else :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
                 {{ column.title }}
               </slot>
-            </template>
+
+              <TxDataTableColumnFilter v-if="column.filter" :column="column">
+                <template v-if="$slots[`filter-${column.key}`]" #default="scope">
+                  <slot :name="`filter-${column.key}`" v-bind="scope" />
+                </template>
+              </TxDataTableColumnFilter>
+            </div>
+            <slot v-else :name="`header-${column.key}`" v-bind="headerSlotProps(column)">
+              {{ column.title }}
+            </slot>
           </th>
         </tr>
       </thead>
@@ -658,22 +673,32 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
       <tbody>
         <template v-if="showSkeleton">
           <tr
-            v-for="row in skeletonRowCount"
+            v-for="row in placeholderRowCount"
             :key="`skeleton-${row}`"
             class="tx-data-table__row tx-data-table__row--skeleton"
             :class="{ 'is-stripe': expandable && striped && row % 2 === 1 }"
             aria-hidden="true"
           >
-            <td v-if="expandable" class="tx-data-table__cell tx-data-table__cell--expand" />
-            <td v-if="selectable" class="tx-data-table__cell tx-data-table__cell--select">
+            <td
+              v-if="expandable"
+              class="tx-data-table__cell tx-data-table__cell--expand"
+              :class="pinsLeading && 'is-fixed is-fixed-left'"
+              :style="leadingCellStyle(0)"
+            />
+            <td
+              v-if="selectable"
+              class="tx-data-table__cell tx-data-table__cell--select"
+              :class="pinsLeading && 'is-fixed is-fixed-left'"
+              :style="leadingCellStyle(leadingCells - 1)"
+            >
               <TxSkeleton class="tx-data-table__skeleton is-check" :width="18" :height="18" :radius="6" />
             </td>
             <td
               v-for="(column, columnIndex) in effectiveColumns"
               :key="column.key"
               class="tx-data-table__cell"
-              :class="columnClass(column, 'cell')"
-              :style="columnStyle(column)"
+              :class="columnClass(column, 'cell', leadingCells + columnIndex)"
+              :style="columnStyle(column, leadingCells + columnIndex)"
             >
               <TxSkeleton
                 class="tx-data-table__skeleton"
@@ -693,7 +718,13 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
             @click="emitRowClick(row, index)"
             @keydown="handleRowKeydown($event, row, index)"
           >
-            <td v-if="expandable" class="tx-data-table__cell tx-data-table__cell--expand" @click.stop>
+            <td
+              v-if="expandable"
+              class="tx-data-table__cell tx-data-table__cell--expand"
+              :class="pinsLeading && 'is-fixed is-fixed-left'"
+              :style="leadingCellStyle(0)"
+              @click.stop
+            >
               <button
                 v-if="isRowExpandable(row, index)"
                 type="button"
@@ -709,7 +740,13 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
                 </svg>
               </button>
             </td>
-            <td v-if="selectable" class="tx-data-table__cell tx-data-table__cell--select" @click.stop>
+            <td
+              v-if="selectable"
+              class="tx-data-table__cell tx-data-table__cell--select"
+              :class="pinsLeading && 'is-fixed is-fixed-left'"
+              :style="leadingCellStyle(leadingCells - 1)"
+              @click.stop
+            >
               <TxCheckbox
                 :model-value="selectedSet.has(getRowKey(row, index))"
                 aria-label="Select row"
@@ -717,11 +754,11 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
               />
             </td>
             <td
-              v-for="column in effectiveColumns"
+              v-for="(column, columnIndex) in effectiveColumns"
               :key="column.key"
               class="tx-data-table__cell"
-              :class="columnClass(column, 'cell')"
-              :style="columnStyle(column)"
+              :class="columnClass(column, 'cell', leadingCells + columnIndex)"
+              :style="columnStyle(column, leadingCells + columnIndex)"
             >
               <slot
                 :name="`cell-${column.key}`"
@@ -761,6 +798,16 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
             </td>
           </tr>
         </template>
+        <!-- With nothing to show, the veil still needs a body to cover: the empty
+             state that follows it, laid out but unseen, so the table keeps its
+             height when the load comes back empty. -->
+        <tr v-if="showOverlay && !displayRows.length" class="tx-data-table__loading-row" aria-hidden="true">
+          <td :colspan="colspan">
+            <slot name="empty">
+              <TxEmptyState variant="no-data" :title="emptyText" size="small" layout="vertical" />
+            </slot>
+          </td>
+        </tr>
         <tr v-if="!displayRows.length && !loading">
           <td :colspan="colspan" class="tx-data-table__empty">
             <slot name="empty">
@@ -775,14 +822,24 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
                span columns; `footer-<key>` fills one cell per column. -->
           <slot v-if="$slots.footer" name="footer" :columns="effectiveColumns" :data="data" :selected-keys="selectedKeys" />
           <template v-else>
-            <td v-if="expandable" class="tx-data-table__footer-cell tx-data-table__footer-cell--expand" />
-            <td v-if="selectable" class="tx-data-table__footer-cell tx-data-table__footer-cell--select" />
             <td
-              v-for="column in effectiveColumns"
+              v-if="expandable"
+              class="tx-data-table__footer-cell tx-data-table__footer-cell--expand"
+              :class="pinsLeading && 'is-fixed is-fixed-left'"
+              :style="leadingCellStyle(0)"
+            />
+            <td
+              v-if="selectable"
+              class="tx-data-table__footer-cell tx-data-table__footer-cell--select"
+              :class="pinsLeading && 'is-fixed is-fixed-left'"
+              :style="leadingCellStyle(leadingCells - 1)"
+            />
+            <td
+              v-for="(column, columnIndex) in effectiveColumns"
               :key="column.key"
               class="tx-data-table__footer-cell"
-              :class="columnClass(column, 'cell')"
-              :style="columnStyle(column)"
+              :class="columnClass(column, 'cell', leadingCells + columnIndex)"
+              :style="columnStyle(column, leadingCells + columnIndex)"
             >
               <slot :name="`footer-${column.key}`" :column="column" :data="data" />
             </td>
@@ -796,8 +853,14 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 <!-- BEM names isolate the stylesheet, including teleported filter content.
      Generic table selectors stay under the owned table, never a slot's nested table. -->
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
+/* Stacking inside the root, all contained by `isolation`: cells 1, shimmer bands 2,
+   fixed header cells 3, refresh bar 4, pinned header 5, pinned footer corner 6,
+   pinned header corner 7, loading veil 9. */
 .tx-data-table {
   position: relative;
+  isolation: isolate;
   width: 100%;
   overflow: hidden;
   border-radius: 12px;
@@ -810,7 +873,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   // Without its own scroll container the component leans on an ancestor to
   // scroll, and clipping would hide the fixed columns. Once it does scroll
   // (scrollX / sticky shell) the overflow belongs here instead.
-  &.has-fixed-columns:not(.is-scroll-x):not(.is-sticky-shell) {
+  &.has-fixed-columns:not(.is-scroller) {
     overflow: visible;
   }
 
@@ -820,6 +883,19 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
   &.is-sticky-shell {
     overflow: auto;
+  }
+
+  // A scrollbar with a lane of its own: macOS overlay scrollbars are drawn over
+  // the content, so the vertical one lay across a right-pinned column. The lane
+  // takes the table's surface rather than showing the page through it.
+  &.is-scroller {
+    background: var(--tx-bg-color, #fff);
+
+    @include custom-scrollbar(8px, transparent, var(--tx-border-color, #dcdfe6));
+
+    &::-webkit-scrollbar-corner {
+      background: transparent;
+    }
   }
 }
 
@@ -852,26 +928,43 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   white-space: nowrap;
 }
 
-:is(.tx-data-table__th, .tx-data-table__cell).is-fixed {
+// A nowrap column without a declared width shrinks to its widest cell; the
+// columns left free share whatever the table has over.
+:is(.tx-data-table__th, .tx-data-table__cell, .tx-data-table__footer-cell).is-hug {
+  width: 1px;
+}
+
+:is(.tx-data-table__th, .tx-data-table__cell, .tx-data-table__footer-cell).is-fixed {
   position: sticky;
   z-index: 1;
-  background: var(--tx-bg-color, #fff);
+}
+
+// A fixed cell is opaque to cover what scrolls beneath it, so the row's tint is
+// layered onto it explicitly — otherwise hover, stripes and selection would stop
+// short of the pinned columns.
+.tx-data-table__cell.is-fixed {
+  background:
+    linear-gradient(var(--tx-data-table-row-tint, transparent), var(--tx-data-table-row-tint, transparent)),
+    var(--tx-bg-color, #fff);
 }
 
 .tx-data-table__th.is-fixed {
   z-index: 3;
-  background: var(--tx-fill-color-lighter, #fafafa);
 }
 
-:is(.tx-data-table__th, .tx-data-table__cell).is-fixed-left {
-  box-shadow: 1px 0 0 var(--tx-border-color-lighter, #ebeef5);
+// The edge of a pinned group gets its line only while content is actually
+// hidden beneath it. A table that leaves scrolling to an ancestor cannot tell,
+// so it always draws the line.
+.tx-data-table:is(.has-overflow-left, :not(.is-scroller)) .is-fixed-left-edge {
+  box-shadow: inset -1px 0 0 var(--tx-border-color-lighter, #ebeef5);
 }
 
-:is(.tx-data-table__th, .tx-data-table__cell).is-fixed-right {
-  box-shadow: -1px 0 0 var(--tx-border-color-lighter, #ebeef5);
+.tx-data-table:is(.has-overflow-right, :not(.is-scroller)) .is-fixed-right-edge {
+  box-shadow: inset 1px 0 0 var(--tx-border-color-lighter, #ebeef5);
 }
 
 .tx-data-table__th {
+  position: relative;
   font-weight: 600;
   color: var(--tx-text-color-regular, #606266);
   background: var(--tx-fill-color-lighter, #fafafa);
@@ -879,21 +972,60 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   white-space: nowrap;
 }
 
-.tx-data-table__th--select,
-.tx-data-table__cell--select {
+/* The checkbox and toggle columns are exactly their width; a fixed-left column
+   sticks after them by it (mirrored in the script for the first frame). A cell's
+   width gives way once the table overflows, so min-width holds it there too.
+   Their controls centre on the row instead of sitting on the text baseline,
+   which lifted them above the middle and made the row taller than its text. */
+.tx-data-table__table :is(.tx-data-table__th--select, .tx-data-table__cell--select, .tx-data-table__footer-cell--select) {
   width: 42px;
+  min-width: 42px;
+  padding-inline: 0;
   text-align: center;
+  line-height: 0;
 }
 
-/* Expandable rows --------------------------------------------------------- */
-
-/* Width is mirrored by EXPAND_COLUMN_WIDTH in the script: a fixed-left column
-   offsets itself by this column. */
-.tx-data-table__th--expand,
-.tx-data-table__cell--expand {
+.tx-data-table__table :is(.tx-data-table__th--expand, .tx-data-table__cell--expand, .tx-data-table__footer-cell--expand) {
   width: 40px;
+  min-width: 40px;
   padding: 0;
   text-align: center;
+  line-height: 0;
+}
+
+.tx-data-table__table :is(.tx-data-table__th--select, .tx-data-table__cell--select, .tx-data-table__cell--expand) > * {
+  vertical-align: middle;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.tx-data-table__th-inner,
+.tx-data-table__sort-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tx-data-table__th.is-align-center .tx-data-table__th-inner {
+  justify-content: center;
+}
+
+// A right-aligned column mirrors its header, so the title — not the icons —
+// lines up with the figures below it.
+.tx-data-table__th.is-align-right :is(.tx-data-table__th-inner, .tx-data-table__sort-button) {
+  flex-direction: row-reverse;
+}
+
+.tx-data-table__sort-button,
+.tx-data-table__expand-toggle,
+.tx-data-table__filter-trigger {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .tx-data-table__expand-toggle,
@@ -901,17 +1033,118 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.tx-data-table__expand-toggle {
-  appearance: none;
   width: 22px;
   height: 22px;
   border-radius: 6px;
+}
+
+.tx-data-table__sort-button {
+  border-radius: 4px;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+}
+
+.tx-data-table__th.is-sortable:hover {
+  background: var(--tx-fill-color-light, #f5f7fa);
+}
+
+:is(.tx-data-table__sort-button, .tx-data-table__expand-toggle, .tx-data-table__filter-trigger):focus-visible {
+  outline: 2px solid var(--tx-color-primary, #409eff);
+  outline-offset: 2px;
+}
+
+.tx-data-table__row.is-interactive:focus-visible {
+  outline: 2px solid var(--tx-color-primary, #409eff);
+  outline-offset: -2px;
+}
+
+.tx-data-table__sort,
+.tx-data-table__filter-trigger,
+.tx-data-table__time-icon {
+  flex: none;
+  color: var(--tx-text-color-placeholder, #a8abb2);
+}
+
+.tx-data-table__sort:is(.is-asc, .is-desc) path {
+  opacity: 0.35;
+}
+
+.tx-data-table__sort.is-asc path:first-child,
+.tx-data-table__sort.is-desc path:last-child {
+  opacity: 1;
+  stroke: var(--tx-color-primary, #409eff);
+}
+
+// Lifted over the sort button's stretched hit area; the negative margin keeps
+// its 22px box from making a filterable header taller than the rest.
+.tx-data-table__filter-trigger {
+  position: relative;
+  z-index: 1;
+  margin-block: -2px;
+
+  &:hover,
+  &.is-open {
+    color: var(--tx-text-color-primary, #303133);
+    background: var(--tx-fill-color, #f0f2f5);
+  }
+
+  &.is-active {
+    color: var(--tx-color-primary, #409eff);
+  }
+
+  &.is-active svg {
+    fill: currentColor;
+  }
+}
+
+/* Filter panels: TuffEx menus and fields; only the arrangement lives here. */
+
+.tx-data-table__filter-search {
+  margin-bottom: 4px;
+}
+
+.tx-data-table__filter-count {
+  color: var(--tx-text-color-secondary, #909399);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tx-data-table__filter-form {
+  display: grid;
+  gap: 10px;
+  width: 260px;
+}
+
+.tx-data-table__filter-range,
+.tx-data-table__filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tx-data-table__filter-range {
+  color: var(--tx-text-color-placeholder, #a8abb2);
+}
+
+/* The two fields split the row evenly; at their own 120px floor the pair and
+   the dash between them would run past the panel's edge. The doubled class
+   outranks the field's own scoped rule, whichever stylesheet loads last. */
+.tx-data-table__filter-range > .tx-number-input.tx-number-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tx-data-table__filter-actions {
+  justify-content: flex-end;
+}
+
+/* Expandable rows --------------------------------------------------------- */
+
+.tx-data-table__expand-toggle {
   color: var(--tx-text-color-secondary, #909399);
   transition:
     transform 160ms ease,
@@ -928,11 +1161,6 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   }
 }
 
-.tx-data-table__expand-toggle:focus-visible {
-  outline: 2px solid var(--tx-color-primary, #409eff);
-  outline-offset: 1px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .tx-data-table__expand-toggle {
     transition: none;
@@ -945,91 +1173,35 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   color: var(--tx-text-color-regular, #606266);
 }
 
-.tx-data-table__th.is-sortable {
-  padding: 0;
-}
+/* Row tint ------------------------------------------------------------------ */
 
-.tx-data-table__sort-button,
-.tx-data-table__filter-option {
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.tx-data-table__sort-button {
-  appearance: none;
-  justify-content: flex-start;
-  padding: 10px 12px;
-  color: inherit;
-  font: inherit;
-  text-align: inherit;
-}
-
-:is(.tx-data-table__sort-button, .tx-data-table__th-wrap).is-align-center {
-  justify-content: center;
-}
-
-:is(.tx-data-table__sort-button, .tx-data-table__th-wrap).is-align-right {
-  justify-content: flex-end;
-}
-
-.tx-data-table__sort-button:focus-visible,
-.tx-data-table__row.is-interactive:focus-visible {
-  outline: 2px solid var(--tx-color-primary, #409eff);
-  outline-offset: -2px;
-}
-
-.tx-data-table__sort,
-.tx-data-table__filter-trigger,
-.tx-data-table__range-sep,
-.tx-data-table__time-icon {
-  color: var(--tx-text-color-placeholder, #a8abb2);
-}
-
-.tx-data-table__sort {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-left: 6px;
-}
-
-.tx-data-table__sort svg {
-  opacity: 0.45;
-}
-
-.tx-data-table__sort svg.is-active {
-  opacity: 1;
-  color: var(--tx-color-primary, #409eff);
+// One custom property carries the row's tint — stripe, then hover, then the
+// selection, each later rule winning — and fixed cells read it too.
+.tx-data-table__table > tbody > tr {
+  background: var(--tx-data-table-row-tint, transparent);
 }
 
 // Detail rows live in the same tbody, so `nth-child(odd)` stops matching the
 // data rows. An expandable table stripes off the row's own `is-stripe` class.
 .tx-data-table.is-striped:not(.is-expandable) .tx-data-table__table > tbody > tr:nth-child(odd),
 .tx-data-table.is-striped.is-expandable .tx-data-table__row.is-stripe {
-  background: color-mix(in srgb, var(--tx-fill-color-light, #f5f7fa) 60%, transparent);
+  --tx-data-table-row-tint: color-mix(in srgb, var(--tx-fill-color-light, #f5f7fa) 60%, transparent);
 }
 
 // The fallback is the long-standing accent tint. The variable exists so a host
 // with a different table language (a neutral-grey BUI records table, say) can
 // repoint the hover without a prop or an override on `!important`.
 .tx-data-table.is-hover .tx-data-table__table > tbody > tr:hover:not(.tx-data-table__row--detail) {
-  background: var(
+  --tx-data-table-row-tint: var(
     --tx-data-table-row-hover-bg,
     color-mix(in srgb, var(--tx-color-primary-light-9, #ecf5ff) 60%, transparent)
   );
 }
 
-// Selection paints on the cells, not the row: a fixed column carries its own
-// opaque background to cover the scrolled content, which would otherwise sit on
-// top of any <tr> tint and leave the selected row looking half-highlighted.
-.tx-data-table.is-highlight-selected .tx-data-table__row.is-selected > .tx-data-table__cell {
-  background: var(
+.tx-data-table.is-highlight-selected .tx-data-table__table > tbody > tr.tx-data-table__row.is-selected {
+  --tx-data-table-row-tint: var(
     --tx-data-table-row-selected-bg,
-    color-mix(in srgb, var(--tx-color-primary, #409eff) 7%, var(--tx-bg-color, #fff))
+    color-mix(in srgb, var(--tx-color-primary, #409eff) 7%, transparent)
   );
 }
 
@@ -1037,18 +1209,23 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   cursor: pointer;
 }
 
+/* Loading ------------------------------------------------------------------ */
+
 .tx-data-table__loading {
   position: absolute;
   inset: 0;
+  z-index: 9;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: inherit;
   background: color-mix(in srgb, var(--tx-bg-color, #fff) 70%, transparent);
-  z-index: 2;
   backdrop-filter: blur(4px);
 }
 
-/* Skeleton loading -------------------------------------------------------- */
+.tx-data-table__loading-row > td {
+  visibility: hidden;
+}
 
 /* The bar sits in a box one line tall, inside the same cell padding as a loaded
    cell, so a placeholder row is exactly as tall as a one-line row of text. */
@@ -1057,8 +1234,8 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   justify-content: center;
 }
 
-/* The selection column: a box of the checkbox's size, on the text baseline as the
-   checkbox is, so a selectable placeholder row matches a selectable row too. */
+/* The selection column: a box of the checkbox's size, centred as the checkbox
+   is, so a selectable placeholder row matches a selectable row too. */
 .tx-data-table__skeleton.is-check {
   display: inline-flex;
   height: auto;
@@ -1067,6 +1244,55 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 /* A placeholder takes no hover tint and no clicks. */
 .tx-data-table__row--skeleton {
   pointer-events: none;
+}
+
+/* Under the shimmer the bars hold still and flat; the band does the moving. */
+.tx-data-table.is-shimmer .tx-data-table__skeleton .tx-skeleton__item {
+  animation: none;
+  background: var(--tx-skeleton-base-color, var(--tx-skeleton-color, var(--tx-fill-color, #f0f2f5)));
+}
+
+.tx-data-table__shimmer {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Each row clips its own band, so a band in flight never widens the scroll area.
+   At rest (reduced motion) the band is a still wash across the whole row. */
+.tx-data-table__shimmer-row {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: color-mix(in srgb, var(--tx-text-color-primary, #303133) 4%, transparent);
+  }
+}
+
+/* Rows start one after another, so the light runs down the table; the index is
+   set per row inline and wraps every 16 rows. */
+@media (prefers-reduced-motion: no-preference) {
+  .tx-data-table__shimmer-row::before {
+    width: 40%;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--tx-text-color-primary, #303133) 8%, transparent), transparent);
+    translate: -100% 0;
+    animation: tx-data-table-shimmer 1.6s ease-in-out calc(var(--tx-data-table-shimmer-index, 0) * 90ms) infinite;
+  }
+}
+
+@keyframes tx-data-table-shimmer {
+  60%,
+  100% {
+    translate: 250% 0;
+  }
 }
 
 /* A refresh keeps the rows. Its bar lies over the header's bottom rule, from a
@@ -1101,7 +1327,8 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   }
 }
 
-.tx-data-table__empty {
+.tx-data-table__empty,
+.tx-data-table__loading-row > td {
   padding: 24px 12px;
   text-align: center;
   color: var(--tx-text-color-secondary, #909399);
@@ -1118,16 +1345,6 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   color: var(--tx-text-color-regular, #606266);
   background: var(--tx-fill-color-lighter, #fafafa);
   border-top: 1px solid var(--tx-border-color-lighter, #ebeef5);
-}
-
-.tx-data-table__footer-cell--select {
-  width: 42px;
-  text-align: center;
-}
-
-.tx-data-table__footer-cell--expand {
-  width: 40px;
-  text-align: center;
 }
 
 /* Sticky shell ------------------------------------------------------------ */
@@ -1162,142 +1379,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   z-index: 6;
 }
 
-/* Filter & type styling -------------------------------------------------- */
-
-.tx-data-table__th-wrap {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-}
-
-.tx-data-table__th.has-filter {
-  padding-right: 6px;
-}
-
-.tx-data-table__filter-trigger {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  transition: color 140ms ease, background-color 140ms ease;
-
-  &:hover {
-    color: var(--tx-text-color-primary, #303133);
-    background: color-mix(in srgb, var(--tx-fill-color, #f0f2f5) 80%, transparent);
-  }
-
-  &.is-active {
-    color: var(--tx-color-primary, #409eff);
-    background: color-mix(in srgb, var(--tx-color-primary, #409eff) 12%, transparent);
-  }
-}
-
-.tx-data-table__filter-panel {
-  padding: 8px;
-  min-width: 130px;
-  max-width: 240px;
-  font-size: 13px;
-  color: var(--tx-text-color-primary, #303133);
-}
-
-.tx-data-table__filter-search,
-.tx-data-table__range-input {
-  box-sizing: border-box;
-  border: 1px solid var(--tx-border-color-lighter, #ebeef5);
-  border-radius: 6px;
-  font-size: 12px;
-  outline: none;
-
-  &:focus {
-    border-color: var(--tx-color-primary, #409eff);
-  }
-}
-
-.tx-data-table__filter-search {
-  width: 100%;
-  padding: 5px 8px;
-  background: var(--tx-bg-color, #fff);
-  color: inherit;
-  margin-bottom: 6px;
-}
-
-.tx-data-table__filter-options {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.tx-data-table__filter-option {
-  justify-content: space-between;
-  padding: 6px 8px;
-  border-radius: 6px;
-  color: var(--tx-text-color-regular, #606266);
-  font-size: 12px;
-  text-align: left;
-  transition: background-color 120ms ease, color 120ms ease;
-
-  &:hover {
-    background: var(--tx-fill-color-light, #f5f7fa);
-    color: var(--tx-text-color-primary, #303133);
-  }
-
-  &.is-selected {
-    color: var(--tx-color-primary, #409eff);
-    font-weight: 500;
-    background: color-mix(in srgb, var(--tx-color-primary, #409eff) 10%, transparent);
-  }
-}
-
-.tx-data-table__filter-check {
-  font-size: 11px;
-}
-
-.tx-data-table__number-inputs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.tx-data-table__range-input {
-  width: 72px;
-  padding: 4px 6px;
-}
-
-.tx-data-table__range-sep {
-  font-size: 12px;
-}
-
-.tx-data-table__filter-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.tx-data-table__btn-reset,
-.tx-data-table__btn-confirm {
-  padding: 3px 8px;
-  border: 0;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.tx-data-table__btn-reset {
-  background: transparent;
-  color: var(--tx-text-color-secondary, #909399);
-
-  &:hover {
-    color: var(--tx-text-color-primary, #303133);
-  }
-}
-
-.tx-data-table__btn-confirm {
-  background: var(--tx-color-primary, #409eff);
-  color: #fff;
-}
+/* Semantic cells ---------------------------------------------------------- */
 
 .tx-data-table__tag-pill,
 .tx-data-table__datetime {
@@ -1329,10 +1411,6 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 .tx-data-table__datetime {
   gap: 4px;
   font-variant-numeric: tabular-nums;
-}
-
-.tx-data-table__time-icon {
-  flex-shrink: 0;
 }
 
 .tx-data-table__number,

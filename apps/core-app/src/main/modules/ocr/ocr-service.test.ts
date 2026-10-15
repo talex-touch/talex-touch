@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createClient, type Client } from '@libsql/client'
+import { eq } from 'drizzle-orm'
+import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -131,6 +134,7 @@ vi.mock('../ai/intelligence-sdk', () => ({
 
 import { ocrService } from './ocr-service'
 import { createUsageLimitError } from '../ai/usage-ledger/usage-limits'
+import { ocrJobs } from '../../db/schema'
 
 interface OcrServiceTestAccess {
   processQueue: () => Promise<void>
@@ -166,8 +170,22 @@ interface OcrServiceTestAccess {
   disableQueue: (reason: string) => Promise<void>
 }
 
+let serviceSnapshot: PropertyDescriptorMap
+
+beforeEach(() => {
+  serviceSnapshot = Object.getOwnPropertyDescriptors(ocrService)
+  for (const descriptor of Object.values(serviceSnapshot)) {
+    if (descriptor.value instanceof Map) descriptor.value = new Map(descriptor.value)
+    else if (Array.isArray(descriptor.value)) descriptor.value = [...descriptor.value]
+  }
+})
+
 afterEach(() => {
   vi.restoreAllMocks()
+  for (const key of Object.getOwnPropertyNames(ocrService)) {
+    if (!(key in serviceSnapshot)) Reflect.deleteProperty(ocrService, key)
+  }
+  Object.defineProperties(ocrService, serviceSnapshot)
   ensureIntelligenceConfigLoadedMock.mockReset()
   getCapabilityOptionsMock.mockReset()
   aiInvokeMock.mockReset()
@@ -651,117 +669,248 @@ describe('OcrService clipboard metadata', () => {
   })
 })
 
-/**
- * The start write must survive write-queue pressure (#645).
- *
- * It used to be skipped whenever the scheduler was backed up, which dropped the attempts
- * increment. A job whose image crashes the native worker then comes back as pending/attempts=0 on
- * the next launch, MAX_ATTEMPTS is never reached, and it is re-dispatched every poll forever.
- */
-describe('ocr dispatch persists the attempt', () => {
-  type Dispatchable = {
-    db: unknown
-    processing: boolean
+describe('OcrService serial background dispatch', () => {
+  type Job = typeof ocrJobs.$inferSelect
+  type QueueDb = LibSQLDatabase
+  type Dispatchable = OcrServiceTestAccess & {
+    initialized: boolean
+    nextDispatchAt: number
     activeJobs: Map<number, Promise<void>>
-    processQueue: () => Promise<void>
-    runAgentJob: (jobId: number, job: unknown) => Promise<void>
-    upsertConfig: (key: string, value: unknown) => Promise<void>
-    isQueueDisabled: () => Promise<boolean>
-    withDbWrite: (label: string, op: unknown, options?: unknown) => Promise<unknown>
+    withDbWrite: <T>(label: string, operation: (db: QueueDb) => Promise<T>) => Promise<T>
   }
 
-  function readyJobDb(job: Record<string, unknown>) {
-    const builder = {
-      from: () => builder,
-      where: () => builder,
-      orderBy: () => builder,
-      limit: async () => [job]
-    }
-    return { select: () => builder }
+  const service = ocrService as unknown as Dispatchable
+  const epoch = Date.parse('2026-10-14T00:00:00.000Z')
+  let client: Client
+  let db: QueueDb
+  let starts: Array<{ id: number; at: number }>
+  let releases: Map<number, (status: 'completed' | 'failed') => void>
+
+  function at(milliseconds: number): void {
+    vi.setSystemTime(epoch + milliseconds)
   }
 
-  it('schedules ocr.jobs.start as critical and undroppable, however deep the queue', async () => {
-    const service = ocrService as unknown as Dispatchable
-    const writes: Array<{ label: string; options?: { priority?: string; dropPolicy?: string } }> =
-      []
+  async function jobs(): Promise<Array<Pick<Job, 'id' | 'status' | 'attempts'>>> {
+    return db
+      .select({ id: ocrJobs.id, status: ocrJobs.status, attempts: ocrJobs.attempts })
+      .from(ocrJobs)
+      .orderBy(ocrJobs.id)
+  }
 
-    service.db = readyJobDb({ id: 42, clipboardId: 7, attempts: 0 })
+  async function finish(id: number, status: 'completed' | 'failed' = 'completed'): Promise<void> {
+    const task = service.activeJobs.get(id)
+    const release = releases.get(id)
+    if (!task || !release) throw new Error(`OCR job ${id} was not dispatched`)
+    release(status)
+    await task
+  }
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setImmediate', 'clearImmediate'] })
+    at(0)
+    client = createClient({ url: ':memory:' })
+    db = drizzle(client)
+    await client.execute(`CREATE TABLE ocr_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      clipboard_id INTEGER,
+      status TEXT NOT NULL,
+      priority INTEGER NOT NULL,
+      attempts INTEGER NOT NULL,
+      last_error TEXT,
+      next_retry_at INTEGER,
+      payload_hash TEXT,
+      meta TEXT,
+      queued_at INTEGER NOT NULL,
+      started_at INTEGER,
+      finished_at INTEGER
+    )`)
+    await db.insert(ocrJobs).values([
+      {
+        id: 1,
+        clipboardId: 101,
+        status: 'pending',
+        priority: 0,
+        attempts: 0,
+        queuedAt: new Date(0)
+      },
+      {
+        id: 2,
+        clipboardId: 102,
+        status: 'pending',
+        priority: 0,
+        attempts: 0,
+        queuedAt: new Date(1_000)
+      }
+    ])
+    starts = []
+    releases = new Map()
+    service.db = db
+    service.initialized = true
     service.processing = false
+    service.nextDispatchAt = 0
     service.activeJobs = new Map()
-    service.isQueueDisabled = async () => false
-    service.upsertConfig = async () => {}
-    service.runAgentJob = async () => {}
-    service.withDbWrite = async (label, _op, options) => {
-      writes.push({ label, options: options as { priority?: string; dropPolicy?: string } })
-      return undefined
-    }
-
-    await service.processQueue()
-
-    const startWrite = writes.find((entry) => entry.label === 'ocr.jobs.start')
-
-    // Positive control: the dispatch path ran at all. Without it an early return would satisfy
-    // every assertion below by never writing anything.
-    expect(writes.length).toBeGreaterThan(0)
-
-    expect(startWrite, 'ocr.jobs.start was not scheduled').toBeDefined()
-    expect(startWrite?.options?.priority).toBe('critical')
-    expect(startWrite?.options?.dropPolicy).toBe('none')
+    vi.spyOn(service, 'isQueueDisabled').mockResolvedValue(false)
+    vi.spyOn(service, 'upsertConfig').mockResolvedValue(undefined)
+    vi.spyOn(service, 'updateClipboardMeta').mockResolvedValue(undefined)
+    vi.spyOn(service, 'withDbWrite').mockImplementation(async (_label, operation) => operation(db))
+    // Native recognition is the external boundary: hold its completion explicitly while the real
+    // queue selection and attempt/status writes run against SQLite.
+    vi.spyOn(service, 'runAgentJob').mockImplementation(async (id) => {
+      starts.push({ id, at: Date.now() - epoch })
+      const status = await new Promise<'completed' | 'failed'>((resolve) => {
+        releases.set(id, resolve)
+      })
+      await db.update(ocrJobs).set({ status, finishedAt: new Date() }).where(eq(ocrJobs.id, id))
+      releases.delete(id)
+    })
   })
-})
 
-describe('OcrService processQueue re-entrancy', () => {
-  it('lets only one concurrent caller past the guard', async () => {
-    const service = ocrService as unknown as OcrServiceTestAccess
-    const originalProcessing = service.processing
-    const originalDb = service.db
-    const originalIsQueueDisabled = service.isQueueDisabled
+  afterEach(async () => {
+    // Settle every controlled recognition before restoring singleton state; never leave an old
+    // finally callback mutating a later test's activeJobs or dispatch deadline.
+    for (const release of releases.values()) release('completed')
+    await Promise.allSettled([...service.activeJobs.values()])
+    vi.clearAllTimers()
+    vi.useRealTimers()
+    client.close()
+  })
 
-    let release: (() => void) | null = null
+  it('starts the cold queue immediately but preserves pending jobs and attempts until 10 seconds', async () => {
+    await ocrService.start()
+    expect(starts).toEqual([{ id: 1, at: 0 }])
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'processing', attempts: 1 },
+      { id: 2, status: 'pending', attempts: 0 }
+    ])
+
+    at(1_000)
+    await finish(1)
+    at(5_000)
+    await ocrService.enqueueFromClipboard({
+      clipboardId: 103,
+      item: { type: 'image', content: 'data:image/png;base64,AA==', meta: null },
+      formats: ['public.png']
+    })
+    at(9_999)
+    await Promise.all([ocrService.start(), service.processQueue(), service.processQueue()])
+    expect(starts).toEqual([{ id: 1, at: 0 }])
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'completed', attempts: 1 },
+      { id: 2, status: 'pending', attempts: 0 },
+      { id: 3, status: 'pending', attempts: 0 }
+    ])
+
+    at(10_000)
+    await ocrService.start()
+    expect(starts).toEqual([
+      { id: 1, at: 0 },
+      { id: 2, at: 10_000 }
+    ])
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'completed', attempts: 1 },
+      { id: 2, status: 'processing', attempts: 1 },
+      { id: 3, status: 'pending', attempts: 0 }
+    ])
+
+    at(11_000)
+    await finish(2)
+    at(20_000)
+    await service.processQueue()
+    expect(starts).toEqual([
+      { id: 1, at: 0 },
+      { id: 2, at: 10_000 },
+      { id: 3, at: 20_000 }
+    ])
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'completed', attempts: 1 },
+      { id: 2, status: 'completed', attempts: 1 },
+      { id: 3, status: 'processing', attempts: 1 }
+    ])
+  })
+
+  it.each(['completed', 'failed'] as const)(
+    'waits for an active job and rests 5 seconds after it becomes %s',
+    async (status) => {
+      await ocrService.start()
+      at(11_000)
+      await ocrService.start()
+      expect(starts).toEqual([{ id: 1, at: 0 }])
+
+      at(12_000)
+      await finish(1, status)
+      at(16_999)
+      await Promise.all([ocrService.start(), service.processQueue()])
+      expect(starts).toEqual([{ id: 1, at: 0 }])
+      expect(await jobs()).toEqual([
+        { id: 1, status, attempts: 1 },
+        { id: 2, status: 'pending', attempts: 0 }
+      ])
+
+      at(17_000)
+      await ocrService.start()
+      expect(starts).toEqual([
+        { id: 1, at: 0 },
+        { id: 2, at: 17_000 }
+      ])
+      expect(await jobs()).toEqual([
+        { id: 1, status, attempts: 1 },
+        { id: 2, status: 'processing', attempts: 1 }
+      ])
+    }
+  )
+
+  it('persists the final allowed attempt before recognition and never redispatches that failed job', async () => {
+    await db.update(ocrJobs).set({ attempts: 2 }).where(eq(ocrJobs.id, 1))
+    await ocrService.start()
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'processing', attempts: 3 },
+      { id: 2, status: 'pending', attempts: 0 }
+    ])
+    await finish(1, 'failed')
+    at(10_000)
+    await ocrService.start()
+    expect(starts).toEqual([
+      { id: 1, at: 0 },
+      { id: 2, at: 10_000 }
+    ])
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'failed', attempts: 3 },
+      { id: 2, status: 'processing', attempts: 1 }
+    ])
+  })
+
+  it('dispatches one job when concurrent callers overlap the asynchronous disabled check', async () => {
+    let release!: () => void
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
-    const isQueueDisabled = vi.fn(async () => {
+    vi.mocked(service.isQueueDisabled).mockImplementation(async () => {
       await gate
-      return true // stop before touching the database; the guard is what is under test
+      return false
     })
-
-    service.processing = false
-    service.db = {}
-    service.isQueueDisabled = isQueueDisabled
-
-    try {
-      // Both start before either can finish the config read.
-      const first = service.processQueue()
-      const second = service.processQueue()
-      release!()
-      await Promise.all([first, second])
-
-      // The defect: both callers reached the config read, so both went on to dispatch.
-      expect(isQueueDisabled).toHaveBeenCalledTimes(1)
-    } finally {
-      service.processing = originalProcessing
-      service.db = originalDb
-      service.isQueueDisabled = originalIsQueueDisabled
-    }
+    const first = service.processQueue()
+    const second = service.processQueue()
+    release()
+    await Promise.all([first, second])
+    expect(starts).toEqual([{ id: 1, at: 0 }])
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'processing', attempts: 1 },
+      { id: 2, status: 'pending', attempts: 0 }
+    ])
   })
 
-  it('releases the guard even when the queue is disabled', async () => {
-    // The claim moved above an early return, so a missed finally would wedge the queue shut.
-    const service = ocrService as unknown as OcrServiceTestAccess
-    const originalDb = service.db
-    const originalIsQueueDisabled = service.isQueueDisabled
-
-    service.processing = false
-    service.db = {}
-    service.isQueueDisabled = vi.fn(async () => true)
-
-    try {
-      await service.processQueue()
-      expect(service.processing).toBe(false)
-    } finally {
-      service.db = originalDb
-      service.isQueueDisabled = originalIsQueueDisabled
-    }
+  it('can dispatch after an earlier disabled-queue return', async () => {
+    vi.mocked(service.isQueueDisabled).mockResolvedValueOnce(true)
+    await ocrService.start()
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'pending', attempts: 0 },
+      { id: 2, status: 'pending', attempts: 0 }
+    ])
+    await ocrService.start()
+    expect(starts).toEqual([{ id: 1, at: 0 }])
+    expect(await jobs()).toEqual([
+      { id: 1, status: 'processing', attempts: 1 },
+      { id: 2, status: 'pending', attempts: 0 }
+    ])
   })
 })

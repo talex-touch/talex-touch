@@ -426,16 +426,11 @@ pub(crate) fn process_event(
 
     ([function_event, escape_event], suppress)
 }
-pub(crate) fn should_suppress_escape(capture_enabled: bool, input: MonitorInput) -> bool {
-    capture_enabled
-        && matches!(
-            input,
-            MonitorInput::KeyDown {
-                key_code: ESCAPE_KEY_CODE
-            } | MonitorInput::KeyUp {
-                key_code: ESCAPE_KEY_CODE
-            }
-        )
+/// Invariant: Escape is observed globally but passes through to other applications
+/// (see docs/engineering/specs/main-process/voice-session-contracts.md).
+/// The physical key must never be swallowed (null_mut) at the HID tap level.
+pub(crate) fn should_suppress_escape(_capture_enabled: bool, _input: MonitorInput) -> bool {
+    false
 }
 
 unsafe extern "C-unwind" fn handle_event(
