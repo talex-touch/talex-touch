@@ -39,6 +39,52 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('wallpaperAdapter platform results', () => {
+  it.each([
+    {
+      platform: 'win32',
+      stdout:
+        'HKEY_CURRENT_USER\\Control Panel\\Desktop\r\n    WallPaper    REG_SZ    C:\\Wallpapers\\aurora day.jpg\r\n',
+      expected: 'C:\\Wallpapers\\aurora day.jpg'
+    },
+    {
+      platform: 'darwin',
+      stdout: '/Users/demo/Pictures/aurora day.jpg\n',
+      expected: '/Users/demo/Pictures/aurora day.jpg'
+    },
+    {
+      platform: 'linux',
+      stdout: "'file:///home/demo/Pictures/aurora%20day.jpg'\n",
+      expected: '/home/demo/Pictures/aurora day.jpg'
+    }
+  ])(
+    'parses $platform system output into the wallpaper path',
+    async ({ platform, stdout, expected }) => {
+      // Select the OS boundary without mutating process.platform for other test files.
+      withOSAdapterMock.mockImplementation(
+        (options: Record<string, () => Promise<string | null>>) => options[platform]()
+      )
+      execFilePromiseMock.mockResolvedValueOnce({ stdout, stderr: '' })
+      const wallpaperAdapter = await loadWallpaperAdapter()
+
+      expect(await wallpaperAdapter.getDesktopWallpaperPath()).toBe(expected)
+    }
+  )
+
+  it.each(['win32', 'darwin', 'linux'])(
+    'returns null when the %s system command fails',
+    async (platform) => {
+      withOSAdapterMock.mockImplementation(
+        (options: Record<string, () => Promise<string | null>>) => options[platform]()
+      )
+      execFilePromiseMock.mockRejectedValueOnce(new Error('wallpaper command access denied'))
+      const wallpaperAdapter = await loadWallpaperAdapter()
+
+      expect(await wallpaperAdapter.getDesktopWallpaperPath()).toBeNull()
+    }
+  )
+})
+
 describe('wallpaperAdapter cache', () => {
   it('shares one system query across concurrent first reads and returns its resolved path', async () => {
     const query = Promise.withResolvers<{ stdout: string; stderr: string }>()
