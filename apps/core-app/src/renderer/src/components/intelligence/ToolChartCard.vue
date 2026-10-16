@@ -538,9 +538,7 @@ onBeforeUnmount(() => {
   font-family: inherit;
   font-size: var(--shell-fs-caption);
   cursor: pointer;
-  transition:
-    opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 
   &:hover {
     border-color: var(--shell-border-strong);

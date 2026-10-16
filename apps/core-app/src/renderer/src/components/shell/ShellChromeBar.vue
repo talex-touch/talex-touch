@@ -208,9 +208,6 @@ const showHistory = computed(() => !collapsed.value && width.value >= SIDEBAR_HI
   color: var(--shell-text-secondary);
   font-size: 15px;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover:not(:disabled) {

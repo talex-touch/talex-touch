@@ -64,7 +64,7 @@ function handleClick(event: MouseEvent) {
 <template>
   <TxButton
     variant="ghost"
-    class="IconButton-Container transition"
+    class="IconButton-Container transition-transform"
     :class="{ plain, small, select: _select, undot, scaleUpper, middle }"
     v-bind="$attrs"
     @click="handleClick"

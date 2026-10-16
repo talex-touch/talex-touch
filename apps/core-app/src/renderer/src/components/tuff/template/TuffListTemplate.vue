@@ -220,7 +220,6 @@ function onCollapseAfterLeave(el: Element) {
   border-radius: 8px;
   padding: 4px 8px;
   margin: 0 -8px;
-  transition: background-color 0.2s ease;
 }
 
 .TuffListTemplate-GroupHeader.is-collapsible {

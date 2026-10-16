@@ -56,7 +56,6 @@ function getAgentIcon(agent: AgentDescriptor): string {
   padding: 0.75rem;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
   background: var(--tx-fill-color-lighter);
 
   &:hover {

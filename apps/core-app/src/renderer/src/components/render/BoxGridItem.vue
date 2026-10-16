@@ -144,7 +144,6 @@ const badgeText = computed(() => {
   // reflows the card (and, under content-box sizing, offsets its row
   // neighbours — the misaligned recommend cards).
   border: 1px solid transparent;
-  transition: border-color 0.125s ease;
 
   &:hover {
     --fake-inner-opacity: 0.5;

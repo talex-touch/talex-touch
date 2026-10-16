@@ -222,7 +222,6 @@ function handleTokensControlBlur(onBlur: () => void) {
     font-size: 12px;
     color: var(--tx-text-color-secondary);
     margin: 0;
-    transition: color 0.3s ease;
 
     .form-group:hover & {
       color: var(--tx-text-color-regular);
@@ -237,7 +236,7 @@ function handleTokensControlBlur(onBlur: () => void) {
     border-radius: 8px;
     background-color: var(--tx-color-info-light-9);
     border: 1px solid var(--tx-color-info-light-7);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     animation: fadeInUp 0.4s ease;
 
     i {

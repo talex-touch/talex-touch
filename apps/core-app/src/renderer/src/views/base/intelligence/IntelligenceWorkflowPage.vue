@@ -1202,10 +1202,7 @@ onMounted(async () => {
   border-radius: 14px;
   padding: 12px;
   text-align: left;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    transform 0.2s ease;
+  transition: transform 0.2s ease;
 }
 
 .workflow-list-item:hover,
@@ -1287,10 +1284,6 @@ onMounted(async () => {
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease;
 }
 
 .review-filter-chip:hover,

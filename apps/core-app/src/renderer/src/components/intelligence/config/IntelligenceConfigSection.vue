@@ -65,7 +65,7 @@ function toggleCollapse() {
 }
 
 .section-header {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 0;
   border-radius: 8px;
   border: none;

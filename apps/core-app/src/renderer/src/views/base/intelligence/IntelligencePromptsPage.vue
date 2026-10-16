@@ -1056,11 +1056,7 @@ onBeforeUnmount(() => {
   background: rgba(var(--tx-bg-color-rgb, 255, 255, 255), 0.78);
   color: var(--tx-text-color-regular);
   font-weight: 600;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease,
-    transform 0.15s ease;
+  transition: transform 0.15s ease;
 
   &:hover {
     border-color: rgba(var(--tx-color-primary-rgb), 0.35);

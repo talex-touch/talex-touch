@@ -235,7 +235,7 @@ watch(
                   <button
                     type="button"
                     :class="{ disabled: sources.length === 1 || item.readOnly }"
-                    class="transition-cubic action-btn"
+                    class="action-btn"
                     :disabled="sources.length === 1 || item.readOnly"
                     :aria-label="t('store.sourceEditor.removeSource', { name: item.name })"
                     @click="deleteSource(item.id)"
@@ -287,7 +287,7 @@ watch(
                   <button
                     type="button"
                     :class="{ disabled: sources.length === 1 || item.readOnly }"
-                    class="transition-cubic action-btn"
+                    class="action-btn"
                     :disabled="sources.length === 1 || item.readOnly"
                     :aria-label="t('store.sourceEditor.removeSource', { name: item.name })"
                     @click="deleteSource(item.id)"
@@ -581,7 +581,6 @@ watch(
     font: inherit;
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.2s ease;
     background-color: var(--tx-color-danger-light-7);
     color: var(--tx-color-danger);
 

@@ -97,7 +97,7 @@ function handleClick(): void {
 <template>
   <div class="StorageTreeItem">
     <div
-      class="StorageTreeItem-Row flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-[var(--tx-fill-color-light)] transition-colors"
+      class="StorageTreeItem-Row flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-[var(--tx-fill-color-light)]"
       :class="{
         'bg-[var(--tx-fill-color)]': isSelected,
         'pl-8': level > 0
