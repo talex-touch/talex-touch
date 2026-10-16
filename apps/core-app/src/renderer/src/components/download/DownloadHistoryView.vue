@@ -292,6 +292,7 @@ onMounted(() => {
       v-if="confirmVisible"
       :title="confirmTitle"
       :message="confirmMessage"
+      :close-label="t('common.close')"
       :btns="[
         { content: t('common.cancel'), type: 'info', onClick: () => true },
         { content: t('common.confirm'), type: 'error', onClick: executeConfirm }

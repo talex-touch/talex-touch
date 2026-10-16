@@ -841,6 +841,7 @@ function openAssetsDialog(): void {
   <TModal
     v-model="assetsDialogVisible"
     :title="t('settings.settingUpdate.assetsTitle')"
+    :close-label="t('common.close')"
     width="720px"
   >
     <div class="assets-dialog">

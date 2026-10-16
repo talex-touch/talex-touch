@@ -1113,6 +1113,7 @@ onUnmounted(() => {
       v-if="verboseConfirmVisible"
       title="启用详细日志"
       message="启用详细日志会增加 CPU / 内存 / 磁盘占用，并可能记录路径等敏感信息。建议仅在排查问题时短时开启。"
+      :close-label="t('common.close')"
       :btns="[
         { content: '暂不', type: 'info', onClick: () => true },
         { content: '启用', type: 'error', onClick: confirmVerboseLogs }

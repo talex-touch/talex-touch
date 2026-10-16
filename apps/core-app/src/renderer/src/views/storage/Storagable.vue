@@ -818,6 +818,7 @@ onMounted(() => {
       v-if="cleanupConfirmVisible"
       :title="cleanupConfirmTitle"
       :message="cleanupConfirmMessage"
+      close-label="关闭"
       :btns="[
         { content: '取消', type: 'info', onClick: () => true },
         {

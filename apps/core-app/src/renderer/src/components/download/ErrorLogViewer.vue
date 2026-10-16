@@ -167,6 +167,7 @@ function requestClose() {
   <TxModal
     v-model="modalVisible"
     :title="t('download.error_logs')"
+    :close-label="t('common.close')"
     width="80%"
     class="error-log-viewer"
   >
@@ -255,6 +256,7 @@ function requestClose() {
     v-if="clearConfirmVisible"
     :title="t('download.clear_logs_confirm_title')"
     :message="t('download.clear_logs_confirm_message')"
+    :close-label="t('common.close')"
     :btns="[
       { content: t('common.cancel'), type: 'info', onClick: () => true },
       { content: t('common.confirm'), type: 'error', onClick: confirmClearLogs }

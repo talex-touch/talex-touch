@@ -1295,6 +1295,7 @@ onBeforeUnmount(() => {
     <TxDrawer
       v-model:visible="recordsOpen"
       :title="t('voiceInsights.records.title')"
+      :close-label="t('common.close')"
       size="728px"
       data-testid="voice-insights-records"
     >
@@ -1440,6 +1441,7 @@ onBeforeUnmount(() => {
       v-if="clearConfirmVisible"
       :title="t('voiceInsights.clear.title')"
       :message="t('voiceInsights.clear.description')"
+      :close-label="t('common.close')"
       :btns="clearButtons"
       :close="closeClearConfirm"
     />

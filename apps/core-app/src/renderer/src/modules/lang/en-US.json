@@ -1942,6 +1942,17 @@
       "loadOnce": "Load this image",
       "allowSession": "Allow for this conversation"
     },
+    "code": {
+      "preview": "Preview",
+      "source": "Code",
+      "frameLabel": "{lang} preview"
+    },
+    "diagram": {
+      "zoom": "Zoom diagram",
+      "preview": "Diagram preview",
+      "close": "Close preview",
+      "failed": "Diagram failed to render — showing source."
+    },
     "widget": {
       "generated": "Model-authored widget",
       "sandboxed": "Sandboxed",
@@ -1980,6 +1991,10 @@
     "attachRemove": "Remove attachment",
     "attachCancel": "Cancel upload",
     "attachPreview": "Preview",
+    "attachPrevious": "Previous image",
+    "attachNext": "Next image",
+    "attachPreviousText": "Prev",
+    "attachNextText": "Next",
     "attachmentNotSent": "Some attachments are not sent to the model",
     "voice": "Voice input",
     "send": "Send",

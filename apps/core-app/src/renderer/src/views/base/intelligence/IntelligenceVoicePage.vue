@@ -34,6 +34,7 @@ const settingsOpen = ref(false)
     <TxDrawer
       v-model:visible="settingsOpen"
       :title="t('settingSpeechRecognition.title')"
+      :close-label="t('common.close')"
       size="560px"
       data-testid="voice-settings-drawer"
     >

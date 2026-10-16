@@ -275,6 +275,7 @@ const exportProgress = computed(() => {
   <TxDrawer
     v-model:visible="visible"
     :title="t('intelligenceAudit.records.title')"
+    :close-label="t('common.close')"
     size="840px"
     data-testid="audit-records-drawer"
   >

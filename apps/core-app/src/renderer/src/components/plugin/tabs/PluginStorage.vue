@@ -659,6 +659,7 @@ watch(
       v-if="clearConfirmVisible"
       :title="t('plugin.storage.confirm.clearTitle')"
       :message="t('plugin.storage.confirm.clearMessage')"
+      :close-label="t('common.close')"
       :btns="[
         { content: t('plugin.storage.confirm.cancel'), type: 'info', onClick: () => true },
         {
