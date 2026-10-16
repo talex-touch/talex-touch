@@ -240,12 +240,12 @@ export function classifySurfaceFrames(intervals: number[]): SurfaceFrameReading 
   if (!intervals.length)
     return 'ok'
   const sorted = [...intervals].sort((a, b) => a - b)
-  if (sorted[Math.floor(sorted.length / 2)] > FRAME_THROTTLED_MS)
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0
+  if (median > FRAME_THROTTLED_MS)
     return 'throttled'
   // The shortest intervals are the frames that kept to the budget. Displays run at 60 Hz or
   // faster, so a page that drops every frame cannot pass its slow frames off as the budget.
-  const budget = Math.min(sorted[Math.floor(sorted.length * 0.1)], 1000 / 60)
-  const median = sorted[Math.floor(sorted.length / 2)]
+  const budget = Math.min(sorted[Math.floor(sorted.length * 0.1)] ?? 0, 1000 / 60)
   if (median > budget * 2.5)
     return 'minimal'
   const overruns = intervals.filter(interval => interval > budget * 1.5).length
@@ -307,12 +307,13 @@ function runProbe() {
       return
     }
     stamps.push(timestamp)
-    if (stamps.length <= FRAME_PROBE_FRAMES && timestamp - stamps[0] < FRAME_PROBE_MAX_MS) {
+    const firstStamp = stamps[0]
+    if (firstStamp != null && stamps.length <= FRAME_PROBE_FRAMES && timestamp - firstStamp < FRAME_PROBE_MAX_MS) {
       probeRaf = requestAnimationFrame(tick)
       return
     }
     probeRaf = null
-    applyFrameTier(classifySurfaceFrames(stamps.slice(1).map((stamp, index) => stamp - stamps[index])))
+    applyFrameTier(classifySurfaceFrames(stamps.slice(1).map((stamp, index) => stamp - (stamps[index] ?? 0))))
   }
   probeRaf = requestAnimationFrame(tick)
 }
@@ -322,7 +323,8 @@ function applyFrameTier(tier: SurfaceFrameReading) {
     // Nothing learnt: keep the tier, and measure again when the page comes back to the
     // front or after the usual wait, whichever is first.
     probeBlocked = true
-    scheduleProbe(FRAME_PROBE_RETRY_MS[probeRetryStep])
+    const retryDelay = FRAME_PROBE_RETRY_MS[probeRetryStep] ?? FRAME_PROBE_RETRY_MS[0] ?? 5000
+    scheduleProbe(retryDelay)
     return
   }
   const wasDegraded = frameTier.value !== 'ok'
@@ -332,7 +334,8 @@ function applyFrameTier(tier: SurfaceFrameReading) {
     if (confirmingRestore)
       probeRetryStep = Math.min(probeRetryStep + 1, FRAME_PROBE_RETRY_MS.length - 1)
     confirmingRestore = false
-    scheduleProbe(FRAME_PROBE_RETRY_MS[probeRetryStep])
+    const retryDelay = FRAME_PROBE_RETRY_MS[probeRetryStep] ?? FRAME_PROBE_RETRY_MS[0] ?? 5000
+    scheduleProbe(retryDelay)
     return
   }
   if (wasDegraded) {
