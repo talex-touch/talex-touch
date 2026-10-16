@@ -163,7 +163,7 @@ const resolvedTheme = computed<'light' | 'dark'>(() => {
   .markdown-body {
     // Headings
     h1, h2, h3, h4, h5, h6 {
-      font-weight: 600;
+      font-weight: var(--tx-font-weight-semibold, 600);
       line-height: 1.4;
       margin-top: 1.5em;
       margin-bottom: 0.5em;
@@ -235,7 +235,7 @@ const resolvedTheme = computed<'light' | 'dark'>(() => {
 
       th {
         background-color: var(--tx-fill-color-light, #fafafa);
-        font-weight: 600;
+        font-weight: var(--tx-font-weight-semibold, 600);
       }
 
       tr:nth-child(2n) {

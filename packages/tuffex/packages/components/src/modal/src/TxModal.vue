@@ -180,6 +180,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-modal__overlay {
   position: fixed;
   inset: 0;
@@ -189,15 +191,20 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 20px;
+
+  // High contrast keeps the dimming and drops the frost.
+  @include tx-when-high-contrast {
+    backdrop-filter: none;
+  }
 }
 
 .tx-modal__content {
   background: var(--tx-bg-color, #fff);
-  border-radius: 16px;
   padding: 20px;
   box-shadow: 12px 24px 80px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   width: min(90vw, 560px);
   color: var(--tx-text-color-primary, #303133);
+  @include tx-squircle(16px);
 }
 
 // Fullscreen: the overlay's own inset already spans the viewport, so the panel
@@ -298,8 +305,9 @@ onUnmounted(() => {
 .tx-modal__title {
   margin: 0;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
 .tx-modal__close {
@@ -314,7 +322,7 @@ onUnmounted(() => {
   border-radius: 8px;
   cursor: pointer;
   color: var(--tx-text-color-secondary, #909399);
-  transition: background-color 0.2s, color 0.2s, transform 0.15s;
+  transition: transform 0.15s;
 
   &:hover {
     background: var(--tx-fill-color-light, #f5f7fa);

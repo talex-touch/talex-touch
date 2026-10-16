@@ -57,6 +57,10 @@ export interface MapBaseOptions {
  * driven by ECharts' `stateAnimation` (300ms, `cubicOut`). `progress` is the
  * blend from base (0) to emphasised (1) so callers interpolate whatever style
  * values their series emphasises.
+ *
+ * `duration` defaults to that 300ms. Pass 0 where the emphasis only dims or
+ * recolours: TuffEx switches those on the frame the pointer arrives and keeps
+ * easing for geometry alone.
  */
 export interface MapEmphasis<K> {
   /** Key of the element carrying emphasis; retained while it fades out. */
@@ -69,7 +73,7 @@ export interface MapEmphasis<K> {
   leave: () => void
 }
 
-export function useMapEmphasis<K>(): MapEmphasis<K> {
+export function useMapEmphasis<K>(duration: number = STATE_DURATION): MapEmphasis<K> {
   const activeKey = shallowRef<K | null>(null)
   const progress = ref(0)
   let cancel: (() => void) | null = null
@@ -84,7 +88,7 @@ export function useMapEmphasis<K>(): MapEmphasis<K> {
     }
     cancel = tween({
       // ECharts `stateAnimation`: { duration: 300, easing: 'cubicOut' }.
-      duration: STATE_DURATION,
+      duration,
       easing: easings.cubicOut,
       onUpdate: (value) => {
         progress.value = from + (target - from) * value

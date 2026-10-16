@@ -1,6 +1,6 @@
 ---
-title: #141414 Canvas & 3-Tier Elevation
-description: Why pure black #000000 is an ergonomic pitfall; analyzing OLED purple smearing, elevation shadow physics, and the 3-tier dark grey scale.
+title: "#141414 Canvas & 3-Tier Elevation"
+description: "Why pure black #000000 is an ergonomic pitfall; analyzing OLED purple smearing, elevation shadow physics, and the 3-tier dark grey scale."
 ---
 
 # #141414 Canvas & 3-Tier Elevation
@@ -31,7 +31,12 @@ Tuff adopts `#141414` (warm deep carbon) as its foundation, organizing elevation
 | Elevation Tier | Token & Hex | Perceptual Role | Typical Surface |
 |---|---|---|---|
 | **Canvas** | `--tx-bg-color: #141414` | Light-absorbing deep canvas | Window background, workspace base |
-| **Container** | `--tx-fill-color-blank: #1c1c1e` | Matte diffuse surface | Setting cards, sidebar, table rows |
-| **Elevated** | `--tx-fill-color-light: #252528` | Raised interactive plane | Hover states, active selection, popovers |
+| **Container** | `--tx-bg-color-overlay: #1d1e1f` | Matte diffuse surface | Cards, dialogs, drawers, popovers, toast panels |
+| **Elevated** | `--tx-fill-color-light: #262727` | Raised interactive plane | Hover states, active selection |
+
+In dark mode `--tx-fill-color-blank` is `transparent`, so it carries no container colour.
 
 This hierarchy eliminates OLED smearing entirely while preserving room for physical lighting and shadow decay.
+
+:::TuffDemoWrapper{demo="ConceptDarkCanvasDemo"}
+:::

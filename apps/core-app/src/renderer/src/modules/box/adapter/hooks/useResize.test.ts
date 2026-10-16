@@ -26,10 +26,14 @@ vi.mock('~/utils/dev-log', () => ({
   devLog: vi.fn()
 }))
 
-function mountResizeHarness(activations: IProviderActivate[]) {
+function mountResizeHarness(
+  activations: IProviderActivate[],
+  options: { hasPreview?: Ref<boolean> } = {}
+) {
   const results = ref<TuffItem[]>([])
   const activeActivations = ref<IProviderActivate[] | null>(activations)
   const loading = ref(false)
+  const hasPreview = options.hasPreview ?? ref(false)
   const root = document.createElement('div')
   document.body.appendChild(root)
 
@@ -38,7 +42,8 @@ function mountResizeHarness(activations: IProviderActivate[]) {
       useResize({
         activeActivations,
         loading,
-        results: computed(() => results.value)
+        results: computed(() => results.value),
+        hasPreview
       })
       return () => null
     }
@@ -51,6 +56,7 @@ function mountResizeHarness(activations: IProviderActivate[]) {
       app.unmount()
       root.remove()
     },
+    hasPreview,
     loading,
     results
   }
@@ -117,6 +123,29 @@ describe('useResize forceMax activation', () => {
     expect(mocks.send).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ forceMax: true })
+    )
+    harness.cleanup()
+  })
+
+  it('emits forceMax and max height (600) when preview is active with results', async () => {
+    const hasPreview = ref(true)
+    const harness = mountResizeHarness([], { hasPreview })
+    harness.results.value = [{ id: 'video-result', kind: 'file' } as TuffItem]
+
+    await flushLayoutUpdate()
+
+    expect(mocks.send).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ forceMax: true, height: 600, resultCount: 1 })
+    )
+
+    // When preview turns off, forceMax resets
+    hasPreview.value = false
+    await flushLayoutUpdate()
+
+    expect(mocks.send).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ forceMax: false })
     )
     harness.cleanup()
   })

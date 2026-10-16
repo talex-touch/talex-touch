@@ -45,7 +45,7 @@ code: |
 - Pass the real trigger element or its `DOMRect` as `source`; `null` falls back to a centered card with no origin.
 - Keep `duration` near the default for stacked overlays so the shared mask and card motion stay in sync.
 - Put size constraints (`width`, `maxHeight`) in `cardStyle` and reusable visual variants in `cardClass`.
-- Use `surface="mask"` for normal cards, `glass` / `refraction` only when the backdrop stays readable, and `pure` for fully custom cards.
+- The card surface defaults to `refraction`. It renders in fake mode over a translucent `surfaceColor` base, 50% opaque by default: enough to keep text legible while the page behind still shows through to be blurred and refracted. Under `mask` the base defaults to 96%. `surfaceOpacity` changes either, and `pure` suits fully custom cards.
 - Prefer `#header-display`, `#header-actions`, or `#header-close`; `#header` replaces the close layout too.
 
 ## API Reference
@@ -68,9 +68,9 @@ code: |
 | `maskClosable` | `boolean` | `true` | Closes on a mask click or Escape. |
 | `preventAccidentalClose` | `boolean` | `false` | Blocks mask close and page exit, flashing a red warning glow. |
 | `globalMask` | `boolean` | `true` | Renders the shared body-level mask. |
-| `surface` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction'` | `'mask'` | Built-in card surface. |
+| `surface` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction'` | `'refraction'` | Built-in card surface. |
 | `surfaceColor` | `string` | `''` | Surface base color; follows the theme by default. |
-| `surfaceOpacity` | `number` | `0.96` | Surface opacity in `mask` mode. |
+| `surfaceOpacity` | `number` | `0.96` for `mask`, `0.5` for `blur` / `glass` / `refraction` | Opacity of the card's base colour; always opaque under `pure`. |
 | `speedBoost` | `number` | `1.12` | Time-scale boost after `speedBoostAt` progress. |
 | `speedBoostAt` | `number` | `0.7` | Animation progress at which `speedBoost` starts. |
 | `transitionName` | `string` | `'TxFlipOverlay-Mask'` | Vue transition name for the mask. |

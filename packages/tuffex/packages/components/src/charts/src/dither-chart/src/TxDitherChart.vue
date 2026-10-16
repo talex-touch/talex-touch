@@ -356,10 +356,10 @@ defineExpose({ scene, dataset, period, selectedSeries, dateCursor })
   &.is-compact { padding: 4px; box-shadow: none; background: transparent; }
   &__header { margin-bottom: var(--tx-dither-gap); }
   h3, p { margin: 0; }
-  h3 { font-size: 14px; font-weight: 600; }
+  h3 { font-size: 14px; font-weight: var(--tx-font-weight-semibold, 600); }
   p, &__capacity { font-size: 12px; color: var(--tx-text-color-regular, #606266); }
   &__summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  &__summary > :first-child { font-size: 24px; font-weight: 600; }
+  &__summary > :first-child { font-size: 24px; font-weight: var(--tx-font-weight-semibold, 600); }
   &__periods { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--tx-dither-gap); }
   &__periods button, &__legend button { appearance: none; border: 0; color: var(--tx-text-color-regular, #606266); background: transparent; font: inherit; cursor: pointer; border-radius: 7px; padding: 5px 8px; }
   &__periods button[aria-pressed='true'], &__legend button[aria-pressed='true'] { background: var(--tx-fill-color-light, #f5f7fa); color: var(--tx-text-color-primary, #303133); }
@@ -381,7 +381,7 @@ defineExpose({ scene, dataset, period, selectedSeries, dateCursor })
   &__cursor path { fill: none; opacity: 0.55; }
   &__cursor circle { stroke: var(--tx-bg-color, #fff); stroke-width: 2; }
   &__grid path { stroke: var(--tx-chart-grid-line, var(--tx-border-color, #dcdfe6)); stroke-dasharray: 3 3; fill: none; }
-  &__node-labels text { font-size: 13px; font-weight: 500; fill: var(--tx-text-color-primary, #303133); paint-order: stroke; stroke: var(--tx-bg-color, #fff); stroke-width: 3; }
+  &__node-labels text { font-size: 13px; font-weight: var(--tx-font-weight-medium, 500); fill: var(--tx-text-color-primary, #303133); paint-order: stroke; stroke: var(--tx-bg-color, #fff); stroke-width: 3; }
   &__axis { position: relative; color: var(--tx-text-color-regular, #606266); font-size: 12px; }
   &__axis span { position: absolute; white-space: nowrap; max-width: 25%; overflow: hidden; text-overflow: ellipsis; }
   &__axis button { position: absolute; transform: translateX(-50%); white-space: nowrap; max-width: 25%; overflow: hidden; text-overflow: ellipsis; appearance: none; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; cursor: pointer; }
@@ -395,7 +395,7 @@ defineExpose({ scene, dataset, period, selectedSeries, dateCursor })
   &__scrubber { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   &__scrubber input { flex: 1; min-width: 0; cursor: ew-resize; accent-color: var(--tx-chart-categorical-1, var(--tx-color-primary, #409eff)); }
   &__radial-value, &__empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
-  &__radial-value > :first-child { font-size: 24px; font-weight: 600; }
+  &__radial-value > :first-child { font-size: 24px; font-weight: var(--tx-font-weight-semibold, 600); }
   &__intensity { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 12px; margin-top: 8px; }
   &__intensity i { width: 10px; height: 10px; background: var(--tx-text-color-primary, #303133); }
   &__sr-only, &__color-probe { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }

@@ -248,9 +248,6 @@ function handleKeydown(event: KeyboardEvent): void {
   text-align: left;
   cursor: pointer;
   box-sizing: border-box;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
 
   &:hover {
     background: var(--shell-surface-2);

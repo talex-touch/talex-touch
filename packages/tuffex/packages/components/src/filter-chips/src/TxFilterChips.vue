@@ -3,6 +3,7 @@
 import type { FilterChipItem, FilterChipsEmits, FilterChipsProps, FilterChipsRole, FilterChipValue } from './types'
 import type { PropType } from 'vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({ name: 'TxFilterChips' })
 
@@ -213,6 +214,8 @@ onBeforeUnmount(() => {
 // A selection travels; a rebuilt chip list does not — the host refetching its
 // options must not read as the user having picked something.
 watch(() => props.modelValue, () => void nextTick(() => place(true)))
+// Picking a chip eases its ink and fill; a hover repaints at once.
+const morphing = useMorphWindow(() => props.modelValue, 200)
 watch(() => props.items, () => void nextTick(() => place(false)))
 watch(() => props.indicator, () => void nextTick(() => place(false)))
 
@@ -222,7 +225,7 @@ watch(() => props.indicator, () => void nextTick(() => place(false)))
   <div
     ref="rootRef"
     class="tx-bui-filter-chips"
-    :class="{ 'is-sliding': indicator, 'is-placing': placing }"
+    :class="{ 'is-sliding': indicator, 'is-placing': placing, 'is-morphing': morphing }"
     :style="indicatorVars"
     :role="role"
     :aria-label="ariaLabel"
@@ -339,13 +342,21 @@ watch(() => props.indicator, () => void nextTick(() => place(false)))
   padding: 0 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink-2, #62656b);
   cursor: pointer;
-  transition:
-    background-color 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-    box-shadow 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-    color 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: box-shadow 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+
+  .tx-bui-filter-chips.is-morphing & {
+    transition:
+      background-color 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
+      box-shadow 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
+      color 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 
   &:hover:not(.is-active):not(.is-disabled) {
     background: var(--tx-bui-hover, #f4f5f6);

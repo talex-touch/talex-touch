@@ -234,7 +234,7 @@ code: |
 | Prop | Type | Default | Description |
 |------|------|--------|------|
 | variant | `'solid' \| 'dashed' \| 'plain'` | `'solid'` | Border style; `plain` has no border and no hover feedback. |
-| background | `'pure' \| 'blur' \| 'glass' \| 'refraction' \| 'mask'` | `'pure'` | Surface material. |
+| background | `'pure' \| 'blur' \| 'glass' \| 'refraction' \| 'mask'` | `'refraction'` | Surface material. |
 | shadow | `'none' \| 'soft' \| 'medium'` | `'none'` | Shadow strength. |
 | size | `'small' \| 'medium' \| 'large'` | `'medium'` | Padding preset: `10` / `12` / `16` px. |
 | radius | `number` | `18` | Corner radius in px. |
@@ -253,8 +253,8 @@ code: |
 | refractionLightFollowMouse | `boolean` | `false` | Makes the highlight anchor follow the pointer. |
 | refractionLightFollowIntensity | `number` | `0.45` | Follow weight (0–1) on dispersion angle and strength. |
 | refractionLightSpring | `boolean` | `true` | Springs the light as it follows the pointer. |
-| refractionLightSpringStiffness | `number` | `0.18` | Light spring stiffness, clamped to `0.01–0.55`. |
-| refractionLightSpringDamping | `number` | `0.84` | Light spring damping, clamped to `0.55–0.99`. |
+| refractionLightSpringStiffness | `number` | `0.15` | Light spring stiffness, clamped to `0.01–0.55`. |
+| refractionLightSpringDamping | `number` | `0.6` | Light spring damping, clamped to `0.55–0.99`. |
 | flowLight | `'corners' \| 'rim' \| 'aurora' \| false` | - | The flow light on the surface; absent or `false` is off. |
 | flowLightIntensity | `number` | `1` | Flow light strength, multiplying the theme opacity. |
 | clickable | `boolean` | `false` | Enables hover and press feedback (scales to `0.985`) and emits `click`. |
@@ -309,7 +309,8 @@ code: |
 
 | Variable | Written by | Purpose |
 |----------|------------|---------|
-| `--tx-card-radius` | `radius` | Radius of the root, surface, cover, and loading overlay. |
+| `--tx-card-radius` | `radius` | Radius of the root. The surface, cover, and loading overlay sit inside the border and take this radius less `--tx-card-border-width`, so their corners stay concentric with the root's. |
+| `--tx-card-border-width` | `variant` | Border width: 1px for `solid` and `dashed`, 0 for `plain`. Do not set it by hand. |
 | `--tx-card-padding` | `padding` or `size` | Padding and the cover's negative margin. |
 | `--tx-card-dx` / `--tx-card-dy` | inertial motion | Root offset; don't set manually. |
 | `--tx-card-fake-background` | caller / theme | Base color of mask and refraction fallback surfaces. |

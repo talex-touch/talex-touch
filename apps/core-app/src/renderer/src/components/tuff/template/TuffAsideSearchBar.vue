@@ -102,10 +102,7 @@ function handleClear(): void {
   border: none;
   background: transparent;
   color: var(--tx-text-color-placeholder);
-  transition:
-    color 0.2s ease,
-    background-color 0.2s ease,
-    transform 0.15s ease;
+  transition: transform 0.15s ease;
   animation: search-clear-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 

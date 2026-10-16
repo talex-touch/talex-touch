@@ -102,7 +102,7 @@ function onOpen(payload: ContextChunkOpenPayload) {
 
   &__title {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     color: var(--tx-bui-ink, #1f2124);
   }
 
@@ -114,7 +114,7 @@ function onOpen(payload: ContextChunkOpenPayload) {
     height: 20px;
     padding: 0 6px;
     font-size: 11.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink-2, #62656b);
     background: var(--tx-bui-inset, #f7f8f9);
     border-radius: 6px;

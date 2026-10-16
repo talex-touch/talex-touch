@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mount } from '@vue/test-utils'
@@ -64,8 +63,7 @@ describe('txBaseSurface flowLight', () => {
   })
 
   it('stacks the layer at the veil\'s level, under the edge', () => {
-    const scss = readFileSync(resolve(here, '../src/style/index.scss'), 'utf8')
-    const css = sass.compileString(scss).css.replace(/\s+/g, ' ')
+    const css = sass.compile(resolve(here, '../src/style/index.scss')).css.replace(/\s+/g, ' ')
     const zIndexOf = (layer: string) => {
       const at = css.indexOf(`.tx-base-surface .tx-base-surface__layer--${layer} {`)
       expect(at, `${layer} rule`).toBeGreaterThan(-1)

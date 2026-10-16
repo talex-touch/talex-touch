@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CascaderEmits, CascaderNode, CascaderPath, CascaderProps, CascaderValue } from './types'
 import { computed, nextTick, provide, ref, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxCardItem from '../../card-item/src/TxCardItem.vue'
 import TxCheckbox from '../../checkbox/src/TxCheckbox.vue'
 import TxPopover from '../../popover/src/TxPopover.vue'
@@ -30,6 +31,8 @@ const props = withDefaults(defineProps<CascaderProps>(), {
 const emit = defineEmits<CascaderEmits>()
 
 const open = ref(false)
+// Opening eases the trigger's border; a hover repaints at once.
+const morphing = useMorphWindow(open, 250)
 const triggerRef = ref<HTMLElement | null>(null)
 const query = ref('')
 
@@ -323,7 +326,7 @@ defineExpose({
       <div
         ref="triggerRef"
         class="tx-cascader"
-        :class="{ 'is-open': open, 'is-disabled': disabled }"
+        :class="{ 'is-open': open, 'is-disabled': disabled, 'is-morphing': morphing }"
         :tabindex="disabled ? -1 : 0"
         role="combobox"
         aria-haspopup="listbox"
@@ -424,8 +427,16 @@ defineExpose({
   background: var(--tx-bg-color, #fff);
   box-sizing: border-box;
   cursor: pointer;
-  transition: border-color 0.25s, box-shadow 0.25s;
+  transition: box-shadow 0.25s;
   outline: none;
+
+  &.is-morphing {
+    transition: border-color 0.25s, box-shadow 0.25s;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 
   &:hover:not(.is-disabled) {
     border-color: var(--tx-color-primary-light-3, #79bbff);

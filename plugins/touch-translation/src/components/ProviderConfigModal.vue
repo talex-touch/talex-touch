@@ -514,13 +514,13 @@ function getMissingRequiredFields(): string[] {
             <!-- 按钮组 -->
             <div class="flex justify-end gap-3 mt-6">
               <button
-                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md transition-colors"
+                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md"
                 @click="closeModal"
               >
                 取消
               </button>
               <button
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
                 :disabled="provider?.id === 'google'"
                 @click="saveConfig"
               >
@@ -531,7 +531,7 @@ function getMissingRequiredFields(): string[] {
             <!-- 测试连接 -->
             <div v-if="provider?.id !== 'google'" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button
-                class="w-full px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
+                class="w-full px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md"
                 :disabled="isTestingConnection"
                 @click="testConnection"
               >

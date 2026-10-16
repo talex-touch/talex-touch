@@ -141,6 +141,7 @@ code: |
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `--tx-chat-composer-radius` | `18px` | 外壳与卡片共用的圆角。 |
+| `--tx-chat-composer-pending-color` | `#f59e0b` | 处理中附件 chip 的琥珀色，描边混入 32%，底色混入 14%。 |
 
 ## 概述
 

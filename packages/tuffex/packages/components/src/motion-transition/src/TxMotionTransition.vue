@@ -404,6 +404,8 @@ defineExpose({ replay, finish: () => finish(), close })
 </template>
 
 <style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-motion-transition {
   --tx-motion-transition-pad: 16px;
   --tx-motion-transition-radius: 16px;
@@ -422,7 +424,7 @@ defineExpose({ replay, finish: () => finish(), close })
 .tx-motion-transition--modal .tx-motion-transition__panel { width: min(var(--tx-motion-transition-width, 640px), 100%); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
 .tx-motion-transition--overlay .tx-motion-transition__panel { width: 100%; height: 100%; border-radius: 0; display: flex; flex-direction: column; }
 .tx-motion-transition__header, .tx-motion-transition__footer { display: flex; align-items: center; gap: 12px; padding: calc(var(--tx-motion-transition-pad) * .75) var(--tx-motion-transition-pad); flex: none; }
-.tx-motion-transition__header h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.tx-motion-transition__header h3 { font-size: 16px; font-weight: var(--tx-font-weight-semibold, 600); margin: 0; }
 .tx-motion-transition__close { margin-left: auto; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; padding: 0; color: var(--tx-text-color-regular, #606266); background: var(--tx-fill-color-light, #f5f7fa); cursor: pointer; }
 .tx-motion-transition__close:hover { background: var(--tx-fill-color, #f0f2f5); }
 .tx-motion-transition__close:focus-visible { outline: 2px solid var(--tx-color-primary, #409eff); outline-offset: 2px; }
@@ -445,6 +447,8 @@ defineExpose({ replay, finish: () => finish(), close })
 .tx-motion-transition__door-pane { display: block; margin: 10%; width: 80%; height: 80%; box-shadow: inset 0 0 0 1px var(--tx-border-color, #dcdfe6); background: var(--tx-fill-color-light, #f5f7fa); }
 .tx-motion-transition__column { transform: translateY(-105%); }
 .tx-motion-transition__columns--glass .tx-motion-transition__column { background: color-mix(in srgb, var(--tx-bg-color-overlay, #fff) 95%, transparent); backdrop-filter: blur(12px); }
+// High contrast: the glass curtain's columns are opaque and frost nothing.
+.tx-motion-transition__columns--glass .tx-motion-transition__column { @include tx-when-high-contrast { background: var(--tx-bg-color-overlay, #fff); backdrop-filter: none; } }
 .tx-motion-transition__iris { clip-path: circle(0% at 50% 50%); background: var(--tx-motion-transition-surface, var(--tx-bg-color-overlay, #fff)); }
 .tx-motion-transition__wave-layer--1 { fill: var(--tx-fill-color-dark, #dcdfe6); opacity: .6; }
 .tx-motion-transition__wave-layer--2 { fill: var(--tx-fill-color, #f0f2f5); opacity: .85; }

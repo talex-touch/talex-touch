@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, nextTick, reactive, ref } from 'vue'
 import { useBaseSurfaceMotion } from '../src/base-surface-motion'
+import { SURFACE_MOTION_SETTLE_MS } from '../src/surface-environment'
 import TxBaseSurface from '../src/TxBaseSurface.vue'
 
 const GlassSurfaceStub = defineComponent({
@@ -288,23 +289,33 @@ describe('txBaseSurface auto-detect motion end', () => {
   })
 
   it('ends the motion state once nothing under observation is transforming', async () => {
-    const wrapper = mountMotionHarness()
-    await nextTick()
+    vi.useFakeTimers()
+    try {
+      const wrapper = mountMotionHarness()
+      await nextTick()
 
-    const el = wrapper.element as HTMLElement
-    el.style.transform = 'translateX(8px)'
-    fireMutations!([{ type: 'attributes', attributeName: 'style', target: el }])
-    await nextTick()
-    expect(wrapper.vm.isMoving).toBe(true)
+      const el = wrapper.element as HTMLElement
+      el.style.transform = 'translateX(8px)'
+      fireMutations!([{ type: 'attributes', attributeName: 'style', target: el }])
+      await nextTick()
+      expect(wrapper.vm.isMoving).toBe(true)
 
-    // Guards against the fix over-blocking and wedging the surface as "moving".
-    el.style.transform = ''
-    fireMutations!([{ type: 'attributes', attributeName: 'style', target: el }])
-    await nextTick()
+      // Guards against the fix over-blocking and wedging the surface as "moving". The motion
+      // ends after the settle window, so a transform that resumes within it does not flicker.
+      el.style.transform = ''
+      fireMutations!([{ type: 'attributes', attributeName: 'style', target: el }])
+      await nextTick()
+      expect(wrapper.vm.isMoving).toBe(true)
 
-    expect(wrapper.vm.isMoving).toBe(false)
+      vi.advanceTimersByTime(SURFACE_MOTION_SETTLE_MS)
+      await nextTick()
+      expect(wrapper.vm.isMoving).toBe(false)
 
-    wrapper.unmount()
+      wrapper.unmount()
+    }
+    finally {
+      vi.useRealTimers()
+    }
   })
 })
 

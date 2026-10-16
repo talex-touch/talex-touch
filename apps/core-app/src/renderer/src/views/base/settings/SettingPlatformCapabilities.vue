@@ -388,7 +388,6 @@ onMounted(() => {
   min-height: 72px;
   padding: 12px 16px;
   /* `background-color`, not the shorthand: it would drop the card-drawn row hairline. */
-  transition: background-color 0.18s ease;
 
   &:hover {
     background-color: var(--shell-surface);

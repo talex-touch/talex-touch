@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TxRadioProps, TxRadioType, TxRadioValue } from './types'
 import { computed, inject, onBeforeUnmount, ref, toRefs } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({ name: 'TxRadio' })
 
@@ -39,6 +40,8 @@ const isChecked = computed(() => {
     return props.modelValue
   return uncontrolledChecked.value
 })
+// Checking eases the fill, border and ink; a hover repaints at once.
+const morphing = useMorphWindow(isChecked, 160)
 const radioType = computed(() => {
   const groupType = group?.type.value
   return (groupType ?? propType.value ?? 'button') as TxRadioType
@@ -95,7 +98,7 @@ function select() {
     :tabindex="rovingTabindex"
     :disabled="isDisabled"
     :class="[
-      { 'is-checked': isChecked, 'is-disabled': isDisabled },
+      { 'is-checked': isChecked, 'is-disabled': isDisabled, 'is-morphing': morphing },
       `tx-radio--${radioType}`,
     ]"
     @click="select"
@@ -120,8 +123,16 @@ function select() {
   align-items: center;
   cursor: pointer;
   user-select: none;
-  transition: background 0.16s ease, border-color 0.16s ease, transform 0.12s ease, color 0.16s ease;
+  transition: transform 0.12s ease;
   outline: none;
+
+  &.is-morphing {
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.12s ease, color 0.16s ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 
   &--button {
     justify-content: center;

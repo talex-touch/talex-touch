@@ -245,11 +245,11 @@ onMounted(() => {
         <slot name="header-extra" :active="expanded" />
       </div>
 
-      <div
+      <TuffIcon
         v-if="collapsible"
-        class="tx-group-block__toggle i-carbon-chevron-down"
+        name="chevron-down"
+        class="tx-group-block__toggle"
         :class="{ 'is-expanded': expanded }"
-        aria-hidden="true"
       />
     </div>
 
@@ -356,7 +356,7 @@ onMounted(() => {
   & &__name {
     margin: 0 !important;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     line-height: 18px;
     color: var(--tx-text-color-primary, #303133);
   }

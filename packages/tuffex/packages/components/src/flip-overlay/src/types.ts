@@ -21,7 +21,7 @@ export interface FlipOverlayProps {
   cardStyle?: CSSProperties
   globalMask?: boolean
   border?: 'solid' | 'dashed' | 'dash' | 'none'
-  surface?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction'
+  surface?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'
   surfaceColor?: string
   surfaceOpacity?: number
   header?: boolean

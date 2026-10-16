@@ -241,7 +241,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
 
 .tx-bui-fine-tune-card__title {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink, #1f2124);
 }
 
@@ -252,7 +252,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
   gap: 6px;
   align-items: center;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-green, #189a4d);
 }
 
@@ -278,7 +278,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
 // so the gradient is written out rather than pulled from `bui-shimmer-text`.
 .tx-bui-fine-tune-card__adjust-label {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: transparent;
   background-image: linear-gradient(
     90deg,
@@ -309,7 +309,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
 .tx-bui-fine-tune-card__section-title {
   margin: 0;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink, #1f2124);
 }
 
@@ -336,7 +336,13 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
     flex: 1;
     padding: 0;
     color: var(--tx-bui-ink-3, #9a9da3);
-    transition: color 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+    // The ink eases only while TxFlatRadioItem holds `is-morphing` after a
+    // pick; a hover repaints at once.
+    transition: none;
+
+    &.is-morphing {
+      transition: color 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+    }
 
     &:hover:not(.is-selected) {
       color: var(--tx-bui-ink-2, #62656b);
@@ -359,7 +365,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .tx-flat-radio-item {
+    .tx-flat-radio-item.is-morphing {
       transition: none;
     }
   }

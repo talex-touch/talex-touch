@@ -1,7 +1,12 @@
 import type { FlowLightVariant } from '../../flow-light/src/types'
 import type { GlassSurfaceProps } from '../../glass-surface'
 
-export type BaseSurfaceMode = 'pure' | 'mask' | 'blur' | 'glass' | 'refraction'
+/**
+ * 材质：pure / flat 实色（flat 是 pure 的别名）、plain 无背景、mask 半透明遮罩、
+ * blur 背景模糊、acrylic 亚克力（三倍模糊 + 着色 + 噪点）、mica 云母（按视口取色的不透明底）、
+ * glass 玻璃、refraction 琉光折射
+ */
+export type BaseSurfaceMode = 'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'
 export type BaseSurfacePreset = 'default' | 'card'
 export type BaseSurfaceRefractionRenderer = 'svg' | 'css'
 export type BaseSurfaceRefractionProfile = 'soft' | 'filmic' | 'cinematic'
@@ -14,11 +19,11 @@ export interface BaseSurfaceProps {
   radius?: string | number
   /** 纯色/遮罩的背景色，默认使用 CSS 变量 */
   color?: string
-  /** mask 模式下的透明度 (0-1) */
+  /** mask 模式的透明度 (0-1)，acrylic 着色层取它的 0.8 倍；fake 模式下也是 blur / acrylic / glass / refraction 材质底下那层底色的不透明度 */
   opacity?: number
   /** 运动降级到 mask 时的透明度覆盖（0-1） */
   fallbackMaskOpacity?: number
-  /** blur（即 filter 层）模式下的模糊强度 (px) */
+  /** blur（即 filter 层）模式下的模糊强度 (px)；acrylic 取它的三倍 */
   blur?: number
   /** filter 层饱和度（用于 blur/refraction 模式） */
   filterSaturation?: number
@@ -67,12 +72,15 @@ export interface BaseSurfaceProps {
   /** 是否正在运动（手动控制降级） */
   moving?: boolean
   /** 运动降级的目标模式，默认 'mask' */
-  fallbackMode?: 'pure' | 'mask'
+  fallbackMode?: 'pure' | 'mask' | 'flat'
   /** 运动结束后恢复到目标模式的延迟 (ms)，默认 150 */
   settleDelay?: number
-  /** 是否启用自动 transform 检测降级，默认 false */
+  /**
+   * 是否按环境自动降级，默认 false：自身 transform / transition、指针高速移动、窗口移动或缩放时
+   * 走运动降级；省电或掉帧时把材质换成更轻的一档
+   */
   autoDetect?: boolean
-  /** 过渡时长 (ms)，默认 260 */
+  /** 过渡时长 (ms)，默认 299 */
   transitionDuration?: number
   /** 是否使用 fake-background 伪元素模式渲染 */
   fake?: boolean

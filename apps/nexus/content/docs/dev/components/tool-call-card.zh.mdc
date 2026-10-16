@@ -74,6 +74,12 @@ code: |
 | `result` | `{ toolCall }` | 结果区挂载点，供宿主渲染自己的组件；设置后不再渲染 `output`。 |
 | `icon` | `{ status }` | 替换状态图标。 |
 
+### CSS 变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `--tx-tool-call-card-log-color` | `#d6e2f0` | 日志区的文字颜色。 |
+
 ## 概述
 
 - 展开区随 `status` 切换：`running` 显示 `logs`，`done` 显示 `result` 插槽（缺省为 `output`），`error` 显示 `error` 与重试按钮；`input` 存在时始终显示。

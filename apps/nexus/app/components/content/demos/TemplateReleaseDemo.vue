@@ -269,6 +269,7 @@ const zhCopy = {
     checks: '护栏检查',
     demoNote: '这是演示，不会推送任何真实版本。',
     cancel: '取消',
+    close: '关闭',
     confirmPromote: '确认晋级',
     confirmHalt: '暂停发布',
     confirmResume: '恢复发布',
@@ -400,6 +401,7 @@ const enCopy: typeof zhCopy = {
     checks: 'Guardrail checks',
     demoNote: 'This is a demo; no real version ships.',
     cancel: 'Cancel',
+    close: 'Close',
     confirmPromote: 'Promote',
     confirmHalt: 'Halt rollout',
     confirmResume: 'Resume rollout',
@@ -1504,6 +1506,7 @@ defineExpose({ resetDemo })
         <TxModal
           :model-value="modal.open"
           :title="modal.kind === 'halt' ? copy.modal.haltTitle : modal.kind === 'resume' ? copy.modal.resumeTitle : copy.modal.promoteTitle(modal.to)"
+          :close-label="copy.modal.close"
           width="min(440px, calc(100vw - 40px))"
           @update:model-value="modal.open = $event"
         >

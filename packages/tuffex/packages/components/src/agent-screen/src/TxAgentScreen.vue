@@ -152,7 +152,7 @@ const cursorStyle = computed(() => {
     pointer-events: none;
     // `drop-shadow` rather than a box shadow: the pointer is an arbitrary
     // silhouette, and a rectangular shadow around it would read as a card.
-    filter: drop-shadow(0 1px 2px #00000040);
+    filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--tx-color-black, #000) 25%, transparent));
   }
 
   &__cursor-label {

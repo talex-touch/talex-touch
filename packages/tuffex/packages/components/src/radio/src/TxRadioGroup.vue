@@ -196,6 +196,8 @@ provide('tx-radio-group', ctx)
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 .tx-radio-group {
   position: relative;
   display: inline-flex;
@@ -351,5 +353,22 @@ provide('tx-radio-group', ctx)
   z-index: 1;
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+// High contrast: the indicator is opaque, and the blur and glass bodies that ride it while it
+// moves stay hidden. The outline variant has no fill to begin with.
+.tx-radio-group {
+  @include tx-when-high-contrast {
+    .tx-radio-group__indicator-glass-wrap,
+    .tx-radio-group__indicator-blur {
+      display: none;
+    }
+  }
+}
+
+.tx-radio-group:not(.tx-radio-group--indicator-outline) .tx-radio-group__indicator-plain {
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color-overlay, #fff);
+  }
 }
 </style>

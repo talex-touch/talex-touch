@@ -76,7 +76,7 @@ const tupleY = (d: [number, number]): number => d[1]
  * ECharts' `blur` state renders non-focused elements at
  * `fromState.opacity * 0.1` — 10% (echarts `src/util/states.ts`). kumo's
  * line/bar series set `emphasis: { focus: 'series' }`, which blurs every other
- * series over the 300ms `cubicOut` state animation.
+ * series. ECharts eases that over its 300ms `stateAnimation`; here it snaps.
  */
 const DIM_OPACITY = 0.1
 
@@ -522,14 +522,10 @@ function onBrushRange(from: number, to: number): void {
 .tx-timeseries {
   width: 100%;
 
-  // ECharts animates its `blur`/`emphasis` states over `stateAnimation`
-  // (300ms, `cubicOut`; `cubicOut` = `cubic-bezier(0.33, 1, 0.68, 1)`). The
-  // dim travels as the series root's `opacity` attribute.
-  @media (prefers-reduced-motion: no-preference) {
-    :deep(.tx-series) {
-      transition: opacity 300ms cubic-bezier(0.33, 1, 0.68, 1);
-    }
-  }
+  // The dim travels as the series root's `opacity` attribute and snaps, where
+  // ECharts would ease its `blur`/`emphasis` states over the 300ms
+  // `stateAnimation`: TuffEx switches hover emphasis on the frame the pointer
+  // arrives.
 
   &__marker-time {
     margin-bottom: 0.25rem;
@@ -541,7 +537,7 @@ function onBrushRange(from: number, to: number): void {
   }
 
   &__marker-label {
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   &__marker-desc {
@@ -570,7 +566,7 @@ function onBrushRange(from: number, to: number): void {
   }
 
   &__marker-value {
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     font-variant-numeric: tabular-nums;
   }
 }

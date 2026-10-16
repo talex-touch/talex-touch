@@ -44,7 +44,6 @@ defineEmits<{ activate: [] }>()
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover {

@@ -85,7 +85,7 @@ watch(
   justify-content: center;
   padding: 2px 8px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 1;
   border-radius: 9999px;
   white-space: nowrap;

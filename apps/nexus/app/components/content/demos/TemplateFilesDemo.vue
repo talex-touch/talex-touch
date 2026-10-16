@@ -448,7 +448,7 @@ const copy = computed(() => zh.value
         noSelection: '选择一个文件',
         noSelectionDesc: '单击文件在这里预览；空格打开快速预览。',
         siblings: '同文件夹的图片',
-        gallery: { title: '图片', prev: '上一张', next: '下一张', prevText: '上一张', nextText: '下一张' },
+        gallery: { title: '图片', prev: '上一张', next: '下一张', prevText: '上一张', nextText: '下一张', close: '关闭' },
         galleryItem: (index: number) => `图片 ${index + 1}`,
         galleryOpen: (name: string) => `查看 ${name}`,
         folderSummary: (count: number, size: string) => `${count} 项 · ${size}`,
@@ -493,6 +493,7 @@ const copy = computed(() => zh.value
       toastLabel: '操作结果',
       undo: '撤销',
       dismiss: '关闭提示',
+      close: '关闭',
       undone: '已撤销',
       removed: (count: number) => `已删除 ${count} 项`,
       moved: (count: number, folder: string) => `已把 ${count} 项移到「${folder}」`,
@@ -583,7 +584,7 @@ const copy = computed(() => zh.value
         noSelection: 'Pick a file',
         noSelectionDesc: 'Click a file to preview it here; Space opens quick look.',
         siblings: 'Images in this folder',
-        gallery: { title: 'Image', prev: 'Previous image', next: 'Next image', prevText: 'Prev', nextText: 'Next' },
+        gallery: { title: 'Image', prev: 'Previous image', next: 'Next image', prevText: 'Prev', nextText: 'Next', close: 'Close' },
         galleryItem: (index: number) => `Image ${index + 1}`,
         galleryOpen: (name: string) => `View ${name}`,
         folderSummary: (count: number, size: string) => `${count === 1 ? '1 item' : `${count} items`} · ${size}`,
@@ -628,6 +629,7 @@ const copy = computed(() => zh.value
       toastLabel: 'Result',
       undo: 'Undo',
       dismiss: 'Dismiss',
+      close: 'Close',
       undone: 'Undone',
       removed: (count: number) => (count === 1 ? 'Deleted 1 item' : `Deleted ${count} items`),
       moved: (count: number, folder: string) => (count === 1 ? `Moved 1 item to ${folder}` : `Moved ${count} items to ${folder}`),
@@ -2200,6 +2202,7 @@ onBeforeUnmount(() => {
               :next-label="copy.preview.gallery.next"
               :previous-text="copy.preview.gallery.prevText"
               :next-text="copy.preview.gallery.nextText"
+              :close-label="copy.preview.gallery.close"
               :item-label-formatter="copy.preview.galleryItem"
               :open-label-formatter="copy.preview.galleryOpen"
             />
@@ -2744,7 +2747,7 @@ onBeforeUnmount(() => {
 
         <span class="files-sr-only" role="status" aria-live="polite">{{ announcement }}</span>
 
-        <TxModal v-model="previewOpen" :title="previewItem?.name ?? ''" width="min(760px, calc(100vw - 48px))">
+        <TxModal v-model="previewOpen" :title="previewItem?.name ?? ''" :close-label="copy.close" width="min(760px, calc(100vw - 48px))">
           <div v-if="previewItem" ref="previewRef" class="files-quicklook" tabindex="-1" @keydown="onPreviewKeydown">
             <ReusePreview :item="previewItem" :compact="false" />
             <div class="files-quicklook__nav">
@@ -2756,7 +2759,7 @@ onBeforeUnmount(() => {
           </div>
         </TxModal>
 
-        <TxModal v-model="moveOpen" :title="copy.move.title(moveIds.length)" width="min(420px, calc(100vw - 48px))">
+        <TxModal v-model="moveOpen" :title="copy.move.title(moveIds.length)" :close-label="copy.close" width="min(420px, calc(100vw - 48px))">
           <div class="files-move">
             <p class="files-move__hint">
               {{ copy.move.hint }}

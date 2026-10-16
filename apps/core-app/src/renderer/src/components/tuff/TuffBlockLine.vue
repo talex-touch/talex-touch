@@ -87,7 +87,6 @@ function handleClick(event: MouseEvent) {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    transition: color 0.2s ease;
   }
 
   &.link {

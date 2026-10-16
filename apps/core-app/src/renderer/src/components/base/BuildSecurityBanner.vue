@@ -168,7 +168,6 @@ function dismissBanner() {
       color: var(--tx-text-color-secondary);
       cursor: pointer;
       border-radius: 4px;
-      transition: all 0.2s;
 
       &:hover {
         background: var(--tx-fill-color-light);

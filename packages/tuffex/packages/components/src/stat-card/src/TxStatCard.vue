@@ -319,6 +319,8 @@ watch(
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 // Inherited: the value is bound on `.tx-stat-card__progress` and read by its
 // child ring. Registered with `inherits: false`, the ring only ever saw the
 // 0% initial value, so the progress arc was never drawn.
@@ -365,6 +367,13 @@ watch(
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-end;
+
+  // High contrast: opaque, and nothing behind it is frosted.
+  @include tx-when-high-contrast {
+    --fake-opacity: 1;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .tx-stat-card--insight {
@@ -435,7 +444,7 @@ watch(
 
 .tx-stat-card__value {
   font-size: 28px;
-  font-weight: 700;
+  font-weight: var(--tx-font-weight-bold, 700);
   line-height: 1.1;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -472,7 +481,7 @@ watch(
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 12%, transparent);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 18px;
   font-variant-numeric: tabular-nums;
   color: var(--tx-color-success, #67c23a);

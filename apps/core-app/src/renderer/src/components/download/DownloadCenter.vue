@@ -233,7 +233,6 @@ function removeTask(_taskId: string) {
   background: var(--download-surface);
   border-radius: 14px;
   border: 1px solid var(--download-border);
-  transition: border-color 0.2s ease;
 
   &:hover {
     border-color: var(--tx-border-color);

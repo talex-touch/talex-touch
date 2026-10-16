@@ -584,7 +584,7 @@ defineExpose({
   background: rgba(15, 17, 20, 0.85);
   color: var(--tx-text-color-secondary);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: opacity 0.18s ease;
 }
 
 .toolbar-icon.variant-bare {
@@ -630,7 +630,6 @@ defineExpose({
   background: rgba(250, 173, 20, 0.1);
   font-size: 0.78rem;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
 
 .toolbar-tag:hover {
@@ -719,7 +718,7 @@ defineExpose({
   background: rgba(15, 17, 20, 0.85);
   color: var(--tx-text-color-secondary);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: opacity 0.18s ease;
 }
 
 .terminal-icon.variant-bare {
@@ -789,7 +788,7 @@ defineExpose({
     monospace;
   letter-spacing: 0.08em;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: opacity 0.18s ease;
 }
 
 .terminal-chip:hover:not(:disabled) {
@@ -946,7 +945,6 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
 
 .history-item:hover {
@@ -1014,7 +1012,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 .pager:hover:not(:disabled) {

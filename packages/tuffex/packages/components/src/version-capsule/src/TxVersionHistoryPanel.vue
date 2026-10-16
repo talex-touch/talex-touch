@@ -320,7 +320,6 @@ function toneClass(entry: TxVersionHistoryEntry) {
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out);
 }
 
 .tx-version-history-panel__row:hover {
@@ -376,11 +375,5 @@ function toneClass(entry: TxVersionHistoryEntry) {
   border-top: 1px solid var(--tx-version-panel-border-color);
   background: var(--tx-fill-color-lighter);
   font-size: 12px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tx-version-history-panel__row {
-    transition: none;
-  }
 }
 </style>

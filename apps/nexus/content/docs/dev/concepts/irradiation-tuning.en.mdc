@@ -1,6 +1,6 @@
 ---
 title: Retinal Irradiation & Weight Tuning
-description: Helmholtz optical irradiation illusion, 10%–15% white text expansion, variable font 460/560 tuning, and discrete font fallback traps.
+description: Helmholtz optical irradiation illusion, the perceived expansion of white text on dark, variable font 460/560 tuning, and discrete font fallback traps.
 ---
 
 # Retinal Irradiation & Weight Tuning
@@ -12,18 +12,18 @@ Identical `font-weight: 500` copy appears noticeably heavier in dark mode than i
 In 1867, physiological optics pioneer Hermann von Helmholtz documented this retinal mechanism in the *Handbuch der physiologischen Optik*:
 **Photoreceptors stimulated by bright light spill excitation into neighboring dark-adapted cells, causing the visual cortex to perceive bright shapes expanding outward**.
 
-## The 10%–15% Perceived Expansion of White Text
+## The Perceived Expansion of White Text
 
 - **Light Mode (Dark on Light)**: Expansive light backgrounds encroach upon the boundaries of dark strokes, making typography feel compact and refined.
-- **Dark Mode (Light on Dark)**: Radiant white strokes bleed into the surrounding darkness. **To human retinas, stroke thickness appears 10%–15% bolder**.
+- **Dark Mode (Light on Dark)**: Radiant white strokes bleed into the surrounding darkness. **The same weight reads bolder than it does dark-on-light; how much depends on luminance, contrast and size, and there is no fixed percentage**.
 
 Reusing identical numeric weights across themes causes dark mode typography to read clumsy and congested.
 
 ## Variable Font 460/560 Tuning in Action
 
-When variable system fonts (e.g. San Francisco, Segoe UI Variable, Inter) are active, TuffEx calibrates dark weights downward to achieve perceived optical equivalence:
+TuffEx does not lower weights in its dark theme today: components use the same `400/500/600` on both. The table below is a recommendation. When the font has a weight axis (variable fonts such as San Francisco, Segoe UI Variable or Inter), a dark theme can tune its weights like this:
 
-| Role | Light Weight | Dark Compensated Weight | Optical Target |
+| Role | Light Weight | Recommended Dark Weight | Optical Target |
 |---|---|---|---|
 | **Body Default** | `400` (Regular) | `380` – `400` | Eliminates bloom and stroke fattening |
 | **Inline Emphasis** | `500` (Medium) | `460` | Crisp emphasis without interior stroke collision |
@@ -36,4 +36,7 @@ When variable system fonts (e.g. San Francisco, Segoe UI Variable, Inter) are ac
 - Values between `400` and `500` round *up* to `500`!
 - Rather than compensating for optical bloom, this **unintentionally thickens the text**!
 
-TuffEx requires scoping variable weight tuning behind variable font support; under static font environments, developers preserve `400/500/600` and dial back text contrast (using `--tx-text-color-regular` instead of raw white) to offset irradiation expansion.
+So declare these in-between weights only where the font is known to have a weight axis; with static fonts, keep `400/500/600` and dial back text contrast instead (`--tx-text-color-regular` rather than raw white) to offset the expansion. Measure CJK fonts too: with the Chinese system font on macOS, `390` draws exactly like `400`, so the body-text step has no effect there; Latin system-ui has a weight axis and draws the in-between values.
+
+:::TuffDemoWrapper{demo="ConceptIrradiationDemo"}
+:::

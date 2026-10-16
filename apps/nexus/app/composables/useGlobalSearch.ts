@@ -1,12 +1,38 @@
 import { useGlobalSearchState } from '~/composables/useGlobalSearchState'
 import type { GlobalSearchResult } from '~/composables/useGlobalSearchState'
+import type { FeatureSearchItem } from '~/data/search/featureIndex'
+import type { PageSearchItem } from '~/data/search/pageIndex'
 import { fetchContentApi } from '~/utils/content-api-client'
-import type { DocsSearchResponse, SidebarComponentItem } from '#shared/types/content-api'
+import type { DocsSearchResponse } from '#shared/types/content-api'
 import { isDocsPath, toLocalizedDocsPath } from '#shared/utils/docs-path'
 
+type FeatureMatcherModule = typeof import('@talex-touch/utils/search/feature-matcher')
+
+/**
+ * The palette shows four rows. Fuzzy matching only runs when the exact, prefix, token
+ * and description matches leave some of them empty: over the ~580 docs entries it cost
+ * 12–135ms per keystroke against under 1ms for everything else, and on a short query it
+ * matched nearly every entry ("but" hit 479, all but six of them fuzzily).
+ */
+const FUZZY_FALLBACK_BELOW = 4
+/** A single character fuzzy-matches every title. */
+const FUZZY_MIN_QUERY_LENGTH = 2
+/** Typo tolerance waits for a pause in typing rather than running on every key. */
+const FUZZY_DELAY_MS = 120
+/** The fuzzy pass hands the main thread back to input and paint this often. */
+const FUZZY_SLICE_MS = 8
+const RESULTS_PER_SOURCE = 6
+/** The matcher's score for a query that is the whole title. */
+const EXACT_NAME_SCORE = 1000
+/** Splits a Chinese docs title, "Button 按钮", into its English and Chinese names. */
+const TITLE_NAMES = /\s+(?=[\u3400-\u9FFF])/
+const COMPONENT_DOCS_PREFIX = '/docs/dev/components/'
+
 let searchRunId = 0
+let fuzzyTimer: ReturnType<typeof setTimeout> | null = null
 
 const isSearchResult = (item: GlobalSearchResult | null): item is GlobalSearchResult => item !== null
+const byScore = (a: GlobalSearchResult, b: GlobalSearchResult) => b.score - a.score
 
 interface DocIndexItem {
   id: string
@@ -17,11 +43,30 @@ interface DocIndexItem {
   searchTokens?: string[]
 }
 
-const componentIndexCache = new Map<string, DocIndexItem[]>()
-const componentIndexPromise = new Map<string, Promise<DocIndexItem[]>>()
+interface SearchSources {
+  matchFeature: FeatureMatcherModule['matchFeature']
+  docs: DocIndexItem[]
+  components: DocIndexItem[]
+  pages: PageSearchItem[]
+  features: FeatureSearchItem[]
+  /** The docs index arrived; without it only pages and features are searched. */
+  complete: boolean
+}
+
+type ResultBuilder<T> = (item: T) => GlobalSearchResult | null
+
+interface RankedSources {
+  components: GlobalSearchResult[]
+  docs: GlobalSearchResult[]
+  pages: GlobalSearchResult[]
+  features: GlobalSearchResult[]
+}
+
 const docsIndexCache = new Map<string, DocIndexItem[]>()
 const docsIndexPromise = new Map<string, Promise<DocIndexItem[]>>()
-let featureMatcherPromise: Promise<typeof import('@talex-touch/utils/search/feature-matcher')> | null = null
+const sourcesCache = new Map<string, SearchSources>()
+const sourcesPromise = new Map<string, Promise<SearchSources>>()
+let featureMatcherPromise: Promise<FeatureMatcherModule> | null = null
 let featureIndexPromise: Promise<typeof import('~/data/search/featureIndex')> | null = null
 let pageIndexPromise: Promise<typeof import('~/data/search/pageIndex')> | null = null
 
@@ -38,49 +83,6 @@ function loadFeatureIndex() {
 function loadPageIndex() {
   pageIndexPromise ??= import('~/data/search/pageIndex')
   return pageIndexPromise
-}
-
-async function loadComponentIndex(locale: string) {
-  const cached = componentIndexCache.get(locale)
-  if (cached)
-    return cached
-
-  const pending = componentIndexPromise.get(locale)
-  if (pending)
-    return pending
-
-  const loader = (async () => {
-    try {
-      const records = await fetchContentApi<SidebarComponentItem[]>(`/api/docs/sidebar-components/${locale}`, {})
-
-      const items = records
-        .filter(record => record.locale === locale)
-        .map((record): DocIndexItem => {
-          const searchTokens = record.tags.length ? record.tags : undefined
-          const base: DocIndexItem = {
-            id: `component-${record.normalizedPath}`,
-            path: record.normalizedPath,
-            title: record.title || record.normalizedPath,
-            description: record.description,
-            icon: 'i-carbon-cube',
-          }
-          return searchTokens ? { ...base, searchTokens } : base
-        })
-
-      componentIndexCache.set(locale, items)
-      return items
-    }
-    catch (error) {
-      componentIndexPromise.delete(locale)
-      throw error
-    }
-    finally {
-      componentIndexPromise.delete(locale)
-    }
-  })()
-
-  componentIndexPromise.set(locale, loader)
-  return loader
 }
 
 async function loadDocsIndex(locale: string) {
@@ -116,12 +118,105 @@ async function loadDocsIndex(locale: string) {
   return loader
 }
 
+/**
+ * The component pages, taken from the docs index. It covers every page under /docs with
+ * the same titles, descriptions and tags as the sidebar's component list, which the
+ * search used to fetch as well: the same 227 entries, twice.
+ */
+function componentsOf(docs: DocIndexItem[]) {
+  return docs
+    .filter(item => item.path.startsWith(COMPONENT_DOCS_PREFIX))
+    .map((item): DocIndexItem => ({ ...item, id: `component-${item.path}`, icon: 'i-carbon-cube' }))
+}
+
+/**
+ * Everything one search reads, loaded together. Cached only once the docs index has
+ * arrived, so a failed fetch is retried by the next search instead of sticking.
+ */
+function loadSearchSources(locale: string) {
+  const pending = sourcesPromise.get(locale)
+  if (pending)
+    return pending
+
+  const loader = Promise.all([
+    loadFeatureMatcher(),
+    loadDocsIndex(locale).catch(() => null),
+    loadPageIndex(),
+    loadFeatureIndex(),
+  ])
+    .then(([{ matchFeature }, docs, { pageSearchItems }, { featureSearchItems }]) => {
+      const sources: SearchSources = {
+        matchFeature,
+        docs: docs ?? [],
+        components: docs ? componentsOf(docs) : [],
+        pages: pageSearchItems,
+        features: featureSearchItems,
+        complete: Boolean(docs),
+      }
+      if (sources.complete)
+        sourcesCache.set(locale, sources)
+      return sources
+    })
+    .finally(() => {
+      sourcesPromise.delete(locale)
+    })
+
+  sourcesPromise.set(locale, loader)
+  return loader
+}
+
+function yieldToMain() {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
+  if (typeof scheduler?.yield === 'function')
+    return scheduler.yield()
+  return new Promise<void>(resolve => setTimeout(resolve, 0))
+}
+
+function rank<T>(items: readonly T[], build: ResultBuilder<T>) {
+  return items.map(build).filter(isSearchResult).sort(byScore).slice(0, RESULTS_PER_SOURCE)
+}
+
+/** `rank`, yielding every few milliseconds; null once a newer search has started. */
+async function rankSliced<T>(items: readonly T[], build: ResultBuilder<T>, runId: number) {
+  const matched: GlobalSearchResult[] = []
+  let sliceStart = performance.now()
+  for (const item of items) {
+    if (performance.now() - sliceStart > FUZZY_SLICE_MS) {
+      await yieldToMain()
+      if (runId !== searchRunId)
+        return null
+      sliceStart = performance.now()
+    }
+    const result = build(item)
+    if (result)
+      matched.push(result)
+  }
+  return matched.sort(byScore).slice(0, RESULTS_PER_SOURCE)
+}
+
+function dedupeByTarget(items: GlobalSearchResult[]) {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = item.to
+    if (seen.has(key))
+      return false
+    seen.add(key)
+    return true
+  })
+}
+
+function mergeRanked({ components, docs, pages, features }: RankedSources) {
+  const mergedDocs = dedupeByTarget([...components, ...docs, ...pages]).slice(0, RESULTS_PER_SOURCE)
+  return [...mergedDocs, ...features]
+}
+
 export function useGlobalSearch() {
   const {
     open,
     query,
     results,
     loading,
+    unavailable,
     anchorRect,
     openSearch,
     summonSearch,
@@ -136,158 +231,165 @@ export function useGlobalSearch() {
     return isDocsPath(path) ? toLocalizedDocsPath(path, docsLocale.value) : path
   }
 
-  function resetSearch() {
+  /** Drops queued and in-flight work without touching what is on screen. */
+  function cancelSearch() {
     searchRunId += 1
+    if (fuzzyTimer) {
+      clearTimeout(fuzzyTimer)
+      fuzzyTimer = null
+    }
+  }
+
+  function resetSearch() {
+    cancelSearch()
     resetSearchState()
   }
 
-  async function searchDocs(trimmed: string, runId: number) {
-    try {
-      const [{ matchFeature }, index] = await Promise.all([
-        loadFeatureMatcher(),
-        loadDocsIndex(docsLocale.value),
-      ])
-      if (runId !== searchRunId)
-        return []
-      return index
-        .map((item): GlobalSearchResult | null => {
-          const match = matchFeature({
-            title: item.title,
-            desc: item.description,
-            searchTokens: item.searchTokens,
-            query: trimmed,
-          })
-          if (!match.matched)
-            return null
-          return {
-            id: `doc-${item.id}`,
-            source: 'docs' as const,
-            title: item.title || item.path,
-            description: item.description,
-            to: resolveSearchPath(item.path),
-            score: match.score,
-            icon: 'i-carbon-document',
-            keywords: item.searchTokens,
-          }
-        })
-        .filter(isSearchResult)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 6)
+  /** Called when the palette mounts and on open, so the index is usually in hand before the first keystroke. */
+  function preloadSearch() {
+    void loadSearchSources(docsLocale.value).catch(() => undefined)
+  }
+
+  function createResultBuilders(sources: SearchSources, trimmed: string, enableFuzzy: boolean) {
+    const lowerQuery = trimmed.toLowerCase()
+    const scoreOf = (title: string, desc: string | undefined, searchTokens: string[] | undefined) => {
+      // The Chinese docs title a component "Button 按钮", which "button" only prefix-matches:
+      // MetalFx, tagged "button", outscored it, and Enter opened MetalFx.
+      if (title.split(TITLE_NAMES).some(name => name.toLowerCase() === lowerQuery))
+        return EXACT_NAME_SCORE
+      const match = sources.matchFeature({ title, desc, searchTokens, query: trimmed, enableFuzzy })
+      return match.matched ? match.score : null
     }
-    catch {
-      return []
+
+    const doc: ResultBuilder<DocIndexItem> = (item) => {
+      const score = scoreOf(item.title, item.description, item.searchTokens)
+      if (score === null)
+        return null
+      return {
+        id: `doc-${item.id}`,
+        source: 'docs',
+        title: item.title || item.path,
+        description: item.description,
+        to: resolveSearchPath(item.path),
+        score,
+        icon: 'i-carbon-document',
+        keywords: item.searchTokens,
+      }
     }
+
+    const component: ResultBuilder<DocIndexItem> = (item) => {
+      const score = scoreOf(item.title, item.description, item.searchTokens)
+      if (score === null)
+        return null
+      return {
+        id: item.id,
+        source: 'docs',
+        title: item.title,
+        description: item.description,
+        to: resolveSearchPath(item.path),
+        score,
+        icon: item.icon,
+        keywords: item.searchTokens,
+      }
+    }
+
+    const page: ResultBuilder<PageSearchItem> = (item) => {
+      const title = t(item.titleKey)
+      const description = item.descriptionKey ? t(item.descriptionKey) : ''
+      const score = scoreOf(title, description, item.searchTokens)
+      if (score === null)
+        return null
+      return {
+        id: item.id,
+        source: 'page',
+        title,
+        description,
+        to: resolveSearchPath(item.path),
+        score,
+        icon: item.icon,
+        keywords: item.searchTokens,
+      }
+    }
+
+    const feature: ResultBuilder<FeatureSearchItem> = (item) => {
+      const title = t(item.titleKey)
+      const description = item.descriptionKey ? t(item.descriptionKey) : ''
+      const score = scoreOf(title, description, item.searchTokens)
+      if (score === null)
+        return null
+      return {
+        id: item.id,
+        source: 'feature',
+        title,
+        description,
+        to: resolveSearchPath(item.path),
+        score,
+        icon: item.icon,
+        keywords: item.searchTokens,
+      }
+    }
+
+    return { doc, component, page, feature }
   }
 
-  async function searchComponents(trimmed: string) {
-    const { matchFeature } = await loadFeatureMatcher()
-    const index = await loadComponentIndex(docsLocale.value)
-    return index
-      .map((item): GlobalSearchResult | null => {
-        const match = matchFeature({
-          title: item.title,
-          desc: item.description,
-          searchTokens: item.searchTokens,
-          query: trimmed,
-        })
-        if (!match.matched)
-          return null
-        return {
-          id: item.id,
-          source: 'docs' as const,
-          title: item.title,
-          description: item.description,
-          to: resolveSearchPath(item.path),
-          score: match.score,
-          icon: item.icon,
-          keywords: item.searchTokens,
-        }
-      })
-      .filter(isSearchResult)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 6)
-  }
-
-  async function searchPages(trimmed: string) {
-    const [{ matchFeature }, { pageSearchItems }] = await Promise.all([
-      loadFeatureMatcher(),
-      loadPageIndex(),
-    ])
-    return pageSearchItems
-      .map((item): GlobalSearchResult | null => {
-        const title = t(item.titleKey)
-        const description = item.descriptionKey ? t(item.descriptionKey) : ''
-        const match = matchFeature({
-          title,
-          desc: description,
-          searchTokens: item.searchTokens,
-          query: trimmed,
-        })
-        if (!match.matched)
-          return null
-        return {
-          id: item.id,
-          source: 'page' as const,
-          title,
-          description,
-          to: resolveSearchPath(item.path),
-          score: match.score,
-          icon: item.icon,
-          keywords: item.searchTokens,
-        }
-      })
-      .filter(isSearchResult)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 6)
-  }
-
-  async function searchFeatures(trimmed: string) {
-    const [{ matchFeature }, { featureSearchItems }] = await Promise.all([
-      loadFeatureMatcher(),
-      loadFeatureIndex(),
-    ])
-    const matched = featureSearchItems
-      .map((item): GlobalSearchResult | null => {
-        const title = t(item.titleKey)
-        const description = item.descriptionKey ? t(item.descriptionKey) : ''
-        const match = matchFeature({
-          title,
-          desc: description,
-          searchTokens: item.searchTokens,
-          query: trimmed,
-        })
-        if (!match.matched)
-          return null
-        return {
-          id: item.id,
-          source: 'feature' as const,
-          title,
-          description,
-          to: resolveSearchPath(item.path),
-          score: match.score,
-          icon: item.icon,
-          keywords: item.searchTokens,
-        }
-      })
-      .filter(isSearchResult)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 6)
-    return matched
-  }
-
-  function dedupeByTarget(items: GlobalSearchResult[]) {
-    const seen = new Set<string>()
-    return items.filter((item) => {
-      const key = item.to
-      if (seen.has(key))
-        return false
-      seen.add(key)
-      return true
+  function rankStrict(sources: SearchSources, trimmed: string) {
+    const build = createResultBuilders(sources, trimmed, false)
+    return mergeRanked({
+      components: rank(sources.components, build.component),
+      docs: rank(sources.docs, build.doc),
+      pages: rank(sources.pages, build.page),
+      features: rank(sources.features, build.feature),
     })
   }
 
-  async function search(value: string) {
+  async function rankFuzzy(sources: SearchSources, trimmed: string, runId: number) {
+    const build = createResultBuilders(sources, trimmed, true)
+    const components = await rankSliced(sources.components, build.component, runId)
+    if (!components)
+      return null
+    const docs = await rankSliced(sources.docs, build.doc, runId)
+    if (!docs)
+      return null
+    const pages = await rankSliced(sources.pages, build.page, runId)
+    if (!pages)
+      return null
+    const features = await rankSliced(sources.features, build.feature, runId)
+    if (!features)
+      return null
+    return mergeRanked({ components, docs, pages, features })
+  }
+
+  function showResults(sources: SearchSources, trimmed: string, runId: number) {
+    const strict = rankStrict(sources, trimmed)
+    results.value = strict
+    unavailable.value = !sources.complete
+    const needsFuzzy = strict.length < FUZZY_FALLBACK_BELOW && trimmed.length >= FUZZY_MIN_QUERY_LENGTH
+    loading.value = needsFuzzy
+    if (!needsFuzzy)
+      return
+
+    fuzzyTimer = setTimeout(() => {
+      fuzzyTimer = null
+      void rankFuzzy(sources, trimmed, runId)
+        .then((fuzzy) => {
+          // Appended, so the rows already on screen do not reshuffle under the pointer.
+          if (fuzzy && runId === searchRunId)
+            results.value = dedupeByTarget([...strict, ...fuzzy])
+        })
+        .finally(() => {
+          if (runId === searchRunId)
+            loading.value = false
+        })
+    }, FUZZY_DELAY_MS)
+  }
+
+  /**
+   * Runs on every keystroke, without a debounce: once the index is loaded the strict
+   * pass is synchronous and costs under a millisecond, so the rows follow the input.
+   */
+  function search(value: string) {
     query.value = value
+    cancelSearch()
     const trimmed = value.trim()
     if (!trimmed) {
       results.value = []
@@ -295,22 +397,28 @@ export function useGlobalSearch() {
       return
     }
 
-    const runId = ++searchRunId
-    loading.value = true
-
-    const [docs, components, pages, features] = await Promise.all([
-      searchDocs(trimmed, runId),
-      searchComponents(trimmed),
-      searchPages(trimmed),
-      searchFeatures(trimmed),
-    ])
-
-    if (runId !== searchRunId)
+    const runId = searchRunId
+    const locale = docsLocale.value
+    const sources = sourcesCache.get(locale)
+    if (sources) {
+      showResults(sources, trimmed, runId)
       return
+    }
 
-    const mergedDocs = dedupeByTarget([...components, ...docs, ...pages]).slice(0, 6)
-    results.value = [...mergedDocs, ...features]
-    loading.value = false
+    loading.value = true
+    loadSearchSources(locale).then(
+      (loaded) => {
+        if (runId === searchRunId)
+          showResults(loaded, trimmed, runId)
+      },
+      () => {
+        if (runId !== searchRunId)
+          return
+        results.value = []
+        loading.value = false
+        unavailable.value = true
+      },
+    )
   }
 
   return {
@@ -318,12 +426,15 @@ export function useGlobalSearch() {
     query,
     results,
     loading,
+    unavailable,
     anchorRect,
     openSearch,
     summonSearch,
     prefersReducedMotion,
     closeSearch,
+    cancelSearch,
     resetSearch,
+    preloadSearch,
     search,
     clearSearchAnchor,
   }

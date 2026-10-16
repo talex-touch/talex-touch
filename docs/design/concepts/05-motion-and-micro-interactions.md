@@ -42,7 +42,7 @@ TuffEx 提出的动效哲学是：**“动效是空间锚点，绝非娱乐表�
 ### 24.2 状态形变（Morphing）的过渡门禁
 
 那么，什么时候才允许颜色过渡？**仅在组件发生语义状态切换时（例如从普通态切换为危险态）**。
-为了防止状态过渡污染悬停，TuffEx 规定：**颜色过渡必须绑定在临时状态类上，而非元素基础类上**：
+为了防止状态过渡污染悬停，TuffEx 规定：**颜色过渡必须绑定在临时状态类上，而非元素基础类上**。下面是 TxModeChip 的写法（略去了变量的兜底值）：
 
 ```scss
 // 正确做法：TxModeChip 源码纪律
@@ -50,6 +50,7 @@ TuffEx 提出的动效哲学是：**“动效是空间锚点，绝非娱乐表�
   // 悬停瞬间完成，零延迟
   &:hover:not(:disabled) {
     background-color: var(--tx-mode-chip-fill-hover);
+    color: var(--tx-mode-chip-ink-hover, var(--tx-mode-chip-ink));
   }
 
   // 仅当 JavaScript 明确驱动状态形变时，挂载 .is-morphing
@@ -60,6 +61,8 @@ TuffEx 提出的动效哲学是：**“动效是空间锚点，绝非娱乐表�
   }
 }
 ```
+
+现在 TuffEx 的组件都守这条规则：悬停一律瞬间换色。颜色过渡要么只在 `.is-morphing` 存在时生效（选中、展开、聚焦这类状态切换时挂上，最长的一段颜色过渡走完就摘掉），要么只写在悬停根本不改颜色的元素上。跟着指针走的高亮也算悬停，例如 TxSearchPanel 的候选项、TxCascader 展开的路径，同样瞬间换色。
 
 ---
 
@@ -72,18 +75,17 @@ TuffEx 提出的动效哲学是：**“动效是空间锚点，绝非娱乐表�
 
 ### 25.2 两拍式确认律动（Two-beat Activation Feedback）
 
-TuffEx 在 `TxDropdownItem` 与 `TxContextMenuItem` 中沉淀了经典的两拍闭合节拍：
+TuffEx 的 `TxDropdownItem` 与 `TxContextMenuItem` 在点击后先走一段两拍、合计约 180ms 的确认节拍，再关闭菜单：
 
 ```
 用户点击菜单项 ->
-【拍子一：90ms】瞬间清除 Hover/Focus 高亮，消除手势视觉残留。
-【拍子二：90ms】激活强调态色块脉冲一次，向视网膜确认“你命中了这一项”。
--> 触发业务回调（emit select）
--> 优雅收回父级菜单面板
+【拍子一：90ms】这一行的边框、底色和阴影全部变透明，撤掉悬停与焦点的高亮。
+【拍子二：90ms】这一行切到 TxCardItem 的激活态，确认“你命中了这一项”。
+-> 第二拍结束：派发 select 事件
+-> 关闭菜单
 ```
 
-整个过程耗时 **180ms**。既能让眼睛确信操作已执行，又绝不拖沓。
-当用户开启系统减弱动态效果时，该机制瞬间降级为 0ms 极速响应。
+既能让眼睛确信操作已执行，又绝不拖沓。两拍各由一个 90ms 的 `setTimeout` 推进；定时器不保证准点，实测每拍约 91ms。只有这次点击会关闭菜单（`close-on-select`）、并且 `activation-feedback` 开着（两者默认都开）时才走两拍，否则立即派发 select。当用户开启系统减弱动态效果时，同样立即执行。
 
 ```vue
 <!-- packages/tuffex/packages/utils/menu-activation-feedback.ts -->
@@ -102,30 +104,43 @@ TuffEx 在 `TxDropdownItem` 与 `TxContextMenuItem` 中沉淀了经典的两拍�
 在浏览器与 Electron 渲染引擎中，修改属性会触发不同阶段的管线：
 * **Layout（排版）**：`width`, `height`, `margin`, `top`, `left`, `flex` —— 极其昂贵，引起整个页面重排！
 * **Paint（绘制）**：`background-color`, `box-shadow`, `border-radius` —— 重新栅格化像素。
-* **Composite（合成器线程）**：**`translate`**, **`scale`**, **`rotate`**, **`opacity`** —— 运行在独立线程，直接交给 GPU 处理，哪怕主线程 JavaScript 繁忙也不会掉帧！
+* **Composite（合成器线程）**：**`translate`**, **`scale`**, **`rotate`**, **`opacity`** —— 动画可以整段交给合成器线程：元素提升为独立图层、栅格化一次之后，每一帧只需对这张现成的图层做位移、缩放、旋转或调整透明度再合成，不必重新排版或重绘，哪怕主线程 JavaScript 繁忙，动画依然能跟上显示器的刷新率！
+
+合成器线程本身是一条 CPU 线程（Chromium 里位于渲染进程），它把已经栅格化的图层交给 GPU 拼合，并不跑在 GPU 上。
 
 **TuffEx 铁律**：
 所有高频动画、加载效果与循环特效，**严格只能使用四大金刚合成属性**。
 
-### 26.2 严禁将 CSS 变量（`var()`）写进 `@keyframes`
+一次性的尺寸形变不在此列，例如第 28 章的折叠展开、第 27 章由弹簧推进的尺寸形变。理由见 28.2。
+
+### 26.2 `@keyframes` 里可以写 `var()`：能否合成看动的是哪个属性
+
+动画开始时，浏览器按元素把关键帧里的 `var()` 解析成具体值，再把整段动画交给合成器，和直接写数值一样。动画途中改了变量，浏览器按新值重新解析关键帧，动画接着跑。
+
+2026-10 在 Chromium 152 里用 DevTools 时间线跟踪逐条核对，看跟踪事件里的 `compositeFailed` 与 `unsupportedProperties`；每种属性都用 `var()` 写和直接写数值各测一组，两组结果相同。WebKit 与 Gecko 没有实测。
+
+| 关键帧动的是 | 在哪条线程上跑 |
+|---|---|
+| `translate`、`scale`、`opacity`、`transform` | 合成器 |
+| `filter: blur()`、`box-shadow`、`color`、`width` | 主线程：blur 这类会移动像素的滤镜不能合成，其余三项在 `unsupportedProperties` 里列出 |
+| 自定义属性本身，再由 `transform: scale(var(--s))` 读取 | 主线程：`unsupportedProperties: ["--s"]` |
+
+所以要避开的是两种写法，都和 `var()` 无关：
+
+* 关键帧动的是非合成属性，分类见 26.1。
+* 给自定义属性做关键帧动画，再让合成属性读它。自定义属性每一帧都在主线程上插值，读它的 `transform` 本身不是动画，只是每帧跟着重算样式，合成器拿不到这段动画。要动哪个合成属性，就直接给它写关键帧，变量只用来给起点、终点、幅度这类值。
 
 ```scss
-// 严重违规：Keyframes 内部包含 var()
-@keyframes bad-pulse {
-  0% { transform: scale(var(--start-scale)); } // 浏览器无法在合成器线程预编译插值！
-  100% { transform: scale(var(--end-scale)); }
+// 合成器：变量只给起点（TxBadge 的入场位移）
+@keyframes tx-badge-slide-in {
+  from { translate: var(--tx-badge-offset-x, -8.2px) var(--tx-badge-offset-y, 12.4px); }
+  to { translate: 0 0; }
 }
 
-// 正确做法：Keyframes 保持纯净数值，变量用于外部 duration 与 delay 计算
-@keyframes tx-pure-pulse {
-  0% { scale: 1; }
-  50% { scale: 1.08; }
-  100% { scale: 1; }
-}
-
-.element {
-  animation: tx-pure-pulse calc(var(--base-duration) * 1.2) ease-out;
-}
+// 主线程：动的是自定义属性 --pulse，transform 只是每帧跟着重算
+@property --pulse { syntax: '<number>'; inherits: false; initial-value: 1; }
+@keyframes bad-pulse { 50% { --pulse: 1.08; } }
+.element { transform: scale(var(--pulse)); animation: bad-pulse 1.2s ease-out; }
 ```
 
 ---
@@ -135,19 +150,21 @@ TuffEx 在 `TxDropdownItem` 与 `TxContextMenuItem` 中沉淀了经典的两拍�
 ### 27.1 为什么 Cubic-Bezier 无法应对被中断的手势？
 
 CSS 原生贝塞尔曲线（如 `cubic-bezier(0.25, 1, 0.5, 1)`）有一个物理死穴：**它是基于固定时间跨度（Duration）的插值函数**。
-如果用户正在拖拽抽屉，松手时带有速度 $v_0$：
-* 贝塞尔曲线无法承接初速度 $v_0$，强行从 0 加速，产生明显的“卡壳顿挫感”。
-* 如果动效播放到一半用户再次反向点击，贝塞尔曲线必须粗暴刹车重来，造成剧烈抽搐。
+如果动效播放到一半被手势打断（例如用户拖拽抽屉时突然反向滑动），过渡会从当前位置按固定时长重新走一条曲线，速度直接换成新曲线起点的斜率，与打断前的速度 $v_0$ 无关：
+* 起点平缓的曲线（如 `ease-in-out`）会先急停，再重新加速，产生明显的“卡壳顿挫感”。
+* 起点陡峭的曲线（如 TuffEx 的 `ease-out-strong`）反而会猛地加速。
+
+两种情况速度都发生突变，运动轨迹出现机械的折断感。
 
 ### 27.2 TuffEx 弹簧模型（Spring Physics）
 
-TuffEx 的物理弹簧引擎基于经典二阶阻尼振荡方程：
+需要在打断时保住速度、又由 JS 逐帧绘制的动效，TuffEx 交给 `stepSpring` 推进，例如 TxSlider 拖过头后的回弹、TxMorph 与 TxTransitionSmoothSize 的尺寸形变，以及 TxLiquid。它积分的是经典二阶阻尼振荡方程（$x$ 为相对目标的位移）：
 $$m \frac{d^2x}{dt^2} + c \frac{dx}{dt} + k x = 0$$
 * **刚度（Stiffness $k$）**：决定弹簧拉伸时的加速度与回弹爆发力。
 * **阻尼（Damping $c$）**：控制振荡衰减速度，消除烦人的反复晃动。
 * **质量（Mass $m$）**：赋予元素物理惯性。
 
-手势打断时，弹簧系统自然保留上一帧的速度向量 $\vec{v}$ 并无缝合力，达到如同拖拽实体物理卡片般的顺滑跟手。
+`stepSpring` 用半隐式欧拉法积分，每 1/240 秒算一个子步。手势打断时只换目标，当前的位置与速度 $\vec{v}$ 原样带过去，达到如同拖拽实体物理卡片般的顺滑跟手。
 
 ---
 
@@ -160,17 +177,38 @@ $$m \frac{d^2x}{dt^2} + c \frac{dx}{dt} + k x = 0$$
 
 ### 28.2 容器剪裁隔离法（`bui-disclosure-collapse`）
 
-```scss
-// 正确模式：外部容器控制高度与 clip，内部内容尺寸绝对锁定
-.tx-disclosure-wrapper {
-  overflow: hidden; // 外层充当视口剪裁器
-  transition: grid-template-rows 200ms ease-out;
+TuffEx 把这套写法收成了 `style/mixins.scss` 里的 `bui-disclosure-collapse`。TxToolChips、TxTaskRows、TxDiffTable 等组件直接引用它；TxToolCallCard、TxSources、TxChainOfThought、TxReasoningDisclosure 则各自内联了同样的写法。它展开后是这样：
 
-  .tx-disclosure-content {
-    min-height: 0; // 内部内容保持真实尺寸，文字绝不二次折行！
+```scss
+// 外层：只有一条轨道的 grid。0fr ↔ 1fr 之间过渡的是容器的高度
+.tx-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.3s var(--tx-ease-out-strong),
+    opacity 0.3s var(--tx-ease-out-strong);
+
+  // 内层就是剪裁器：overflow: hidden 让它的最小高度归零。
+  // 内容始终按完整宽度排好，变的只是露出来的高度，文字绝不二次折行
+  > * {
+    overflow: hidden;
+  }
+
+  &.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 }
 ```
+
+折叠展开要把后面的内容推开，这件事只靠四大合成属性做不到，所以它是第 26 章铁律之外允许改动排版的一类。它不循环，也不跟着指针高频触发，每次状态切换只跑一次。内容按完整尺寸排好不动，每一帧浏览器只是重新摆放后面的元素，不会重新折行。
+
+收起时内容要一直可见，直到容器合拢。如果用 `visibility: hidden` 一类的属性在收起的第一帧就把内容藏掉，看到的就只剩一个空框自己缩回去。
 
 ---
 

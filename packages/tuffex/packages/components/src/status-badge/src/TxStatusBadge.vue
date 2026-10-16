@@ -16,6 +16,7 @@ import type { StatusBadgeEmits, StatusBadgeProps, StatusTone, ToneMeta } from '.
  * @component
  */
 import { computed, getCurrentInstance } from 'vue'
+import TxOsIcon from '../../icon/src/TxOsIcon.vue'
 
 defineOptions({
   name: 'TxStatusBadge',
@@ -102,22 +103,15 @@ const iconClass = computed(() => props.icon || toneMeta.value.icon)
  */
 const hollow = computed(() => resolvedTone.value === 'muted' && !props.icon)
 
-const osIconClass = computed(() => {
-  switch (props.os) {
-    case 'macos':
-      return 'i-simple-icons-apple'
-    case 'windows':
-      return 'i-simple-icons-windows'
-    case 'linux':
-      return 'i-simple-icons-linux'
-    default:
-      return ''
-  }
-})
+/**
+ * The platform mark is TxOsIcon's own glyph, not a `simple-icons` class, so it
+ * draws in hosts that ship no such collection.
+ */
+const showOsIcon = computed(() => props.os === 'macos' || props.os === 'windows' || props.os === 'linux')
 
 /** Whether the pill opens with a disc — that side then takes the tighter padding. */
 const hasChip = computed(() => !props.osOnly && (Boolean(iconClass.value) || hollow.value))
-const hasIcon = computed(() => Boolean(osIconClass.value) || hasChip.value)
+const hasIcon = computed(() => showOsIcon.value || hasChip.value)
 
 /**
  * Handles click events on the badge.
@@ -156,7 +150,7 @@ function handleKeydown(event: KeyboardEvent): void {
     @click="handleClick"
     @keydown="handleKeydown"
   >
-    <i v-if="osIconClass" :class="osIconClass" class="tx-status-badge__icon" aria-hidden="true" />
+    <TxOsIcon v-if="showOsIcon" :os="os" class="tx-status-badge__icon" />
     <span
       v-if="hasChip"
       class="tx-status-badge__chip"
@@ -186,7 +180,7 @@ function handleKeydown(event: KeyboardEvent): void {
   border-radius: 8px;
   font-family: var(--tx-font-mono, ui-monospace, "SF Mono", monospace);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-status-color, var(--tx-text-color-primary));
   background: var(--tx-status-bg, color-mix(in srgb, currentColor 14%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tx-status-color, currentColor) 32%, transparent);

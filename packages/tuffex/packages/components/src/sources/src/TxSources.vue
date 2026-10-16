@@ -212,7 +212,6 @@ function onOpen(event: MouseEvent, source: AiSourceItem): void {
     border-radius: 10px;
     color: var(--tx-text-color-primary, #111827);
     text-decoration: none;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
 
     &:hover {
       border-color: var(--tx-color-primary, #409eff);

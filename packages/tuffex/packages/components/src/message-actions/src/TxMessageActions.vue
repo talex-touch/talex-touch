@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUpdated, ref } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({ name: 'TxMessageActions' })
 
@@ -128,13 +129,16 @@ async function copy(): Promise<void> {
     copied.value = false
   }, 1200)
 }
+
+// Copied and speaking ease the button's ink; a hover repaints at once.
+const morphing = useMorphWindow(() => [copied.value, props.speakState], 150)
 </script>
 
 <template>
   <div
     ref="rootRef"
     class="tx-message-actions"
-    :class="{ 'has-appear': appear }"
+    :class="{ 'has-appear': appear, 'is-morphing': morphing }"
     role="toolbar"
     :aria-label="label"
     @keydown="handleKeydown"
@@ -220,9 +224,6 @@ async function copy(): Promise<void> {
     background: transparent;
     color: var(--tx-text-color-secondary, #6b7280);
     cursor: pointer;
-    transition:
-      background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-      color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 
     &:hover {
       background: color-mix(in srgb, var(--tx-text-color-secondary, #6b7280) 10%, transparent);
@@ -235,6 +236,16 @@ async function copy(): Promise<void> {
 
     &.is-speaking {
       color: var(--tx-color-primary, #409eff);
+    }
+  }
+
+  &.is-morphing .tx-message-actions__btn {
+    transition:
+      background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+      color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
     }
   }
 

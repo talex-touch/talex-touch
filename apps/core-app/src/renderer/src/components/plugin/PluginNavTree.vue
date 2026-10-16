@@ -331,7 +331,6 @@ function resolveIndicatorTone(plugin: ITouchPlugin): PluginIndicatorTone {
   cursor: pointer;
   user-select: none;
   color: var(--tx-text-color-secondary);
-  transition: background-color 0.2s ease;
 
   &:hover {
     background: var(--tx-fill-color-light);
@@ -398,10 +397,7 @@ function resolveIndicatorTone(plugin: ITouchPlugin): PluginIndicatorTone {
   cursor: pointer;
   user-select: none;
   color: var(--tx-text-color-primary);
-  transition:
-    background-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.2s ease;
+  transition: transform 0.2s ease;
 
   &:hover {
     background: var(--tx-fill-color-light);

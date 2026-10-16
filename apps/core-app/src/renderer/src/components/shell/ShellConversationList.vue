@@ -557,9 +557,6 @@ function onRailRowClick(row: RailConversationRow): void {
   color: var(--shell-text-muted);
   font-size: var(--shell-fs-md);
   cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover {
@@ -575,10 +572,7 @@ function onRailRowClick(row: RailConversationRow): void {
  */
 .ShellConversationList-SectionAction--reveal {
   opacity: 0;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease,
-    background-color 0.15s ease;
+  transition: opacity 0.15s ease;
 
   .ShellConversationList-SectionHeader:hover &,
   .ShellConversationList-SectionHeader:has(.MetaHintBadge) &,
@@ -631,9 +625,6 @@ function onRailRowClick(row: RailConversationRow): void {
   font-size: var(--shell-fs-body);
   text-align: left;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover {
@@ -706,10 +697,6 @@ function onRailRowClick(row: RailConversationRow): void {
   text-align: center;
   cursor: pointer;
   user-select: none;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover:not(.active) {
@@ -771,9 +758,6 @@ function onRailRowClick(row: RailConversationRow): void {
   color: var(--shell-text-muted);
   font-size: var(--shell-fs-md);
   cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
 
   &:hover {
     color: var(--shell-danger, #ef4444);

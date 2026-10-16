@@ -1,6 +1,6 @@
 ---
 title: Alpha 噪点掩膜与光斑追踪
-description: 解决 Overlay 混合导致底色发灰的难题，通过 mask-composite: intersect 实现晶莹微质感与光标反光追踪。
+description: "解决 Overlay 混合导致底色发灰的难题，通过 mask-composite: intersect 实现晶莹微质感；TxCard 用弹簧让折射光源跟随指针。"
 ---
 
 # Alpha 噪点掩膜与光斑追踪
@@ -25,26 +25,40 @@ code: |
     .tx-status-hint__wash {
       background-color: var(--tx-status-hint-accent, #67c23a);
       // 线性渐变与分形噪点进行交集合成，仅控制透光程度
-      mask-image: 
-        linear-gradient(to right, rgb(0 0 0 / var(--tx-wash-strength, 0.26)), transparent), 
-        url("data:image/svg+xml,..."); // 分形噪点 SVG
+      mask-image:
+        linear-gradient(
+          to right,
+          rgb(0 0 0 / var(--tx-status-hint-wash-strength, 0.26)),
+          rgb(0 0 0 / calc(var(--tx-status-hint-wash-strength, 0.26) * 0.45)) 38%,
+          transparent
+        ),
+        $grain; // 140px 见方的 feTurbulence 分形噪点 SVG
+      mask-size: 100% 100%, 140px 140px;
+      mask-repeat: no-repeat, repeat;
       mask-composite: intersect;
     }
   }
 ---
 :::
 
-这种做法让噪点只决定“色彩以多大的物理密度透出”，底层背景的纯净度丝毫不受污染。
+这种做法让噪点只决定“色彩以多大的物理密度透出”，底层背景的纯净度丝毫不受污染。噪点的 alpha 平均约 0.6，所以前缘 0.26 的强度在浅色主题里约合 16%；暗色主题取 0.2，因为同样的色调在深色页面上更显眼。
+
+:::TuffDemoWrapper{demo="ConceptNoiseMaskDemo"}
+:::
 
 ## 卡片物理反光追踪（Specular Light）
 
-在 `TxCard` 等交互组件中，用户滑动鼠标时，卡片边缘与表面会呈现随光标游走的微弱径向高光（Specular Light）。
+`TxCard` 的光源跟随默认关闭，只在 `background="refraction"` 且打开 `refraction-light-follow-mouse` 时工作：
 
-- **相对坐标采样**：指针移动时，动态计算光标在卡片内部的归一化百分比坐标（`--tx-card-light-x`, `--tx-card-light-y`）。
-- **极低透明度漫射**：高光强度被严格压制在 `0.06` 左右，仅在暗色环境下呈现微光拂过的质感，绝不夺取卡片内部文字的主角地位。
+- **相对坐标采样**：指针在卡片上移动时，组件把光标位置换算成卡片内 0–1 的归一化坐标，作为光源的目标点；指针离开卡片，目标点回到中心 (0.5, 0.5)。
+- **移动折射的光源点**：光源点经 `TxBaseSurface` 的 `refraction-light-x/y` 写成 `--tx-surface-refraction-light-x/y`，决定折射滤镜层与色膜层上几处径向光晕的位置，其中一处落在对角的对称点上。组件不另加白色高光层。
+- **随指针微调强度与角度**：光源离中心越远，折射强度最多加 16 × `refraction-light-follow-intensity`（默认 0.45，即最多 +7.2）；折射角度按同一系数向指针方向插值。
 
-## 阻尼平滑与法线贴图错觉
+## 弹簧平滑
 
-为了防止鼠标快速移动时光斑出现机械跳动，TuffEx 在坐标更新链条中挂载了阻尼平滑算法：
-$$\vec{P}_{\text{render}}(t) = \vec{P}_{\text{render}}(t-1) + \alpha \cdot (\vec{P}_{\text{cursor}}(t) - \vec{P}_{\text{render}}(t-1))$$
-高光与卡片边缘 1px 细线相互干涉，形成如同光线擦过倒角边缘的法线高光错觉（Normal Map Illusion），大大增强了三维立体触感。
+为了防止鼠标快速移动时光斑机械跳动，光源点不直接跳到目标点，而是由一根逐帧积分的弹簧带过去：
+$$v \leftarrow \left(v + k\,(P_{\text{target}} - P)\,\Delta\right) c^{\Delta}, \qquad P \leftarrow \operatorname{clamp}(P + v\,\Delta,\ 0,\ 1)$$
+k 是 `refraction-light-spring-stiffness`（默认 0.15，取值限制在 0.01–0.55），c 是 `refraction-light-spring-damping`（默认 0.6，限制在 0.55–0.99），Δ 是帧间隔除以 16.67ms（限制在 0.1–2，第一帧取 1）。位置差与速度都小于 0.002 时视为停稳，循环随之停止。关掉 `refraction-light-spring`，光源点直接跳到目标点。按 60Hz 推算，默认参数下一次跳变只冲过目标约 3%，约 130ms 后稳定在 5% 以内。位置这一步也乘 Δ，所以 120Hz、144Hz 屏幕上光源点的走法与 60Hz 基本一致。
+
+:::TuffDemoWrapper{demo="ConceptSpecularLightDemo"}
+:::

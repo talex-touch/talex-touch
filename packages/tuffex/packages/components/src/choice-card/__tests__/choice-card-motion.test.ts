@@ -229,16 +229,16 @@ describe('txChoiceCard style contract', () => {
 
   it('sets the type scale: 14/600 question, 14/500 label, 12px description in regular ink', () => {
     expect(find('.tx-choice-card__title')?.get('font-size')).toBe('14px')
-    expect(find('.tx-choice-card__title')?.get('font-weight')).toBe('600')
+    expect(find('.tx-choice-card__title')?.get('font-weight')).toBe('var(--tx-font-weight-semibold, 600)')
     expect(find('.tx-choice-card__label')?.get('font-size')).toBe('14px')
-    expect(find('.tx-choice-card__label')?.get('font-weight')).toBe('500')
+    expect(find('.tx-choice-card__label')?.get('font-weight')).toBe('var(--tx-font-weight-medium, 500)')
     expect(find('.tx-choice-card__desc')?.get('font-size')).toBe('12px')
     // Not the secondary grey: it measures 2.87:1 on the row fill.
     expect(find('.tx-choice-card__desc')?.get('color')).toMatch(/^var\(--tx-text-color-regular, /)
 
     for (const rule of styleRules) {
       expect(rule.declarations.has('letter-spacing'), rule.selectors.join(', ')).toBe(false)
-      expect(rule.declarations.get('font-weight'), rule.selectors.join(', ')).not.toBe('700')
+      expect(rule.declarations.get('font-weight') ?? '', rule.selectors.join(', ')).not.toMatch(/\b700\b|--tx-font-weight-bold|^bold$/)
     }
   })
 

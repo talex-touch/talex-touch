@@ -57,14 +57,14 @@ describe('txCard', () => {
     expect(wrapper.classes()).toEqual(expect.arrayContaining([
       'tx-card',
       'is-solid',
-      'is-bg-pure',
+      'is-bg-refraction',
       'is-shadow-none',
       'is-medium',
     ]))
     expect(wrapper.text()).toContain('Card body')
     expect(wrapper.attributes('style')).toContain('--tx-card-radius: 18px')
     expect(wrapper.attributes('style')).toContain('--tx-card-padding: 12px')
-    expect(wrapper.findComponent(BaseSurfaceStub).props('mode')).toBe('pure')
+    expect(wrapper.findComponent(BaseSurfaceStub).props('mode')).toBe('refraction')
   })
 
   it('renders structural slots and size-specific padding', () => {

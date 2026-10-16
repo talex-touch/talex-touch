@@ -89,6 +89,7 @@ code: |
 | `--tx-gradient-inner-padding` | `padding` | 内容包装器的内边距。 |
 | `--tx-gradient-duration` | `animationDuration` | 旋转时长，带 `s` 后缀。 |
 | `--tx-gradient-angle` | 内部动画 | 渐变使用的注册角度属性。 |
+| `--tx-gradient-border-color-1` … `-4` | — | 渐变的四个色标，默认依次为 `#0894ff`、`#c959dd`、`#ff2e54`、`#ff9004`。 |
 
 ## 概述
 

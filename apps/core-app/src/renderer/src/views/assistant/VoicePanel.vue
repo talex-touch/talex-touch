@@ -2072,8 +2072,7 @@ onBeforeUnmount(() => {
   transition:
     width 260ms cubic-bezier(0.22, 1, 0.36, 1),
     height 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 160ms ease-out,
-    background 160ms ease-out;
+    opacity 160ms ease-out;
 }
 
 .voice-dock__btn:disabled {
@@ -2535,9 +2534,7 @@ onBeforeUnmount(() => {
 
   /* The controls resize with the surface, so they follow the same rule the surface does. */
   .voice-dock__btn {
-    transition:
-      opacity 160ms ease-out,
-      background 160ms ease-out;
+    transition: opacity 160ms ease-out;
   }
 
   /* Still legible, just not travelling: the wave was the only motion it had. */

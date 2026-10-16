@@ -1,13 +1,13 @@
 ---
 title: Compositor Thread Priority & Dual Keyframes
-description: Animation properties must never trigger layout reflow; four GPU compositor properties and alternating dual keyframe names to eliminate DOM reflow.
+description: High-frequency and looping animations must never trigger layout reflow; four GPU compositor properties and alternating dual keyframe names to eliminate DOM reflow.
 ---
 
 # Compositor Thread Priority & Dual Keyframes
 
-Interface fluidity hinges on a non-negotiable invariant: animations must execute on the GPU Compositor Thread, completely detached from main-thread Layout Thrashing.
+Interface fluidity hinges on one question: can the animation be handed whole to the compositor thread, out of reach of main-thread layout? The compositor thread itself is a CPU thread (in Chromium it lives in the renderer process): it hands already-rasterized layers to the GPU to assemble, but does not run on the GPU.
 
-## Why Animation Properties Must Never Cause Reflow
+## Why High-Frequency Animations Must Never Cause Reflow
 
 The browser rendering pipeline comprises three sequential stages:
 1. **Layout**: Recomputes geometry, box dimensions, and fluid flow (extremely expensive).
@@ -18,31 +18,54 @@ If an animation mutates `width`, `height`, `margin`, or `top/left`, the engine f
 
 ## The Four Safe GPU Compositor Properties
 
-TuffEx strictly confines all animations, loops, and micro-interactions to **four compositor properties**:
+TuffEx strictly confines all high-frequency motion, micro-interactions and looping background effects to **four compositor properties**:
 
 - **`translate`** (independent position translation, decoupled from transform matrices)
 - **`scale`** (hardware scaling)
 - **`rotate`** (hardware rotation)
 - **`opacity`** (alpha compositing)
 
-These properties live on dedicated GPU layers. Even during intense JavaScript execution, compositor animations remain locked at an unwavering 120Hz.
+Animations of these four can be handed whole to the compositor thread: once the element is promoted to its own layer and rasterized, each frame only translates, scales, rotates or fades that ready layer and composites it, with no layout or paint. Even during intense JavaScript execution, they keep pace with the display's refresh rate, whether 60Hz, 120Hz or higher.
 
-## Why CSS Variables are Banned Inside @keyframes
+:::TuffDemoWrapper{demo="ConceptCompositorDemo"}
+:::
 
-Developers often attempt parameterizing keyframes with CSS variables:
-```scss
-// Anti-pattern: Keyframes referencing var()
-@keyframes bad-scale {
-  0% { transform: scale(var(--base-scale)); }
-  100% { transform: scale(1); }
-}
-```
-**Fatal flaw**: Browsers cannot pre-compile keyframes holding dynamic variables on the compositor thread; they fall back to the main thread to resolve values on every tick, destroying hardware acceleration.
+One-shot size changes are exempt, such as a disclosure expanding or TxTransitionSmoothSize growing with its content. They have to push the content after them aside, which these four properties cannot do, so they may change layout. They do not loop or follow the pointer; each change of state runs them once. The content inside stays laid out at its full size, so each frame the browser only repositions what follows; nothing re-wraps. Disclosures use the `bui-disclosure-collapse` mixin in `style/mixins.scss`.
+
+## Can @keyframes Use CSS Variables?
+
+Yes. When an animation starts, the browser resolves each `var()` in its keyframes to a value for that element and hands the whole animation to the compositor, exactly as if the value had been written out; change the variable mid-flight and the keyframes are resolved again while the animation keeps running. What decides compositing is the property the keyframes animate:
+
+| The keyframes animate | Runs on |
+|---|---|
+| `translate`, `scale`, `opacity` or `transform`, with or without `var()` | The compositor |
+| `filter: blur()`, `box-shadow`, `color` or `width`, with or without `var()` | The main thread |
+| A custom property, read by `transform` or the like | The main thread |
+
+The second row is the non-compositor properties covered above. The third passes for compositor-friendly but is not: the custom property interpolates on the main thread every frame, and the `transform` that reads it is not animated at all, only restyled each frame to follow. To move a compositor property, give it the keyframes directly and let variables supply values such as the start, the end or the amplitude:
+
+:::TuffCodeBlock{lang="scss"}
+---
+code: |
+  // Compositor: the variable only supplies the start (TxBadge's entrance offset)
+  @keyframes tx-badge-slide-in {
+    from { translate: var(--tx-badge-offset-x, -8.2px) var(--tx-badge-offset-y, 12.4px); }
+    to { translate: 0 0; }
+  }
+
+  // Main thread: --pulse is what animates; transform is only restyled each frame
+  @property --pulse { syntax: '<number>'; inherits: false; initial-value: 1; }
+  @keyframes bad-pulse { 50% { --pulse: 1.08; } }
+  .element { transform: scale(var(--pulse)); animation: bad-pulse 1.2s ease-out; }
+---
+:::
+
+Traced with DevTools in Chromium 152 in 2026-10; WebKit and Gecko were not measured.
 
 ## Alternating Dual-Keyframe Replay Trick
 
 When an effect must replay on demand (such as shaking an invalid input field):
-The naive hack calls `void el.offsetWidth` to force-restart CSS transitions, paying a punishing synchronous layout penalty.
+The naive hack calls `void el.offsetWidth` to force-restart CSS animations, paying a punishing synchronous layout penalty.
 
 TuffEx employs dual-keyframe name alternation:
 
@@ -59,3 +82,6 @@ code: |
 :::
 
 Triggering a replay simply toggles between `is-pulse-a` and `is-pulse-b`. Changing the animation name restarts the animation with **zero DOM reflow penalty**.
+
+:::TuffDemoWrapper{demo="ConceptKeyframeReplayDemo"}
+:::

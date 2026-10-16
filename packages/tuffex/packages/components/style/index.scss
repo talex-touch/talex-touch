@@ -26,6 +26,9 @@
     opacity: var(--fake-inner-opacity, 1);
     background: var(--fake-color, var(--tx-fill-color-lighter, #fafafa));
     border-radius: var(--fake-radius, inherit);
+    // A host with smooth corners (`tx-squircle`) must leave `--fake-radius` unset: the inherited
+    // radius is the longer one the shape is drawn with.
+    corner-shape: inherit;
     pointer-events: none;
   }
 
@@ -50,6 +53,7 @@ html.coloring {
     inset: 0;
     z-index: var(--tx-coloring-border-z-index, 6);
     border-radius: inherit;
+    corner-shape: inherit;
     box-shadow: var(--tx-coloring-border-shadow);
     pointer-events: none;
   }
@@ -88,9 +92,8 @@ html.coloring {
   }
 }
 
-html[data-tx-contrast='high'],
-html.contrast {
-  *:focus-visible {
+*:focus-visible {
+  @include mixins.tx-when-high-contrast {
     outline-color: var(--tx-focus-ring-color, var(--tx-color-primary));
     box-shadow: var(--tx-focus-ring-shadow);
   }
@@ -100,6 +103,19 @@ html.contrast {
   z-index: var(--fake-fix-index, 0);
 }
 
+// Smooth (G2) corners; each size is the plain radius it stands in for (`tx-squircle`).
+.tx-corner-smooth-sm {
+  @include mixins.tx-squircle(8px);
+}
+
+.tx-corner-smooth-md {
+  @include mixins.tx-squircle(16px);
+}
+
+.tx-corner-smooth-lg {
+  @include mixins.tx-squircle(24px);
+}
+
 // Transition utilities
 .tx-transition {
   transition: all var(--tx-transition-duration) var(--tx-transition-function);
@@ -107,4 +123,27 @@ html.contrast {
 
 .tx-transition-fast {
   transition: all var(--tx-transition-duration-fast) var(--tx-transition-function);
+}
+
+// Text utilities
+// Titles balance their lines (Chrome balances up to six); paragraphs keep the last line from
+// ending on a word or two. Browsers without either value wrap as usual.
+.tx-heading {
+  text-wrap: balance;
+}
+
+.tx-prose p,
+.tx-description {
+  text-wrap: pretty;
+}
+
+// Inline code at 0.9em: a monospace face's taller x-height otherwise stands out of the line.
+.tx-prose :not(pre) > code,
+.tx-inline-code {
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background-color: var(--tx-fill-color-light, #f5f7fa);
+  font-family: var(--tx-font-family-mono);
+  font-size: 0.9em;
+  vertical-align: baseline;
 }

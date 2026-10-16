@@ -155,7 +155,7 @@ function onBlur(e: FocusEvent) {
   padding: 6px 8px;
   background: var(--tx-bg-color, #fff);
   cursor: text;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease;
 
   &:hover:not(.is-disabled) {
     border-color: var(--tx-color-primary-light-3, #79bbff);

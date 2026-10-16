@@ -1308,7 +1308,7 @@ onUnmounted(() => {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease;
   border-radius: 2px;
 }
 
@@ -1401,7 +1401,6 @@ onUnmounted(() => {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
 
 .warning-btn:hover {

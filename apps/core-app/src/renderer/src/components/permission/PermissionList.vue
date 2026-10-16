@@ -192,7 +192,6 @@ function handleToggle(id: string, granted: boolean) {
   background: var(--tx-fill-color-lighter);
   border-radius: 8px;
   border: 1px solid transparent;
-  transition: all 0.2s;
 
   &.granted {
     background: var(--tx-color-success-light-9);

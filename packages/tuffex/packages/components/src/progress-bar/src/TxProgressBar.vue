@@ -399,6 +399,8 @@ watch(
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 //
 // Indeterminate sweeps animate composited properties only (`transform`, plus
 // `opacity` on `split`), never `left`/`width`. `translateX` is relative to the
@@ -652,7 +654,7 @@ watch(
 }
 
 .tx-progress-bar-wrapper--bg-blur .tx-progress-bar__track::after {
-  border-color: color-mix(in srgb, #ffffff6b 58%, var(--tx-border-color-light, #e4e7ed));
+  border-color: color-mix(in srgb, color-mix(in srgb, var(--tx-color-white, #fff) 42%, transparent) 58%, var(--tx-border-color-light, #e4e7ed));
 }
 
 .tx-progress-bar-wrapper--bg-glass .tx-progress-bar__mask {
@@ -662,7 +664,23 @@ watch(
 }
 
 .tx-progress-bar-wrapper--bg-glass .tx-progress-bar__track::after {
-  border-color: color-mix(in srgb, #ffffff9e 62%, var(--tx-border-color-light, #e4e7ed));
+  border-color: color-mix(in srgb, color-mix(in srgb, var(--tx-color-white, #fff) 62%, transparent) 62%, var(--tx-border-color-light, #e4e7ed));
+}
+
+// High contrast paints the blur and glass masks as the opaque `mask` variant does.
+.tx-progress-bar-wrapper--bg-blur,
+.tx-progress-bar-wrapper--bg-glass {
+  @include tx-when-high-contrast {
+    .tx-progress-bar__mask {
+      background: var(--tx-bg-color-overlay, #fff);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    .tx-progress-bar__track::after {
+      border-color: color-mix(in srgb, var(--tx-border-color, #dcdfe6) 78%, transparent);
+    }
+  }
 }
 
 // Silent comments on purpose: `/* */` in SCSS ships into every CSS bundle and
@@ -744,12 +762,12 @@ watch(
 .tx-progress-bar--flow-stardust::before {
   opacity: 0.5;
   background-image:
-    radial-gradient(circle at 7px 3px, #ffffff8c 0 0.45px, transparent 0.9px),
-    radial-gradient(circle at 23px 1.5px, #ffffff66 0 0.4px, transparent 0.85px),
-    radial-gradient(circle at 39px 3.5px, #ffffff80 0 0.45px, transparent 0.9px),
-    radial-gradient(circle at 58px 1px, #ffffff59 0 0.4px, transparent 0.85px),
-    radial-gradient(circle at 71px 2.5px, #ffffff8c 0 0.45px, transparent 0.9px),
-    radial-gradient(circle at 88px 4px, #ffffff66 0 0.4px, transparent 0.85px);
+    radial-gradient(circle at 7px 3px, color-mix(in srgb, var(--tx-color-white, #fff) 55%, transparent) 0 0.45px, transparent 0.9px),
+    radial-gradient(circle at 23px 1.5px, color-mix(in srgb, var(--tx-color-white, #fff) 40%, transparent) 0 0.4px, transparent 0.85px),
+    radial-gradient(circle at 39px 3.5px, color-mix(in srgb, var(--tx-color-white, #fff) 50%, transparent) 0 0.45px, transparent 0.9px),
+    radial-gradient(circle at 58px 1px, color-mix(in srgb, var(--tx-color-white, #fff) 35%, transparent) 0 0.4px, transparent 0.85px),
+    radial-gradient(circle at 71px 2.5px, color-mix(in srgb, var(--tx-color-white, #fff) 55%, transparent) 0 0.45px, transparent 0.9px),
+    radial-gradient(circle at 88px 4px, color-mix(in srgb, var(--tx-color-white, #fff) 40%, transparent) 0 0.4px, transparent 0.85px);
   background-size: 96px 5px;
   background-position: 0 0;
   animation: tx-progress-stardust-far 4.8s linear infinite;
@@ -758,11 +776,11 @@ watch(
 .tx-progress-bar--flow-stardust::after {
   opacity: 0.85;
   background-image:
-    radial-gradient(circle at 12px 2px, #fff 0 0.7px, #ffffff4c 1.1px, transparent 1.8px),
-    radial-gradient(circle at 41px 3.5px, #fff 0 0.6px, #ffffff47 1px, transparent 1.6px),
-    radial-gradient(circle at 67px 1.5px, #fff 0 0.75px, #ffffff4c 1.2px, transparent 1.9px),
-    radial-gradient(circle at 94px 3px, #fff 0 0.6px, #ffffff42 1px, transparent 1.6px),
-    radial-gradient(circle at 118px 2px, #fff 0 0.7px, #ffffff4c 1.1px, transparent 1.8px);
+    radial-gradient(circle at 12px 2px, var(--tx-color-white, #fff) 0 0.7px, color-mix(in srgb, var(--tx-color-white, #fff) 30%, transparent) 1.1px, transparent 1.8px),
+    radial-gradient(circle at 41px 3.5px, var(--tx-color-white, #fff) 0 0.6px, color-mix(in srgb, var(--tx-color-white, #fff) 28%, transparent) 1px, transparent 1.6px),
+    radial-gradient(circle at 67px 1.5px, var(--tx-color-white, #fff) 0 0.75px, color-mix(in srgb, var(--tx-color-white, #fff) 30%, transparent) 1.2px, transparent 1.9px),
+    radial-gradient(circle at 94px 3px, var(--tx-color-white, #fff) 0 0.6px, color-mix(in srgb, var(--tx-color-white, #fff) 26%, transparent) 1px, transparent 1.6px),
+    radial-gradient(circle at 118px 2px, var(--tx-color-white, #fff) 0 0.7px, color-mix(in srgb, var(--tx-color-white, #fff) 30%, transparent) 1.1px, transparent 1.8px);
   background-size: 132px 5px;
   background-position: 0 0;
   animation:
@@ -815,7 +833,7 @@ watch(
   padding: 2px 7px;
   border-radius: 6px;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 1.4;
   white-space: nowrap;
   color: var(--tx-bg-color, #fff);
@@ -950,7 +968,7 @@ watch(
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, #ffffffa6 65%, var(--tx-progress-glow, var(--tx-progress-color, var(--tx-color-primary, #409eff))))
+    color-mix(in srgb, color-mix(in srgb, var(--tx-color-white, #fff) 65%, transparent) 65%, var(--tx-progress-glow, var(--tx-progress-color, var(--tx-color-primary, #409eff))))
   );
   opacity: 0;
   pointer-events: none;
@@ -972,7 +990,7 @@ watch(
 }
 
 .tx-progress-bar__head-label {
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-progress-accent, var(--tx-progress-color, var(--tx-color-primary, #409eff)));
 }
 
@@ -1000,8 +1018,8 @@ watch(
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  font-weight: 600;
-  color: color-mix(in srgb, #fff 92%, transparent);
+  font-weight: var(--tx-font-weight-semibold, 600);
+  color: color-mix(in srgb, var(--tx-color-white, #fff) 92%, transparent);
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.24);
   pointer-events: none;
   user-select: none;
@@ -1062,7 +1080,7 @@ watch(
 .tx-progress-bar__outside-text {
   display: inline-block;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-regular, #606266);
   white-space: nowrap;
 }

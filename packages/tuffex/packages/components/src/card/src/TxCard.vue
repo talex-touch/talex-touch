@@ -8,7 +8,7 @@ defineOptions({ name: 'TxCard' })
 
 const props = withDefaults(defineProps<TxCardProps>(), {
   variant: 'solid',
-  background: 'pure',
+  background: 'refraction',
   shadow: 'none',
   size: 'medium',
   glassBlur: true,
@@ -25,9 +25,10 @@ const props = withDefaults(defineProps<TxCardProps>(), {
   refractionLightFollowMouse: false,
   refractionLightFollowIntensity: 0.45,
   refractionLightSpring: true,
-  refractionLightSpringStiffness: 0.18,
-  refractionLightSpringDamping: 0.84,
+  refractionLightSpringStiffness: 0.15,
+  refractionLightSpringDamping: 0.6,
   clickable: false,
+  specular: undefined,
   loading: false,
   disabled: false,
   radius: undefined,
@@ -73,6 +74,12 @@ const lightPointX = ref(0.5)
 const lightPointY = ref(0.5)
 const lightRatioX = ref(0)
 const lightRatioY = ref(0)
+// The specular light, in percent of the card; it trails the pointer by exponential smoothing.
+const specularX = ref(50)
+const specularY = ref(50)
+const specularLit = ref(false)
+// A card that answers clicks shows where the pointer is; any card can opt in or out.
+const specularEnabled = computed(() => !props.disabled && (props.specular ?? props.clickable))
 
 const resolvedRadius = computed(() => {
   if (typeof props.radius === 'number')
@@ -96,7 +103,7 @@ const resolvedSpinnerSize = computed(() => {
   return 12
 })
 
-const surfaceMode = computed<'pure' | 'mask' | 'blur' | 'glass' | 'refraction'>(() => {
+const surfaceMode = computed<'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'>(() => {
   return background.value
 })
 
@@ -115,6 +122,9 @@ const surfaceRefractionTone = computed<'mist' | 'balanced' | 'vivid' | undefined
 const surfaceBlur = computed(() => {
   if (background.value === 'blur')
     return 30
+  // TxBaseSurface blurs acrylic three times as wide: 30px, as wide as the card's blur.
+  if (background.value === 'acrylic')
+    return 10
   if (background.value === 'glass' || background.value === 'refraction')
     return glassBlur.value ? glassBlurAmount.value : 0
   return 0
@@ -168,13 +178,13 @@ const surfaceRefractionLightY = computed<number | undefined>(() => {
 })
 
 const surfaceColor = computed(() => {
-  if (background.value !== 'mask')
+  if (background.value !== 'mask' && background.value !== 'acrylic' && background.value !== 'mica')
     return undefined
   return 'var(--tx-card-fake-background, var(--tx-bg-color-overlay, #fff))'
 })
 
 const surfaceOpacity = computed<number | undefined>(() => {
-  if (background.value === 'mask')
+  if (background.value === 'mask' || background.value === 'acrylic')
     return clamp(maskOpacity.value, 0, 1)
   return undefined
 })
@@ -194,6 +204,12 @@ let lightVelocityY = 0
 let lastTs = 0
 let rafId: number | null = null
 let isReturning = false
+let specularTargetX = 50
+let specularTargetY = 50
+let reducedMotionQuery: MediaQueryList | null | undefined
+
+/** Per 60 Hz frame, the share of the way the specular light closes to the pointer. */
+const SPECULAR_SMOOTHING = 0.18
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -212,6 +228,15 @@ function lerpAngleDeg(from: number, to: number, t: number) {
   return normalizeAngleDeg(from + delta * t)
 }
 
+function prefersReducedMotion() {
+  if (reducedMotionQuery === undefined) {
+    reducedMotionQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : null
+  }
+  return reducedMotionQuery?.matches ?? false
+}
+
 function stopRaf() {
   if (rafId == null)
     return
@@ -220,12 +245,14 @@ function stopRaf() {
 }
 
 function tickFrame(ts: number) {
-  const dtRaw = lastTs ? (ts - lastTs) / 16.6667 : 1
+  // Δ: this frame's interval in 60 Hz frames. Floored at 0.1, not 0.5, which still
+  // ran both springs a fifth fast on a 144 Hz display.
+  const dt = lastTs ? clamp((ts - lastTs) / 16.6667, 0.1, 2) : 1
   lastTs = ts
-  const dt = clamp(dtRaw, 0.5, 2)
 
   let motionSettled = true
   let lightSettled = true
+  let specularSettled = true
 
   if (props.inertial) {
     const rebound = clamp(props.inertialRebound, 0, 1)
@@ -243,8 +270,10 @@ function tickFrame(ts: number) {
     velocityX *= damp
     velocityY *= damp
 
-    motionX.value += velocityX
-    motionY.value += velocityY
+    // The position step takes Δ as well. Without it a 120 Hz display took two
+    // whole steps per 60 Hz frame, a stiffer spring that overshot further.
+    motionX.value += velocityX * dt
+    motionY.value += velocityY * dt
 
     const closeX = Math.abs(targetX - motionX.value) < 0.08 && Math.abs(velocityX) < 0.08
     const closeY = Math.abs(targetY - motionY.value) < 0.08 && Math.abs(velocityY) < 0.08
@@ -269,8 +298,8 @@ function tickFrame(ts: number) {
       lightVelocityX *= lightDamp
       lightVelocityY *= lightDamp
 
-      lightPointX.value = clamp(lightPointX.value + lightVelocityX, 0, 1)
-      lightPointY.value = clamp(lightPointY.value + lightVelocityY, 0, 1)
+      lightPointX.value = clamp(lightPointX.value + lightVelocityX * dt, 0, 1)
+      lightPointY.value = clamp(lightPointY.value + lightVelocityY * dt, 0, 1)
     }
     else {
       lightPointX.value = lightTargetX
@@ -287,7 +316,20 @@ function tickFrame(ts: number) {
     lightSettled = closeLightX && closeLightY
   }
 
-  if (motionSettled && lightSettled) {
+  if (specularLit.value) {
+    // α per 60 Hz frame, compounded over Δ frames so every refresh rate trails alike.
+    const follow = 1 - (1 - SPECULAR_SMOOTHING) ** dt
+    specularX.value += (specularTargetX - specularX.value) * follow
+    specularY.value += (specularTargetY - specularY.value) * follow
+    specularSettled = Math.abs(specularTargetX - specularX.value) < 0.05
+      && Math.abs(specularTargetY - specularY.value) < 0.05
+    if (specularSettled) {
+      specularX.value = specularTargetX
+      specularY.value = specularTargetY
+    }
+  }
+
+  if (motionSettled && lightSettled && specularSettled) {
     if (props.inertial) {
       surfaceMoving.value = false
     }
@@ -334,10 +376,36 @@ function updateRefractionLight(ev: MouseEvent) {
   ensureRaf()
 }
 
+function updateSpecular(ev: MouseEvent) {
+  if (!specularEnabled.value)
+    return
+
+  const el = ev.currentTarget as HTMLElement | null
+  if (!el)
+    return
+
+  const rect = el.getBoundingClientRect()
+  if (!rect.width || !rect.height)
+    return
+
+  specularTargetX = clamp((ev.clientX - rect.left) / rect.width, 0, 1) * 100
+  specularTargetY = clamp((ev.clientY - rect.top) / rect.height, 0, 1) * 100
+  // Coming in, the light starts under the pointer rather than sliding over from where it last
+  // went out; with reduced motion it never slides at all.
+  if (!specularLit.value || prefersReducedMotion()) {
+    specularX.value = specularTargetX
+    specularY.value = specularTargetY
+    specularLit.value = true
+    return
+  }
+  ensureRaf()
+}
+
 function onMouseMove(ev: MouseEvent) {
   if (props.disabled)
     return
   updateRefractionLight(ev)
+  updateSpecular(ev)
 
   if (!props.inertial)
     return
@@ -369,6 +437,7 @@ function onMouseMove(ev: MouseEvent) {
 }
 
 function onMouseLeave() {
+  specularLit.value = false
   if (props.disabled)
     return
   if (refractionLightFollowMouse.value && background.value === 'refraction') {
@@ -412,6 +481,11 @@ watch([background, refractionLightFollowMouse], ([bg, follow]) => {
   if (bg !== 'refraction' || !follow) {
     resetRefractionLightState()
   }
+})
+
+watch(specularEnabled, (enabled) => {
+  if (!enabled)
+    specularLit.value = false
 })
 
 watch(inertial, (enabled) => {
@@ -504,6 +578,14 @@ function onKeydown(ev: KeyboardEvent) {
       aria-hidden="true"
     />
 
+    <div
+      v-if="specularEnabled"
+      class="tx-card__specular"
+      :class="{ 'is-lit': specularLit }"
+      :style="{ '--tx-card-light-x': `${specularX}%`, '--tx-card-light-y': `${specularY}%` }"
+      aria-hidden="true"
+    />
+
     <div v-if="$slots.cover" class="tx-card__cover">
       <slot name="cover" />
     </div>
@@ -527,12 +609,13 @@ function onKeydown(ev: KeyboardEvent) {
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 .tx-card {
   position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
-  border-radius: var(--tx-card-radius, 14px);
   padding: var(--tx-card-padding, 12px);
   box-sizing: border-box;
   // `scale` is the standalone property, not a `transform` function, and that is
@@ -540,16 +623,20 @@ function onKeydown(ev: KeyboardEvent) {
   // putting a transition on it would fight the per-frame writes and turn the
   // inertial follow sticky. The standalone `scale` composites separately and
   // can be eased on its own.
-  transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease,
+  transition: box-shadow 0.18s ease,
     scale 0.13s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
   transform: translate3d(var(--tx-card-dx, 0px), var(--tx-card-dy, 0px), 0);
   scale: var(--tx-card-press-scale, 1);
   will-change: transform;
   touch-action: pan-y;
+  // Read by the layers inside the border; set on every card so a nested one never inherits it.
+  --tx-card-border-width: 0px;
+  @include tx-squircle(var(--tx-card-radius, 14px));
 
   &.is-solid,
   &.is-dashed {
-    border: 1px solid color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 72%, transparent);
+    --tx-card-border-width: 1px;
+    border: var(--tx-card-border-width) solid color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 72%, transparent);
   }
 
   &.is-dashed {
@@ -561,6 +648,7 @@ function onKeydown(ev: KeyboardEvent) {
   }
 
   &.is-bg-glass,
+  &.is-bg-acrylic,
   &.is-bg-refraction {
     border-color: color-mix(in srgb, rgba(255, 255, 255, 0.26) 55%, var(--tx-border-color-light, #e4e7ed));
   }
@@ -619,15 +707,77 @@ function onKeydown(ev: KeyboardEvent) {
   }
 }
 
+// The surface, the cover and the loading veil fill the card inside its border, so they take the
+// card's smoothed corner less the border width and stay concentric with it. Copying the card's
+// own radius would put the outer curve on the inner edge and leave a crescent of whatever is
+// behind the card between the border and the layer at every corner.
 .tx-card__surface {
   position: absolute;
   inset: 0;
   z-index: 0;
-  border-radius: var(--tx-card-radius, 14px);
   pointer-events: none;
   transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  @include tx-squircle(var(--tx-card-radius, 14px), $inset: var(--tx-card-border-width, 0px));
+}
+
+// The specular light: a wide, faint light under the content that trails the pointer, and where
+// it crosses the border a tighter, brighter one drawn only in the ring the border occupies, as
+// if the light grazed a bevelled edge. White at 6% only reads on a dark surface, so light themes
+// leave it undrawn; high contrast has no light to show.
+.tx-card__specular {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: none;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    600px circle at var(--tx-card-light-x, 50%) var(--tx-card-light-y, 50%),
+    color-mix(in srgb, var(--tx-color-white, #fff) 6%, transparent),
+    transparent 40%
+  );
+  transition: opacity 240ms ease-out;
+  @include tx-squircle(var(--tx-card-radius, 14px), $inset: var(--tx-card-border-width, 0px));
+
+  &.is-lit {
+    opacity: 1;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--tx-card-border-width, 0px));
+    padding: var(--tx-card-border-width, 0px);
+    background: radial-gradient(
+      240px circle at var(--tx-card-light-x, 50%) var(--tx-card-light-y, 50%),
+      color-mix(in srgb, var(--tx-color-white, #fff) 30%, transparent),
+      transparent 70%
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    @include tx-squircle(var(--tx-card-radius, 14px));
+  }
+
+  // A dashed border would light up its gaps along with its dashes.
+  .is-dashed > &::after {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+
+  // Outweighs the dark rule below by the `html` in each selector the mixin writes.
+  @include tx-when-high-contrast {
+    display: none;
+  }
+}
+
+:is([data-theme='dark'], .dark) .tx-card__specular {
+  display: block;
 }
 
 .tx-card__cover {
@@ -635,8 +785,8 @@ function onKeydown(ev: KeyboardEvent) {
   z-index: 1;
   margin: calc(var(--tx-card-padding, 12px) * -1);
   margin-bottom: var(--tx-card-padding, 12px);
-  border-radius: var(--tx-card-radius, 14px);
   overflow: hidden;
+  @include tx-squircle(var(--tx-card-radius, 14px), $inset: var(--tx-card-border-width, 0px));
 }
 
 .tx-card__header {
@@ -664,8 +814,13 @@ function onKeydown(ev: KeyboardEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--tx-card-radius, 14px);
   background: color-mix(in srgb, var(--tx-bg-color-overlay, #fff) 50%, transparent);
   z-index: 2;
+  @include tx-squircle(var(--tx-card-radius, 14px), $inset: var(--tx-card-border-width, 0px));
+
+  // High contrast: an opaque veil over the card's content.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color-overlay, #fff);
+  }
 }
 </style>

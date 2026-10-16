@@ -35,7 +35,7 @@ As the cursor traverses a button cluster, backgrounds fade in lethargically. The
 
 When is color easing permissible? **Only during semantic state shifts (e.g. converting a chip from muted to dangerous)**.
 
-To prevent state transitions from polluting hover states, TuffEx mandates: **Color transitions must attach exclusively to temporary morph classes, never to the element root**:
+To prevent state transitions from polluting hover states, TuffEx's rule is: **Color transitions must attach exclusively to temporary morph classes, never to the element root**. Here is how TxModeChip writes it (variable fallbacks omitted):
 
 :::TuffCodeBlock{lang="scss"}
 ---
@@ -44,6 +44,7 @@ code: |
     // Hover remains immediate: 0ms delay
     &:hover:not(:disabled) {
       background-color: var(--tx-mode-chip-fill-hover);
+      color: var(--tx-mode-chip-ink-hover, var(--tx-mode-chip-ink));
     }
 
     // Activated only during explicit semantic morphs
@@ -57,3 +58,8 @@ code: |
 :::
 
 Through class isolation, hovers retain instant snap, while semantic state changes morph smoothly.
+
+Every TuffEx component now keeps this rule: a hover always repaints at once. A color transition either lives on `.is-morphing` alone, which a state change such as selecting, opening or focusing adds and the end of its longest color leg removes, or sits on an element whose color no hover changes. A highlight that follows the pointer counts as a hover too, for example TxSearchPanel's options and TxCascader's expanded path, and repaints at once as well.
+
+:::TuffDemoWrapper{demo="ConceptHoverLatencyDemo"}
+:::

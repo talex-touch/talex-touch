@@ -1,5 +1,9 @@
 // TUFF UI SCSS Mixins
 
+@use 'sass:list';
+@use 'sass:math';
+@use 'sass:meta';
+
 // Flexbox shortcuts
 @mixin flex-center {
   display: flex;
@@ -47,6 +51,23 @@
   -webkit-backdrop-filter: blur($blur) saturate(180%);
 }
 
+// High contrast, on the triggers the palettes in variables.scss answer to: `html.contrast`,
+// `html[data-tx-contrast='high']`, and `prefers-contrast: more` unless the page opts out with
+// `html[data-tx-contrast='normal']`. Include it inside a rule; its block applies to that rule's
+// selector while high contrast is on.
+@mixin tx-when-high-contrast {
+  html.contrast &,
+  html[data-tx-contrast='high'] & {
+    @content;
+  }
+
+  @media (prefers-contrast: more) {
+    html:not([data-tx-contrast='normal']) & {
+      @content;
+    }
+  }
+}
+
 // Elevation (shadows)
 @mixin elevation($level: 1) {
   @if $level == 1 {
@@ -57,6 +78,95 @@
     box-shadow: var(--tx-box-shadow);
   } @else if $level == 4 {
     box-shadow: var(--tx-box-shadow-dark);
+  }
+}
+
+// Smooth (G2) corners
+//
+// `border-radius` joins each straight edge to a circular arc, so the curvature jumps from 0 to
+// 1/R where they meet. `tx-squircle` swaps the arc for a superellipse |x/a|^n + |y/a|^n = 1,
+// whose curvature starts at 0 on the edge and climbs (docs/design/concepts/01-geometry-and-curvature.md).
+//
+// `$smoothness` means what Figma's corner smoothing means: the curve leaves each edge `(1 + s)·R`
+// from the corner instead of `R`. The exponent is the one that cuts as deep along the diagonal as
+// the `R` arc, so the corner reads as the same size and only the turn is spread out; at
+// R = 18px the two outlines never part by more than about 0.3px.
+//
+//   a·(1 − 2^(−1/n)) = R·(1 − 2^(−1/2)),   a = (1 + s)·R
+//
+// CSS writes the exponent as `superellipse(K)` with n = 2^K: `round` is K = 1, the `squircle`
+// keyword K = 2. The default s = 0.6 gives n ≈ 3.43, K ≈ 1.78.
+//
+// Without `corner-shape` (Firefox, Safari, Chromium before 139) the element keeps the plain `R`
+// radius. A mask could cut the same curve, but it clips the outer shadow and makes the element a
+// backdrop root: every `backdrop-filter` inside it, the refraction and glass materials included,
+// would then sample nothing but the element itself.
+//
+// Children that copy the shape with `border-radius: inherit` need `corner-shape: inherit` too:
+// the radius they inherit is the longer one, and as a circular arc it cuts far deeper.
+//
+// A layer that sits `$inset` inside the host (inside its border, say) passes the host's radius
+// and that inset: every corner shrinks by it, so the two curves stay concentric instead of
+// leaving a crescent of whatever is behind at each corner.
+$tx-squircle-smoothness: 0.6 !default;
+
+@function tx-squircle-exponent($smoothness: $tx-squircle-smoothness) {
+  @if $smoothness <= 0 {
+    @return 1;
+  }
+
+  // Depth the `R` arc cuts along each edge at the diagonal, in units of R.
+  $arc-depth: 1 - math.div(1, math.sqrt(2));
+  $n: math.div(-1, math.log(1 - math.div($arc-depth, 1 + $smoothness), 2));
+
+  @return math.div(math.round(math.log($n, 2) * 1000), 1000);
+}
+
+// `$radius` may list up to four corners; zero corners stay square.
+@function tx-squircle-radius($radius, $smoothness: $tx-squircle-smoothness) {
+  $scale: 1 + $smoothness;
+  $corners: ();
+
+  @each $corner in $radius {
+    @if meta.type-of($corner) == 'number' {
+      $corners: list.append($corners, $corner * $scale, space);
+    } @else {
+      $corners: list.append($corners, calc(#{$corner} * #{$scale}), space);
+    }
+  }
+
+  @return $corners;
+}
+
+// Every corner less `$inset`, never below a square corner. A square corner stays a plain 0: in
+// `calc(0 - 1px)` the 0 is a number, not a length, and the whole declaration would be dropped.
+@function tx-squircle-inset($radius, $inset) {
+  @if $inset == 0 or $inset == 0px {
+    @return $radius;
+  }
+
+  $corners: ();
+
+  @each $corner in $radius {
+    @if meta.type-of($corner) == 'number' and $corner == 0 {
+      $corners: list.append($corners, 0, space);
+    } @else if meta.type-of($corner) == 'number' and meta.type-of($inset) == 'number' and math.compatible($corner, $inset) {
+      $corners: list.append($corners, math.max($corner - $inset, 0 * $corner), space);
+    } @else {
+      // `calc()` clamps a negative result to 0 on its own.
+      $corners: list.append($corners, calc(#{$corner} - #{$inset}), space);
+    }
+  }
+
+  @return $corners;
+}
+
+@mixin tx-squircle($radius: 16px, $smoothness: $tx-squircle-smoothness, $inset: 0) {
+  border-radius: tx-squircle-inset($radius, $inset);
+
+  @supports (corner-shape: superellipse(2)) {
+    border-radius: tx-squircle-inset(tx-squircle-radius($radius, $smoothness), $inset);
+    corner-shape: superellipse(#{tx-squircle-exponent($smoothness)});
   }
 }
 
@@ -590,4 +700,23 @@ $skeleton-shimmer-duration: 1.2s !default;
       animation: tx-stream-languid $duration cubic-bezier(0.22, 1, 0.36, 1) both;
     }
   }
+}
+
+// Font weights
+//
+// The dark theme's value for a light weight. White text on a dark ground reads heavier than the
+// same weight on white, so the dark theme draws emphasis a notch lighter. The notch has to stay
+// within the light weight's face: weights between faces round to a face (CSS font matching), and
+// with faces 100 apart a dark value in (light − 100, light] lands on the same static face as the
+// light one. So a static font (PingFang SC, Microsoft YaHei) draws both alike, and only a font with
+// a weight axis (SF Pro, Segoe UI Variable, Inter Variable) draws the dark value thinner. Regular
+// has no such room: below 400 a static font falls to its Light face.
+@function tx-dark-weight($light, $dark) {
+  @if $light <= 400 and $dark != $light {
+    @error 'tx-dark-weight: #{$light} cannot go lighter; #{$dark} falls to a static font\'s Light face.';
+  }
+  @if $dark > $light or $dark <= $light - 100 {
+    @error 'tx-dark-weight: #{$dark} is outside (#{$light - 100}, #{$light}]; a static font would draw it with another face than #{$light}.';
+  }
+  @return $dark;
 }

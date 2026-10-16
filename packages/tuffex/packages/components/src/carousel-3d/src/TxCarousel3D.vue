@@ -166,7 +166,7 @@ defineExpose({ previous, next, select })
 .tx-carousel-3d__content { display: flex; height: 100%; box-sizing: border-box; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; }
 .tx-carousel-3d__content small { color: var(--tx-text-color-regular); font-size: 12px; }
 .tx-carousel-3d__slide.is-active { box-shadow: inset 0 0 0 2px var(--tx-color-primary), 3px 6px 20px color-mix(in srgb, var(--tx-text-color-primary) 15%, transparent); }
-.tx-carousel-3d__caption { min-height: 20px; text-align: center; padding: 6px 12px; font-weight: 500; }
+.tx-carousel-3d__caption { min-height: 20px; text-align: center; padding: 6px 12px; font-weight: var(--tx-font-weight-medium, 500); }
 .tx-carousel-3d__controls, .tx-carousel-3d__dots { display: flex; justify-content: center; align-items: center; gap: 4px; }
 .tx-carousel-3d__controls button { padding: 6px 8px; border: 0; border-radius: 8px; color: var(--tx-text-color-regular); background: var(--tx-fill-color-light); font: inherit; cursor: pointer; }
 .tx-carousel-3d__controls button:hover { background: var(--tx-fill-color); }

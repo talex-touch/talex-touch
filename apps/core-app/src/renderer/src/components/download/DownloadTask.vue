@@ -293,7 +293,6 @@ function formatRemainingTime(seconds: number): string {
   border-left: 2px solid var(--task-accent);
   border-radius: 10px;
   padding: 16px;
-  transition: border-color 0.2s ease;
   --task-accent: #111111;
   --task-strong: var(--tx-text-color-primary);
   --task-muted: var(--tx-text-color-secondary);

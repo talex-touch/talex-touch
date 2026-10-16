@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TxIconButtonProps } from './icon-button'
 import { computed, getCurrentInstance, ref, useSlots } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxIcon from '../../icon/src/TxIcon.vue'
 
 defineOptions({
@@ -24,6 +25,8 @@ const emit = defineEmits<{
 const isHovered = ref(false)
 const ariaLabel = computed(() => props.label || undefined)
 const ariaPressed = computed(() => typeof props.pressed === 'boolean' ? props.pressed : undefined)
+// A pressed or status change eases the fill and ink; a hover repaints at once.
+const morphing = useMorphWindow(() => [props.pressed, props.status], 160)
 
 // An icon-only button renders only an aria-hidden icon, so without a `label` or
 // default slot content it has no accessible name. Warn in dev (mirroring
@@ -57,6 +60,7 @@ function handleMouseleave() {
       status && `tx-icon-button--status-${status}`,
       {
         'is-pressed': pressed === true,
+        'is-morphing': morphing,
         'is-disabled': disabled,
       },
     ]"
@@ -103,10 +107,20 @@ function handleMouseleave() {
   cursor: pointer;
   user-select: none;
   transition:
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.tx-icon-button.is-morphing {
+  transition:
     background-color 160ms ease,
     color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 .tx-icon-button:hover:not(.is-disabled) {

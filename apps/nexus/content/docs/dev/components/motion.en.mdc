@@ -52,7 +52,7 @@ code: |
 
 - Supply content, items and action handlers. The component does not navigate, copy, publish or fabricate business success.
 - Use `label` for native magnetic/glow buttons and progress indicators. Card items are native links when `href` is present; otherwise they are native buttons with `select` events.
-- Keep cursor effects local by default. `global` teleports cursor layers and a global progress bar to `body`, so transformed ancestors cannot trap fixed positioning. Decorative cursor content is hidden from assistive technology.
+- Keep cursor effects local by default. `global` teleports cursor layers and a global progress bar to `body`, so transformed ancestors cannot trap fixed positioning. The global cursor layer sits above every overlay; the global progress bar uses `--tx-index-top` and stays under them. Decorative cursor content is hidden from assistive technology.
 - Pass the actual element to `scrollContainer` for nested scrolling. Without it, progress reads the document. Sticky visuals and steps use that viewport's measured height and resize updates rather than document `vh`; the caller still supplies a meaningful scroll range.
 - Change `stateKey` or call the exposed `replay()` to replay entrances. For `icon-swap`, change the key with the actual state and provide the corresponding icon.
 - `enabled=false` suspends animation and its input resources while leaving content readable. Reduced motion keeps semantic scroll progress and immediately displays the final content/icon state.

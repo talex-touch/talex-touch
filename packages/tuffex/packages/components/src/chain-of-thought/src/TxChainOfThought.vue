@@ -223,7 +223,7 @@ watch(
     border-radius: 999px;
     background: color-mix(in srgb, var(--tx-text-color-secondary, #6b7280) 12%, transparent);
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   .tx-chain-of-thought__chevron {
@@ -366,7 +366,7 @@ watch(
 
     strong {
       color: var(--tx-text-color-primary, #111827);
-      font-weight: 600;
+      font-weight: var(--tx-font-weight-semibold, 600);
     }
 
     code {

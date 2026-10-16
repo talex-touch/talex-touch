@@ -382,6 +382,8 @@ function onKeydown(e: KeyboardEvent) {
 </template>
 
 <style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-command-palette__overlay {
   position: fixed;
   inset: 0;
@@ -395,10 +397,10 @@ function onKeydown(e: KeyboardEvent) {
 .tx-command-palette__panel {
   width: min(90vw, 560px);
   background: var(--tx-bg-color, #fff);
-  border-radius: 18px;
   box-shadow: 10px 20px 70px rgba(15, 23, 42, 0.28);
   border: 1px solid color-mix(in srgb, var(--tx-border-color, #e5e7eb) 50%, transparent);
   overflow: hidden;
+  @include tx-squircle(18px);
 }
 
 .tx-command-palette__search {
@@ -480,7 +482,7 @@ function onKeydown(e: KeyboardEvent) {
 
 .tx-command-palette__title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-command-palette__desc {

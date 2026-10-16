@@ -95,9 +95,7 @@ function handleClick() {
   background: var(--shell-surface-2);
   color: inherit;
   cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: box-shadow 0.15s ease;
 
   &::before {
     z-index: 1;

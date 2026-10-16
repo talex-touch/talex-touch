@@ -83,6 +83,7 @@ SSR 安全：访问 `window` / `document` / `navigator` 前先判断。
 | `parseSpringEase(value)` | `(value: string \| undefined \| null) => ((t: number) => number) \| null` | 解析 `spring` / `spring(omega)` / `spring(omega, zeta)`，其他写法返回 `null` |
 | `createCubicBezier(x1, y1, x2, y2)` | `(x1, y1, x2, y2) => (t: number) => number` | 等价于 CSS `cubic-bezier()`；图表入口的 `cubicBezier` 即此函数 |
 | `parseCubicBezier(value)` | `(value: string \| undefined \| null) => [number, number, number, number] \| null` | 解析 `cubic-bezier(...)`；GSAP 缓动名、关键字、弹簧写法，或 x 控制点超出 [0, 1] 时返回 `null` |
+| `applyThemeTransition(updateTheme, options?)` | `(updateTheme, options?) => Promise<void> \| void` | 通过 View Transitions API 执行平滑主题切换（柔和模糊圆、斜切光刃、横向扫光等），详见《[Theming 主题定制](./theming.zh.mdc)》 |
 
 ### 安装辅助
 

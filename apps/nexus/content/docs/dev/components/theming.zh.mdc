@@ -57,6 +57,58 @@ code: |
 - 两种写法等价：Tailwind 应用（`.dark`）与 `data-theme` 应用都无需适配层。
 - 设在子树上，即可在浅色页面里开一块深色区域。
 
+### 视图过渡动效（View Transition）
+
+切换深色/浅色时，Tuffex 提供了基于原生 View Transitions API 的平滑过渡封装 `applyThemeTransition`。默认预设为 `circle-blur`，以鼠标点击坐标为圆心，通过 SVG 高斯模糊遮罩向外扩散展开新主题，视觉轻盈柔和。
+
+同时支持 `circle`（硬边裁切圆）、`polygon`（斜切光刃）、`polygon-gradient`（渐变光刃）、`wipe`（平推扫光）、`fade`（平滑淡入淡出）以及自定义 GIF 遮罩。
+
+:::TuffDemoWrapper{demo="ThemingThemeTransitionDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { applyThemeTransition } from '@talex-touch/tuffex/utils'
+  import { ref } from 'vue'
+
+  const isDark = ref(false)
+
+  function toggle(event: MouseEvent) {
+    applyThemeTransition(() => {
+      isDark.value = !isDark.value
+      document.documentElement.classList.toggle('dark', isDark.value)
+    }, {
+      origin: event,
+      variant: 'circle-blur',
+      duration: 450,
+      blurAmount: 3.5,
+    })
+  }
+  </script>
+
+  <template>
+    <button @click="toggle">
+      {{ isDark ? '浅色' : '深色' }}
+    </button>
+  </template>
+---
+:::
+
+#### 预设变体与配置
+
+| 变体名称 (`variant`) | 默认时长 | 视觉特点 |
+|----------------------|----------|----------|
+| `circle-blur` (默认) | 450ms | 以点击坐标为原点，带柔和高斯模糊的圆形光晕展开 |
+| `circle` | 350ms | 以点击坐标为原点，`clip-path: circle` 锐利圆形裁切展开 |
+| `polygon` | 600ms | 对角线光刃斜切拉开新主题 |
+| `polygon-gradient` | 800ms | 线性渐变柔和边缘的光刃斜切 |
+| `wipe` | 400ms | 水平横向扫光推进 |
+| `fade` | 250ms | 经典跨主题淡入淡出（轻量回退） |
+| `circle-blur-top-left`| 600ms | 从左上角原点以模糊圆展开 |
+| `gif` | 1500ms | 传入 `maskUrl` 使用动态图形展开新主题 |
+
+- **原点自动解析**：`origin` 可传入原生 `MouseEvent`、`{ clientX, clientY }` 或 `[x, y]`，未指定时默认从视口中心扩散。
+- **无障碍保障**：系统检测到用户开启 `prefers-reduced-motion` 或浏览器不支持 View Transition 时，自动静默直切，无冗余动画。
+
 ## 高对比度
 
 第四套调色板，在浅色与深色下都提高文本与边框对比度。
@@ -69,9 +121,22 @@ code: |
 
 `data-theme="dark"` 与任一开启条件同时存在时，使用「深色高对比度」调色板，而不是两套主题叠加。
 
+### 材质
+
+高对比度下，组件不再透出页面：
+
+| 部件 | 高对比度下 |
+|------|-----------|
+| 材质面板：`TxBaseSurface` 的所有模式（Card、BaseAnchor 浮层等都基于它）、GlassSurface、Toast、NavBar、TabBar、Picker、PopperDialog、TouchTip、Slider、RadioGroup 指示块、ProgressBar 遮罩、StatCard、Drawer 的透明面板、MotionTransition 的玻璃幕 | 不透明底色，不模糊、不折射、没有边缘高光 |
+| 遮罩：Modal、Drawer、BlowDialog | 保留压暗，去掉磨砂 |
+| 盖在内容上的层：LoadingOverlay、Card 与 DataTable 的加载层、ImageUploader 的删除按钮 | 不透明，遮住下面的内容 |
+| 装饰：FlowLight、GlowText 的扫光、GradualBlur | 隐藏 |
+
+组件内部的浅色叠层（悬停、选中、输入框底色）保持不变。规则写在 `style/mixins.scss` 的 `tx-when-high-contrast` 里，与调色板响应同一组触发条件。
+
 ## AI 套件 token
 
-`--tx-bui-*` 随 Beautiful UI 组件移植（surface、inset、field、ink，accent / green / orange / red 及配套 tint），在同样的 `[data-theme='dark']` / `.dark` 下有自己的深色块。AI 界面不继承品牌色时单独覆盖：
+`--tx-bui-*` 随 Beautiful UI 组件移植（surface、inset、field、ink，accent / green / orange / red / violet 及配套 tint），在同样的 `[data-theme='dark']` / `.dark` 下有自己的深色块。AI 界面不继承品牌色时单独覆盖：
 
 :::TuffCodeBlock{lang="css"}
 ---

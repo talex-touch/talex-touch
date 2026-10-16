@@ -1,42 +1,47 @@
 ---
-title: 材质自动推断与 120Hz 运动降级
-description: 指针速度传感、窗口拖拽捕获、0ms 切入 Mask 与 140ms 非对称弹性恢复的抗掉帧架构。
+title: 材质运动降级与分层恢复
+description: TxBaseSurface 在运动中怎样降级：moving 与 autoDetect 两个入口，blur / glass 换成 fallbackMode，refraction 分层降级、分层恢复。
 ---
 
-# 材质自动推断与 120Hz 运动降级
+# 材质运动降级与分层恢复
 
-折射着色器带来了惊艳的晶莹质感，但在高刷新率（120Hz ProMotion）窗口拖拽时，复杂的位移滤镜必须具备智能降级能力，保障零帧掉落。
+折射与背景模糊都靠 `backdrop-filter` 采样身后的内容。材质随元素一起移动时，取样会落后于元素的位置，滤镜层拖着一块错位的背景走。`TxBaseSurface` 因此在运动期间降级，停下后再恢复。
 
-## 为什么需要运行时自动推断？
+## 运动信号从哪里来？
 
-在实际使用中，客户端运行环境极其复杂：
-- 用户可能突然按住窗口标题栏飞速拖拽窗口。
-- 笔记本可能由于电池电量低被系统切换为节能模式（Low Power Mode）。
-- 老旧核显设备可能发生 GPU 着色器带宽不足。
+`TxBaseSurface` 不测指针速度，也不监听窗口拖动或帧耗时。它只认两个入口：
+1. **`moving` 属性**：由宿主组件在自己运动时置为 `true`。TuffEx 里，`TxBaseAnchor` 的弹出面板在部分打开、关闭动画期间设置它（`surfaceMotionAdaptation` 默认 `auto`），`TxFlipOverlay` 在翻转动画期间设置它，`TxCard` 在惯性跟随（`inertial`）运动期间设置它。
+2. **`autoDetect`**（默认关闭）：打开后，组件在材质元素及其所有祖先元素上监听 `transform` / `translate` 的 `transitionstart`、`transitionend`、`transitioncancel`，并用 `MutationObserver` 观察这些元素的内联 `style`：任一元素带内联 `transform` 即视为运动，全部去掉后视为停止。
 
-如果让业务开发者手动在各个场景里编写 `if (isDragging) { ... }`，代码会迅速腐化且极易遗漏。TuffEx 将这套逻辑下沉至 `autoDetect` 自动感知引擎。
+宿主如果按指针速度驱动 `moving`，防抖也要宿主自己做。下面的配图就是这样一个宿主：速度超过 $1.2\text{px/ms}$ 立即置为 `true`，低于阈值满 140ms 才清除。
 
-## autoDetect 环境感知信号矩阵
+## 降级快，恢复分层
 
-系统综合采集以下运行期物理信号：
-1. **指针速度感知**：连续采样指针位置 $\vec{s}(t)$，计算瞬时速度 $|\vec{v}| = \frac{\|\Delta \vec{s}\|}{\Delta t}$。当速度持续超过 $1.2\text{px/ms}$ 时，自动推断为快速移动。
-2. **窗口移动与缩放事件**：监听 Electron 主进程的 `window.on('move')` / `window.on('resize')`，检测到原生拖拽立即发出全局阻断信号。
-3. **性能探针预算**：检测连续帧率，若单帧合成耗时超过 8ms，自动降级至更轻量的材质。
+`blur` 与 `glass` 整体换材质：
+- **降级**：`moving` 一置为 `true`，渲染模式立即换成 `fallbackMode`。默认是 `mask`，色膜不透明度取 `fallbackMaskOpacity`（`TxBaseSurface` 默认 0.95，`TxCard` 传 0.26）；也可以设为 `pure`。
+- **恢复**：运动结束后先保持降级 `max(transitionDuration, settleDelay)`，默认 `max(299, 150)` = 299ms，再换回原材质。
 
-## 瞬间切 Mask 与非对称弹性恢复
+`refraction` 不换材质，而是分层降级：
+- **降级**：玻璃层和滤镜层在 140ms 内淡出，一层半透明遮盖在 180ms 内升到 0.55，折射参数的混合进度降到 0.28，折射描边立即隐藏。
+- **恢复**：运动一结束就开始，没有等待期。参数在 182ms 内回满；遮盖先停 60ms，再用 227ms 撤完，到 287ms 结束；玻璃层和滤镜层延迟 80ms 后用 220ms 淡回；恢复结束后再过 60ms，描边用 220ms 淡回。恢复途中再次运动，会直接回到降级状态。
 
-为了消除动画卡顿，TuffEx 采取**“非对称时钟降级”**法则：
+`pure` 与 `mask` 没有滤镜层，运动时不做任何处理。
 
-- **降级（0ms 瞬间完成）**：一旦检测到快速运动，0 延迟瞬间卸载重度折射滤镜，切换为纯色轻量 `mask` 材质。GPU 负荷在 1 帧内归零，确保 120Hz 拖拽如同丝绸般顺滑。
-- **恢复（140ms 滞后弹性恢复）**：运动停止后，系统不会立即切回折射（防止手势轻微颤抖导致反复切换）。而是等待 140ms 确认动作彻底平息后，再平滑激活折射滤镜。
+:::TuffDemoWrapper{demo="ConceptSurfaceDeductionDemo"}
+:::
 
 ## 状态机转换图
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Refraction_Active: 窗口静止 (默认高阶折射)
-    Refraction_Active --> Mask_Fallback: 拖拽开始 / 速度 > 1.2px/ms (0ms 瞬间)
-    Mask_Fallback --> Refraction_Active: 停止运动持续 140ms (非对称弹性恢复)
-    Refraction_Active --> Blur_Degraded: 触发系统省电模式 / 低端核显探针超时
+    [*] --> Refraction_Active: mode = refraction
+    Refraction_Active --> Layered_Fallback: moving = true（立即）
+    Layered_Fallback --> Refraction_Recovering: moving = false
+    Refraction_Recovering --> Layered_Fallback: 恢复途中再次运动
+    Refraction_Recovering --> Refraction_Active: 287ms 后（描边再过 60 + 220ms 淡回）
+    [*] --> Blur_Glass_Active: mode = blur 或 glass
+    Blur_Glass_Active --> Fallback_Mode: moving = true（立即换成 fallbackMode）
+    Fallback_Mode --> Settling: moving = false
+    Settling --> Blur_Glass_Active: 299ms 后
 ```
-通过这套机制，复杂材质的极致表现力与极致性能得以完美兼顾。
+运动中的材质因此不会拖着错位的背景走，停下后又回到完整的折射。

@@ -93,7 +93,6 @@ function onOpen(event: MouseEvent): void {
   // surrounding prose rather than the baseline.
   vertical-align: middle;
   transform: translateY(-1px);
-  transition: background-color 0.15s ease, color 0.15s ease;
 
   &:hover {
     background: var(--tx-bui-hover, #f4f5f6);
@@ -121,11 +120,5 @@ function onOpen(event: MouseEvent): void {
 [data-theme='dark'] .tx-bui-inline-citation,
 .dark .tx-bui-inline-citation {
   --tx-bui-inline-citation-avatar-ring: #ffffff1f;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tx-bui-inline-citation {
-    transition: none;
-  }
 }
 </style>

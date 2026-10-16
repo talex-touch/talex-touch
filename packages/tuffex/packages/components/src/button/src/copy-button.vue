@@ -286,7 +286,7 @@ onBeforeUnmount(() => {
   color: var(--tx-text-color-regular, #606266);
   font: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;

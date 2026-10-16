@@ -1,9 +1,9 @@
 ---
-title: Surface 8 种材质物理选型与确认门禁
-description: 为什么专业桌面界面需要物理材质？深入解析 Refraction、Glass、Acrylic、Mica 等 8 种材质选型表与严格切换门禁。
+title: Surface 5 种材质选型与确认门禁
+description: 为什么专业桌面界面需要物理材质？解析 TxBaseSurface 的 refraction、glass、blur、mask、pure 五种材质、各组件的默认值与切换门禁。
 ---
 
-# Surface 8 种材质物理选型与确认门禁
+# Surface 5 种材质选型与确认门禁
 
 扁平化设计过度丢失了空间深度，而早期的拟物化又过于沉重。Tuff 提出“次表面材质学”，为现代高密度界面建立轻盈坚实的物理秩序。
 
@@ -14,28 +14,30 @@ description: 为什么专业桌面界面需要物理材质？深入解析 Refrac
 - **空间锚定**：不同折射率与模糊度明确告知当前聚焦的层级。
 - **视觉减负**：相比厚重的纯色色块，透光的次表面材质减少了视网膜的压迫感。
 
-## 8 种材质物理模型选型表
+## 5 种材质选型表
 
-| 材质模式 | 底层渲染管线 | 物理隐喻 | 适用场景 |
+`TxBaseSurface` 的 `mode` 一共五种（`BaseSurfaceMode`），每种由几层叠成：玻璃层（`TxGlassSurface`）用于 `glass` 与 `refraction`，背景滤镜层用于 `blur` 与 `refraction`，色膜层用于 `mask`，折射描边只在 `refraction` 上。
+
+| 材质模式 | 渲染管线（默认参数） | 物理隐喻 | 默认用在 |
 |---|---|---|---|
-| `refraction`（默认） | SVG Displacement Map + RGB 色散位移 | 冰晶 / 棱镜 | CoreBox 主窗口、核心卡片、弹窗面板 |
-| `glass` | Backdrop Filter Blur + 高光外环 | 物理磨砂玻璃 | 临时菜单、悬浮气泡条 |
-| `acrylic` | 亚克力多级模糊 + 噪点漫反射 | 漫反射亚克力 | 系统侧边栏、状态抽屉 |
-| `mica` | 双调和表面采样 + 低饱和基底 | 动态云母薄片 | 窗口基底底板（极低 GPU 开销） |
-| `mask` | 纯色半透明 Alpha 遮罩 | 墨色薄膜 | 高速拖拽运动降级态、高密列表行 |
-| `blur` | 原生 CSS `backdrop-filter: blur(20px)` | 雾化毛玻璃 | 低端核显或兼容降级环境 |
-| `flat` | 实心纯色填充 | 坚硬塑料底板 | 高对比度无障碍模式、底表底盘 |
-| `plain` | 无样式完全透明穿透 | 空无一物 | 逻辑布局占位容器 |
+| `refraction` | 玻璃层之上叠背景模糊与饱和度滤镜层，外加 1px 折射描边 | 冰晶 / 棱镜 | 所有带材质层的组件：TxBaseSurface、TxCard、TxFlipOverlay，以及浮层面板 TxPopover、TxTooltip、TxDropdownMenu 与 TxContextMenu（及各自的子菜单）、TxSelect、TxSearchSelect |
+| `glass` | 玻璃层：SVG 位移贴图让 R、G、B 三个通道各自错开，再 `saturate(1.8)`；Safari、Firefox 退回 `backdrop-filter` 背景模糊 | 棱镜玻璃 | 没有组件默认使用 |
+| `blur` | `backdrop-filter: blur(10px) saturate(1.5)`，叠一层 10% 的浮层底色 | 雾化毛玻璃 | 没有组件默认使用 |
+| `mask` | 半透明色膜（不透明度 0.75），不做模糊 | 墨色薄膜 | 没有组件默认使用；`blur`、`glass` 运动时默认降级到它 |
+| `pure` | 不透明实色（`--tx-fill-color-lighter`），背景完全不透出 | 坚硬底板 | 没有组件默认使用 |
 
-## 默认使用 refraction 的绝对铁律
+:::TuffDemoWrapper{demo="ConceptSurfaceModesDemo"}
+:::
 
-在 TuffEx 体系中，**所有带有材质层（Surface）的容器组件，默认材质一律且必须为 `refraction`（琉光/折射）**。
+## 默认使用 refraction 的设计规则
 
-这是整个系统的统一视觉灵魂。无论是弹窗、抽屉、快捷指令盘还是详情卡片，必须保持高阶的晶莹折射质感，绝不允许各自为政。
+TuffEx 的设计规则要求：带材质层的容器默认使用 `refraction`（琉光/折射），让整个系统共用一种视觉语言，不允许各组件各自为政。
+
+组件的默认值都照这条规则取 `refraction`：`TxBaseSurface` 的 `mode`、`TxCard` 的 `background`、`TxFlipOverlay` 的 `surface`，以及上表那些弹出面板的 `panelBackground`（它们都经 `TxBaseAnchor` 渲染）。`TxModal`、`TxDrawer` 等弹窗与抽屉不经过 `TxBaseSurface`，没有材质可选。
 
 ## 材质切换的手动确认门禁
 
-若因极特殊业务场景（如某些纯后台纯白底表格、超低端工业嵌入式设备）需要将 `surface` 切换为其他材质（如 `flat` / `mask` / `glass`）：
+若因极特殊业务场景（如某些纯后台纯白底表格、超低端工业嵌入式设备）需要把材质（`mode`、`background`、`surface`、`panelBackground`）从 `refraction` 换成别的（如 `pure` / `mask` / `blur` / `glass`）：
 - **必须经过用户手动明确确认**！
 - 不得由开发人员或 AI 编码 Agent 擅自替换默认材质。
 - 该门禁确保了 TuffEx 设计语言在长期协同演进中的纯净度与抗异化能力。

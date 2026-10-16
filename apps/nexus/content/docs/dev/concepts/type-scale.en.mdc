@@ -19,13 +19,17 @@ The human foveal vision window covers approximately 2 degrees. At typical deskto
 - **Controls & Data Rows (13px–14px)**: Input field values, table cells, button labels.
 - **Secondary Copy (12px)**: Helper copy, empty state notes, shortcut badges.
 - **Micro-labels (10px–11px)**: All-caps tags or miniature badges.
-- **Headings (16px–18px)**: Reserved strictly for card and module titles; prose never exceeds 14px.
+- **Headings (15px–18px)**: Reserved strictly for card and module titles; prose never exceeds 14px.
+- **Display numerals (22px–32px)**: Stat cards, chart summaries and metric values.
+
+:::TuffDemoWrapper{demo="ConceptTypeScaleDemo"}
+:::
 
 ## Monospace X-Height Inflation Mechanics
 
 Technical documentation routinely mixes inline code (`<code>`) into body copy.
 Sans-serif typefaces (e.g. Inter, SF Pro) and monospace code faces (e.g. JetBrains Mono, SF Mono) carry fundamentally divergent font metrics:
-To maximize legibility in code editors, monospace typefaces inflate letter counters—their **x-height runs 12%–18% taller than equivalent sans-serif type**!
+To maximize legibility in code editors, monospace typefaces open up their letter counters, and **their x-height tends to run a little taller than sans-serif type at the same size**. Measured from the macOS system font files, as a fraction of the font size: PingFang SC 0.517, SF Pro 0.508, SF Mono 0.526, Menlo 0.547. The monospace faces are only about 1.7%–7.7% taller.
 
 ## Optical Alignment: Scaling Inline Code to 0.9em
 
@@ -33,21 +37,22 @@ If inline code inherits `font-size: 1em`:
 - Monospace tokens stick out awkwardly like unharmonized patches.
 - Inflated height distorts uniform line-height rhythms.
 
-TuffEx enforces the standard:
+The TuffEx components that render inline code (TxStreamText, TxMarkdownView, TxMarkdownEditor, TxChainOfThought) all scale it to 0.9em; TxStreamMarkdown and the body of these docs use 0.875em. TxStreamText, for example:
 
 :::TuffCodeBlock{lang="scss"}
 ---
 code: |
-  .tx-prose code,
-  .tx-inline-code {
-    font-family: var(--tx-font-family-mono);
-    // Scaled to 0.9em to compensate for monospace x-height inflation
-    font-size: 0.9em;
-    padding: 0.15em 0.35em;
+  // stream-text/src/TxStreamText.vue
+  .tx-stream-text__code {
+    padding: 0.1em 0.35em;
     border-radius: 4px;
-    background-color: var(--tx-fill-color-light);
-    vertical-align: baseline;
+    background: var(--tx-fill-color-light, #f5f7fa);
+    font-family: var(--tx-font-mono, ui-monospace, 'SF Mono', Menlo, monospace);
+    font-size: 0.9em;
   }
 ---
 :::
-At 0.9em, monospace stems align with adjacent sans-serif glyphs, preserving rhythmic integrity across mixed technical prose.
+0.9em is an approximation. The size that lines the two x-heights up is the body x-height divided by the code x-height: measured in Chrome on macOS, these docs set body text at 0.508em and code, which falls back to Menlo, at 0.547em, a ratio of 1.077, so an exact match takes 0.929em and 0.9em sits 3.1% short. Across the pairs of faces above, the exact match falls between 0.93em and 0.98em. The figure below measures both x-heights in your browser.
+
+:::TuffDemoWrapper{demo="ConceptInlineCodeDemo"}
+:::

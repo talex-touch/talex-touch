@@ -291,7 +291,7 @@ onBeforeUnmount(() => {
 .tx-bui-chart-scrubber__value {
   @include bui-tabular-nums;
 
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-tooltip-muted, #a5a8ad);
 }
 

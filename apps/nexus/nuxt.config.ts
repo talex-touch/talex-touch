@@ -9,7 +9,9 @@ import { config as loadEnv } from 'dotenv'
 import { defineNuxtConfig } from 'nuxt/config'
 import { pwa } from './app/config/pwa'
 import { appDescription } from './app/constants/index'
+import { globalSearchBootScript } from './app/utils/global-search-boot'
 import { remarkCloseComponentTags } from './app/utils/remark-close-component-tags'
+import { remarkMath } from './app/utils/remark-math'
 import { remarkMermaid } from './app/utils/remark-mermaid'
 import { resolveTuffexDevMode } from './build/tuffex-dev-mode'
 import { nexusPageMetaFastPathPlugin } from './build/nexus-page-meta-fast-path'
@@ -283,6 +285,10 @@ export default defineNuxtConfig({
         { name: 'theme-color', media: '(prefers-color-scheme: light)', content: 'white' },
         { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#222222' },
       ],
+      script: [
+        // Answers the search trigger and shortcuts until the app has mounted.
+        { key: 'nexus-search-boot', innerHTML: globalSearchBootScript },
+      ],
     },
   },
 
@@ -317,6 +323,12 @@ export default defineNuxtConfig({
             src: resolve(currentDir, './app/utils/remark-close-component-tags'),
             instance: remarkCloseComponentTags,
             options: { revision: fileRevision(resolve(currentDir, './app/utils/remark-close-component-tags.ts')) },
+          },
+          // `$…$` and `$$…$$` rendered by KaTeX at parse time; `revision` as above.
+          'remark-math': {
+            src: resolve(currentDir, './app/utils/remark-math'),
+            instance: remarkMath,
+            options: { revision: fileRevision(resolve(currentDir, './app/utils/remark-math.ts')) },
           },
         },
         highlight: false,

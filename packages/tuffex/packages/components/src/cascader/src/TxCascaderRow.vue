@@ -77,6 +77,19 @@ const ctx = inject(CASCADER_CONTEXT)!
   --tx-card-item-gap: 8px;
 }
 
+// `active` is the open path, and unless `expandTrigger` is `click` the pointer
+// moves it, so the row repaints at once instead of taking the card item's
+// eased fill. Doubled with `.tx-card-item` to outrank that rule.
+.tx-cascader__item.tx-card-item.is-morphing {
+  transition:
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
 .tx-cascader__label {
   flex: 1;
   min-width: 0;

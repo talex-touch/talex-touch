@@ -100,7 +100,7 @@ const layout = computed(() => timeline.layout)
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--tx-color-white, #fff);
   box-shadow: 0 0 0 2px var(--tx-timeline-dot-border, var(--tx-bg-color));
   display: flex;
   align-items: center;
@@ -140,7 +140,7 @@ const layout = computed(() => timeline.layout)
 
 .tx-timeline-item__icon {
   font-size: 6px;
-  color: #ffffff;
+  color: var(--tx-color-on-primary, #fff);
 }
 
 .tx-timeline-item__content {
@@ -164,7 +164,7 @@ const layout = computed(() => timeline.layout)
 }
 
 .tx-timeline-item__title {
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-timeline-title, var(--tx-text-color-primary));
   font-size: 14px;
 }

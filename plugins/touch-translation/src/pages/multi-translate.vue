@@ -164,7 +164,7 @@ function isProviderConfigured(provider: TranslationProvider): boolean {
           </h1>
           <!-- 设置按钮 -->
           <button
-            class="rounded-full p-2 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
+            class="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700"
             :class="{ 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400': showSettings }"
             @click="toggleSettings"
           >
@@ -302,7 +302,7 @@ function isProviderConfigured(provider: TranslationProvider): boolean {
                   <span v-else-if="provider.id === 'mymemory'">免费的 MyMemory 翻译服务</span>
                 </p>
                 <button
-                  class="ml-2 text-xs text-blue-600 transition-colors dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
+                  class="ml-2 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
                   @click="openConfigModal(provider)"
                 >
                   配置
@@ -351,13 +351,13 @@ function isProviderConfigured(provider: TranslationProvider): boolean {
           <!-- 操作按钮 -->
           <div class="flex gap-2">
             <button
-              class="flex-1 rounded-md bg-gray-200 px-3 py-2 text-xs transition-colors dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+              class="flex-1 rounded-md bg-gray-200 px-3 py-2 text-xs dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
               @click="enableAllProviders"
             >
               全部启用
             </button>
             <button
-              class="flex-1 rounded-md bg-gray-200 px-3 py-2 text-xs transition-colors dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+              class="flex-1 rounded-md bg-gray-200 px-3 py-2 text-xs dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
               @click="disableAllProviders"
             >
               全部禁用

@@ -3,6 +3,7 @@
 
 import type { AllocationBarEmits, AllocationBarProps, AllocationSegment } from './types'
 import { computed, ref } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({ name: 'TxAllocationBar' })
 
@@ -34,6 +35,8 @@ const FALLBACK_COLORS = [
 ] as const
 
 const activeKey = computed(() => props.modelValue ?? props.segments[0]?.key)
+// A selection change eases the chips' fill and ink; a hover repaints at once.
+const morphing = useMorphWindow(activeKey, 150)
 const activeIndex = computed(() => {
   const index = props.segments.findIndex(segment => segment.key === activeKey.value)
   return index === -1 ? 0 : index
@@ -100,7 +103,7 @@ function onArrowKey(event: KeyboardEvent, index: number, set: 'segment' | 'chip'
 </script>
 
 <template>
-  <div class="tx-bui-allocation-bar">
+  <div class="tx-bui-allocation-bar" :class="{ 'is-morphing': morphing }">
     <div
       ref="control"
       class="tx-bui-allocation-bar__control"
@@ -267,10 +270,18 @@ $allocation-ease: cubic-bezier(0.16, 1, 0.3, 1);
   color: var(--tx-bui-ink-2, #62656b);
   cursor: pointer;
   border-radius: 999px;
-  transition:
-    background-color 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-    color 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+
+  .tx-bui-allocation-bar.is-morphing & {
+    transition:
+      background-color 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
+      color 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
+      transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 
   &:hover:not(.is-active) {
     color: var(--tx-bui-ink, #1f2124);
@@ -323,7 +334,7 @@ $allocation-ease: cubic-bezier(0.16, 1, 0.3, 1);
 .tx-bui-allocation-bar__detail-label {
   display: block;
   font-size: 11.5px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink-2, #62656b);
 }
 

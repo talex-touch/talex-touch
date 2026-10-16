@@ -171,7 +171,7 @@ async function handleOpenPluginFolder(): Promise<void> {
 }
 
 .action-btn :deep(.tx-button) {
-  @apply h-9 flex items-center justify-center gap-2 font-medium rounded-lg transition-all duration-200 ease-out px-3;
+  @apply h-9 flex items-center justify-center gap-2 font-medium rounded-lg transition-transform duration-200 ease-out px-3;
 }
 
 .action-btn :deep(.tx-button) i {

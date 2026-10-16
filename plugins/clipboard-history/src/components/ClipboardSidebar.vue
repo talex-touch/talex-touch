@@ -208,10 +208,6 @@ function onScroll(event: Event): void {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease;
 }
 
 .ClipboardItem:hover {
