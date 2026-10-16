@@ -18,11 +18,11 @@ verified: true
 code: |
   <template>
     <TxButton @click="visible = true">打开抽屉</TxButton>
-    <TxDrawer v-model:visible="visible" title="设置">
+    <TxDrawer v-model:visible="visible" title="设置" close-label="关闭抽屉">
       <p>这是抽屉的内容区域。</p>
       <TxButton @click="confirmVisible = true">打开确认框</TxButton>
     </TxDrawer>
-    <TxModal v-model="confirmVisible" title="确认操作">
+    <TxModal v-model="confirmVisible" title="确认操作" close-label="关闭">
       <template #footer>
         <TxButton @click="confirmVisible = false">取消</TxButton>
       </template>
@@ -175,6 +175,7 @@ code: |
 
 - 长表单、审计明细、权限矩阵和需要 Footer 操作区的流程放进 Drawer，不要塞进 Popover。
 - 即使 `showHeader=false` 也提供有意义的 `title`，它是对话框的无障碍名称。
+- 非英文界面传入 `closeLabel`：关闭按钮只有图标，读屏读到的就是这个名称。
 - 用 `size` 或 `full` 设置尺寸；`width` 只为旧调用点保留。
 - 只有在小屏上保持侧向进入比底部弹出更重要时，才设置 `mobileAdapt=false`。
 - 焦点由抽屉管理，外层不要再手动抢焦点；正文的表单字段仍需明确的 label。
@@ -222,6 +223,10 @@ rows:
     description: '在默认 Header 中显示关闭按钮。'
     type: 'boolean'
     default: 'true'
+  - name: closeLabel
+    description: '默认 Header 中关闭按钮的可访问名称。'
+    type: 'string'
+    default: "'Close drawer'"
   - name: closeOnClickMask
     description: '点击遮罩时关闭。'
     type: 'boolean'

@@ -580,6 +580,7 @@ const copy = computed(() => zh.value
       toastLabel: '操作结果',
       undo: '撤销',
       dismiss: '关闭提示',
+      closeDrawer: '关闭抽屉',
       undone: '已撤销',
       linkCopied: '链接已复制',
       saved: (title: string) => `已保存《${title}》`,
@@ -655,6 +656,7 @@ const copy = computed(() => zh.value
       toastLabel: 'Result',
       undo: 'Undo',
       dismiss: 'Dismiss',
+      closeDrawer: 'Close drawer',
       undone: 'Undone',
       linkCopied: 'Link copied',
       saved: (title: string) => `Saved “${title}”`,
@@ -1569,7 +1571,7 @@ onBeforeUnmount(() => {
           </TxNoSelection>
         </aside>
 
-        <TxDrawer v-model:visible="drawerOpen" :title="editorTitle" size="min(560px, 94vw)">
+        <TxDrawer v-model:visible="drawerOpen" :title="editorTitle" :close-label="copy.closeDrawer" size="min(560px, 94vw)">
           <div class="cms-editor">
             <TxForm ref="formRef" :key="draft.id" :model="draft" :rules="rules" label-position="top">
               <TxFormItem :label="copy.form.title" prop="title">

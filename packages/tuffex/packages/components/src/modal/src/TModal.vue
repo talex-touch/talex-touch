@@ -11,11 +11,13 @@ const props = withDefaults(
     title?: string
     width?: string
     fullscreen?: boolean
+    closeLabel?: string
   }>(),
   {
     title: '',
     width: '480px',
     fullscreen: false,
+    closeLabel: 'Close',
   },
 )
 
@@ -32,6 +34,7 @@ const emit = defineEmits<{
     :title="props.title"
     :width="props.width"
     :fullscreen="props.fullscreen"
+    :close-label="props.closeLabel"
     @update:model-value="v => emit('update:modelValue', v)"
     @close="() => emit('close')"
   >

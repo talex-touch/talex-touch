@@ -431,7 +431,7 @@ function openProfileEditor() {
 
   <CreditsSummaryBlock context="settings" />
 
-  <TModal v-model="loginDialogVisible" :title="loginDialogTitle">
+  <TModal v-model="loginDialogVisible" :title="loginDialogTitle" :close-label="t('common.close')">
     <div class="login-dialog" data-testid="login-recovery-dialog">
       <div class="login-dialog__icon" :class="`is-${authLoadingState.loginStage}`">
         <TxSpinner
@@ -513,6 +513,7 @@ function openProfileEditor() {
     v-if="showNexusBaseUrlEditor"
     v-model="nexusBaseUrlDialogVisible"
     :title="t('settingUser.nexusBaseUrlTitle', 'Nexus 服务地址')"
+    :close-label="t('common.close')"
   >
     <div class="nexus-endpoint">
       <TxInput
@@ -564,7 +565,11 @@ function openProfileEditor() {
     </template>
   </TModal>
 
-  <TModal v-model="profileEditorVisible" :title="t('userProfile.editTitle', 'Edit profile')">
+  <TModal
+    v-model="profileEditorVisible"
+    :title="t('userProfile.editTitle', 'Edit profile')"
+    :close-label="t('common.close')"
+  >
     <UserProfileEditor :visible="profileEditorVisible" />
     <template #footer>
       <TxButton variant="ghost" @click="profileEditorVisible = false">

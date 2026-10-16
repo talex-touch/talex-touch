@@ -131,6 +131,12 @@ export interface BottomDialogProps {
    * @default 0
    */
   index?: number
+
+  /**
+   * Accessible label for the header's close button.
+   * @default 'Close'
+   */
+  closeLabel?: string
 }
 
 /**

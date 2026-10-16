@@ -83,6 +83,12 @@ export interface DrawerProps {
   showClose?: boolean
 
   /**
+   * Accessible label for the default header's close button.
+   * @default 'Close drawer'
+   */
+  closeLabel?: string
+
+  /**
    * Whether clicking the mask closes the drawer.
    * @default true
    */

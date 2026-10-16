@@ -154,6 +154,7 @@ const copy = computed(() => zh.value
       latest: '最新消息',
       openMenu: (n: number) => (n ? `打开菜单，${n} 条未读通知` : '打开菜单'),
       menu: '菜单',
+      closeMenu: '关闭菜单',
       paletteSearch: '搜索命令、项目或成员…',
       paletteEmpty: '没有匹配的命令',
       paletteKeys: { move: '选择', run: '执行', close: '关闭' },
@@ -250,6 +251,7 @@ const copy = computed(() => zh.value
       latest: 'Latest message',
       openMenu: (n: number) => (n ? `Open menu, ${n} unread notifications` : 'Open menu'),
       menu: 'Menu',
+      closeMenu: 'Close menu',
       paletteSearch: 'Search commands, projects or people…',
       paletteEmpty: 'No matching commands',
       paletteKeys: { move: 'Move', run: 'Run', close: 'Close' },
@@ -1750,7 +1752,7 @@ const tabsAnimation = computed(() => (reducedMotion.value
         </TxToastPanel>
       </div>
 
-      <TxDrawer v-model:visible="drawerOpen" :title="copy.menu" direction="left" size="70%">
+      <TxDrawer v-model:visible="drawerOpen" :title="copy.menu" :close-label="copy.closeMenu" direction="left" size="70%">
         <div class="console-drawer">
           <section>
             <h4>{{ copy.workspacesHead }}</h4>

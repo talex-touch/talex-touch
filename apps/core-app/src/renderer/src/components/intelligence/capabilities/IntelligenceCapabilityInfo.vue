@@ -437,6 +437,7 @@ onBeforeUnmount(() => {
   <TxDrawer
     v-model:visible="showModelDrawer"
     :title="t('settings.intelligence.capabilityBindingModelsTitle')"
+    :close-label="t('common.close')"
   >
     <div class="capability-info__drawer">
       <p class="capability-info__drawer-description">
@@ -455,6 +456,7 @@ onBeforeUnmount(() => {
   <TxDrawer
     v-model:visible="showPromptDrawer"
     :title="t('settings.intelligence.capabilityPromptSectionTitle')"
+    :close-label="t('common.close')"
   >
     <div class="capability-info__drawer">
       <p class="capability-info__drawer-description">
@@ -464,7 +466,11 @@ onBeforeUnmount(() => {
     </div>
   </TxDrawer>
 
-  <TxDrawer v-model:visible="showTestDrawer" :title="t('settings.skillsPage.testTitle')">
+  <TxDrawer
+    v-model:visible="showTestDrawer"
+    :title="t('settings.skillsPage.testTitle')"
+    :close-label="t('common.close')"
+  >
     <div class="capability-info__drawer">
       <p class="capability-info__drawer-description">
         {{ testDescription }}

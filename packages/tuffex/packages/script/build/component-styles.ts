@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { build } from 'vite'
+import { distPath } from './dist-path.ts'
 
 type ComponentStyleOutput = {
   type: 'asset' | 'chunk'
@@ -28,7 +29,6 @@ const __dirname = dirname(__filename)
 const rootPath = resolve(__dirname, '../../..')
 const componentRoot = resolve(rootPath, 'packages/components')
 const componentSrcRoot = resolve(componentRoot, 'src')
-const distPath = resolve(rootPath, 'dist')
 const tempOutDir = resolve(rootPath, '.style-build')
 const packageJson = JSON.parse(readFileSync(resolve(rootPath, 'package.json'), 'utf-8'))
 const emptyStateStyleAliases = new Set([
@@ -226,14 +226,15 @@ async function writeComponentStyle(componentName: string, parts: ComponentStyleP
     ? ''
     : needsCharset && body.length > 0 ? `@charset "UTF-8";\n${body}` : body
 
+  const dist = distPath()
   await Promise.all([
-    mkdir(resolve(distPath, 'es', componentName), { recursive: true }),
-    mkdir(resolve(distPath, 'lib', componentName), { recursive: true }),
+    mkdir(resolve(dist, 'es', componentName), { recursive: true }),
+    mkdir(resolve(dist, 'lib', componentName), { recursive: true }),
   ])
 
   await Promise.all([
-    writeFile(resolve(distPath, 'es', componentName, 'style.css'), style),
-    writeFile(resolve(distPath, 'lib', componentName, 'style.css'), style),
+    writeFile(resolve(dist, 'es', componentName, 'style.css'), style),
+    writeFile(resolve(dist, 'lib', componentName, 'style.css'), style),
   ])
 }
 
@@ -296,7 +297,7 @@ export async function buildComponentStyles() {
     // Published beside the stylesheets: the on-demand plugin walks this to turn
     // one component import into the full set of stylesheets it needs.
     ...['es', 'lib'].map(dir =>
-      writeFile(resolve(distPath, dir, 'style-deps.json'), `${JSON.stringify(styleDeps, null, 2)}\n`),
+      writeFile(resolve(distPath(), dir, 'style-deps.json'), `${JSON.stringify(styleDeps, null, 2)}\n`),
     ),
   ])
 

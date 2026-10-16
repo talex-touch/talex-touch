@@ -72,4 +72,19 @@ export interface StreamMarkdownProps {
   allowSessionImagesText?: string
   copyTableText?: string
   copiedTableText?: string
+  /**
+   * Wording of the built-in fence renderers, `TxCodeBlock` and `TxMermaidBlock`,
+   * and handed only to them: any other renderer receives
+   * `StreamMarkdownBlockContext` alone. Unset, each keeps its English default.
+   */
+  codePreviewText?: string
+  codeSourceText?: string
+  /** Builds the code preview frame's accessible name. @default (lang) => `${lang} preview` */
+  codeFrameLabelFormatter?: (lang: string) => string
+  copyCodeText?: string
+  copiedCodeText?: string
+  diagramZoomLabel?: string
+  diagramPreviewLabel?: string
+  diagramCloseLabel?: string
+  diagramErrorText?: string
 }

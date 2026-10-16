@@ -80,7 +80,7 @@ function selectRunCapability(capability: unknown) {
 </script>
 
 <template>
-  <TxDrawer v-model:visible="open" :title="title" size="min(820px, 100vw)" direction="right">
+  <TxDrawer v-model:visible="open" :title="title" :close-label="t('common.close', 'Close')" size="min(820px, 100vw)" direction="right">
     <div class="RegistryForm">
       <TxAlert v-if="error" type="error" :closable="false" :message="error" />
 

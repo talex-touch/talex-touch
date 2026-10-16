@@ -59,6 +59,7 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 - 列表规模保持适中：组件渲染全部缩略图，不做虚拟化。
 - 不可信的远程图片 URL 先在应用边界归一化或代理。
 - 不要在 `@open` 中同步改动 `items`，以免已打开的图片失效。
+- 非英文界面覆盖全部文案 prop 与两个 formatter；`previousText`、`nextText` 是可见文字。
 
 ## API 参考
 
@@ -73,6 +74,7 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 | `previousText` | `string` | `'Prev'` | 上一张按钮的可见文字。 |
 | `nextText` | `string` | `'Next'` | 下一张按钮的可见文字。 |
 | `previewTitle` | `string` | `'Preview'` | 当前图片没有 `name` 时的预览标题。 |
+| `closeLabel` | `string` | `'Close'` | 预览关闭按钮的可访问名称。 |
 | `itemLabelFormatter` | `(index: number) => string` | `` (i) => `Image ${i + 1}` `` | 图片没有 `name` 时生成显示名称。 |
 | `openLabelFormatter` | `(label: string) => string` | `` (label) => `Open ${label} preview` `` | 由显示名称生成缩略图的 `aria-label`。 |
 
@@ -96,13 +98,18 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 - 每个缩略图是原生 `<button type="button">`，`aria-label` 由 `openLabelFormatter` 生成。
 - 缩略图与预览图的 `alt` 取 `item.name`；未命名图片有意使用空 alt。
 - 灯箱困住 Tab 焦点，Escape 或关闭按钮关闭，焦点回到触发的缩略图。
-- 导航有边界：首张禁用上一张，末张禁用下一张；按钮被禁用时焦点移到另一侧按钮。
+- 焦点在灯箱内时可用 ← / → 翻页。导航有边界：首张禁用上一张，末张禁用下一张；按钮被禁用时焦点移到另一侧按钮。
+- 底栏的「当前 / 总数」计数是 `aria-live="polite"` 区域，翻页后读屏会播报。
 - 图片在头栏与底栏之间等比完整显示，不裁切。
+- 图片加载完成前先按上一张已加载图片的比例（第一张按 4:3）留出位置，150 ms 后仍未加载才显示闪烁占位，更快到达的图片不会先闪出占位；翻回已加载过的图片直接显示。减少动态效果时占位不闪烁。
+- 预览图加载失败时显示占位图标；同一地址不再重试，`url` 变化后重新加载。
 - `items` 变为空时预览关闭、索引重置为 `0`。
 
 ## 技术实现
 
 - 灯箱即 `TxModal` 的 `fullscreen` 模式（挂载到 `body`），不另写浮层。
+- `TxAttachmentTray` 的图片预览用的是同一个内部预览器，翻页、键盘与占位行为一致；预览器不对外导出。
+- 加载占位用容器查询单位（`cqw` / `cqh`）算出图片等比装进灯箱后的尺寸。
 - 源码：`packages/tuffex/packages/components/src/image-gallery/`。
 
 <TuffDocSourceLink />

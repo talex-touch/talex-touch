@@ -160,7 +160,13 @@ function handleCancelDownload() {
 </script>
 
 <template>
-  <TxModal v-model="visible" :title="dialogTitle" width="650px" @close="handleClose">
+  <TxModal
+    v-model="visible"
+    :title="dialogTitle"
+    :close-label="t('common.close')"
+    width="650px"
+    @close="handleClose"
+  >
     <div v-if="release" class="update-prompt">
       <!-- Version Comparison -->
       <div class="version-section">

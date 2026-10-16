@@ -321,6 +321,7 @@ onMounted(() => {
   <TxModal
     v-model="proxyDialogVisible"
     :title="t('settings.settingNetwork.customProxy')"
+    :close-label="t('common.close')"
     width="560px"
   >
     <div class="SettingNetwork-Dialog">

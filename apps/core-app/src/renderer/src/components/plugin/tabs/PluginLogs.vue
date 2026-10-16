@@ -470,7 +470,11 @@ defineExpose({
     </footer>
   </TxCard>
 
-  <TxDrawer v-model:visible="isHistoryDrawerOpen" :title="historyTitle">
+  <TxDrawer
+    v-model:visible="isHistoryDrawerOpen"
+    :title="historyTitle"
+    :close-label="t('common.close')"
+  >
     <section class="history-panel">
       <div v-if="historySessions.length" class="history-list">
         <TxButton

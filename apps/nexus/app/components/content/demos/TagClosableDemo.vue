@@ -7,12 +7,10 @@ const labels = computed(() => (locale.value === 'zh'
   ? {
       initial: ['设计', '文档', '待确认'],
       empty: '已全部移除',
-      reset: '重置',
     }
   : {
       initial: ['Design', 'Docs', 'Pending'],
       empty: 'All tags removed',
-      reset: 'Reset',
     }))
 
 const tags = ref<string[]>([])
@@ -26,6 +24,8 @@ function removeTag(tag: string) {
 }
 
 watchEffect(resetTags)
+
+defineExpose({ resetDemo: resetTags })
 </script>
 
 <template>
@@ -42,9 +42,6 @@ watchEffect(resetTags)
         {{ labels.empty }}
       </span>
     </div>
-    <TxButton size="sm" variant="ghost" @click="resetTags">
-      {{ labels.reset }}
-    </TxButton>
   </div>
 </template>
 

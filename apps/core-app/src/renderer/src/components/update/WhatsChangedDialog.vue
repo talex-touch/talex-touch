@@ -48,7 +48,13 @@ async function handleClose(): Promise<void> {
 </script>
 
 <template>
-  <TxModal v-model="dialogVisible" :title="title" width="680px" @close="handleClose">
+  <TxModal
+    v-model="dialogVisible"
+    :title="title"
+    :close-label="t('common.close')"
+    width="680px"
+    @close="handleClose"
+  >
     <div class="whats-changed-dialog">
       <p class="whats-changed-dialog__intro">
         {{ t('releaseNotes.intro') }}

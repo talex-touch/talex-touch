@@ -24,6 +24,8 @@ const props = defineProps({
   gap: { type: Number, default: 14 },
   offset: { type: Number, default: 16 },
   swipeToDismiss: { type: Boolean, default: true },
+  ariaLabel: { type: String, default: 'Notifications' },
+  closeLabel: { type: String, default: 'Dismiss notification' },
 })
 
 const GLYPHS: Record<TxToastVariant, string> = {
@@ -324,7 +326,7 @@ defineExpose({ pause: pauseToasts, resume: resumeToasts, expanded })
       move-class="tx-toast-move"
       class="tx-toast-host"
       role="region"
-      aria-label="Notifications"
+      :aria-label="ariaLabel"
       aria-live="polite"
       aria-atomic="false"
       :data-position="position"
@@ -376,7 +378,7 @@ defineExpose({ pause: pauseToasts, resume: resumeToasts, expanded })
           <button
             class="tx-toast__close"
             type="button"
-            aria-label="Dismiss notification"
+            :aria-label="closeLabel"
             @click="dismissToast(t.id)"
           >
             <TxIcon name="close" />

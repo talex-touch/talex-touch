@@ -14,7 +14,6 @@ const copy = computed(() => zh.value
       ready: '已生成 3 条要点',
       points: ['发布时间改到下周三。', '设计评审前补齐暗色截图。', '性能回归指派给了搜索小组。'],
       load: '加载内容',
-      reset: '重置',
     }
   : {
       title: 'Meeting summary',
@@ -26,7 +25,6 @@ const copy = computed(() => zh.value
         'The search team takes the performance regression.',
       ],
       load: 'Load content',
-      reset: 'Reset',
     })
 
 // The points land while the light is still on: the card grows and the glow retracts at once.
@@ -41,6 +39,8 @@ async function reset() {
   await nextTick()
   active.value = true
 }
+
+defineExpose({ resetDemo: reset })
 </script>
 
 <template>
@@ -59,9 +59,6 @@ async function reset() {
     <div class="prism-grow__actions">
       <TxButton size="sm" variant="primary" :disabled="loaded" @click="load">
         {{ copy.load }}
-      </TxButton>
-      <TxButton size="sm" variant="secondary" :disabled="!loaded" @click="reset">
-        {{ copy.reset }}
       </TxButton>
     </div>
   </div>

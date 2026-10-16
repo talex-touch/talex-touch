@@ -119,6 +119,7 @@ function openPrivacy(): void {
   <TxDrawer
     v-model:visible="visible"
     :title="t('intelligenceAudit.settings.title')"
+    :close-label="t('common.close')"
     size="560px"
     data-testid="audit-settings-drawer"
   >

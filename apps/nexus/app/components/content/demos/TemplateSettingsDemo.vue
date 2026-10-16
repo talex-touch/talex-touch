@@ -53,6 +53,7 @@ const copy = computed(() => zh.value
       version: 'Tuff 2.4.0 · 已是最新',
       save: { idle: '自动保存', saving: '保存中…', saved: '已保存 · 刚刚' } as Record<SaveState, string>,
       reset: '重置',
+      close: '关闭',
       appearance: { name: '外观', desc: '语言、主题与窗口质感' },
       language: { title: '语言', desc: '界面与搜索提示的语言', placeholder: '选择语言' },
       theme: { title: '主题', desc: '浅色、深色或跟随系统', light: '浅色', dark: '深色', system: '跟随系统' },
@@ -146,6 +147,7 @@ const copy = computed(() => zh.value
       version: 'Tuff 2.4.0 · up to date',
       save: { idle: 'Autosave', saving: 'Saving…', saved: 'Saved · just now' } as Record<SaveState, string>,
       reset: 'Reset',
+      close: 'Close',
       appearance: { name: 'Appearance', desc: 'Language, theme and window finish' },
       language: { title: 'Language', desc: 'For the interface and search hints', placeholder: 'Choose a language' },
       theme: { title: 'Theme', desc: 'Light, dark or follow the system', light: 'Light', dark: 'Dark', system: 'System' },
@@ -817,7 +819,7 @@ const tabsAnimation = computed(() => (reducedMotion.value
               </template>
               <div class="settings__page">
                 <TxAlert type="warning" :title="copy.privacyNote.title" :message="copy.privacyNote.body" :closable="false" />
-                <TxAlert v-if="cleared !== null" type="success" :title="copy.clear.done(cleared)" @close="cleared = null" />
+                <TxAlert v-if="cleared !== null" type="success" :title="copy.clear.done(cleared)" :close-label="copy.close" @close="cleared = null" />
 
                 <TxGroupBlock :name="copy.retention.name" :description="copy.retention.desc" default-icon="i-carbon-time" :collapsible="false">
                   <div class="settings__body">
@@ -867,7 +869,7 @@ const tabsAnimation = computed(() => (reducedMotion.value
                 {{ copy.pages.account }}
               </template>
               <div class="settings__page">
-                <TxAlert v-if="signedOut" type="success" :title="copy.sessions.done" @close="signedOut = false" />
+                <TxAlert v-if="signedOut" type="success" :title="copy.sessions.done" :close-label="copy.close" @close="signedOut = false" />
                 <TxGroupBlock :name="copy.profile.name" :description="copy.profile.desc" default-icon="i-carbon-user-avatar" :collapsible="false">
                   <div class="settings__body settings__profile">
                     <TxAvatar
@@ -952,7 +954,7 @@ const tabsAnimation = computed(() => (reducedMotion.value
           </p>
         </aside>
 
-        <TxModal v-model="confirmOpen" :title="confirmView.title" width="420px">
+        <TxModal v-model="confirmOpen" :title="confirmView.title" :close-label="copy.close" width="420px">
           <p class="settings__modal-body">
             {{ confirmView.body }}
           </p>

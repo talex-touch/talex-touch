@@ -1942,6 +1942,17 @@
       "loadOnce": "加载这张",
       "allowSession": "本次会话允许"
     },
+    "code": {
+      "preview": "预览",
+      "source": "代码",
+      "frameLabel": "{lang} 预览"
+    },
+    "diagram": {
+      "zoom": "放大图表",
+      "preview": "图表预览",
+      "close": "关闭预览",
+      "failed": "图表渲染失败，已改为显示源码。"
+    },
     "widget": {
       "generated": "模型生成的组件",
       "sandboxed": "沙箱运行",
@@ -1980,6 +1991,10 @@
     "attachRemove": "移除附件",
     "attachCancel": "取消上传",
     "attachPreview": "预览",
+    "attachPrevious": "上一张",
+    "attachNext": "下一张",
+    "attachPreviousText": "上一张",
+    "attachNextText": "下一张",
     "attachmentNotSent": "部分附件未发送给模型",
     "voice": "语音输入",
     "send": "发送",

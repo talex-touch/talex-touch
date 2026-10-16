@@ -326,6 +326,7 @@ async function generateCodes() {
     <TxModal
       :model-value="generatorOpen"
       :title="t('dashboard.sections.codes.generateTitle', 'Generate New Codes')"
+      :close-label="t('common.close', 'Close')"
       width="480px"
       @update:model-value="requestCloseGenerator"
     >

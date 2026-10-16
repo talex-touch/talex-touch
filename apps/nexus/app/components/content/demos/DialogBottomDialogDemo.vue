@@ -12,6 +12,7 @@ const labels = computed(() => (locale.value === 'zh'
       message: '您确定要继续吗？',
       cancel: '取消',
       confirm: '确认',
+      close: '关闭',
     }
   : {
       trigger: 'Show dialog',
@@ -19,6 +20,7 @@ const labels = computed(() => (locale.value === 'zh'
       message: 'Are you sure you want to continue?',
       cancel: 'Cancel',
       confirm: 'Confirm',
+      close: 'Close',
     }))
 
 const buttons = computed<DialogButton[]>(() => [
@@ -36,6 +38,7 @@ const buttons = computed<DialogButton[]>(() => [
     :title="labels.title"
     :message="labels.message"
     :btns="buttons"
+    :close-label="labels.close"
     :close="() => (bottomOpen = false)"
   />
 </template>

@@ -12,6 +12,7 @@ const labels = computed(() => (locale.value === 'zh'
       viewKey: '查看私钥',
       viewPhrase: '查看助记词',
       remove: '移除钱包',
+      close: '关闭',
     }
   : {
       trigger: 'Show action rows',
@@ -19,6 +20,7 @@ const labels = computed(() => (locale.value === 'zh'
       viewKey: 'View private key',
       viewPhrase: 'View recovery phrase',
       remove: 'Remove wallet',
+      close: 'Close',
     }))
 
 // `false` keeps the sheet open so the reader can inspect the rows; a real
@@ -38,6 +40,7 @@ const buttons = computed<DialogButton[]>(() => [
     v-if="rowsOpen"
     :title="labels.title"
     :btns="buttons"
+    :close-label="labels.close"
     :close="() => (rowsOpen = false)"
   />
 </template>

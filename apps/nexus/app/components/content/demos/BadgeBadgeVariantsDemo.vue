@@ -8,13 +8,15 @@ const count = ref(initialCount)
 const errorDot = ref(true)
 
 const copy = computed(() => locale.value === 'zh'
-  ? { samples: '样式预览', count: '数量', state: '状态', add: '新增', decrease: '减少', reset: '重置', dot: '错误圆点' }
-  : { samples: 'Variants', count: 'Count', state: 'State', add: 'Add', decrease: 'Decrease', reset: 'Reset', dot: 'Error dot' })
+  ? { samples: '样式预览', count: '数量', state: '状态', add: '新增', decrease: '减少', dot: '错误圆点' }
+  : { samples: 'Variants', count: 'Count', state: 'State', add: 'Add', decrease: 'Decrease', dot: 'Error dot' })
 
 function resetDemo() {
   count.value = initialCount
   errorDot.value = true
 }
+
+defineExpose({ resetDemo })
 </script>
 
 <template>
@@ -39,9 +41,6 @@ function resetDemo() {
           </TxButton>
           <TxButton size="sm" variant="secondary" :disabled="count === 0" @click="count--">
             {{ copy.decrease }}
-          </TxButton>
-          <TxButton size="sm" variant="secondary" @click="resetDemo">
-            {{ copy.reset }}
           </TxButton>
         </TxFlex>
       </div>

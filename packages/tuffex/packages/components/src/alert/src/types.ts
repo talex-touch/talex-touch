@@ -6,6 +6,8 @@ export interface AlertProps {
   message?: string
   closable?: boolean
   showIcon?: boolean
+  /** Accessible label for the close button. @default 'Close' */
+  closeLabel?: string
 }
 
 export interface AlertEmits {

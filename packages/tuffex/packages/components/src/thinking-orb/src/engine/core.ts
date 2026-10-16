@@ -4,6 +4,13 @@
 // depth-shaded, z-sorted. Depth is carried by dot size and ink weight
 // alone. Plain 2D canvas fills only: no ctx.filter, no SVG filters, so
 // every mode renders identically in Chrome, Safari and Firefox.
+//
+// TuffEx: the painters take an `Ink` (see ./ink) where upstream took a
+// `dark` flag, so the gradient variant can colour marks. Grey ink is
+// unchanged.
+
+import type { Ink } from './ink';
+import { inkStyle } from './ink';
 
 export interface Dot {
   x: number;
@@ -88,18 +95,16 @@ export function makeProj(yaw: number, tilt: number, cx: number, cy: number, scal
 }
 
 /**
- * Painter: z-sort far→near, matte grayscale dots. On dark substrates the
- * ink value is mirrored (1 - white) so near dots read bright — the same
- * depth language on an inverted substrate.
+ * Painter: z-sort far→near, matte dots. On dark substrates the ink value is
+ * mirrored (1 - white) so near dots read bright — the same depth language
+ * on an inverted substrate. A gradient ink keeps that depth and adds hue.
  */
-export function paint(ctx: CanvasRenderingContext2D, dots: Dot[], dark: boolean, rMin = 0.3): void {
+export function paint(ctx: CanvasRenderingContext2D, dots: Dot[], ink: Ink, rMin = 0.3): void {
   dots.sort((a, b) => a.z - b.z);
   for (const d of dots) {
     const alpha = d.a ?? 1;
     if (alpha < 0.02) continue;
-    const w = Math.min(1, Math.max(0, d.white));
-    const g = Math.round((dark ? 1 - w : w) * 255);
-    ctx.fillStyle = `rgba(${g},${g},${g},${alpha})`;
+    ctx.fillStyle = inkStyle(ink, d.white, d.x, alpha);
     ctx.beginPath();
     ctx.arc(d.x, d.y, Math.max(rMin, d.r), 0, Math.PI * 2);
     ctx.fill();
@@ -107,13 +112,13 @@ export function paint(ctx: CanvasRenderingContext2D, dots: Dot[], dark: boolean,
 }
 
 /** Stroke pass for edge-based modes. Runs before `paint` so nodes sit on top. */
-export function paintLines(ctx: CanvasRenderingContext2D, lines: Line[], dark: boolean): void {
+export function paintLines(ctx: CanvasRenderingContext2D, lines: Line[], ink: Ink): void {
   for (const l of lines) {
     const alpha = l.a ?? 1;
     if (alpha < 0.02) continue;
-    const w = Math.min(1, Math.max(0, l.white));
-    const g = Math.round((dark ? 1 - w : w) * 255);
-    ctx.strokeStyle = `rgba(${g},${g},${g},${alpha})`;
+    // One hue per edge, taken at its midpoint — a per-edge canvas gradient
+    // would allocate every frame for a difference too small to see.
+    ctx.strokeStyle = inkStyle(ink, l.white, (l.x1 + l.x2) / 2, alpha);
     ctx.lineWidth = l.w;
     ctx.beginPath();
     ctx.moveTo(l.x1, l.y1);

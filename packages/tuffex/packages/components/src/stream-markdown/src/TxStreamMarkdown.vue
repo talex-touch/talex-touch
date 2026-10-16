@@ -212,6 +212,34 @@ function resolveRenderer(lang: string): StreamMarkdownBlockRenderer {
 }
 
 /**
+ * The host's wording, keyed by the built-in renderer it belongs to. Any other
+ * renderer is promised `StreamMarkdownBlockContext` alone; props it does not
+ * declare would land on its root element as attributes. An unset entry stays
+ * undefined, which leaves the renderer on its own default.
+ */
+const builtInCopy = computed(() => new Map<StreamMarkdownBlockRenderer, Record<string, unknown>>([
+  [TxCodeBlock, {
+    previewLabel: props.codePreviewText,
+    codeLabel: props.codeSourceText,
+    frameLabelFormatter: props.codeFrameLabelFormatter,
+    copyLabel: props.copyCodeText,
+    copiedLabel: props.copiedCodeText,
+  }],
+  [TxMermaidBlock, {
+    zoomLabel: props.diagramZoomLabel,
+    previewLabel: props.diagramPreviewLabel,
+    closeLabel: props.diagramCloseLabel,
+    errorText: props.diagramErrorText,
+    copyLabel: props.copyCodeText,
+    copiedLabel: props.copiedCodeText,
+  }],
+]))
+
+function rendererCopy(lang: string): Record<string, unknown> | undefined {
+  return builtInCopy.value.get(resolveRenderer(lang))
+}
+
+/**
  * A fence is safe to render in final form once it closed, once another block
  * follows it, or once the stream settled — only the still-growing tail fence
  * of a live stream stays provisional.
@@ -415,6 +443,7 @@ function isSuppressedFence(block: StreamBlock): boolean {
           <component
             :is="resolveRenderer(block.lang)"
             v-if="!isSuppressedFence(block)"
+            v-bind="rendererCopy(block.lang)"
             class="tx-stream-md__block tx-stream-md__fence"
             :class="{ 'tx-stream-md__block--last': index === blocks.length - 1 }"
             :lang="block.lang"

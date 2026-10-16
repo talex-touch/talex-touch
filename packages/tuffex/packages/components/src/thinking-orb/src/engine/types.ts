@@ -1,6 +1,7 @@
 // Vendored from thinking-orbs v0.2.0 (MIT © Jakub Antalik) — https://github.com/Jakubantalik/thinking-orbs
 // Engine-level contracts shared by every mode implementation.
 
+import type { Ink } from './ink';
 import type { ModeOpts } from './profiles';
 
 export type { Dot, Line } from './core';
@@ -10,6 +11,6 @@ export type ModeDraw = (
   ctx: CanvasRenderingContext2D,
   size: number,
   t: number,
-  dark: boolean,
+  ink: Ink,
   opts: ModeOpts
 ) => void;

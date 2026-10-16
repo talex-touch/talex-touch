@@ -139,7 +139,13 @@ function formatDate(date: Date | number | undefined): string {
 </script>
 
 <template>
-  <TxModal v-model="visible" :title="t('download.task_details')" width="600px" @close="handleClose">
+  <TxModal
+    v-model="visible"
+    :title="t('download.task_details')"
+    :close-label="t('common.close')"
+    width="600px"
+    @close="handleClose"
+  >
     <div v-if="task" class="task-details">
       <!-- 基本信息 -->
       <div class="detail-section">

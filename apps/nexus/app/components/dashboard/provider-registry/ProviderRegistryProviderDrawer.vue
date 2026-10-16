@@ -80,7 +80,7 @@ function quotaLimit(value: unknown): string {
 </script>
 
 <template>
-  <TxDrawer v-model:visible="open" :title="title" size="min(880px, 100vw)" direction="right">
+  <TxDrawer v-model:visible="open" :title="title" :close-label="t('common.close', 'Close')" size="min(880px, 100vw)" direction="right">
     <div class="RegistryForm">
       <TxAlert v-if="error" type="error" :closable="false" :message="error" />
 

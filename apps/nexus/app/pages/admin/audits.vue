@@ -187,7 +187,7 @@ function exportAudits() {
       </AdminTable>
     </AdminSection>
 
-    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.audits.detail.title', 'Audit record')" size="520px">
+    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.audits.detail.title', 'Audit record')" :close-label="t('common.close', 'Close')" size="520px">
       <div v-if="detailEntry" class="AuditDetail">
         <TxDescriptions :columns="1" size="sm">
           <TxDescriptionsItem :label="t('dashboard.sections.audits.detail.time', 'Time')">

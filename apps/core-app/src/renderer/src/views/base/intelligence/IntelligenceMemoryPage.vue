@@ -459,6 +459,7 @@ onBeforeUnmount(() => {
         v-if="pendingDelete"
         :title="t('intelligence.memoryReview.deleteConfirmTitle')"
         :message="t('intelligence.memoryReview.deleteConfirmMessage')"
+        :close-label="t('common.close')"
         :btns="deleteDialogButtons"
         :close="closeDeleteDialog"
       />

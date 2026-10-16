@@ -23,6 +23,10 @@ export function createLegalCommentPreservingStripper() {
 const pkg = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')
 )
+// The gulp build points this at its staging directory and swaps that over dist
+// once every step has passed (packages/script/build/index.ts); a `vite build`
+// run on its own writes straight to dist.
+const distRoot = process.env.TUFFEX_DIST_DIR || fileURLToPath(new URL('../../dist', import.meta.url))
 const externalDeps = Array.from(
   new Set([
     ...Object.keys(pkg.dependencies ?? {}),
@@ -86,7 +90,7 @@ export default defineConfig({
         {
           exports: 'named',
           format: 'es',
-          dir: '../../dist/es',
+          dir: `${distRoot}/es`,
           entryFileNames: componentModuleFileName,
           preserveModules: true,
           preserveModulesRoot: 'src',
@@ -94,7 +98,7 @@ export default defineConfig({
         {
           exports: 'named',
           format: 'cjs',
-          dir: '../../dist/lib',
+          dir: `${distRoot}/lib`,
           entryFileNames: componentModuleFileName,
           preserveModules: true,
           preserveModulesRoot: 'src',
@@ -126,7 +130,7 @@ export default defineConfig({
     vue(),
     dts({
       entryRoot: './src',
-      outDir: '../../dist/es',
+      outDir: `${distRoot}/es`,
     }),
   ],
 })

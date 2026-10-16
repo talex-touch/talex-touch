@@ -839,6 +839,7 @@ onBeforeUnmount(() => {
         v-if="deletePromptConfirmVisible"
         :title="t('settings.intelligence.promptDeleteConfirm')"
         :message="t('settings.intelligence.promptDeleteConfirm')"
+        :close-label="t('common.close')"
         :btns="[
           { content: t('common.cancel'), type: 'info', onClick: () => true },
           { content: t('common.confirm'), type: 'error', onClick: confirmDeletePrompt }

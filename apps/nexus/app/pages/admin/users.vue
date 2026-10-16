@@ -486,6 +486,7 @@ async function requestDeletion() {
     <TxDrawer
       v-model:visible="drawerOpen"
       :title="drawerTitle"
+      :close-label="t('common.close', 'Close')"
       size="560px"
       :show-close="!drawerBusy"
       :close-on-click-mask="!drawerBusy"

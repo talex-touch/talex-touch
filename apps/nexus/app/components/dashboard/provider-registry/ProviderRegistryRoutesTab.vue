@@ -290,7 +290,7 @@ defineExpose({
       </AdminTable>
     </AdminSection>
 
-    <TxDrawer v-model:visible="detailOpen" :title="detailScene?.displayName || t('dashboard.providerRegistry.detail.routeTitle', 'Capability route')" size="520px">
+    <TxDrawer v-model:visible="detailOpen" :title="detailScene?.displayName || t('dashboard.providerRegistry.detail.routeTitle', 'Capability route')" :close-label="t('common.close', 'Close')" size="520px">
       <ProviderRegistryDetailView v-if="detailScene" :sections="detailSections" />
     </TxDrawer>
   </div>

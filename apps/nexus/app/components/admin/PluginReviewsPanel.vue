@@ -181,7 +181,7 @@ defineExpose({
       </AdminTable>
     </AdminSection>
 
-    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.reviews.detail.title', 'Review')" size="520px">
+    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.reviews.detail.title', 'Review')" :close-label="t('common.close', 'Close')" size="520px">
       <TxDescriptions v-if="detailReview" :columns="1" size="sm">
         <TxDescriptionsItem :label="t('dashboard.sections.reviews.table.plugin', 'Plugin')">
           {{ pluginName(detailReview) }}

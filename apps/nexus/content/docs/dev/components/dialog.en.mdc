@@ -182,6 +182,7 @@ code: |
 - Keep at most one destructive row, mark it `type: 'error'`, and state the consequence in its label; color only reinforces it.
 - Pass `icon` as a class the host's icon pipeline generates statically (`i-carbon-trash-can`); a name built at runtime renders an empty box.
 - Reserve `TxBlowDialog` for rare, high-emphasis announcements; its background transform is dramatic.
+- On non-English surfaces, pass `closeLabel` to `TxBottomDialog`: the close button is icon-only, so this name is all a screen reader announces.
 - Never pass user-generated content to `messageHtml` unless it is sanitized and marked with `asTrustedDialogHtml()`.
 
 ## API Reference
@@ -199,6 +200,7 @@ code: |
 | `btns` | `DialogButton[]` | `[]` | Action row configs. |
 | `icon` | `string` | `''` | Legacy icon class; not rendered. |
 | `index` | `number` | `0` | z-index offset added to the allocated layer. |
+| `closeLabel` | `string` | `'Close'` | Accessible name of the header's close button. |
 
 ### TxBlowDialog / TxPopperDialog
 

@@ -24,6 +24,7 @@ const { t } = useI18n()
   <TxDrawer
     :visible="visible"
     :title="t('settings.settingFileIndex.appIndexManagerDialogTitle')"
+    :close-label="t('common.close')"
     size="720px"
     data-testid="app-index-launch-zone"
     @update:visible="emit('update:visible', $event)"

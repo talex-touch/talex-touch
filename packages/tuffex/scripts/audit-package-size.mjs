@@ -1,6 +1,8 @@
+import { Buffer } from 'node:buffer'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { dirname, extname, relative, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { gzipSync } from 'node:zlib'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -110,8 +112,8 @@ const LIMITS = {
   // Note what this number is and is not. `components.css` is the full-import
   // entry, which nothing in this repo loads: both apps import `base.css` plus
   // per-component stylesheets. It is a ceiling on the library's total surface,
-  // not a measure of what any page downloads — `onDemandCssBytes` below is the
-  // one that tracks a real cost.
+  // not a measure of what any page downloads — `pageStyleBudgets` below are
+  // what track a real cost.
   // 552 -> 560 on 2026-09-12: the vendored GitHub markdown sheet is now scoped
   // (`:where(.tx-md) ` on each of its 314 selectors) because, imported as a
   // global stylesheet, its `.markdown-body` rules were landing on any host page
@@ -245,79 +247,16 @@ const LIMITS = {
   // Popover/Skeleton dependency rules. Component JS is split at the data-state
   // boundary (42.9 KiB, under the unchanged 48 KiB limit). Actuals plus minimal
   // headroom; per-file and root/full-style import gates remain unchanged.
-  fullCssBytes: 750 * 1024,
-  // The per-component stylesheets, added up. This is the set a consumer
-  // actually installs and the on-demand plugin picks from, so it is the number
-  // worth watching: it fell from 2290.6 KiB to 634.7 when dependency styles
-  // stopped being copied into every package that imports them, and it climbs
-  // again the moment one starts inlining another's rules.
-  // 580 -> 568 on 2026-09-12: `stream-markdown` was shipping the whole vendored
-  // markdown sheet twice — once through `index.ts`'s module import and again
-  // through an SFC `@import` that `collectCssAssets` counted as separate CSS
-  // (it deduped by chunk, not by emitted stylesheet). Both are fixed, and the
-  // total fell from 613.5 KiB to 555.3 with `stream-markdown/style.css` going
-  // 103.3 -> 50.1. Re-baselined against the smaller artifact so the saving
-  // cannot be quietly spent, same as the `fullCssBytes` note above.
-  // 568 -> 576 on 2026-09-15: the chart family's per-component stylesheets, the
-  // same 12.8 KiB as the `fullCssBytes` note above. Measured 570.4 KiB across 153
-  // stylesheets. Actuals plus minimal headroom, growth from here fails.
-  // 576 -> 584 on 2026-09-15: `icon-picker`, as above.
-  // 584 -> 592 on 2026-09-17: three components were silently shipping 0-byte
-  // stylesheets. Their `index.ts` is nothing but `export * from './src'`, so
-  // Rollup's default `preserveEntrySignatures: 'exports-only'` treated the entry
-  // as owning no exports, dropped its chunk, and never emitted the SFC CSS.
-  // Pinning `'strict'` in `component-styles.ts` restored breadcrumb (1.4 KiB),
-  // pagination (2.7 KiB) and steps (6.9 KiB). Measured 587.8 KiB across 155
-  // stylesheets. Actuals plus minimal headroom, growth from here fails.
-  // 592 -> 596 on 2026-09-18: `sensitive-input` (TxSensitiveInput, added in 1e28b6386)
-  // ships its own 6.2 KiB stylesheet. Checked for the inlining this limit exists to
-  // catch: the sheet only carries `.tx-sensitive-input{,--xs,--sm,--lg}` and no other
-  // component's rules. Measured 594.0 KiB across 156 stylesheets. Actuals plus minimal
-  // headroom, growth from here fails.
-  // 596 -> 608 on 2026-09-22: the same round as the `fullCssBytes` note above.
-  // 594.0 -> 604.3 KiB across 156 -> 159 stylesheets, with nothing else in
-  // tuffex or its build changed since the 09-18 note: 5.4 KiB is the three new
-  // sheets and 4.9 KiB the reworked ones. Checked for the inlining this limit
-  // exists to catch: each new sheet carries only its own root class
-  // (`.tx-bui-flowchart`, `.tx-bui-agent-screen`, `.tx-toast-panel`). Actuals
-  // plus minimal headroom, growth from here fails.
-  // 608 -> 616 on 2026-09-24: the same two tasks as the `fullCssBytes` note above.
-  // 604.3 -> 614.8 KiB across 159 -> 160 stylesheets. Checked for the inlining this
-  // limit exists to catch: `mode-chip/style.css` carries only `.tx-mode-chip*` rules;
-  // its three `.tx-text-transformer__layer` selectors are the chip's own `:deep()`
-  // overrides scoped under `.tx-mode-chip__label`, not a copy of that component's sheet.
-  // Actuals plus minimal headroom, growth from here fails.
-  // 616 -> 620 on 2026-09-25: the `TxBottomDialog` sheet redesign in the
-  // `fullCssBytes` note above, measured with it: 618.9 KiB across the same 160
-  // stylesheets. Actuals plus minimal headroom, growth from here fails.
-  // 620 -> 704 on 2026-10-05: the same complete fusion, measured at 702.3 KiB across
-  // 184 sheets. Shared primitive CSS still travels through style-deps exactly once;
-  // the new control/form selectors are local overrides, not duplicated dependencies.
-  // Keep this ceiling tight; the existing root-import and 48 KiB JS gates still apply.
-  // 704 -> 707 on 2026-10-07: integrating the accepted Terminal adds one
-  // 2,924 B xterm/TxTerminal sheet to the 184-sheet Amicro candidate. The current
-  // merged artifact measures 705.3 KiB across 185 sheets; Terminal owns this new
-  // sheet and the dependency closure still imports primitive sheets once.
-  // Keep the 48 KiB JS, 56 KiB per-sheet and root/full-style import gates fixed.
-  // 707 -> 708.5 on 2026-10-08: the same TxCopyButton redesign as the `fullCssBytes` note
-  // above, measured with it at 707.8 KiB across the same 185 sheets. The button and
-  // code-stream sheets carry only their own `.tx-copy-button*` / `.tx-bui-code-stream__copy`
-  // rules; the text-transformer and text-morph sheets the button now reaches stay in their
-  // own files through style-deps. Actuals plus minimal headroom, growth from here fails.
-  // 708.5 -> 710 on 2026-10-08: the motion primitives round of the `fullCssBytes` note, measured
-  // with it at 709.9 KiB across 186 sheets: TxMorph's new 1,318 B sheet, and the transition,
-  // switch and charts sheets' 826 B. The dependency closure still imports every primitive
-  // sheet once.
-  // 710 -> 715.5 on 2026-10-10: the same two sheets as the fullCssBytes note.
-  // CI measured 714.5 KiB across 188 sheets (186 before); their dependency closure
-  // still imports each primitive stylesheet once. Actuals plus minimal headroom.
-  // 715.5 -> 718.5 on 2026-10-11: the same TxButton progress-bar and status rules as the
-  // `fullCssBytes` note above, measured at 717.4 KiB across the same 188 sheets.
-  // 718.5 -> 720.5 on 2026-10-14: the same component-owned feature styles as
-  // fullCssBytes, measured at 719.6 KiB across the unchanged 188 stylesheets
-  // after local DataTable deduplication (722.0 before). Dependencies remain
-  // separate sheets; this is actuals plus minimal headroom, not an import waiver.
-  onDemandCssBytes: 720.5 * 1024,
+  // 750 -> 750.5 on 2026-10-15: TxAttachmentTray's preview now opens TxImageGallery's
+  // viewer instead of keeping its own lightbox, and the viewer gains a load skeleton and
+  // a failed-image placeholder. `attachment-tray/style.css` 4,024 -> 3,268 B,
+  // `image-gallery/style.css` 1,204 -> 2,240 B; no other sheet moved. Checked for
+  // inlining: each sheet carries only its own `.tx-attachment-tray*` / `.tx-attachment-chip*`
+  // or `.tx-image-gallery*` rules, the shimmer keyframes come from the shared
+  // `skeleton-keyframes` mixin as in agent-screen and layout-skeleton, and the tray reaches
+  // the viewer's rules through style-deps (`attachment-tray -> image-gallery, modal`).
+  // Measured 768,050 B (750.05 KiB). Actuals plus minimal headroom, growth from here fails.
+  fullCssBytes: 750.5 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus
@@ -341,6 +280,30 @@ const LIMITS = {
   },
   emptyStateAliasCssBytes: 128,
 }
+
+// What a page loads: `base.css` (`baseCssBytes` above) plus the style closure of the components
+// it imports. The closure is the shipped on-demand plugin's own walk over `style-deps.json`, so
+// each number is what a consumer running the plugin gets, not an estimate of it.
+//
+// Set on 2026-10-15 in place of `onDemandCssBytes`, which added up every component stylesheet:
+// 188 of them, the library's whole surface a second time, so it moved byte for byte with
+// `fullCssBytes` and every round bumped both. A page never loads that set. The one job it had
+// of its own, catching a sheet that inlines another's rules, is `auditDuplicateRules` now,
+// which names the rule and both sheets instead of leaving a total to explain by hand.
+// Measured 48,165 / 74,730 / 125,248 / 146,233 B in 13 / 21 / 28 / 26 sheets. Actuals plus
+// minimal headroom, same contract as every limit above: growth from here fails.
+const pageStyleBudgets = [
+  // TxButton alone reaches the anchor and surface stack, the icon, and the copy button's text
+  // engine, so every page below starts from these 13 sheets.
+  { label: 'button', components: ['button'], limit: 47.5 * 1024 },
+  { label: 'form', components: ['form', 'input', 'select', 'checkbox', 'switch', 'button', 'modal'], limit: 73.5 * 1024 },
+  { label: 'admin list', components: ['data-table', 'pagination', 'tabs', 'input', 'select', 'button', 'drawer'], limit: 123 * 1024 },
+  {
+    label: 'chat',
+    components: ['chat', 'conversation-stream', 'stream-markdown', 'prompt-bar', 'attachment-tray', 'image-gallery', 'message-actions', 'thinking-orb', 'modal'],
+    limit: 143.5 * 1024,
+  },
+]
 
 /**
  * A built file's path relative to `dist/es`, with `/` separators on every platform.
@@ -690,16 +653,11 @@ async function auditDistSizes(errors) {
     )
   }
 
-  // The suite barrels aggregate their members by construction, so counting them
-  // here would charge for the same rules twice.
-  const onDemandCssBytes = componentCssSizes
-    .filter(entry => !suiteAggregateCss.has(entry.file))
-    .reduce((total, entry) => total + entry.bytes, 0)
-  if (onDemandCssBytes > LIMITS.onDemandCssBytes) {
-    errors.push(
-      `On-demand CSS totals ${formatBytes(onDemandCssBytes)} across ${componentCssSizes.length} stylesheets; limit is ${formatBytes(LIMITS.onDemandCssBytes)}. A component inlining another's rules is the usual cause.`,
-    )
-  }
+  // Printed, not gated: this is what installing the package costs, and `fullCssBytes`
+  // already holds it. The suite barrels aggregate their members by construction, so
+  // counting them would charge for the same rules twice.
+  const memberCssSizes = componentCssSizes.filter(entry => !suiteAggregateCss.has(entry.file))
+  const memberCssBytes = memberCssSizes.reduce((total, entry) => total + entry.bytes, 0)
   // Alias packages re-export another component and add no rules of their own, so
   // their stylesheet is empty and `style-deps.json` is what carries them to the
   // real one. The failure this guards against is an alias quietly going back to
@@ -766,9 +724,252 @@ async function auditDistSizes(errors) {
 
   console.log(`[audit-package-size] Base CSS: ${formatBytes(baseCssBytes)}/${formatBytes(LIMITS.baseCssBytes)}`)
   console.log(`[audit-package-size] Full CSS: ${formatBytes(fullCssBytes)}/${formatBytes(LIMITS.fullCssBytes)} (full-import entry; nothing in this repo loads it)`)
-  console.log(`[audit-package-size] On-demand CSS: ${formatBytes(onDemandCssBytes)}/${formatBytes(LIMITS.onDemandCssBytes)} across ${componentCssSizes.length} stylesheets`)
+  console.log(`[audit-package-size] Component CSS: ${formatBytes(memberCssBytes)} across ${memberCssSizes.length} stylesheets (what installing costs; no page loads them all)`)
   printTop('Largest component CSS files:', componentCssSizes)
   printTop('Largest component JS files:', componentJsSizes)
+}
+
+// -- Component stylesheets as rules -----------------------------------------------------------
+
+/** Index just past the string literal that opens at `start`. */
+function skipCssString(css, start) {
+  const quote = css[start]
+  let i = start + 1
+  while (i < css.length && css[i] !== quote)
+    i += css[i] === '\\' ? 2 : 1
+  return Math.min(i + 1, css.length)
+}
+
+/** `css` without its comments. Strings are stepped over, so a quoted `/*` stays. */
+function stripCssComments(css) {
+  let out = ''
+  let from = 0
+  for (let i = 0; i < css.length;) {
+    if (css[i] === '"' || css[i] === '\'') {
+      i = skipCssString(css, i)
+    }
+    else if (css[i] === '/' && css[i + 1] === '*') {
+      const close = css.indexOf('*/', i + 2)
+      out += css.slice(from, i)
+      i = close < 0 ? css.length : close + 2
+      from = i
+    }
+    else {
+      i += 1
+    }
+  }
+  return out + css.slice(from)
+}
+
+/** Index just past the `}` closing the block whose `{` is at `open`. */
+function skipCssBlock(css, open) {
+  let depth = 0
+  let paren = 0
+  for (let i = open; i < css.length; i += 1) {
+    const c = css[i]
+    if (c === '"' || c === '\'')
+      i = skipCssString(css, i) - 1
+    else if (c === '(')
+      paren += 1
+    else if (c === ')')
+      paren = Math.max(0, paren - 1)
+    else if (paren === 0 && c === '{')
+      depth += 1
+    else if (paren === 0 && c === '}' && --depth === 0)
+      return i + 1
+  }
+  return css.length
+}
+
+function atRuleName(prelude) {
+  return /^@([-\w]+)/.exec(prelude)?.[1].toLowerCase() ?? null
+}
+
+// At-rules whose block holds rules rather than declarations. Their rules are compared together
+// with the preludes around them, so `.a{}` inside `@media print` is not the top-level `.a{}`.
+const GROUPING_AT_RULES = new Set(['container', 'document', 'layer', 'media', 'scope', 'starting-style', 'supports'])
+
+/**
+ * A stylesheet as its leaf rules, each with the grouping at-rules around it.
+ *
+ * Only as much of CSS as minified build output needs: strings and parentheses are stepped
+ * over, so a `{`, `}` or `;` inside them is not structure, and grouping blocks are entered
+ * rather than kept whole. Anything else -- a style rule, `@font-face`, `@keyframes`, a
+ * statement -- is one leaf with its exact text.
+ */
+function splitCssRules(css, context = []) {
+  const rules = []
+  let i = 0
+  while (i < css.length) {
+    let boundary = -1
+    let paren = 0
+    for (let j = i; j < css.length; j += 1) {
+      const c = css[j]
+      if (c === '"' || c === '\'') {
+        j = skipCssString(css, j) - 1
+      }
+      else if (c === '(') {
+        paren += 1
+      }
+      else if (c === ')') {
+        paren = Math.max(0, paren - 1)
+      }
+      else if (paren === 0 && (c === '{' || c === ';' || c === '}')) {
+        boundary = j
+        break
+      }
+    }
+    if (boundary < 0) {
+      const tail = css.slice(i).trim()
+      if (tail)
+        rules.push({ context, text: tail, atRule: atRuleName(tail) })
+      break
+    }
+
+    const prelude = css.slice(i, boundary).trim()
+    if (css[boundary] !== '{') {
+      // A statement such as `@import`, or a stray `}`, which minified output does not have.
+      if (css[boundary] === ';' && prelude)
+        rules.push({ context, text: `${prelude};`, atRule: atRuleName(prelude) })
+      i = boundary + 1
+      continue
+    }
+
+    const end = skipCssBlock(css, boundary)
+    const name = atRuleName(prelude)
+    if (name !== null && GROUPING_AT_RULES.has(name))
+      rules.push(...splitCssRules(css.slice(boundary + 1, end - 1), [...context, prelude]))
+    else
+      rules.push({ context, text: css.slice(i, end).trim(), atRule: name })
+    i = end
+  }
+  return rules
+}
+
+// Emitted into each sheet that uses them, on purpose: a consumer that imports one component's
+// stylesheet may never load `base.css`, so a shared definition would leave the animation
+// undefined for it (`skeleton-keyframes` in style/mixins.scss says the same). `@charset` is a
+// statement about the file, not a rule.
+const PER_SHEET_AT_RULES = new Set(['charset', 'keyframes', '-webkit-keyframes'])
+
+/**
+ * Rules found, character for character and under the same at-rules, in more than one sheet.
+ *
+ * Each component stylesheet carries its own component's rules and reaches the rest through
+ * `style-deps.json`, so a repeat means one sheet copied another's: a page loading both pays
+ * twice, and the copy goes stale the next time the original changes. `sheets` is any iterable
+ * of `[name, css]` pairs; the largest repeat comes first.
+ */
+function findDuplicateRules(sheets) {
+  const seen = new Map()
+  for (const [sheet, css] of sheets) {
+    for (const rule of splitCssRules(stripCssComments(css))) {
+      if (rule.atRule !== null && PER_SHEET_AT_RULES.has(rule.atRule))
+        continue
+      const key = `${rule.context.join('\u0001')}\u0000${rule.text}`
+      const entry = seen.get(key) ?? { rule, sheets: new Set() }
+      entry.sheets.add(sheet)
+      seen.set(key, entry)
+    }
+  }
+  return [...seen.values()]
+    .filter(entry => entry.sheets.size > 1)
+    .map(({ rule, sheets: found }) => ({
+      ...rule,
+      sheets: [...found].sort(),
+      bytes: Buffer.byteLength(rule.text) * (found.size - 1),
+    }))
+    .sort((a, b) => b.bytes - a.bytes)
+}
+
+/**
+ * The size of a page's style closure, and any member of it with no stylesheet behind it: a
+ * budget naming a component that was renamed or removed, which would leave the page measured
+ * short, or a `style-deps.json` entry pointing the plugin at a file it cannot import.
+ */
+function measurePageStyles(closure, sheetBytes) {
+  return {
+    bytes: closure.reduce((total, name) => total + (sheetBytes.get(name) ?? 0), 0),
+    missing: closure.filter(name => !sheetBytes.has(name)),
+  }
+}
+
+/** Every `dist/es/<component>/style.css` except the suite barrels, by component name. */
+async function readComponentSheets() {
+  const files = await collectFiles(distEs, filePath => filePath.endsWith('/style.css'))
+  const suites = new Set(['ai', 'base', 'pro'])
+  const entries = await Promise.all(files.map(async file => [toDistRelativePath(file).split('/')[0], await readFile(file)]))
+  return new Map(entries.filter(([name]) => !suites.has(name)).sort(([a], [b]) => a.localeCompare(b)))
+}
+
+/** Component subpaths a source tree imports for their runtime, the imports the plugin follows. */
+async function collectSubpathImports(sourceRoot) {
+  const files = await collectFiles(sourceRoot, filePath => ['.ts', '.tsx', '.vue'].includes(extname(filePath)))
+  const pattern = /import\s+(?!type\s)(?:[^'"]*?\s+from\s+)?['"]@talex-touch\/tuffex\/([a-z0-9-]+)['"]/g
+  const names = new Set()
+  for (const file of files) {
+    for (const match of (await readFile(file, 'utf-8')).matchAll(pattern))
+      names.add(match[1])
+  }
+  return [...names].sort()
+}
+
+async function auditPageStyles(errors, sheets) {
+  let styleDeps
+  try {
+    styleDeps = JSON.parse(await readFile(resolve(distEs, 'style-deps.json'), 'utf-8'))
+  }
+  catch {
+    // `auditDistSizes` has already reported the missing graph.
+    return
+  }
+  // The shipped plugin's own walk, so a page is measured the way a consumer loads it.
+  const { expandStyleClosure } = await import(pathToFileURL(resolve(root, 'dist/vite/index.js')).href)
+  const sheetBytes = new Map([...sheets].map(([name, css]) => [name, css.length]))
+  const describe = (closure, bytes) => {
+    const gzip = gzipSync(Buffer.concat(closure.filter(name => sheets.has(name)).map(name => sheets.get(name)))).length
+    return `${formatBytes(bytes)} in ${closure.length} sheets, gzip ${formatBytes(gzip)}`
+  }
+
+  for (const budget of pageStyleBudgets) {
+    const closure = expandStyleClosure(budget.components, styleDeps)
+    const { bytes, missing } = measurePageStyles(closure, sheetBytes)
+    if (missing.length > 0)
+      errors.push(`Page styles for ${budget.label} reach ${missing.join(', ')}, which has no dist/es/<name>/style.css`)
+    if (bytes > budget.limit)
+      errors.push(`Page styles for ${budget.label} are ${formatBytes(bytes)} across ${closure.length} sheets; limit is ${formatBytes(budget.limit)}`)
+    console.log(`[audit-package-size] Page styles · ${budget.label}: ${describe(closure, bytes)}; limit ${formatBytes(budget.limit)} (+ base.css)`)
+  }
+
+  // Not a budget: CoreApp's imports move with CoreApp, not with this package, and its CI does
+  // not run this script. Printed so a real app's number sits next to the budgets.
+  const coreSubpaths = (await collectSubpathImports(coreRendererRoot)).filter(name => sheets.has(name))
+  const coreClosure = expandStyleClosure(coreSubpaths, styleDeps)
+  console.log(`[audit-package-size] Page styles · Core App renderer, ${coreSubpaths.length} subpaths (info): ${describe(coreClosure, measurePageStyles(coreClosure, sheetBytes).bytes)}`)
+}
+
+function auditDuplicateRules(errors, sheets) {
+  const duplicates = findDuplicateRules([...sheets].map(([name, css]) => [name, css.toString('utf-8')]))
+  // One line per set of sheets: a sheet that copied another whole repeats hundreds of rules.
+  const groups = new Map()
+  for (const duplicate of duplicates) {
+    const key = duplicate.sheets.join(',')
+    const group = groups.get(key) ?? { sheets: duplicate.sheets, rules: [], bytes: 0 }
+    group.rules.push(duplicate)
+    group.bytes += duplicate.bytes
+    groups.set(key, group)
+  }
+  for (const group of [...groups.values()].sort((a, b) => b.bytes - a.bytes)) {
+    const [first] = group.rules
+    const sample = first.text.length > 120 ? `${first.text.slice(0, 120)}…` : first.text
+    const where = first.context.length > 0 ? ` inside ${first.context.join(' ')}` : ''
+    errors.push(
+      `${group.sheets.map(name => `${name}/style.css`).join(', ')} repeat ${group.rules.length} identical rule(s), `
+      + `${formatBytes(group.bytes)} repeated, e.g. \`${sample}\`${where}. A sheet carries only its own `
+      + `component's rules and reaches the rest through style-deps.json.`,
+    )
+  }
+  console.log(`[audit-package-size] Rules repeated across component stylesheets: ${duplicates.length} (@keyframes are per sheet by design)`)
 }
 
 const errors = []
@@ -778,6 +979,9 @@ if (process.argv.includes('--self-test')) {
 }
 
 await auditDistSizes(errors)
+const componentSheets = await readComponentSheets()
+await auditPageStyles(errors, componentSheets)
+auditDuplicateRules(errors, componentSheets)
 await auditOnDemandImports(errors)
 await auditRootImports(errors)
 await auditFullStyleImports(errors)
@@ -793,12 +997,14 @@ if (errors.length > 0) {
 console.log('[audit-package-size] package size and Core App root import budgets are within limits')
 
 /**
- * Proves the two functions the on-demand budget rests on still discriminate.
+ * Proves the functions the on-demand budgets rest on still discriminate.
  *
  * `collectRuntimeSpecifiers` is a regex over emitted JS: if a change in output shape stops it
  * matching, every on-demand entry reports an empty import graph and the budget passes over
  * nothing. `resolveRuntimeSpecifier` decides what counts as an in-package runtime edge, so an
  * over-eager filter has the same effect. Neither failure is visible from a green run (#1589).
+ * The stylesheet side has the same shape: `splitCssRules` and `findDuplicateRules` decide what
+ * counts as a repeated rule, and `measurePageStyles` what a page budget is charged.
  */
 function selfTest() {
   const inDist = file => `${distEs}/${file}`
@@ -892,6 +1098,58 @@ function selfTest() {
       name: 'every override raises its limit, so none is a silent no-op',
       run: () => [String(Object.values(LIMITS.componentJsOverrides).every(v => v > LIMITS.componentJsBytes))],
       expect: 'true',
+    },
+    // The duplicate check sees stylesheets only through `splitCssRules`: a splitter that
+    // returned nothing, or one leaf per sheet, would report no repeats over any input.
+    {
+      name: 'top-level rules split apart',
+      run: () => splitCssRules('.a{color:red}.b{color:blue}').map(rule => rule.text),
+      expect: '.a{color:red},.b{color:blue}',
+    },
+    {
+      name: 'a rule inside @media keeps the prelude as its context',
+      run: () => splitCssRules('@media (min-width:1px){.a{color:red}}').map(rule => `${rule.context.join(' ')} ${rule.text}`),
+      expect: '@media (min-width:1px) .a{color:red}',
+    },
+    {
+      name: 'a brace or semicolon in a string or parentheses is not structure',
+      run: () => splitCssRules('.a{content:"}{;"}.b:not(.c){background:url(x{y)}[title="{;}"]{color:red}@import url(a;b);').map(rule => rule.text),
+      expect: '.a{content:"}{;"},.b:not(.c){background:url(x{y)},[title="{;}"]{color:red},@import url(a;b);',
+    },
+    {
+      name: 'a comment goes and a quoted /* stays',
+      run: () => splitCssRules(stripCssComments('/*! license */.a{content:"/*"}')).map(rule => rule.text),
+      expect: '.a{content:"/*"}',
+    },
+    {
+      name: 'a rule in two sheets is reported with both',
+      run: () => findDuplicateRules([['a', '.x{color:red}'], ['b', '.y{color:red}.x{color:red}']]).map(rule => `${rule.sheets.join('+')} ${rule.text}`),
+      expect: 'a+b .x{color:red}',
+    },
+    {
+      name: 'the same rule under a different @media is not a repeat',
+      run: () => findDuplicateRules([['a', '.x{color:red}'], ['b', '@media print{.x{color:red}}']]).map(rule => rule.text),
+      expect: '',
+    },
+    {
+      name: 'keyframes emitted per sheet are not reported',
+      run: () => findDuplicateRules([['a', '@keyframes k{to{opacity:0}}'], ['b', '@keyframes k{to{opacity:0}}']]).map(rule => rule.text),
+      expect: '',
+    },
+    {
+      name: 'a rule twice in one sheet is not a cross-sheet repeat',
+      run: () => findDuplicateRules([['a', '.x{color:red}.x{color:red}'], ['b', '.y{color:red}']]).map(rule => rule.text),
+      expect: '',
+    },
+    {
+      name: 'a page is the sum of the sheets in its closure',
+      run: () => [String(measurePageStyles(['a', 'b'], new Map([['a', 10], ['b', 5], ['c', 99]])).bytes)],
+      expect: '15',
+    },
+    {
+      name: 'a closure member with no stylesheet is reported, not skipped',
+      run: () => measurePageStyles(['a', 'gone'], new Map([['a', 10]])).missing,
+      expect: 'gone',
     },
   ]
 
