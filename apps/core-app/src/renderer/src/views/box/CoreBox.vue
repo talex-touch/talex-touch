@@ -95,6 +95,8 @@ const clipboardOptions = reactive<IClipboardOptions>({
   lastClearedTimestamp: null,
   activeClipboardSource: null
 })
+const addonType = ref<'preview' | 'plugin' | undefined>(undefined)
+const hasPreview = computed(() => Boolean(addonType.value))
 
 const {
   searchVal,
@@ -113,7 +115,7 @@ const {
   deactivateProvider,
   deactivateAllProviders
   // cancelSearch
-} = useSearch(boxOptions, clipboardOptions)
+} = useSearch(boxOptions, clipboardOptions, { hasPreview })
 
 // The searching cue waits for the current query's first rows. Once they are up, the deferred layer
 // (the files) still gathering gets the quieter settling status instead (useSearch).
@@ -801,7 +803,6 @@ function handleItemTrigger(index: number, item: TuffItem): void {
  *   query has replaced the results and the shown row is not among them.
  */
 const PREVIEW_CLOSE_DELAY_MS = 200
-const addonType = ref<'preview' | 'plugin' | undefined>(undefined)
 /** What the pane shows: the selected file, or the last one while the pane waits to close. */
 const addonItem = shallowRef<TuffItem | undefined>(undefined)
 /** The query of the rows the shown file was selected from. */
@@ -1484,6 +1485,32 @@ const customCss = computed(() => {
 </template>
 
 <style lang="scss">
+// The launcher's corners are smoothed like the TuffEx panels (`tx-squircle` in tuffex
+// style/mixins.scss, whose numbers it publishes as `--tx-corner-smooth-*`): where `corner-shape`
+// exists, each rounded corner grows by the scale and becomes a superellipse cut as deep as the
+// plain radius, so it keeps its size and loses the jump in curvature where it meets the edge.
+$corebox-radius: var(--corebox-container-radius, 8px);
+$corebox-radius-smooth: calc(
+  var(--corebox-container-radius, 8px) * var(--tx-corner-smooth-scale, 1.6)
+);
+
+@mixin corebox-corners($corners: all) {
+  @if $corners == bottom {
+    border-radius: 0 0 $corebox-radius $corebox-radius;
+  } @else {
+    border-radius: $corebox-radius;
+  }
+
+  @supports (corner-shape: superellipse(2)) {
+    @if $corners == bottom {
+      border-radius: 0 0 $corebox-radius-smooth $corebox-radius-smooth;
+    } @else {
+      border-radius: $corebox-radius-smooth;
+    }
+    corner-shape: var(--tx-corner-smooth-shape, superellipse(1.777));
+  }
+}
+
 .CoreBox-Wrapper {
   position: absolute;
   inset: 0;
@@ -1523,13 +1550,13 @@ const customCss = computed(() => {
   width: 100%;
   height: auto;
   min-height: 0;
-  border-radius: var(--corebox-container-radius, 8px);
   border-top: none;
   display: grid !important;
   grid-template-columns: repeat(var(--corebox-canvas-columns, 12), minmax(0, 1fr));
   grid-auto-rows: var(--corebox-canvas-row-height, 24px);
   gap: var(--corebox-canvas-gap, 8px);
   overflow: hidden;
+  @include corebox-corners;
 }
 
 .CoreBox-Wrapper.CoreBox-Wrapper--canvas .CoreBoxRes-Main--canvas {
@@ -1596,8 +1623,8 @@ const customCss = computed(() => {
   div.CoreBoxRes {
     top: 0;
     height: 100%;
-    border-radius: var(--corebox-container-radius, 8px);
     border-top: none;
+    @include corebox-corners;
   }
 }
 
@@ -1666,9 +1693,6 @@ const customCss = computed(() => {
     color: var(--shell-danger);
     font: inherit;
     cursor: pointer;
-    transition:
-      background-color 0.15s ease,
-      border-color 0.15s ease;
 
     &:hover {
       background: color-mix(in srgb, var(--shell-danger) 12%, transparent);
@@ -1735,8 +1759,8 @@ div.CoreBoxRes {
   height: calc(100% - 56px);
   overflow: hidden;
 
-  border-radius: 0 0 var(--corebox-container-radius, 8px) var(--corebox-container-radius, 8px);
   border-top: 1px solid var(--tx-border-color);
+  @include corebox-corners(bottom);
 
   // No width transition: the column switches in one layout pass and the FLIP above moves what is
   // in it. Animating the width re-laid out every row and the preview image per frame.
@@ -1915,10 +1939,10 @@ div.CoreBox {
   gap: 0.25rem;
   align-items: center;
 
-  border-radius: var(--corebox-container-radius, 8px);
   box-shadow: var(--corebox-container-shadow, none);
   border: var(--corebox-container-border, none);
   box-sizing: border-box;
+  @include corebox-corners;
 
   .core-box & {
     display: flex;
@@ -1932,6 +1956,7 @@ div.CoreBox {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
+  corner-shape: inherit;
   pointer-events: none;
 }
 
@@ -1965,16 +1990,16 @@ div.CoreBox {
   // `div.CoreBoxRes` starts here.
   inset: 56px 0 0;
   z-index: -1;
-  border-radius: 0 0 var(--corebox-container-radius, 8px) var(--corebox-container-radius, 8px);
   background-color: var(--tx-fill-color);
   pointer-events: none;
+  @include corebox-corners(bottom);
 }
 
 // A canvas layout sizes its header on its own grid, inside padding, so no fixed line marks where
 // the results start: the whole launcher takes the fill, header card included.
 .CoreBox-Wrapper.CoreBox-Wrapper--canvas.CoreBox-Wrapper--meta-fill::before {
   inset: 0;
-  border-radius: var(--corebox-container-radius, 8px);
+  @include corebox-corners;
 }
 
 // The ⌘K card shows a Flow page (`useMetaPanelState`): the search bar, the results and the footer

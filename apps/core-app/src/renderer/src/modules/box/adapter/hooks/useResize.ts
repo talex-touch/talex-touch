@@ -12,6 +12,7 @@ interface UseResizeOptions {
   activeActivations: Ref<IProviderActivate[] | null>
   loading: Ref<boolean>
   recommendationPending?: Ref<boolean>
+  hasPreview?: Ref<boolean> | ComputedRef<boolean>
 }
 
 const SCROLLBAR_WIDTH_ESTIMATE = 12
@@ -81,10 +82,10 @@ function measureResultContentHeight(resultContent: HTMLElement): number {
   return Math.ceil(Math.max(visualBottom + paddingBottom, paddingTop + paddingBottom))
 }
 
-function calculateDesiredHeight(resultCount: number): number {
+function calculateDesiredHeight(resultCount: number, isPreviewActive = false): number {
   const headerHeight = getHeaderHeight()
   if (resultCount === 0) return clampHeight(headerHeight)
-
+  if (isPreviewActive) return MAX_HEIGHT
   const scrollRoot = document.querySelector('.CoreBoxRes-Main .scroll-area')
   if (!scrollRoot) {
     logResizeDebug('calculateDesiredHeight:scrollRootMissing', {
@@ -130,7 +131,7 @@ function hasForceMaxActivation(activations: IProviderActivate[] | null | undefin
 }
 
 export function useResize(options: UseResizeOptions): void {
-  const { results, activeActivations, loading, recommendationPending } = options
+  const { results, activeActivations, loading, recommendationPending, hasPreview } = options
   const transport = useTuffTransport()
 
   let lastPayload: CoreBoxLayoutUpdateRequest | null = null
@@ -150,13 +151,14 @@ export function useResize(options: UseResizeOptions): void {
     const isRecommendationPending = recommendationEnabled
       ? (recommendationPending?.value ?? false)
       : false
-    const forceMax = hasForceMaxActivation(activeActivations.value)
-    const measuredHeight = calculateDesiredHeight(resultCount)
+    const isPreviewActive = Boolean(hasPreview?.value && resultCount > 0)
+    const forceMax = hasForceMaxActivation(activeActivations.value) || isPreviewActive
+    const measuredHeight = calculateDesiredHeight(resultCount, isPreviewActive)
     // Results exist but the list DOM is transiently empty/unmeasurable (mid
     // transition or progressive mount). Hold the last committed height instead
     // of emitting a collapse, so the window never flickers down then back up.
     // forceMax ignores height on the main side, so always let those through.
-    let height = measuredHeight
+    let height = isPreviewActive ? MAX_HEIGHT : measuredHeight
     if (measuredHeight < 0) {
       if (lastPayload) {
         height = lastPayload.height
@@ -336,6 +338,15 @@ export function useResize(options: UseResizeOptions): void {
       () => recommendationPending.value,
       () => {
         scheduleLayoutUpdate('recommendation:pending')
+      }
+    )
+  }
+
+  if (hasPreview) {
+    watch(
+      () => hasPreview.value,
+      (previewActive) => {
+        scheduleLayoutUpdate(previewActive ? 'preview:on' : 'preview:off')
       }
     )
   }
