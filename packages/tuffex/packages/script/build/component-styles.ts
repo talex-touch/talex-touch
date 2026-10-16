@@ -53,8 +53,13 @@ const emptyStateStyleAliases = new Set([
  * item the on-demand budget counts — while both roots carry `.tx-md` and every rule in the sheet
  * is scoped under it, so the borrowed sheet styles both. The edge below is what the on-demand
  * plugin walks to load it.
+ *
+ * `markdown-editor` imports its AI panel only when the AI is first asked, and the walk follows
+ * static imports alone: the panel's own rules live in the editor's sheet, and the answer it
+ * streams is a `TxStreamText`, whose sheet this edge brings.
  */
 const borrowedStyleDeps: Record<string, string[]> = {
+  'markdown-editor': ['stream-text'],
   'stream-markdown': ['markdown-view'],
 }
 

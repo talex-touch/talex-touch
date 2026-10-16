@@ -101,7 +101,7 @@ Circular links make d3-sankey throw — the component catches that, renders an e
 
 ## Hover Highlight
 
-Hovering a node or a link leaves only adjacent elements untouched: the non-adjacent nodes, links and labels dim together to 10% opacity, matching ECharts' `emphasis.focus: 'adjacency'` (blur is `fromState.opacity * 0.1`), switched over 300ms `cubicOut`. A node's neighbourhood is itself, every link touching it and the nodes at those links' other ends; a link's is itself, its two endpoint nodes and every link touching either endpoint.
+Hovering a node or a link leaves only adjacent elements untouched: the non-adjacent nodes, links and labels dim together to 10% opacity, matching ECharts' `emphasis.focus: 'adjacency'` (blur is `fromState.opacity * 0.1`), switched on the frame the pointer arrives rather than over ECharts' 300ms `cubicOut` (TuffEx's hover rule). A node's neighbourhood is itself, every link touching it and the nodes at those links' other ends; a link's is itself, its two endpoint nodes and every link touching either endpoint.
 
 Sankey has **no geometry animation**, which is parity with kumo rather than a missing feature: ECharts' `SankeyView` has neither `initProps` nor `updateProps`, so when the d3-sankey layout changes the nodes and links land on their new positions without a tween. Under `prefers-reduced-motion: reduce` the 300ms transition drops out and the highlight switches instantly.
 

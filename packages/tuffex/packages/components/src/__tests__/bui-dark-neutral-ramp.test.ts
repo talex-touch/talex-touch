@@ -34,7 +34,7 @@ function darkBlock(): string {
 }
 
 /** Tokens that carry a hue on purpose: the accent, the semantic tints, alphas. */
-const CHROMATIC = /accent|green|orange|red|blue|yellow|stripe(?!-bg)|shadow|overlay/
+const CHROMATIC = /accent|green|orange|red|violet|blue|yellow|stripe(?!-bg)|shadow|overlay/
 
 function greys(): Array<{ name: string, rgb: [number, number, number] }> {
   const out: Array<{ name: string, rgb: [number, number, number] }> = []

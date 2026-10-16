@@ -21,9 +21,9 @@ Tuffex（塔芙）的设计基础建立在**物理真实度（Physical Honesty�
 
 标准 CSS `border-radius` 采用圆弧拼接（$G^1$ 切线连续），在直线与圆弧交点处曲率 $\kappa$ 瞬间从 $0$ 突跃至 $1/R$，在高光或折射材质下会产生肉眼可见的“折痕感”（Specular Break）。
 
-TuffEx 在视窗与大卡片上引入超椭圆（Lamé Curve / Squircle）与欧拉螺线（Euler Spiral）：
-$$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \approx 4 \sim 5)$$
-交界处曲率变化率为零（$G^2$ 连续），使反射与边缘浑然一体，消除一切生硬拐角。
+TuffEx 在 TxCard、TxModal、TxCommandPalette、TxFlipOverlay、各类 Dialog 与 CoreBox 上使用超椭圆（Lamé Curve / Squircle）圆角：
+$$\left| \frac{x}{a} \right|^n + \left| \frac{y}{a} \right|^n = 1 \quad (n \approx 3.43)$$
+超椭圆与直线相接处曲率为 0（$G^2$ 连续），45° 方向切入的深度与原来的圆角相同，反射与边缘浑然一体。实现见 `style/mixins.scss` 的 `tx-squircle`，不支持 `corner-shape` 的浏览器保留普通圆角。
 
 ### 同心圆角几何守恒
 
@@ -63,8 +63,8 @@ $$Padding_{\text{horizontal}} \ge R$$
 
 ### 暗色模式视网膜光晕字重补偿
 
-根据亥姆霍兹视网膜光渗效应（Optical Irradiation），白字在暗黑底板上会向外发光扩散，**视觉感知上比浅色模式粗壮 10%～15%**。
-在可变字体环境下，TuffEx 对暗色字重进行微小下调：
+根据亥姆霍兹视网膜光渗效应（Optical Irradiation），白字在暗黑底板上会向外发光扩散，**看起来比浅色模式下同字重的字更粗**，粗多少随亮度、对比度和字号而变，没有固定的百分比。
+TuffEx 目前没有在暗色主题里自动下调字重；字体带字重轴时，建议在暗色主题里这样微调：
 - 默认正文：`400`（浅色） $\to$ `380`～`400`（暗色）
 - 行内强调：`500`（浅色） $\to$ `460`（暗色）
 - 小标题：`600`（浅色） $\to$ `560`（暗色）

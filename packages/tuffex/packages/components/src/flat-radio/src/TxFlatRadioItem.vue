@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TxFlatRadioContext, TxFlatRadioItemProps } from './types'
 import { computed, getCurrentInstance, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import { FLAT_RADIO_KEY } from './types'
 
 defineOptions({ name: 'TxFlatRadioItem' })
@@ -29,6 +30,9 @@ const isSelected = computed(() => {
   return mv === props.value
 })
 const isDisabled = computed(() => props.disabled || ctx?.disabled.value)
+// Selecting eases the item's ink (and a multi-select chip's fill); a hover
+// repaints at once.
+const morphing = useMorphWindow(isSelected, 200)
 const isMultiple = computed(() => ctx?.multiple.value ?? false)
 // The multi-select virtual-focus cursor: rendered visibly and pointed at by the
 // container's aria-activedescendant so keyboard users can see and hear it.
@@ -63,6 +67,7 @@ onBeforeUnmount(() => {
       'is-disabled': isDisabled,
       'is-multiple-selected': isMultiple && isSelected,
       'is-focused': isFocused,
+      'is-morphing': morphing,
     }"
     :aria-checked="isSelected"
     :disabled="isDisabled || undefined"
@@ -102,10 +107,18 @@ onBeforeUnmount(() => {
   // curve can hide. A hidden bold sizer would have kept the old look, but it
   // only works for the `label` prop, and the two call sites that matter
   // (StoreHeader, TxFineTuneCard) both pass slot content.
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 1;
-  transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease;
   box-sizing: border-box;
+
+  &.is-morphing {
+    transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 
   &:hover:not(.is-disabled):not(.is-selected) {
     color: var(--tx-text-color-primary, #303133);

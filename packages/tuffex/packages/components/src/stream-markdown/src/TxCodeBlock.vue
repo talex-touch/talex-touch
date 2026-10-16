@@ -194,7 +194,7 @@ const previewDocument = computed(() =>
   .tx-code-block__lang {
     color: var(--tx-text-color-secondary, #6b7280);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
@@ -226,7 +226,7 @@ const previewDocument = computed(() =>
     width: 100%;
     height: 260px;
     border: none;
-    background: #fff;
+    background: var(--tx-color-white, #fff);
   }
 
   // Beats the `.markdown-body pre` typography rules on specificity, so the

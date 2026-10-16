@@ -178,7 +178,10 @@ defineExpose({
           :size="Math.round(size * 0.55)"
           colorful
         />
-        <i v-else class="i-ri-image-add-line tx-icon-picker__trigger-empty" aria-hidden="true" />
+        <!-- Remix `image-add-line`, drawn here so the trigger needs no icon collection -->
+        <svg v-else class="tx-icon-picker__trigger-empty" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 15v3h3v2h-3v3h-2v-3h-3v-2h3v-3zm.008-12c.548 0 .992.445.992.993V13h-2V5H4v13.999L14 9l3 3v2.829l-3-3L6.827 19H14v2H2.992A.993.993 0 0 1 2 20.007V3.993A1 1 0 0 1 2.992 3zM8 7a2 2 0 1 1 0 4a2 2 0 0 1 0-4" />
+        </svg>
       </button>
     </template>
 
@@ -226,10 +229,7 @@ defineExpose({
   // property that must be seen changing — snapping 4px to 999px in a single
   // frame reads as the trigger being swapped out, not reshaped. Same overshoot
   // curve as the row's own thumb, so press and result are one gesture.
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    border-radius 0.28s cubic-bezier(0.32, 1.28, 0.5, 1);
+  transition: border-radius 0.28s cubic-bezier(0.32, 1.28, 0.5, 1);
 
   &.is-circle { border-radius: 999px; }
   &.is-rounded { border-radius: 12px; }
@@ -248,7 +248,7 @@ defineExpose({
 // The shape still changes — it is the committed value. Only the morph goes.
 @media (prefers-reduced-motion: reduce) {
   .tx-icon-picker__trigger {
-    transition: border-color 0.2s ease, background 0.2s ease;
+    transition: none;
   }
 }
 
@@ -258,6 +258,8 @@ defineExpose({
 }
 
 .tx-icon-picker__trigger-empty {
-  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 </style>

@@ -461,9 +461,7 @@ watch(
   font-size: 0.7rem;
   opacity: 0.75;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    opacity 0.15s ease;
+  transition: opacity 0.15s ease;
 
   i {
     font-size: 0.9rem;
@@ -503,7 +501,6 @@ watch(
   font-size: 0.75rem;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.15s ease;
 
   i {
     flex: 0 0 auto;

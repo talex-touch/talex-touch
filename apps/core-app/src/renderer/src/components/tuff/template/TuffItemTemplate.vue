@@ -165,7 +165,7 @@ function handleClick(event: MouseEvent | KeyboardEvent) {
   border-radius: 16px;
   border: 1px solid var(--tx-border-color-lighter);
   overflow: hidden;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 
   &.is-clickable {
     cursor: pointer;
@@ -337,7 +337,6 @@ function handleClick(event: MouseEvent | KeyboardEvent) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.3s ease;
 
   .size-sm & {
     font-size: 0.8125rem;

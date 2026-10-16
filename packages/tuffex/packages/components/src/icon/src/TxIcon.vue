@@ -55,6 +55,40 @@ const builtinIcons = {
     path: 'M6 9.5 12 15.5 18 9.5',
     stroke: 1.75,
   },
+  // The other directions, and `plus`, take the same stroke: they are the
+  // chrome TuffEx's own components draw (TxTransfer's move buttons, TxNavBar's
+  // back, TxBlockSwitch's guidance, TxImageUploader's add), so they have to
+  // render where the host ships no icon collection.
+  'chevron-right': {
+    viewBox: '0 0 24 24',
+    path: 'M9.5 6 15.5 12 9.5 18',
+    stroke: 1.75,
+  },
+  'chevron-left': {
+    viewBox: '0 0 24 24',
+    path: 'M14.5 6 8.5 12 14.5 18',
+    stroke: 1.75,
+  },
+  'arrow-left': {
+    viewBox: '0 0 24 24',
+    path: 'M19 12H5M11 6 5 12 11 18',
+    stroke: 1.75,
+  },
+  'arrow-up': {
+    viewBox: '0 0 24 24',
+    path: 'M12 19V5M6 11 12 5 18 11',
+    stroke: 1.75,
+  },
+  'arrow-down': {
+    viewBox: '0 0 24 24',
+    path: 'M12 5V19M6 13 12 19 18 13',
+    stroke: 1.75,
+  },
+  'plus': {
+    viewBox: '0 0 24 24',
+    path: 'M12 5V19M5 12H19',
+    stroke: 1.75,
+  },
   'close': {
     viewBox: '0 0 24 24',
     path: 'M12 10.586l4.95-4.95 1.414 1.414-4.95 4.95 4.95 4.95-1.414 1.414-4.95-4.95-4.95 4.95-1.414-1.414 4.95-4.95-4.95-4.95L7.05 5.636z',
@@ -97,6 +131,10 @@ const builtinIcons = {
     path: 'M12 2 1.5 20.5h21zm0 4.2L19 18.5H5zm-1 3.8h2v4.5h-2zm0 5.8h2v2h-2z',
   },
 } as const
+
+// Remix `image-line`, drawn here so the error state needs no icon collection
+// (Nexus ships no `ri`, so the old `i-ri-image-line` rendered nothing there).
+const ERROR_GLYPH = 'M2.992 21A.993.993 0 0 1 2 20.007V3.993A1 1 0 0 1 2.992 3h18.016c.548 0 .992.445.992.993v16.014a1 1 0 0 1-.992.993zM20 15V5H4v14L14 9zm0 2.828l-6-6L6.828 19H20zM8 11a2 2 0 1 1 0-4a2 2 0 0 1 0 4'
 
 const safeIcon = computed<TxIconSource>(() => {
   if (props.icon)
@@ -295,7 +333,9 @@ watch(
     </span>
 
     <span v-else-if="isError" class="tuff-icon__error">
-      <i class="i-ri-image-line" />
+      <svg viewBox="0 0 24 24" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg">
+        <path :d="ERROR_GLYPH" fill="currentColor" />
+      </svg>
     </span>
 
     <span v-else-if="isLoading" class="tuff-icon__loading">
@@ -353,7 +393,9 @@ watch(
 
     <!-- Fallback: if icon type is unknown or invalid, show error state -->
     <span v-else class="tuff-icon__error">
-      <i class="i-ri-image-line" />
+      <svg viewBox="0 0 24 24" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg">
+        <path :d="ERROR_GLYPH" fill="currentColor" />
+      </svg>
     </span>
   </span>
 </template>

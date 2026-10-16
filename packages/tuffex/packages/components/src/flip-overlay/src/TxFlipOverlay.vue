@@ -5,6 +5,7 @@ import type { Slots } from 'vue'
 import TxButton from '../../button/src/button.vue'
 import { computed, nextTick, onBeforeUnmount, ref, useId, useSlots, watch } from 'vue'
 import TxBaseSurface from '../../base-surface/src/TxBaseSurface.vue'
+import TxIcon from '../../icon/src/TxIcon.vue'
 import { hasWindow } from '../../../../utils/env'
 import { useZIndexAllocator } from '../../../../utils/z-index-manager'
 import {
@@ -58,9 +59,8 @@ const props = withDefaults(defineProps<FlipOverlayProps>(), {
   cardClass: '',
   globalMask: true,
   border: 'solid',
-  surface: 'mask',
+  surface: 'refraction',
   surfaceColor: '',
-  surfaceOpacity: 0.96,
   header: true,
   headerTitle: '',
   headerDesc: '',
@@ -235,10 +235,14 @@ const surfaceMode = computed<BaseSurfaceMode>(() => {
     || props.surface === 'mask'
     || props.surface === 'blur'
     || props.surface === 'glass'
-    || props.surface === 'refraction') {
+    || props.surface === 'refraction'
+    || props.surface === 'acrylic'
+    || props.surface === 'mica'
+    || props.surface === 'flat'
+    || props.surface === 'plain') {
     return props.surface
   }
-  return 'mask'
+  return 'refraction'
 })
 
 const surfaceColor = computed(() => {
@@ -247,10 +251,14 @@ const surfaceColor = computed(() => {
   return 'var(--tx-bg-color-overlay, var(--tx-card-fake-background, #fff))'
 })
 
+// mask keeps its near-opaque fill. blur, glass and refraction sit over the same colour
+// at half strength, and acrylic tints at it: enough to keep text legible over the dimmed
+// page, while the page still shows through for the material to blur and refract.
 const surfaceOpacity = computed(() => {
-  const value = typeof props.surfaceOpacity === 'number' ? props.surfaceOpacity : 0.96
+  const fallback = surfaceMode.value === 'mask' ? 0.96 : 0.5
+  const value = typeof props.surfaceOpacity === 'number' ? props.surfaceOpacity : fallback
   if (!Number.isFinite(value))
-    return 0.96
+    return fallback
   return Math.max(0, Math.min(1, value))
 })
 
@@ -701,7 +709,7 @@ const slotProps = computed<FlipOverlaySlotProps>(() => ({
                 <template v-if="props.closable">
                   <slot name="header-close" v-bind="slotProps">
                     <TxButton circle class="TxFlipOverlay-Close" :aria-label="props.closeAriaLabel" @click="requestClose">
-                      <span class="i-carbon-close w-4 h-4 text-lg inline-flex" aria-hidden="true" />
+                      <TxIcon name="close" :size="16" />
                     </TxButton>
                   </slot>
                 </template>
@@ -718,6 +726,8 @@ const slotProps = computed<FlipOverlaySlotProps>(() => ({
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .TxFlipOverlay-Mask {
   position: fixed;
   inset: 0;
@@ -789,15 +799,17 @@ const slotProps = computed<FlipOverlaySlotProps>(() => ({
   max-width: calc(100vw - 24px);
   max-height: calc(90dvh - 24px);
   border: 1px solid var(--tx-border-color-lighter);
-  border-radius: var(--tx-flip-overlay-radius);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   transform-origin: 50% 50%;
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  will-change: transform, opacity, filter;
+  // Transform only: `will-change: opacity` or `filter` makes the card a backdrop root,
+  // and the surface's backdrop-filter then samples nothing but the card itself.
+  will-change: transform;
   z-index: 1;
+  @include tx-squircle(var(--tx-flip-overlay-radius));
 }
 
 .TxFlipOverlay-Surface {
@@ -805,6 +817,7 @@ const slotProps = computed<FlipOverlaySlotProps>(() => ({
   inset: 0;
   z-index: 0;
   border-radius: inherit;
+  corner-shape: inherit;
   pointer-events: none;
 }
 
@@ -850,20 +863,22 @@ const slotProps = computed<FlipOverlaySlotProps>(() => ({
   }
 }
 
+// box-shadow rather than filter: drop-shadow, which would make the card a backdrop
+// root for the length of the glow and cut the surface off from the page behind it.
 @keyframes tx-flip-overlay-close-guard-warning {
   0% {
-    filter: drop-shadow(0 0 0 rgba(255, 79, 79, 0));
+    box-shadow: 0 0 0 rgba(255, 79, 79, 0);
   }
 
   18% {
-    filter:
-      drop-shadow(0 0 6px rgba(255, 96, 96, 0.098))
-      drop-shadow(0 0 22px rgba(255, 64, 64, 0.072))
-      drop-shadow(0 0 42px rgba(255, 47, 47, 0.05));
+    box-shadow:
+      0 0 6px rgba(255, 96, 96, 0.098),
+      0 0 22px rgba(255, 64, 64, 0.072),
+      0 0 42px rgba(255, 47, 47, 0.05);
   }
 
   100% {
-    filter: drop-shadow(0 0 0 rgba(255, 79, 79, 0));
+    box-shadow: 0 0 0 rgba(255, 79, 79, 0);
   }
 }
 
@@ -899,7 +914,7 @@ const slotProps = computed<FlipOverlaySlotProps>(() => ({
 .TxFlipOverlay-HeaderTitle {
   margin: 0;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 1.35;
 }
 
@@ -931,7 +946,7 @@ const slotProps = computed<FlipOverlaySlotProps>(() => ({
   justify-content: center;
   font-size: 20px;
   line-height: 1;
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  transition: transform 0.2s ease;
 }
 
 .TxFlipOverlay-Close:hover {

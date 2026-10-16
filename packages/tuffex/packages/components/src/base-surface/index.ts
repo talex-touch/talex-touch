@@ -12,6 +12,16 @@ import TxBaseSurface from './src/TxBaseSurface.vue'
 const BaseSurface = withInstall(TxBaseSurface)
 
 export { BaseSurface, TxBaseSurface }
+export {
+  getSurfaceEnvironment,
+  notifySurfaceWindowMotion,
+  setSurfacePowerSaving,
+  SURFACE_LOW_BATTERY_LEVEL,
+  SURFACE_MOTION_SETTLE_MS,
+  SURFACE_POINTER_SPEED_THRESHOLD,
+  useSurfaceMotionGuard,
+} from './src/surface-environment'
+export type { SurfaceFrameTier } from './src/surface-environment'
 export type {
   BaseSurfaceMode,
   BaseSurfacePreset,

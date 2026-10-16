@@ -42,10 +42,10 @@ code: |
 
 ## 内置图标表
 
-`check`、`chevron-down`、`close`、`search`、`user`、`star`、`star-half`、`info`、`check-circle`、`x-circle`、`alert-triangle` 内置在组件中，未配置任何图标集时核心交互也能渲染。
+`check`、`chevron-down`、`chevron-right`、`chevron-left`、`arrow-left`、`arrow-up`、`arrow-down`、`plus`、`close`、`search`、`user`、`star`、`star-half`、`info`、`check-circle`、`x-circle`、`alert-triangle` 内置在组件中，未配置任何图标集时核心交互也能渲染。
 
 - 内置表不是通用图标库；其他图标用 Iconify class 或显式来源。
-- 条目画成实心剪影或开放描边。`chevron-down` 用描边：它在 12–14px 下作展开指示，实心楔形会在标签旁糊成一团。
+- 条目画成实心剪影或开放描边。`chevron-down` 用描边：它在 12–14px 下作展开指示，实心楔形会在标签旁糊成一团。其余方向与 `plus` 用同一描边。
 
 ## 颜色、蒙版与 `colorful`
 

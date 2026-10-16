@@ -1,6 +1,8 @@
 // TUFF UI CSS Variables
 // These can be customized by the user
 
+@use './mixins.scss' as mixins;
+
 @mixin tx-high-contrast-light {
   --tx-color-primary: #005fcc;
   --tx-color-primary-light-3: #1d76d3;
@@ -318,12 +320,21 @@
   --tx-border-radius-small: 2px;
   --tx-border-radius-round: 20px;
   --tx-border-radius-circle: 100%;
+  // Smooth corners for code that cannot include `tx-squircle` (mixins.scss), such as the app:
+  // inside `@supports (corner-shape: superellipse(2))`, multiply the plain radius by the scale
+  // and set the shape.
+  --tx-corner-smooth-scale: #{1 + mixins.$tx-squircle-smoothness};
+  --tx-corner-smooth-shape: superellipse(#{mixins.tx-squircle-exponent()});
 
   // Font
   --tx-font-size-base: 14px;
   --tx-font-size-small: 12px;
   --tx-font-size-large: 16px;
   --tx-font-weight-primary: 500;
+  // Emphasis weights. The dark theme takes each 40 lighter (see `tx-dark-weight`); regular stays 400.
+  --tx-font-weight-medium: 500;
+  --tx-font-weight-semibold: 600;
+  --tx-font-weight-bold: 700;
 
   // Z-index
   --tx-index-normal: 1;
@@ -337,6 +348,7 @@
 
   // Compatibility aliases
   --tx-color-white: #ffffff;
+  --tx-color-black: #000000;
   --tx-color-primary-rgb: 64 158 255;
   --tx-color-success-rgb: 103 194 58;
   --tx-color-warning-rgb: 230 162 60;
@@ -384,6 +396,10 @@
   // the stack `--tx-bui-font-mono` uses; the two layers stay separate because a
   // host may override either on its own.
   --tx-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+  // The name `--tx-font-family` implies. Components, Nexus and the app read it
+  // in about twenty places, which fell through to their fallbacks until it
+  // aliased the token above.
+  --tx-font-family-mono: var(--tx-font-mono);
 
   --tx-mask-color-extra-light: rgba(0, 0, 0, 0.3);
   --tx-overlay-color: rgba(0, 0, 0, 0.5);
@@ -413,6 +429,12 @@
 // Dark theme
 [data-theme='dark'],
 .dark {
+  // Light text on a dark ground reads heavier; fonts with a weight axis draw these thinner, static
+  // fonts round them back to the light faces (`tx-dark-weight`).
+  --tx-font-weight-medium: #{mixins.tx-dark-weight(500, 460)};
+  --tx-font-weight-semibold: #{mixins.tx-dark-weight(600, 560)};
+  --tx-font-weight-bold: #{mixins.tx-dark-weight(700, 660)};
+
   --tx-color-primary: #409eff;
   --tx-color-primary-light-3: #3375b9;
   --tx-color-primary-light-5: #2a598a;
@@ -507,6 +529,7 @@
     6px 12px 32px rgba(0, 0, 0, 0.72), 4px 8px 16px -8px rgba(0, 0, 0, 0.72);
 
   --tx-color-white: #ffffff;
+  --tx-color-black: #000000;
   --tx-color-primary-rgb: 64 158 255;
   --tx-color-success-rgb: 74 222 128;
   --tx-color-warning-rgb: 251 191 36;

@@ -1,6 +1,6 @@
 ---
 title: 深浅主题光效裂变与色相排序
-description: 为什么 plus-lighter 加色发光在白底上会沦为脏灰色？深浅主题独立色相排序管道与 TxPrismGlow 双轨实现。
+description: 为什么 plus-lighter 加色发光在白底上会沦为脏灰色？深浅主题的两套色相顺序，以及 TxPrismGlow 怎样实现。
 ---
 
 # 深浅主题光效裂变与色相排序
@@ -22,23 +22,32 @@ $$\text{Color}_{\text{Result}} = \min(1, \text{Color}_A + \text{Color}_B)$$
 
 ## 浅色模式的相邻色相排序管道
 
-为了在浅色模式下保持光效的鲜亮通透，TuffEx 制定了**相邻色相约束准则**：
-- 在浅色模式下，同时出现的叠加光束，其色相差必须严格限制在 60° 以内（如天蓝、青绿、薄荷绿）。
-- 绝对禁止让互补色（如蓝与橙、紫与绿）同时在同一点位重叠。
+为了在浅色模式下保持光效的鲜亮通透，TuffEx 给一起出发的光束定了**相邻色相准则**：
+- 在浅色模式下，一起出发、会互相重叠的光束，色相差不超过 120°。
+- 相距超过 120° 的两种色相（如蓝与黄、紫与黄）不安排在同一组出发。
 
-## TxPrismGlow 双色相体系实战
+:::TuffDemoWrapper{demo="ConceptLightBlendDemo"}
+:::
 
-在 `TxPrismGlow` 棱镜光效组件中，TuffEx 构建了深浅模式双轨独立的色相生成管线：
+## TxPrismGlow 的两套色相顺序
+
+`TxPrismGlow` 的六束光在深浅两面用的是同一组色相，浅色面只是换了顺序。`cones.ts` 给每束光写了暗色面的 `hue` 和浅色面的 `lightHue`（oklch 角度），浅色面把 2 号的黄与 4 号的紫对调：
 
 :::TuffCodeBlock{lang="typescript"}
 ---
 code: |
-  // 暗色模式：全色域发散，交织融合向纯白光
-  export const DARK_HUE_ORDER = [0, 60, 120, 180, 240, 300];
-
-  // 浅色模式：严格限定在相邻冷色调区间（色相差 < 60°），杜绝灰变
-  export const LIGHT_HUE_ORDER = [210, 230, 250, 190, 220];
+  // prism-glow/src/cones.ts（只列色相）
+  export const PRISM_GLOW_CONES = [
+    { hue: 350, lightHue: 350 },
+    { hue: 95, lightHue: 300 }, // 2 号：暗色面黄，浅色面紫
+    { hue: 205, lightHue: 205 },
+    { hue: 300, lightHue: 95 }, // 4 号：暗色面紫，浅色面黄
+    { hue: 150, lightHue: 150 },
+    { hue: 258, lightHue: 258 },
+  ]
 ---
 :::
 
-测试套件中的 `prism-glow.test.ts` 设有门禁，任何可能导致浅色模式光相差超过 120° 的配置均会被自动化测试拦截。
+哪些光束一起出发由相位决定：2 号与 6 号在开场的 0.4 × duration 里同行（默认 6 秒时是 2.4 秒，正好一次 CoreBox 搜索），3、4、5 号从右侧一起出发。暗色顺序里同行的 2 号与 6 号是黄与蓝，相差 163°；换成浅色顺序，2 号是紫，与 6 号的蓝只差 42°。暗色面的重叠用 `plus-lighter` 相加趋白，任何色相都能融合；浅色面用 `normal` 混合，重叠处是两种颜色的平均。跟随主色的 accent 调色板总共只跨 100°，不需要浅色顺序。
+
+`prism-glow.test.ts` 的门禁按这条准则计算：开场这段时间里，浅色色相相差超过 120° 的任意两束光，中心始终相隔至少 30cqw，光晕碰不上。同一条测试也断言暗色顺序会撞上（蓝追上黄），作为阳性对照。开场之后各束光周期不同，仍会互相追上，门禁只管开场。

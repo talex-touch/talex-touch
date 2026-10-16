@@ -57,6 +57,58 @@ code: |
 - The two are equivalent, so Tuffex drops into a Tailwind app (`.dark`) or a `data-theme` app without an adapter.
 - Set either on a subtree to get a dark island on a light page.
 
+### View Transitions
+
+When toggling dark or light mode, Tuffex provides `applyThemeTransition`, a transition helper built on top of the native View Transitions API. The default preset is `circle-blur`, which expands outward from the pointer's click position using an SVG Gaussian-blurred mask for a soft, tactile glow.
+
+Additional presets include `circle` (sharp circular clip), `polygon` (diagonal slash), `polygon-gradient` (gradient slash), `wipe` (horizontal wipe), `fade` (cross-fade), and custom GIF masks.
+
+:::TuffDemoWrapper{demo="ThemingThemeTransitionDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { applyThemeTransition } from '@talex-touch/tuffex/utils'
+  import { ref } from 'vue'
+
+  const isDark = ref(false)
+
+  function toggle(event: MouseEvent) {
+    applyThemeTransition(() => {
+      isDark.value = !isDark.value
+      document.documentElement.classList.toggle('dark', isDark.value)
+    }, {
+      origin: event,
+      variant: 'circle-blur',
+      duration: 450,
+      blurAmount: 3.5,
+    })
+  }
+  </script>
+
+  <template>
+    <button @click="toggle">
+      {{ isDark ? 'Light' : 'Dark' }}
+    </button>
+  </template>
+---
+:::
+
+#### Presets and options
+
+| Variant (`variant`) | Duration | Description |
+|---------------------|----------|-------------|
+| `circle-blur` (default) | 450ms | Expanding circular glow with SVG Gaussian blur originating at click position |
+| `circle` | 350ms | Sharp circular clip-path expansion from click position |
+| `polygon` | 600ms | Diagonal optical slash reveal |
+| `polygon-gradient` | 800ms | Diagonal slash with linear gradient falloff |
+| `wipe` | 400ms | Horizontal inset swipe |
+| `fade` | 250ms | Smooth cross-fade transition |
+| `circle-blur-top-left` | 600ms | Blurred circle originating from top-left corner |
+| `gif` | 1500ms | Custom animated mask using `maskUrl` |
+
+- **Origin resolution**: `origin` accepts a `MouseEvent`, `{ clientX, clientY }`, or `[x, y]`. Defaults to viewport center if omitted.
+- **Accessibility**: Automatically falls back to immediate theme application when `prefers-reduced-motion` is active or if the browser lacks View Transition support.
+
 ## High contrast
 
 A fourth palette that raises text and border contrast in light and dark.
@@ -69,9 +121,22 @@ A fourth palette that raises text and border contrast in light and dark.
 
 With `data-theme="dark"` and either high-contrast trigger, the dark high-contrast palette applies; the two themes don't stack.
 
+### Materials
+
+Under high contrast, components stop letting the page through:
+
+| Part | Under high contrast |
+|------|---------------------|
+| Material panels: every `TxBaseSurface` mode (Card, BaseAnchor panels and the rest build on it), GlassSurface, Toast, NavBar, TabBar, Picker, PopperDialog, TouchTip, Slider, the RadioGroup indicator, the ProgressBar mask, StatCard, Drawer's transparent panel, MotionTransition's glass curtain | An opaque fill; no blur, no refraction, no rim light |
+| Scrims: Modal, Drawer, BlowDialog | Keep their dimming, lose the frost |
+| Layers over content: LoadingOverlay, the Card and DataTable loading veils, ImageUploader's remove button | Opaque, hiding what's under them |
+| Decoration: FlowLight, the GlowText shine, GradualBlur | Hidden |
+
+Light tints inside a component (hover, selected and input fills) are unchanged. The rule lives in the `tx-when-high-contrast` mixin in `style/mixins.scss`, which answers to the same triggers as the palette.
+
 ## AI suite tokens
 
-`--tx-bui-*` came over with the Beautiful UI components (surface, inset, field, ink, and accent / green / orange / red with matching tints) and has its own dark block under the same `[data-theme='dark']` / `.dark` selectors. Override it when AI surfaces shouldn't inherit your brand hue:
+`--tx-bui-*` came over with the Beautiful UI components (surface, inset, field, ink, and accent / green / orange / red / violet with matching tints) and has its own dark block under the same `[data-theme='dark']` / `.dark` selectors. Override it when AI surfaces shouldn't inherit your brand hue:
 
 :::TuffCodeBlock{lang="css"}
 ---

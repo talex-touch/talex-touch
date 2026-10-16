@@ -223,7 +223,7 @@ code: |
 
 - 首绘：折线/面积是从左到右的裁剪揭示，1000ms `easings.linear`；柱状从基线长出（y 由 `baseY` 插值到目标值、高度 0 → 目标）、散点由 0 缩放到半径并淡入，都是 1000ms cubicInOut。
 - 数据更新：几何形变 500ms cubicInOut。
-- 状态切换（emphasis / blur）：300ms cubicOut。
+- 状态切换（emphasis / blur）：在指针到达的那一帧完成，不走 ECharts 的 300ms cubicOut（TuffEx 的悬停规则）。
 - `animationThreshold` 2000：单序列点数超过它时直接渲染终态几何，不播动画。
 - tooltip：隐藏前先延迟 100ms，再用 200ms 淡出并移除 DOM，短暂划过不会闪烁；位置通过 `transform: translate3d()` 交给浏览器插值出 400ms 位移（`cubic-bezier(0.23, 1, 0.32, 1)`）；指针跟踪按 50ms 节流，取 leading + trailing 两个采样。
 - 刷选拖拽期间选区外变淡，松手立即恢复，见上节的单层 `<mask>`。

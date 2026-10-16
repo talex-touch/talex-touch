@@ -334,7 +334,7 @@ const canvasStyle = computed(() => ({
     padding: 0 8px;
     border-radius: var(--tx-bui-radius-chip, 6px);
     font-size: 11.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     line-height: 1;
     white-space: nowrap;
 
@@ -344,8 +344,8 @@ const canvasStyle = computed(() => ({
     }
 
     &--violet {
-      background-color: #ede4fb;
-      color: #6b3fd4;
+      background-color: var(--tx-bui-violet-tint, #ede4fb);
+      color: var(--tx-bui-violet, #6b3fd4);
     }
 
     &--orange {
@@ -374,14 +374,6 @@ const canvasStyle = computed(() => ({
     border-radius: 18px;
     background-color: var(--tx-bui-surface, #fff);
     box-shadow: var(--tx-bui-shadow-card, 0 0 0 1px #ecedef, 1px 2px 2px #1018280a, 2px 4px 6px #10182808);
-  }
-}
-
-[data-theme='dark'] .tx-bui-flowchart,
-.dark .tx-bui-flowchart {
-  &__chip--violet {
-    background-color: #2a2140;
-    color: #c4a9fb;
   }
 }
 </style>

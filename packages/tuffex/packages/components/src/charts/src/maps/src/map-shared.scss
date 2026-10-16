@@ -56,7 +56,7 @@
   }
 
   &__tooltip-value {
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     font-variant-numeric: tabular-nums;
   }
 

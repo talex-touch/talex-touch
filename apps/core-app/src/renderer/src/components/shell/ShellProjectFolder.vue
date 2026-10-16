@@ -456,7 +456,6 @@ function onRenameKeydown(event: KeyboardEvent): void {
   border: 1px solid transparent;
   border-radius: var(--shell-radius-md);
   color: var(--shell-text-regular);
-  transition: background-color 0.15s ease;
 
   &:hover {
     background: var(--shell-surface-2);
@@ -596,9 +595,7 @@ function onRenameKeydown(event: KeyboardEvent): void {
   color: var(--shell-text-muted);
   cursor: pointer;
   opacity: 0;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease;
+  transition: opacity 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover {

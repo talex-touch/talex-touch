@@ -2,6 +2,7 @@
 // Adapted from Beautiful UI (https://www.beautifului.dev), © 2026 Shane Levine, MIT.
 import type { RecommendationCardEmits, RecommendationCardProps, RecommendationConfidence, RecommendationOption } from './types'
 import { computed, ref, useId } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxSignalMeter from '../../signal-meter/src/TxSignalMeter.vue'
 
 defineOptions({ name: 'TxRecommendationCard' })
@@ -54,6 +55,8 @@ const active = computed<RecommendationOption | undefined>(
 const others = computed(() => props.options.filter(option => option.key !== active.value?.key))
 
 const isOpen = computed(() => props.open ?? internalOpen.value)
+// Opening the drawer eases the toggle's fill; a hover repaints at once.
+const morphing = useMorphWindow(isOpen, 100)
 const isAccepted = computed(() => props.accepted ?? internalAccepted.value)
 
 function signalOf(option: RecommendationOption): number {
@@ -100,7 +103,7 @@ function accept(): void {
 </script>
 
 <template>
-  <div v-if="active" class="tx-bui-recommendation-card">
+  <div v-if="active" class="tx-bui-recommendation-card" :class="{ 'is-morphing': morphing }">
     <div class="tx-bui-recommendation-card__head">
       <span class="tx-bui-recommendation-card__title">{{ title }}</span>
       <p :key="active.key" class="tx-bui-recommendation-card__body">
@@ -193,7 +196,7 @@ function accept(): void {
 
   .tx-bui-recommendation-card__title {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     color: var(--tx-bui-ink, #1f2124);
   }
 
@@ -287,7 +290,7 @@ function accept(): void {
     margin: 0 0 4px;
     padding: 0 6px;
     font-size: 11px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink-3, #9a9da3);
   }
 
@@ -300,7 +303,6 @@ function accept(): void {
     text-align: left;
     cursor: pointer;
     border-radius: var(--tx-bui-radius-control, 8px);
-    transition: background-color 0.1s ease;
 
     &:hover {
       background: var(--tx-bui-hover, #f4f5f6);
@@ -349,7 +351,7 @@ function accept(): void {
 
   .tx-bui-recommendation-card__confidence-label {
     font-size: 12.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink-2, #62656b);
   }
 
@@ -357,13 +359,13 @@ function accept(): void {
     height: 28px;
     padding: 0 10px;
     font-size: 12.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink, #1f2124);
     cursor: pointer;
     background: var(--tx-bui-surface, #fff);
     border-radius: var(--tx-bui-radius-control, 8px);
     box-shadow: var(--tx-bui-shadow-btn, 0 0 0 1px #e0e2e5, 0 1px 2px #1018280d);
-    transition: background-color 0.1s ease, transform 0.1s ease;
+    transition: transform 0.1s ease;
 
     &:hover,
     &.is-open {
@@ -375,11 +377,15 @@ function accept(): void {
     }
   }
 
+  &.is-morphing .tx-bui-recommendation-card__alternatives {
+    transition: background-color 0.1s ease, transform 0.1s ease;
+  }
+
   .tx-bui-recommendation-card__accept {
     height: 28px;
     padding: 0 12px;
     font-size: 12.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-canvas, #f1f2f3);
     cursor: pointer;
     background: var(--tx-bui-ink, #1f2124);
@@ -393,17 +399,17 @@ function accept(): void {
     transition: background-color 0.15s ease, transform 0.15s ease;
 
     &.is-tone-accent {
-      color: #fff;
+      color: var(--tx-color-white, #fff);
       background: var(--tx-bui-accent, #0285ff);
     }
 
     &.is-tone-danger {
-      color: #fff;
+      color: var(--tx-color-white, #fff);
       background: var(--tx-bui-red, #e3474c);
     }
 
     &.is-accepted {
-      color: #fff;
+      color: var(--tx-color-white, #fff);
       background: var(--tx-bui-green, #189a4d);
     }
 
@@ -418,8 +424,8 @@ function accept(): void {
     }
 
     .tx-bui-recommendation-card__drawer,
-    .tx-bui-recommendation-card__alt,
     .tx-bui-recommendation-card__alternatives,
+    &.is-morphing .tx-bui-recommendation-card__alternatives,
     .tx-bui-recommendation-card__accept {
       transition: none;
     }

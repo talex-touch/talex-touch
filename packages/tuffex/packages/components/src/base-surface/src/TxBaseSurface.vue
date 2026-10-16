@@ -17,13 +17,14 @@ import {
   SURFACE_MOTION_DURATION_MS,
   useBaseSurfaceMotion,
 } from './base-surface-motion'
+import { degradeSurfaceMode, useSurfaceEnvironment } from './surface-environment'
 
 defineOptions({
   name: 'TxBaseSurface',
 })
 
 const props = withDefaults(defineProps<BaseSurfaceProps>(), {
-  mode: 'pure',
+  mode: 'refraction',
   opacity: 0.75,
   blur: 10,
   filterSaturation: 1.5,
@@ -60,9 +61,16 @@ const attrs = useAttrs()
 const { toFinite, toEnum } = createSurfaceValueResolver(attrs as Record<string, unknown>)
 const settleDelayMs = computed(() => Math.max(toFinite(props.transitionDuration, SURFACE_MOTION_DURATION_MS), toFinite(props.settleDelay, 150)))
 
-/** 需要降级的模式（blur / glass 在运动中降级） */
+const environment = useSurfaceEnvironment(() => !!props.autoDetect)
+
+/** 当前环境下渲染的材质：`autoDetect` 在省电或掉帧时把重材质换成轻的 */
+const surfaceMode = computed<BaseSurfaceMode>(() =>
+  degradeSurfaceMode(props.mode, environment.frameTier.value, environment.powerSaving.value),
+)
+
+/** 需要降级的模式（blur / glass / acrylic 在运动中降级） */
 const needsFallback = computed(() =>
-  props.mode === 'blur' || props.mode === 'glass',
+  surfaceMode.value === 'blur' || surfaceMode.value === 'glass' || surfaceMode.value === 'acrylic',
 )
 
 const refractionRecoveryBlendDurationMs = computed(() => {
@@ -91,6 +99,8 @@ const {
   refractionEdgeRevealProgress,
 } = useBaseSurfaceMotion({
   props,
+  mode: surfaceMode,
+  environmentMoving: environment.moving,
   rootRef,
   needsFallback,
   settleDelayMs,
@@ -104,17 +114,17 @@ const fallbackActive = computed(() =>
 
 /** 实际渲染模式 */
 const activeMode = computed<BaseSurfaceMode>(() => {
-  if (props.mode === 'refraction') {
+  if (surfaceMode.value === 'refraction') {
     return 'refraction'
   }
   if (fallbackActive.value) {
     return props.fallbackMode
   }
-  return props.mode
+  return surfaceMode.value
 })
 
 const refractionParamProgress = computed(() => {
-  if (props.mode !== 'refraction') {
+  if (surfaceMode.value !== 'refraction') {
     return 1
   }
   if (isMoving.value) {
@@ -135,7 +145,7 @@ const showLayerGlass = computed(() =>
 )
 
 const showLayerFilter = computed(() =>
-  activeMode.value === 'blur' || activeMode.value === 'refraction',
+  activeMode.value === 'blur' || activeMode.value === 'refraction' || activeMode.value === 'acrylic',
 )
 
 const glassBorderRadius = computed(() => {
@@ -398,7 +408,7 @@ const baseRefractionMaskOpacity = computed(() => {
 })
 
 const refractionMaskReleaseProgress = computed(() => {
-  if (props.mode !== 'refraction' || !refractionRecovering.value) {
+  if (surfaceMode.value !== 'refraction' || !refractionRecovering.value) {
     return 1
   }
   const afterDelayElapsed = refractionRecoveryElapsed.value - refractionMaskReleaseDelayMs.value
@@ -430,7 +440,7 @@ const refractionRestMotionCoverOpacity = computed(() => {
 
 const layerMaskOpacity = computed(() => {
   if (activeMode.value === 'mask') {
-    const triggeredByFallback = (fallbackActive.value || (props.mode === 'refraction' && isMoving.value))
+    const triggeredByFallback = (fallbackActive.value || (surfaceMode.value === 'refraction' && isMoving.value))
       && props.fallbackMode === 'mask'
     if (triggeredByFallback) {
       return clamp(
@@ -440,6 +450,11 @@ const layerMaskOpacity = computed(() => {
       )
     }
     return clamp(toFinite(props.opacity, 0.75, ['opacity']), 0, 1)
+  }
+  // acrylic's tint layer: four-fifths of the `opacity` a mask surface takes, so the default
+  // 0.75 tints at 0.6 and the colour under the sheet still reads.
+  if (activeMode.value === 'acrylic') {
+    return clamp(toFinite(props.opacity, 0.75, ['opacity']), 0, 1) * 0.8
   }
   if (activeMode.value === 'refraction') {
     return refractionRestMaskOpacity.value
@@ -480,10 +495,12 @@ const showLayerRefractionEdge = computed(() => {
 })
 
 const showLayerMask = computed(() => {
-  if (activeMode.value === 'pure') {
+  const mode = activeMode.value
+  // Solid, mica and plain paint the root itself, or nothing; none of them has a veil.
+  if (mode === 'pure' || mode === 'flat' || mode === 'mica' || mode === 'plain') {
     return false
   }
-  if (activeMode.value === 'mask') {
+  if (mode === 'mask' || mode === 'acrylic') {
     return true
   }
   return layerMaskOpacity.value > 0
@@ -560,7 +577,9 @@ const cssVars = computed(() => {
   }
 
   if (showLayerFilter.value) {
-    vars['--tx-surface-filter-blur'] = `${Math.max(0, toFinite(props.blur, 10, ['blur']))}px`
+    // acrylic blurs three times as wide as blur: 30px from the default 10.
+    const blurScale = activeMode.value === 'acrylic' ? 3 : 1
+    vars['--tx-surface-filter-blur'] = `${Math.max(0, toFinite(props.blur, 10, ['blur'])) * blurScale}px`
     vars['--tx-surface-filter-saturation'] = `${Math.max(0, toFinite(props.filterSaturation, 1.5, ['filter-saturation', 'filterSaturation']))}`
     vars['--tx-surface-filter-contrast'] = `${Math.max(0, toFinite(props.filterContrast, 1, ['filter-contrast', 'filterContrast']))}`
     vars['--tx-surface-filter-brightness'] = `${Math.max(0, toFinite(props.filterBrightness, 1, ['filter-brightness', 'filterBrightness']))}`
@@ -635,14 +654,21 @@ const cssVars = computed(() => {
 
     // Every fake mode needs a concrete background, or the `::before` resolves
     // `background: var(--tx-surface-fake-bg)` to nothing for blur/glass/refraction
-    // and paints an empty layer. pure/mask keep their tuned opacity; the rest fall
-    // back to a solid fill.
+    // and paints an empty layer. pure and flat fill solid and mask keeps its tuned opacity.
+    // blur/acrylic/glass/refraction lay the colour under their material as a veil at
+    // `opacity`: a solid fill would leave their backdrop layers nothing to blur or
+    // refract but the fill itself. mica paints its own opaque base and plain paints
+    // nothing, so neither takes a veil.
     const mode = activeMode.value
     vars['--tx-surface-fake-bg'] = props.color || 'var(--tx-fill-color-lighter, #fafafa)'
-    if (mode === 'mask')
+    if (mode === 'pure' || mode === 'flat')
+      vars['--tx-surface-fake-opacity'] = '1'
+    else if (mode === 'mica' || mode === 'plain')
+      vars['--tx-surface-fake-opacity'] = '0'
+    else if (mode === 'mask')
       vars['--tx-surface-fake-opacity'] = String(layerMaskOpacity.value)
     else
-      vars['--tx-surface-fake-opacity'] = '1'
+      vars['--tx-surface-fake-opacity'] = String(clamp(toFinite(props.opacity, 0.75, ['opacity']), 0, 1))
   }
 
   return vars
@@ -653,6 +679,9 @@ const rootClasses = computed(() => {
   classes.push(`tx-base-surface--preset-${props.preset}`)
   classes.push(`tx-base-surface--${activeMode.value}`)
 
+  if (props.radius != null) {
+    classes.push('tx-base-surface--own-radius')
+  }
   if (showLayerGlass.value) {
     classes.push('tx-base-surface--with-glass')
   }

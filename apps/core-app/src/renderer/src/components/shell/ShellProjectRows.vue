@@ -204,7 +204,6 @@ onBeforeUnmount(disarm)
   min-height: var(--shell-row-min-height);
   border: 1px solid transparent;
   border-radius: var(--shell-radius-md);
-  transition: background-color 0.15s ease;
 
   &:hover:not(.active) {
     background: var(--shell-surface-2);
@@ -277,9 +276,7 @@ onBeforeUnmount(disarm)
   color: var(--shell-text-muted);
   cursor: pointer;
   opacity: 0;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease;
+  transition: opacity 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:focus-visible,
@@ -305,7 +302,6 @@ onBeforeUnmount(disarm)
   white-space: nowrap;
   transition:
     opacity 0.15s ease,
-    color 0.15s ease,
     width 0.18s ease,
     padding 0.18s ease;
 
@@ -328,9 +324,7 @@ onBeforeUnmount(disarm)
 /** Reduced motion swaps icon and label outright; the fade that reveals the button stays. */
 @media (prefers-reduced-motion: reduce) {
   .ShellProjectRows-Delete {
-    transition:
-      opacity 0.15s ease,
-      color 0.15s ease;
+    transition: opacity 0.15s ease;
   }
 }
 </style>

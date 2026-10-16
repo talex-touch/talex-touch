@@ -346,7 +346,7 @@ const placement = computed(() => placeTooltip({
   }
 
   &__value {
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     font-variant-numeric: tabular-nums;
   }
 

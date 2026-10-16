@@ -393,7 +393,7 @@ defineExpose({ replay, focus: () => {
   color: var(--tx-text-color-regular);
   font: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 18px;
   text-decoration: none;
   cursor: pointer;

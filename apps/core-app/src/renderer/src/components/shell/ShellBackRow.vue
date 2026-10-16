@@ -80,10 +80,6 @@ onBeforeUnmount(disposeCommand)
   text-align: left;
   cursor: pointer;
   user-select: none;
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover {

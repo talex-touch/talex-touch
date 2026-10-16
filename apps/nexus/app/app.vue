@@ -4,6 +4,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch,
 import NexusPwaManifest from '~/components/NexusPwaManifest.vue'
 import { sanitizeRedirect } from '~/composables/useOauthContext'
 import { appName, toastHostRequestedEvent } from '~/constants'
+import type { GlobalSearchRequest } from '~/utils/global-search-boot'
 
 const LazyToastContainer = defineAsyncComponent(() => import('~/components/ToastContainer.vue'))
 // Only protected routes ever render the two auth gates below, but a static TxEmptyState here
@@ -175,18 +176,57 @@ function handleGlobalSearchShortcut(event: KeyboardEvent) {
   const key = event.key.toLowerCase()
   if ((event.metaKey || event.ctrlKey) && key === 'k') {
     event.preventDefault()
-    void summonSearch(resolveGlobalSearchTrigger())
+    summonSearch(resolveGlobalSearchTrigger())
     return
   }
 
   if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key === '/') {
     event.preventDefault()
-    void summonSearch(resolveGlobalSearchTrigger())
+    summonSearch(resolveGlobalSearchTrigger())
   }
 }
 
 function mountToastHost() {
   toastHostMounted.value = true
+}
+
+function answerSearchRequest(request: GlobalSearchRequest) {
+  if (request === 'close')
+    closeSearch()
+  else if (!isAuthShellRoute.value)
+    summonSearch(resolveGlobalSearchTrigger())
+}
+
+// Requested by the first click instead, the palette's chunk queued behind the page's own modules
+// for over a second.
+if (import.meta.client)
+  void import('~/components/search/GlobalSearch.vue').catch(() => undefined)
+
+/**
+ * Answers the trigger and the shortcuts from here on, through the boot script in the document
+ * head (utils/global-search-boot.ts). The palette's boundary in the template resolves as it
+ * hydrates, while onMounted waits for every async component on the page: in local dev that came
+ * 1.5 s after the header could first be clicked, and the click opened nothing until then. Not
+ * taken over in setup: with the `await` above, a flush runs before this component first renders,
+ * so an early click mounted the palette into the hydration, where the server had rendered nothing.
+ * `forward` is missing from a page whose head predates it.
+ */
+function onSearchBoundaryResolved() {
+  window.__nexusSearchBoot?.forward?.(answerSearchRequest)
+}
+
+/**
+ * The app's own listeners take over from the boot script here. This used to close the search
+ * outright, which also threw away an open from a click on the header, live well before the rest
+ * of the page had loaded.
+ */
+function takeOverSearchBoot() {
+  const boot = window.__nexusSearchBoot
+  if (!boot)
+    return
+  boot.stop()
+  if (boot.intent)
+    answerSearchRequest(boot.intent)
 }
 
 onMounted(() => {
@@ -200,7 +240,7 @@ onMounted(() => {
     else
       void getSession()
   }
-  closeSearch()
+  takeOverSearchBoot()
   window.addEventListener('keydown', handleGlobalSearchShortcut)
   window.addEventListener(toastHostRequestedEvent, mountToastHost)
   void (async () => {
@@ -227,11 +267,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalSearchShortcut)
   window.removeEventListener(toastHostRequestedEvent, mountToastHost)
 })
-
-watch(
-  () => route.fullPath,
-  () => closeSearch(),
-)
 
 watch(
   docsRouteLocale,
@@ -498,9 +533,15 @@ watchEffect(() => {
   <NexusPwaManifest />
   <NuxtLoadingIndicator color="#ffffff" />
   <LazyToastContainer v-if="toastHostMounted" :class="{ dark: isAuthShellRoute }" />
-  <ClientOnly>
-    <LazySearchGlobalSearch v-if="!isAuthShellRoute && globalSearchOpen" />
-  </ClientOnly>
+  <!--
+    The palette's own Suspense. The page's waits for every async component, about 3 s on a cold
+    load, and holds back anything teleported under it until then, as the palette is to <body>.
+    This one has nothing to wait for and resolves as it hydrates, so the palette the host adds
+    later renders at once. Not <ClientOnly>, which only renders once the app has mounted.
+  -->
+  <Suspense v-if="!isAuthShellRoute" @resolve="onSearchBoundaryResolved">
+    <SearchGlobalSearchHost />
+  </Suspense>
   <template v-if="isProtectedRoute">
     <!--
       First thing a returning user sees on every protected route, and on a slow

@@ -270,10 +270,6 @@ function clearBinding(): void {
   line-height: 1;
   cursor: pointer;
 
-  transition:
-    color 0.2s,
-    background-color 0.2s;
-
   &:hover:not(:disabled) {
     color: var(--tx-text-color-primary);
     background-color: var(--tx-fill-color);

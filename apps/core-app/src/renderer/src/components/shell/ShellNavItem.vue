@@ -76,9 +76,6 @@ function activate(): void {
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover:not(.active) {

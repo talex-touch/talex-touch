@@ -44,7 +44,7 @@ export interface DropdownMenuProps {
   panelCard?: BaseAnchorPanelCardProps
 
   panelVariant?: 'solid' | 'dashed' | 'plain'
-  panelBackground?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction'
+  panelBackground?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'
   panelShadow?: 'none' | 'soft' | 'medium'
   panelRadius?: number
   panelPadding?: number
@@ -97,7 +97,7 @@ export interface DropdownSubmenuProps {
   panelCard?: BaseAnchorPanelCardProps
 
   panelVariant?: 'solid' | 'dashed' | 'plain'
-  panelBackground?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction'
+  panelBackground?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'
   panelShadow?: 'none' | 'soft' | 'medium'
   panelRadius?: number
   panelPadding?: number

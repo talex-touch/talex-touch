@@ -24,29 +24,33 @@ This second-derivative jump causes an optical crease under specular lighting or 
 
 ## The Superellipse Formula and Apple Smooth Corners
 
-Apple transitioned to the superellipse (Lamé curve) starting with iOS 7:
+Starting with iOS 7, Apple moved its app icons to "continuous corners", a shape usually approximated by a superellipse (Lamé curve):
 $$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \approx 4 \sim 5)$$
-By introducing an Euler spiral (Clothoid) transition between the flat edge and the corner, the rate of curvature change at the transition point stays exactly zero.
+For $n > 2$ the superellipse meets the straight edge with zero curvature, so the curvature carries across the joint ($G^2$); for $n > 3$ the rate of change of curvature is zero there too, and curvature climbs gently from 0 to its peak on the 45° diagonal.
+
+:::TuffDemoWrapper{demo="ConceptCurvatureCombDemo"}
+:::
 
 ## TuffEx Engineering Implementation
 
-In the Web and Electron environment, TuffEx implements G2 squircle corners through progressive enhancement:
+TuffEx draws superellipse corners with CSS `corner-shape`: `border-radius` sets how much of each edge the corner takes, and `superellipse(K)` has the exponent $n = 2^K$. `tx-squircle` grows the radius to $(1 + s) \cdot R$, then picks the exponent that cuts as deep along the 45° diagonal as a circular arc of radius R. The default $s = 0.6$ gives $1.6R$ and `superellipse(1.777)` ($n \approx 3.43$):
 
 :::TuffCodeBlock{lang="scss"}
 ---
 code: |
-  @mixin tx-squircle($radius: 16px) {
-    @supports (corner-shape: squircle) {
-      border-radius: $radius;
-      corner-shape: squircle;
-    }
-    @supports not (corner-shape: squircle) {
-      border-radius: $radius;
-      // Fitted smooth bezier curves or SVG Mask delivering superellipse profiles
-      clip-path: url("data:image/svg+xml,...");
+  // packages/tuffex/packages/components/style/mixins.scss
+  @mixin tx-squircle($radius: 16px, $smoothness: $tx-squircle-smoothness, $inset: 0) {
+    border-radius: tx-squircle-inset($radius, $inset);
+    @supports (corner-shape: superellipse(2)) {
+      border-radius: tx-squircle-inset(tx-squircle-radius($radius, $smoothness), $inset);
+      corner-shape: superellipse(#{tx-squircle-exponent($smoothness)});
     }
   }
 ---
 :::
 
-On large floating cards and CoreBox windows, G2 continuity eliminates harsh corner breaks and ensures refracted borders merge seamlessly into the canvas.
+- **Fallback**: browsers without `corner-shape` (Safari, Firefox) keep the plain radius. TuffEx does not reshape them with an SVG mask: a mask clips the outer shadow and leaves a `backdrop-filter` inside nothing to sample, which breaks the default refraction material.
+- **Tokens and utility classes**: code that cannot include the mixin reads `--tx-corner-smooth-scale` and `--tx-corner-smooth-shape`; templates can use `.tx-corner-smooth-sm`, `-md` and `-lg` (8 / 16 / 24px).
+- **Child layers**: a layer that copies the outline with `border-radius: inherit` also needs `corner-shape: inherit`, because the property does not inherit. A layer that sits inside a border or padding cannot inherit at all: pass that distance to `tx-squircle` as `$inset`, which takes it off the radius and keeps the layer concentric with its host.
+
+TxCard, TxModal, TxCommandPalette, TxFlipOverlay and the dialogs already use smooth corners, as does CoreBox with its rounded appearance, so refracted edges follow one continuous curve.

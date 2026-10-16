@@ -431,6 +431,8 @@ watch(
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-gradual-blur {
   position: absolute;
   inset: auto;
@@ -450,5 +452,12 @@ watch(
 
 .tx-gradual-blur__slot {
   position: relative;
+}
+
+// High contrast frosts nothing: what lies under the edge stays sharp.
+.tx-gradual-blur__inner {
+  @include tx-when-high-contrast {
+    display: none;
+  }
 }
 </style>

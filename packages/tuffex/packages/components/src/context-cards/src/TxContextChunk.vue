@@ -187,7 +187,7 @@ function onSourceClick(event: MouseEvent) {
     align-items: center;
     min-width: 0;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink, #1f2124);
   }
 
@@ -230,7 +230,7 @@ function onSourceClick(event: MouseEvent) {
     max-width: 100%;
     padding: 0 8px;
     font-size: 12px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink-2, #62656b);
     text-decoration: none;
     background: var(--tx-bui-inset, #f7f8f9);
@@ -240,8 +240,7 @@ function onSourceClick(event: MouseEvent) {
     transform: scale(0.95);
     transition:
       opacity 300ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-      transform 300ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-      background-color 300ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+      transform 300ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
     &.is-settled {
       opacity: 1;

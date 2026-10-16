@@ -403,7 +403,6 @@ onUnmounted(() => {
     display: inline-flex;
     align-items: center;
     gap: 0.16rem;
-    transition: color 0.2s ease;
 
     &:hover {
       color: var(--tx-color-primary);

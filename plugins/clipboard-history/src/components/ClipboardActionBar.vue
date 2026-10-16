@@ -172,11 +172,7 @@ onBeforeUnmount(disarmDelete)
   background: color-mix(in srgb, var(--clipboard-surface-strong) 90%, transparent);
   color: var(--clipboard-text-primary);
   cursor: pointer;
-  transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease;
+  transition: box-shadow 0.18s ease;
 }
 
 .surface-button:hover:enabled {
@@ -217,10 +213,6 @@ onBeforeUnmount(disarmDelete)
   background: color-mix(in srgb, var(--clipboard-surface-strong) 90%, transparent);
   color: var(--clipboard-text-secondary);
   cursor: pointer;
-  transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease;
 }
 
 .icon-button:hover:enabled {

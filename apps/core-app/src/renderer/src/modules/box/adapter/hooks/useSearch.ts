@@ -369,9 +369,14 @@ function mergePluginFeatureActivationState(
   })
 }
 
+export interface UseSearchOptions {
+  hasPreview?: Ref<boolean> | ComputedRef<boolean>
+}
+
 export function useSearch(
   boxOptions: IBoxOptions,
-  clipboardOptions?: IClipboardOptions
+  clipboardOptions?: IClipboardOptions,
+  searchOptions?: UseSearchOptions
 ): IUseSearch {
   const shouldLog = () =>
     appSetting.searchEngine?.logsEnabled || appSetting.diagnostics?.verboseLogs
@@ -2243,7 +2248,13 @@ export function useSearch(
     }
   }
 
-  useResize({ results: res, activeActivations, loading, recommendationPending })
+  useResize({
+    results: res,
+    activeActivations,
+    loading,
+    recommendationPending,
+    hasPreview: searchOptions?.hasPreview
+  })
 
   watch(
     () => res.value.length,

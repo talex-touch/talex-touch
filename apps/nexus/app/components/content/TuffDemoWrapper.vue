@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type ComponentPublicInstance, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { DEMO_LAZY_ROOT_MARGIN, shouldActivateDemo } from './demo-lazy'
+import { queueDemoActivation, shouldActivateDemo } from './demo-lazy'
 import { loadDemoComponent } from './demo-component-loader'
 
 interface DemoWrapperProps {
@@ -52,7 +52,6 @@ const resolvedCode = computed(() => {
 const hasCode = computed(() => Boolean(resolvedCode.value))
 const showCode = ref(false)
 const demoRenderKey = ref(0)
-const wrapperRef = ref<HTMLElement | null>(null)
 const isDemoActive = ref(false)
 const demoInstanceRef = ref<DemoResetController | null>(null)
 const isResetting = ref(false)
@@ -113,51 +112,34 @@ function handleDemoInstanceChange(instance: DemoResetController | null) {
   demoInstanceRef.value = instance
 }
 
-let visibilityObserver: IntersectionObserver | null = null
-
-function disconnectVisibilityObserver() {
-  visibilityObserver?.disconnect()
-  visibilityObserver = null
-}
+let cancelQueuedActivation: (() => void) | null = null
 
 function activateDemo() {
+  cancelQueuedActivation = null
   if (!shouldActivateDemo({ demo: props.demo, isActive: isDemoActive.value }))
     return
 
-  // Fetch this demo in parallel with its renderer, without loading a global registry.
-  if (import.meta.client)
-    void loadDemoComponent(props.demo).catch(() => {})
-
   isDemoActive.value = true
-  disconnectVisibilityObserver()
 }
 
 onMounted(() => {
   if (!props.demo)
     return
 
-  const target = wrapperRef.value
-  if (!target || !('IntersectionObserver' in window)) {
-    activateDemo()
-    return
-  }
-
-  visibilityObserver = new IntersectionObserver(
-    (entries) => {
-      if (entries.some(entry => entry.isIntersecting))
-        activateDemo()
-    },
-    { rootMargin: DEMO_LAZY_ROOT_MARGIN },
-  )
-  visibilityObserver.observe(target)
+  // Fetch this demo in parallel with its renderer, without loading a global registry.
+  void loadDemoComponent(props.demo).catch(() => {})
+  cancelQueuedActivation = queueDemoActivation(activateDemo)
 })
 
-onBeforeUnmount(disconnectVisibilityObserver)
+onBeforeUnmount(() => {
+  cancelQueuedActivation?.()
+  cancelQueuedActivation = null
+})
 
 </script>
 
 <template>
-  <section ref="wrapperRef" class="tuff-demo">
+  <section class="tuff-demo">
     <header v-if="props.title || props.description" class="tuff-demo__header">
       <h3 v-if="props.title" class="tuff-demo__title">
         {{ props.title }}

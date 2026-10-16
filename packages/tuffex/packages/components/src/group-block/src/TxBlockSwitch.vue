@@ -19,6 +19,7 @@ import type { BlockSwitchEmits, BlockSwitchProps } from './types'
  * @component
  */
 import { computed } from 'vue'
+import { TuffIcon } from '../../icon'
 import TuffSwitch from '../../switch'
 import TxBlockSlot from './TxBlockSlot.vue'
 
@@ -91,7 +92,7 @@ function handleClick(event: MouseEvent): void {
       </div>
     </template>
     <template v-else>
-      <i class="tx-block-switch__guidance i-carbon-chevron-right" aria-hidden="true" />
+      <TuffIcon name="chevron-right" class="tx-block-switch__guidance" />
     </template>
   </TxBlockSlot>
 </template>

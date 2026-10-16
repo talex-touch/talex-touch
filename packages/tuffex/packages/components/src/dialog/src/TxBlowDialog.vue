@@ -195,6 +195,8 @@ provide('destroy', destroy)
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 @keyframes tx-blow-dialog-fade-in {
   0% {
     opacity: 0;
@@ -226,6 +228,11 @@ provide('destroy', destroy)
   transition: opacity 0.5s;
   animation: tx-blow-dialog-fade-in 0.5s;
 
+  // High contrast keeps the dimming and drops the frost.
+  @include tx-when-high-contrast {
+    backdrop-filter: none;
+  }
+
   &--closing {
     opacity: 0;
 
@@ -251,7 +258,6 @@ provide('destroy', destroy)
     max-height: 100%;
     // The height comes from the spacing rhythm, not a floor: a floor left a hole between the message and the action.
     padding: 32px 24px 24px;
-    border-radius: 18px;
     border: 1px solid color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 72%, transparent);
     background: var(--tx-bg-color-overlay, #fff);
     box-shadow:
@@ -261,13 +267,14 @@ provide('destroy', destroy)
     box-sizing: border-box;
     transition: transform 0.5s, opacity 0.5s;
     animation: tx-blow-dialog-scale 0.5s;
+    @include tx-squircle(18px);
   }
 
   // Title / message / action: three steps, each one clearly under the last.
   &__title {
     margin: 0;
     font-size: 17px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     line-height: 1.3;
     letter-spacing: -0.01em;
     text-align: center;

@@ -207,7 +207,6 @@ onBeforeUnmount(() => {
     border-radius: 8px;
     background: var(--tx-fill-color-blank, #fff);
     cursor: zoom-in;
-    transition: border-color 0.15s ease;
 
     &:hover {
       border-color: var(--tx-border-color, #dcdfe6);
@@ -282,7 +281,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   padding: 48px;
-  background: color-mix(in srgb, #000 55%, transparent);
+  background: color-mix(in srgb, var(--tx-color-black, #000) 55%, transparent);
   animation: tx-mermaid-fade 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -308,8 +307,8 @@ onBeforeUnmount(() => {
   height: 34px;
   border: none;
   border-radius: 999px;
-  background: color-mix(in srgb, #000 40%, transparent);
-  color: #fff;
+  background: color-mix(in srgb, var(--tx-color-black, #000) 40%, transparent);
+  color: var(--tx-color-white, #fff);
   font-size: 19px;
   line-height: 1;
   cursor: pointer;

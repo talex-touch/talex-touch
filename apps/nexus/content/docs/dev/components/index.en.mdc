@@ -29,10 +29,10 @@ Tuffex (`@talex-touch/tuffex`) is the Vue 3 component library behind CoreBox, pl
 
 | Suite | Groups | Pages | Entry |
 |-------|--------|-------|-------|
-| [Concepts](./index.en.mdc) | Installation, design rules, helpers | 8 | Documentation only |
+| [Concepts](./index.en.mdc) | Installation, design rules, concepts manual, helpers | 27 | Documentation only |
 | [Templates](./template-shell.en.mdc) | App shells / Content / AI apps / Data & flow | 16 | Compositions of existing entries |
 | [Basics Suite](./base-suite.en.mdc) | General / Form / Layout / Navigation / Data Display / Feedback / Status & Empty | 95 | `@talex-touch/tuffex/base` |
-| [Pro Suite](./pro-suite.en.mdc) | Interaction / Effects / Primitives | 39 | `@talex-touch/tuffex/pro` |
+| [Pro Suite](./pro-suite.en.mdc) | Interaction / Effects / Primitives | 40 | `@talex-touch/tuffex/pro` |
 | [AI Suite](./ai-suite.en.mdc) | Chat / Agents / Reasoning / Context & Insight | 36 | `@talex-touch/tuffex/ai` |
 | [Data Suite](./data-suite.en.mdc) | Charts / Visualization | 12 | `@talex-touch/tuffex/pro` + `/charts` |
 | [Flow Suite](./flow-suite.en.mdc) | Flow | 1 | `@talex-touch/tuffex/ai` |

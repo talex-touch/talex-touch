@@ -259,6 +259,8 @@ async function forClose(): Promise<void> {
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 @keyframes tx-bottom-dialog-enter {
   0% {
     opacity: 0;
@@ -295,7 +297,6 @@ async function forClose(): Promise<void> {
   padding: 20px;
   box-sizing: border-box;
 
-  border-radius: 24px;
   // Opaque on purpose: the sheet slides over live content, and
   // `--tx-fill-color-blank` is transparent in the dark block.
   background: var(--tx-bg-color, #fff);
@@ -306,6 +307,7 @@ async function forClose(): Promise<void> {
   animation: tx-bottom-dialog-enter 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
   overflow: hidden;
   transition: transform 0.25s, opacity 0.25s;
+  @include tx-squircle(24px);
 
   &__container {
     display: flex;
@@ -332,7 +334,7 @@ async function forClose(): Promise<void> {
     // the dialog is rendered without a title.
     margin-right: auto;
     font-size: 18px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     letter-spacing: -0.01em;
     line-height: 1.2;
   }
@@ -410,7 +412,7 @@ async function forClose(): Promise<void> {
     color: var(--tx-text-color-primary, #303133);
     font-family: inherit;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     line-height: 1.2;
     text-align: left;
     cursor: pointer;

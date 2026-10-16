@@ -161,7 +161,7 @@ function handlePin() {
   border-radius: 4px;
   cursor: pointer;
   color: var(--tx-text-color-regular);
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease;
 
   i {
     font-size: 16px;

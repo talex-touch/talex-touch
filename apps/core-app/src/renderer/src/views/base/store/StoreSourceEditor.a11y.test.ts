@@ -105,9 +105,9 @@ describe('the source delete control is a real button', () => {
    */
   it('两处删除控件都是 button —— 第二处被 isAdvancedMode 硬编码挡着,只能查源码', () => {
     const source = readFileSync(path.join(__dirname, 'StoreSourceEditor.vue'), 'utf8')
-    const controls = source.match(/class="transition-cubic action-btn"/g) ?? []
+    const controls = source.match(/class="action-btn"/g) ?? []
     const asButton = source.match(/<button\s+type="button"/g) ?? []
-    const asDiv = source.match(/<div[^>]*class="transition-cubic action-btn"/g) ?? []
+    const asDiv = source.match(/<div[^>]*class="action-btn"/g) ?? []
 
     expect(controls).toHaveLength(2)
     expect(asButton.length).toBeGreaterThanOrEqual(2)

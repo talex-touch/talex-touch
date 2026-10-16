@@ -268,7 +268,6 @@ function resolveCategoryLabel(category: { tag: string; label?: string }): string
 
   &.clickable {
     cursor: pointer;
-    transition: all 0.2s ease;
 
     &:hover {
       background: var(--tx-fill-color);

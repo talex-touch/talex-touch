@@ -95,7 +95,7 @@ function handleSelect() {
 .tx-agent-item__name {
   display: inline-block;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-primary, #111827);
   white-space: nowrap;
   overflow: hidden;
@@ -113,7 +113,7 @@ function handleSelect() {
 
 .tx-agent-item__badge {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
   border: 1px solid var(--tx-border-color-lighter, #e5e7eb);

@@ -313,8 +313,8 @@ const legend = computed(() => data.value.items?.map((item, index) => ({ key: `it
   &.is-compact { padding: 12px; border-radius: 20px; }
   &__header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
   &__summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
-  &__title { flex-basis: 100%; font-weight: 500; }
-  &__metric { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  &__title { flex-basis: 100%; font-weight: var(--tx-font-weight-medium, 500); }
+  &__metric { font-size: 22px; font-weight: var(--tx-font-weight-semibold, 600); font-variant-numeric: tabular-nums; }
   &__detail { color: var(--tx-text-color-regular, #606266); font-size: 12px; }
   &__controls, &__switch { display: flex; flex-wrap: wrap; gap: 3px; }
   &__switch { padding: 3px; border-radius: 16px; background: var(--tx-fill-color-light, #f5f7fa); }
@@ -329,11 +329,11 @@ const legend = computed(() => data.value.items?.map((item, index) => ({ key: `it
   &__mark { cursor: pointer; transform-box: fill-box; transform-origin: center; }
   &__mark.is-highlighted { filter: drop-shadow(0 0 2px var(--tx-chart-grid-line, var(--tx-border-color, #dcdfe6))); }
   &__center-content { display: flex; flex-direction: column; text-align: center; gap: 4px; font-size: 12px; }
-  &__center-content strong { font-size: 18px; font-weight: 600; }
+  &__center-content strong { font-size: 18px; font-weight: var(--tx-font-weight-semibold, 600); }
   &__center-content span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   &__tooltip { pointer-events: none; position: absolute; z-index: 2; max-width: calc(100% - 20px); padding: 8px 10px; border-radius: 10px; color: var(--tx-text-color-primary, #303133); background: var(--tx-bg-color, #fff); box-shadow: 0 0 0 1px var(--tx-border-color, #dcdfe6), 2px 4px 12px var(--tx-chart-grid-line, #dcdfe6); display: flex; flex-direction: column; gap: 5px; }
   &__tooltip > span { display: flex; gap: 20px; justify-content: space-between; }
-  &__tooltip b, &__tooltip strong { font-weight: 500; }
+  &__tooltip b, &__tooltip strong { font-weight: var(--tx-font-weight-medium, 500); }
   &__legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 8px; }
   &__legend button { display: flex; gap: 6px; font-size: 12px; }
   &__density { display: flex; gap: 4px; justify-content: flex-end; align-items: center; margin-top: 8px; font-size: 12px; }
@@ -351,11 +351,14 @@ const legend = computed(() => data.value.items?.map((item, index) => ({ key: `it
   &__repo-panel li img { width: 24px; height: 24px; border-radius: 50%; }
   &__repo-panel li span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
   &__repo-panel li span.tx-mono-chart__avatar-initial { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--tx-fill-color, #f0f2f5); }
-  &__repo-panel li strong { font-weight: 500; }
+  &__repo-panel li strong { font-weight: var(--tx-font-weight-medium, 500); }
   &__status { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 8px; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .tx-mono-chart.is-active .tx-mono-chart__repo-panel { transition: grid-template-rows 320ms ease; }
+  // Closing holds `visibility` until the track has shut: hidden at once, the rows vanished
+  // and left an empty box closing on its own.
+  .tx-mono-chart.is-active .tx-mono-chart__repo-panel { transition: grid-template-rows 320ms ease, visibility 0s 320ms; }
+  .tx-mono-chart.is-active .tx-mono-chart__repo-panel.is-open { transition-delay: 0s; }
   .tx-mono-chart.is-active .tx-mono-chart__mark { transition: transform 200ms ease; }
   .tx-mono-chart[data-variant='mono-rounded-donut'] .tx-mono-chart__mark.is-highlighted { transform-box: view-box; transform: scale(1.05); }
   .tx-mono-chart[data-variant^='mono-activity-'] .tx-mono-chart__mark.is-highlighted,

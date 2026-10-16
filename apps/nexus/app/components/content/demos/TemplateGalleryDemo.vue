@@ -599,6 +599,7 @@ const copy = computed(() => zh.value
       emptyAction: '浏览全部作品',
       toastLabel: '操作结果',
       dismiss: '关闭提示',
+      close: '关闭',
       side: { works: '作品', likes: '喜欢', rating: '平均评分', contributors: '创作者', tags: '热门标签', upload: '投稿' },
       detail: {
         by: (date: string) => `发布于 ${date}`,
@@ -664,6 +665,7 @@ const copy = computed(() => zh.value
       emptyAction: 'Browse everything',
       toastLabel: 'Result',
       dismiss: 'Dismiss',
+      close: 'Close',
       side: { works: 'Pieces', likes: 'Likes', rating: 'Avg. rating', contributors: 'Creators', tags: 'Popular tags', upload: 'Submit' },
       detail: {
         by: (date: string) => `Published ${date}`,
@@ -1389,7 +1391,7 @@ onBeforeUnmount(() => {
           </div>
         </aside>
 
-        <TxModal v-model="detailOpen" :title="current ? L(current.title) : ''" width="min(960px, calc(100vw - 48px))">
+        <TxModal v-model="detailOpen" :title="current ? L(current.title) : ''" :close-label="copy.close" width="min(960px, calc(100vw - 48px))">
           <div v-if="current" ref="detailRef" class="gallery-detail" tabindex="-1" @keydown="onDetailKeydown">
             <div class="gallery-detail__media">
               <div class="gallery-detail__stage">

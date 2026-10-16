@@ -10,7 +10,10 @@ import { buildDocOutlineFromBody, buildDocOutlineTree, type DocTocEntry } from '
 import { buildDocsSeoHead, normalizeDocsSeoCanonicalPath } from '~/utils/docs-seo'
 import { DOCS_SOURCE_PATH_KEY } from '~/utils/docs-source-path'
 import { useTypedFetch } from '~/utils/request'
-import { normalizeDocsPagePath, resolveDocsLocaleFromRoute, toLocalizedDocsPath } from '#shared/utils/docs-path'
+import { CONCEPTS_MANUAL_PATH, CONCEPTS_MANUAL_READING_ORDER, isConceptsManualPath } from '~/utils/docs-concepts-manual'
+import { canonicalDocsPageIdentity, normalizeDocsPagePath, resolveDocsLocaleFromRoute, toLocalizedDocsPath } from '#shared/utils/docs-path'
+// Formulas arrive as KaTeX markup rendered when the page was parsed (utils/remark-math.ts).
+import 'katex/dist/katex.min.css'
 
 // Two retries, then the reader gets an error with a retry button instead of a blank page.
 // The API behind this is dynamic and has been measured resetting connections on slow links,
@@ -95,7 +98,12 @@ const shouldSplitDocBody = computed(() => shouldSplitDocsPageBody(activeRoutePat
 // complete response too, without a metadata round trip or an idle timer.
 const DOCS_PAGE_RENDER_BODY_MODE = '1'
 const currentDocsPageFetchKey = computed(() => `${DOCS_CURRENT_PAGE_FETCH_KEY_PREFIX}:${docPath.value}:${docsLocale.value}:${DOCS_PAGE_RENDER_BODY_MODE}`)
-const docsNavigationScope = computed(() => (docPath.value.includes('/docs/dev/components') ? 'components' : undefined))
+// The concepts handbook shows in the components sidebar, so it asks for the same scope DocsSidebar does.
+const docsNavigationScope = computed(() => (
+  docPath.value.includes('/docs/dev/components') || isConceptsManualPath(docPath.value)
+    ? 'components'
+    : undefined
+))
 const docsNavigationEndpoint = computed(() => `/api/docs/navigation/${docsLocale.value}/${docsNavigationScope.value ?? 'all'}`)
 
 function normalizeContentPath(path: string | null | undefined) {
@@ -643,6 +651,8 @@ const docScope = computed(() => {
   return {
     path: normalizedPath,
     isComponent: normalizedPath.includes('/docs/dev/components'),
+    // The concepts handbook: listed with the components, though it lives under `/docs/dev`.
+    isConcept: isConceptsManualPath(normalizedPath),
     isExtension: normalizedPath.includes('/docs/dev/extensions'),
     isGuide: normalizedPath.startsWith('/docs/guide'),
     isDev: normalizedPath.startsWith('/docs/dev'),
@@ -661,7 +671,7 @@ const docDisplayDescription = computed(() =>
 )
 
 const heroBreadcrumbs = computed(() => {
-  const isComponentDoc = docScope.value.isComponent
+  const isComponentDoc = docScope.value.isComponent || docScope.value.isConcept
   const prefixLabel = isComponentDoc
     ? (isZhDocs.value ? '组件' : 'Components')
     : (isZhDocs.value ? '文档' : 'Docs')
@@ -671,6 +681,8 @@ const heroBreadcrumbs = computed(() => {
   const label = docDisplayTitle.value || categoryLabel
   const normalized = docScope.value.path
   const crumbs = [{ label: prefixLabel, path: prefixPath }]
+  if (docScope.value.isConcept && canonicalDocsPageIdentity(normalized) !== CONCEPTS_MANUAL_PATH)
+    crumbs.push({ label: t('docsSidebar.conceptsManual'), path: CONCEPTS_MANUAL_PATH })
   if (label)
     crumbs.push({ label, path: normalized ?? undefined })
   return crumbs
@@ -692,6 +704,8 @@ const heroSinceLabel = computed(() => {
   const raw = docMeta.value?.since ?? docMeta.value?.meta?.since
   const fallback = (() => {
     if (isZhDocs.value) {
+      if (docScope.value.isConcept)
+        return '设计理念'
       if (docScope.value.isComponent)
         return '通用组件'
       if (docScope.value.isExtension)
@@ -702,6 +716,8 @@ const heroSinceLabel = computed(() => {
         return '通用开发'
       return '通用文档'
     }
+    if (docScope.value.isConcept)
+      return 'Design Concept'
     if (docScope.value.isComponent)
       return 'Universal Component'
     if (docScope.value.isExtension)
@@ -799,12 +815,34 @@ const navigationSections = computed(() => {
   return items
 })
 
+// The handbook reads in its index's group order, the one the sidebar shows, not the
+// tree's alphabetical one; a page missing from the groups follows them in tree order.
+function conceptsManualPager(sections: any[], currentPath: string) {
+  const nodes = collectSectionPages(sections.find(section => normalizeContentPath(section.path) === CONCEPTS_MANUAL_PATH))
+  const ordered = CONCEPTS_MANUAL_READING_ORDER.map(path => nodes.find(node => canonicalDocsPageIdentity(node.path) === path))
+  const seen = new Set<string>()
+  const pages = [...ordered, ...nodes].filter((node) => {
+    const identity = node ? canonicalDocsPageIdentity(node.path) : ''
+    if (!identity || seen.has(identity))
+      return false
+    seen.add(identity)
+    return true
+  })
+  const index = pages.findIndex(page => canonicalDocsPageIdentity(page.path) === canonicalDocsPageIdentity(currentPath))
+  if (index === -1)
+    return { prev: null, next: null, sectionTitle: null }
+  return { prev: pages[index - 1] ?? null, next: pages[index + 1] ?? null, sectionTitle: t('docsSidebar.conceptsManual') }
+}
+
 const docPager = computed(() => {
   const sections = navigationSections.value
   const currentPath = normalizedDocPath.value
 
   if (!sections.length || !currentPath)
     return { prev: null, next: null, sectionTitle: null }
+
+  if (isConceptsManualPath(currentPath))
+    return conceptsManualPager(sections, currentPath)
 
   for (const section of sections) {
     const pages = collectSectionPages(section)
@@ -2535,8 +2573,6 @@ a.docs-hero-crumb:hover {
 
 
 :deep(.docs-prose) {
-  content-visibility: auto;
-  contain-intrinsic-size: 1200px;
   --tw-prose-body: var(--docs-ink);
   --tw-prose-headings: var(--docs-ink);
   --tw-prose-lead: var(--docs-muted);
@@ -2737,6 +2773,13 @@ a.docs-hero-crumb:hover {
 :deep(.docs-prose pre:not(.tuff-code-block__pre) .docs-code-copy:disabled) {
   opacity: 0.5;
   cursor: default;
+}
+
+/* A long formula scrolls inside its own line instead of widening the page. */
+:deep(.docs-prose .katex-display) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
 }
 
 :deep(.docs-prose .docs-mermaid) {

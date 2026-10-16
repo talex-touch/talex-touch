@@ -87,7 +87,7 @@ const anchorAnimation = computed(() => ({
   scale: props.variant === 'yui-context-menu' ? 0.88 : props.variant === 'yui-glance-preview' ? 0.92 : ['question-tooltip', 'yui-hover-link'].includes(props.variant) ? 0.9 : 0.95,
   distance: 6, blur: 0,
 }))
-const tooltipAnchor = computed(() => ({ placement: 'top' as const, offset: 8, animation: anchorAnimation.value, panelBackground: 'pure' as const }))
+const tooltipAnchor = computed(() => ({ placement: 'top' as const, offset: 8, animation: anchorAnimation.value }))
 const tabsAnimation = computed(() => ({
   size: motion.value, nav: motion.value,
   indicator: { enabled: motion.value, durationMs: props.variant === 'frequency-selector' ? 500 : ['yui-ab-tabs', 'yui-date-position'].includes(props.variant) ? 400 : 350, easing: spring.easing },
@@ -188,7 +188,7 @@ function focusFrequency() {
 
 <template>
   <div ref="root" class="tx-motion-control" :class="[`tx-motion-control--${variant}`, `tx-motion-control--${size}`, { 'is-motion': motion, 'is-disabled': disabled, 'is-selected': !!value, 'is-loading': status === 'loading', 'has-panels': !!slots.panel, 'is-dots-a': dotsPulse === 1, 'is-dots-b': dotsPulse === 2 }]" :style="springStyle" :data-variant="variant" @keydown="counterKey">
-    <TxSelect v-if="variant === 'yui-category-select'" :model-value="typeof value === 'boolean' ? '' : value" :options="choices" :disabled="disabled" :placeholder="label || labels.choose" :aria-label="label || labels.choose" :empty-text="labels.choose" :animation="anchorAnimation" panel-background="pure" :panel-radius="16" @update:model-value="selectCategory" />
+    <TxSelect v-if="variant === 'yui-category-select'" :model-value="typeof value === 'boolean' ? '' : value" :options="choices" :disabled="disabled" :placeholder="label || labels.choose" :aria-label="label || labels.choose" :empty-text="labels.choose" :animation="anchorAnimation" :panel-radius="16" @update:model-value="selectCategory" />
 
     <div v-else-if="variant === 'frequency-selector'" class="tx-motion-control__frequency" :class="{ 'is-expanded': expanded }" @keydown.esc.stop="setOpen(false)">
       <span class="tx-motion-control__frequency-label">{{ label || labels.frequency }}</span>
@@ -247,7 +247,7 @@ function focusFrequency() {
       </div>
     </div>
 
-    <TxContextMenu v-else-if="variant === 'yui-context-menu'" v-model="expanded" trigger="both" anchor-mode="reference" :disabled="disabled" :width="180" panel-background="pure" :panel-radius="16" :animation="anchorAnimation">
+    <TxContextMenu v-else-if="variant === 'yui-context-menu'" v-model="expanded" trigger="both" anchor-mode="reference" :disabled="disabled" :width="180" :panel-radius="16" :animation="anchorAnimation">
       <template #trigger>
 <button type="button" class="tx-motion-control__button" :disabled="disabled">
 {{ label || labels.actions }}<MotionControlIcon name="down" />
@@ -260,7 +260,7 @@ function focusFrequency() {
 </template>
     </TxContextMenu>
 
-    <TxDropdownMenu v-else-if="variant === 'yui-submenu-flyout' || variant === 'menu-dots-expand'" v-model="expanded" :placement="variant === 'yui-submenu-flyout' ? 'right-start' : 'bottom-start'" :min-width="160" panel-background="pure" :panel-radius="16" :animation="anchorAnimation">
+    <TxDropdownMenu v-else-if="variant === 'yui-submenu-flyout' || variant === 'menu-dots-expand'" v-model="expanded" :placement="variant === 'yui-submenu-flyout' ? 'right-start' : 'bottom-start'" :min-width="160" :panel-radius="16" :animation="anchorAnimation">
       <template #trigger>
 <button type="button" class="tx-motion-control__button" :class="{ 'tx-motion-control__icon-button': variant === 'menu-dots-expand' }" :disabled="disabled" :aria-label="label || labels.actions" aria-haspopup="menu" :aria-expanded="expanded" @click="replayDots">
 <span v-if="variant === 'yui-submenu-flyout'">{{ label || labels.details }}</span><MotionControlIcon :name="variant === 'menu-dots-expand' ? 'dots' : 'forward'" />
@@ -388,8 +388,13 @@ function focusFrequency() {
   &--sm { --tx-mc-height: 30px; --tx-mc-pad: 10px; --tx-mc-radius: 12px; }
   &--lg { --tx-mc-height: 42px; --tx-mc-pad: 18px; --tx-mc-radius: 16px; }
   :deep(.tx-tabs) { flex-direction: column; gap: 0; background: transparent; min-width: 0; }
-  :deep(.tx-tabs__nav) { width: auto; min-width: 0; max-width: 100%; padding: 3px; border-radius: var(--tx-mc-radius); background: var(--tx-fill-color-light); }
-  :deep(.tx-tab-item) { margin: 0; min-height: var(--tx-mc-height); padding: 4px var(--tx-mc-pad); border-radius: calc(var(--tx-mc-radius) - 3px); }
+  :deep(.tx-tabs__nav) { width: auto; min-width: 0; max-width: 100%; padding: 0; border-radius: var(--tx-mc-radius); background: var(--tx-fill-color-light); }
+  // The track's 3px goes on the tablist in place of TxTabs' own 6px 8px, and the divider
+  // TxTabs draws under a top nav comes off, so 3px is the whole gap around the items and
+  // their `- 3px` radius stays concentric with the track.
+  :deep(.tx-tabs .tx-tabs__nav) { border-bottom: 0; }
+  :deep(.tx-tabs .tx-tabs__nav-inner) { padding: 3px; }
+  :deep(.tx-tab-item) { margin: 0;min-height: var(--tx-mc-height); padding: 4px var(--tx-mc-pad); border-radius: calc(var(--tx-mc-radius) - 3px); }
   &:not(.has-panels) :deep(.tx-tabs__main) { display: none; }
   :deep(.tx-tab-item__name) { font-size: 13px; }
   :deep(.tx-tabs__pointer) { background: var(--tx-fill-color); }
@@ -414,7 +419,8 @@ function focusFrequency() {
 .tx-motion-control__counter.is-simple .tx-motion-control__button:active:not(:disabled), .tx-motion-control__pip:active:not(:disabled) { scale: .92; }
 .tx-motion-control__theme-toggle:active:not(:disabled), .tx-motion-control__hint:active:not(:disabled), .tx-motion-control__step-node:active:not(:disabled) { scale: .9; }
 .tx-motion-control__magnetic:active:not(:disabled) { scale: .95; }
-.tx-motion-control__frequency { display: flex; align-items: center; gap: 12px; padding: 6px; border-radius: 22px; background: var(--tx-fill-color-light); }
+// Concentric with what it holds at its 6px inset: the trigger, then the track, both at the control radius.
+.tx-motion-control__frequency { display: flex; align-items: center; gap: 12px; padding: 6px; border-radius: calc(var(--tx-mc-radius) + 6px); background: var(--tx-fill-color-light); }
 .tx-motion-control__frequency-label { padding-left: 8px; color: var(--tx-text-color-regular); }
 .tx-motion-control__frequency.is-expanded .tx-motion-control__frequency-label { opacity: .3; filter: blur(4px); }
 .tx-motion-control__frequency-options { display: flex; align-items: center; gap: 6px; }

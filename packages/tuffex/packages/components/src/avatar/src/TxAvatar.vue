@@ -173,7 +173,7 @@ function handleKeydown(ev: KeyboardEvent) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   letter-spacing: 0.02em;
   width: var(--tx-avatar-size, var(--tx-avatar-size-preset, auto));
   height: var(--tx-avatar-size, var(--tx-avatar-size-preset, auto));
@@ -259,7 +259,7 @@ function handleKeydown(ev: KeyboardEvent) {
   transform: scale(1.05);
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 60%, transparent),
-    2px 4px 12px color-mix(in srgb, #000 15%, transparent);
+    2px 4px 12px color-mix(in srgb, var(--tx-color-black, #000) 15%, transparent);
 }
 
 .tx-avatar__image {

@@ -4,6 +4,7 @@ import type { TransferEmits, TransferItem } from './types'
 import { computed, ref, watch } from 'vue'
 import { TxButton } from '../../button'
 import { TxCheckbox } from '../../checkbox'
+import { TxIcon } from '../../icon'
 import { TxInput } from '../../input'
 
 defineOptions({ name: 'TxTransfer' })
@@ -278,7 +279,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
         :aria-label="addAriaLabel"
         @click="handleAdd"
       >
-        <span class="i-carbon-chevron-right" />
+        <TxIcon name="chevron-right" />
         <span v-if="leftChecked.length > 0" class="tx-transfer__action-count">{{
           leftChecked.length
         }}</span>
@@ -291,7 +292,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
         :aria-label="removeAriaLabel"
         @click="handleRemove"
       >
-        <span class="i-carbon-chevron-left" />
+        <TxIcon name="chevron-left" />
         <span v-if="rightChecked.length > 0" class="tx-transfer__action-count">{{
           rightChecked.length
         }}</span>
@@ -345,7 +346,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
               :aria-label="`${moveUpAriaLabel}: ${item.label}`"
               @click="moveTarget(item.key, -1)"
             >
-              <span class="i-carbon-arrow-up" />
+              <TxIcon name="arrow-up" />
             </TxButton>
             <TxButton
               variant="ghost"
@@ -354,7 +355,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
               :aria-label="`${moveDownAriaLabel}: ${item.label}`"
               @click="moveTarget(item.key, 1)"
             >
-              <span class="i-carbon-arrow-down" />
+              <TxIcon name="arrow-down" />
             </TxButton>
           </div>
         </div>
@@ -397,7 +398,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
   padding: 10px 12px;
   border-bottom: 1px solid var(--tx-border-color-lighter, #ebeef5);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-primary, #303133);
 }
 
@@ -457,7 +458,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-secondary, #909399);
 }
 
@@ -469,7 +470,6 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
   border-radius: 8px;
   cursor: pointer;
   color: var(--tx-text-color-regular, #606266);
-  transition: background 0.2s ease;
 }
 
 .tx-transfer__item:hover:not(.is-disabled) {
@@ -515,7 +515,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
 .tx-transfer__action-btn.is-armed {
   border-color: var(--tx-color-primary, #409eff);
   background: var(--tx-color-primary, #409eff);
-  color: #ffffff;
+  color: var(--tx-color-on-primary, #fff);
 }
 
 .tx-transfer__action-btn:disabled {
@@ -524,7 +524,7 @@ function toggleSelectAll(side: 'source' | 'target', checked: boolean) {
 
 .tx-transfer__action-count {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 1;
 }
 

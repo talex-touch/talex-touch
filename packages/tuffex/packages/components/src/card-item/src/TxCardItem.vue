@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CardItemProps } from './types.ts'
 import { computed } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
   name: 'TxCardItem',
@@ -28,6 +29,9 @@ const props = withDefaults(defineProps<CardItemProps>(), {
 const emit = defineEmits<{
   (e: 'click', event: MouseEvent): void
 }>()
+
+// Turning active eases the row's fill and border; a hover repaints at once.
+const morphing = useMorphWindow(() => props.active, 180)
 
 function onActivateKey(event: KeyboardEvent) {
   // Only the row itself activates; ignore Enter/Space bubbling up from controls
@@ -65,6 +69,7 @@ const avatarStyle = computed(() => {
     :class="{
       'tx-card-item--clickable': clickable,
       'tx-card-item--active': active,
+      'is-morphing': morphing,
       'tx-card-item--disabled': disabled,
       'tx-card-item--no-left': !($slots.avatar || avatarUrl || iconClass || avatarText),
       'tx-card-item--center': align === 'center',
@@ -133,10 +138,20 @@ const avatarStyle = computed(() => {
   background: transparent;
 
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
     box-shadow 0.18s ease,
     opacity 0.18s ease;
+
+  &.is-morphing {
+    transition:
+      border-color 0.18s ease,
+      background-color 0.18s ease,
+      box-shadow 0.18s ease,
+      opacity 0.18s ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 }
 
 .tx-card-item--disabled {
@@ -229,7 +244,7 @@ const avatarStyle = computed(() => {
 
 .tx-card-item__avatar--text {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-card-item__main {
@@ -250,7 +265,7 @@ const avatarStyle = computed(() => {
 
 .tx-card-item__title {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 1.2;
   color: var(--tx-text-color-primary, #303133);
   white-space: nowrap;

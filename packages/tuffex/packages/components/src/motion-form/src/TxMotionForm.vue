@@ -437,7 +437,6 @@ defineExpose({ focus: focusControl, blur: () => {
         :status="isError ? 'error' : 'default'"
         :animation="dropdownAnimation"
         :empty-text="copy.noOptions"
-        panel-background="pure"
         :panel-radius="12"
         @update:model-value="update"
       >
@@ -470,7 +469,6 @@ defineExpose({ focus: focusControl, blur: () => {
           :placeholder="placeholder || copy.searchOptions"
           :empty-text="copy.noOptions"
           :animation="dropdownAnimation"
-          panel-background="pure"
           :panel-radius="12"
           @update:model-value="addOption"
         >
@@ -626,7 +624,7 @@ defineExpose({ focus: focusControl, blur: () => {
 .tx-motion-form--xs { --tx-mf-height: 26px; --tx-mf-choice: 16px; --tx-mf-radius: 8px; }
 .tx-motion-form--sm { --tx-mf-height: 30px; --tx-mf-choice: 18px; --tx-mf-radius: 10px; }
 .tx-motion-form--lg { --tx-mf-height: 42px; --tx-mf-choice: 24px; }
-.tx-motion-form__label { font-size: 13px; font-weight: 500; line-height: 1.4; }
+.tx-motion-form__label { font-size: 13px; font-weight: var(--tx-font-weight-medium, 500); line-height: 1.4; }
 .tx-motion-form__control { position: relative; min-width: 0; }
 .tx-motion-form__message { color: var(--tx-text-color-regular, #606266); font-size: 12px; line-height: 1.5; }
 .tx-motion-form__message:empty { display: none; }
@@ -648,7 +646,7 @@ defineExpose({ focus: focusControl, blur: () => {
   inset-inline-start: 12px;
   top: calc((var(--tx-mf-height) - 20px) / 2);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 20px;
   transform-origin: left center;
   color: var(--tx-text-color-regular, #606266);

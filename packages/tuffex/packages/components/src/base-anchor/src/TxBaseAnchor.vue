@@ -1458,6 +1458,22 @@ onBeforeUnmount(() => {
   -webkit-backdrop-filter: none;
 }
 
+/* High contrast paints every panel material as `pure` (TxBaseSurface), so the arrow follows. */
+html.contrast .tx-base-anchor__arrow:is([data-bg='blur'], [data-bg='glass'], [data-bg='refraction'])::after,
+html[data-tx-contrast='high'] .tx-base-anchor__arrow:is([data-bg='blur'], [data-bg='glass'], [data-bg='refraction'])::after {
+  background: var(--tx-fill-color-lighter, var(--tx-bg-color-overlay, #fff));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (prefers-contrast: more) {
+  html:not([data-tx-contrast='normal']) .tx-base-anchor__arrow:is([data-bg='blur'], [data-bg='glass'], [data-bg='refraction'])::after {
+    background: var(--tx-fill-color-lighter, var(--tx-bg-color-overlay, #fff));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .tx-base-anchor__outline-path {
   fill: none;
   stroke: color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 88%, transparent);

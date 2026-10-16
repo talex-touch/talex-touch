@@ -256,7 +256,6 @@ function close() {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--tx-border-color-lighter);
-  transition: background 0.2s;
 }
 
 .file-item:hover {
@@ -298,7 +297,6 @@ function close() {
   background: transparent;
   color: var(--tx-text-color-placeholder);
   cursor: pointer;
-  transition: all 0.2s;
   flex-shrink: 0;
 }
 

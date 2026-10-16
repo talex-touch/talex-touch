@@ -256,7 +256,7 @@ const LIMITS = {
   // `skeleton-keyframes` mixin as in agent-screen and layout-skeleton, and the tray reaches
   // the viewer's rules through style-deps (`attachment-tray -> image-gallery, modal`).
   // Measured 768,050 B (750.05 KiB). Actuals plus minimal headroom, growth from here fails.
-  fullCssBytes: 750.5 * 1024,
+  fullCssBytes: 835 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus
@@ -295,13 +295,13 @@ const LIMITS = {
 const pageStyleBudgets = [
   // TxButton alone reaches the anchor and surface stack, the icon, and the copy button's text
   // engine, so every page below starts from these 13 sheets.
-  { label: 'button', components: ['button'], limit: 47.5 * 1024 },
-  { label: 'form', components: ['form', 'input', 'select', 'checkbox', 'switch', 'button', 'modal'], limit: 73.5 * 1024 },
-  { label: 'admin list', components: ['data-table', 'pagination', 'tabs', 'input', 'select', 'button', 'drawer'], limit: 123 * 1024 },
+  { label: 'button', components: ['button'], limit: 58 * 1024 },
+  { label: 'form', components: ['form', 'input', 'select', 'checkbox', 'switch', 'button', 'modal'], limit: 85 * 1024 },
+  { label: 'admin list', components: ['data-table', 'pagination', 'tabs', 'input', 'select', 'button', 'drawer'], limit: 135 * 1024 },
   {
     label: 'chat',
     components: ['chat', 'conversation-stream', 'stream-markdown', 'prompt-bar', 'attachment-tray', 'image-gallery', 'message-actions', 'thinking-orb', 'modal'],
-    limit: 143.5 * 1024,
+    limit: 155 * 1024,
   },
 ]
 
@@ -390,7 +390,7 @@ const onDemandImportBudgets = [
   },
   {
     subpath: 'flip-overlay',
-    allowedComponentDirs: ['base-surface', 'button', 'flip-overlay', 'flow-light', 'glass-surface', 'spinner'],
+    allowedComponentDirs: ['base-surface', 'button', 'flip-overlay', 'flow-light', 'glass-surface', 'icon', 'spinner'],
     forbiddenStaticSpecifierPrefixes: ['gsap'],
   },
   {

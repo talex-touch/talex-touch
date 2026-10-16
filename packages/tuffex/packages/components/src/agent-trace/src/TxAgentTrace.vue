@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import type { AgentTraceProps, AgentTraceRow, AgentTraceVariant } from './types'
 import { computed, ref, useId } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({ name: 'TxAgentTrace' })
 
@@ -70,6 +71,8 @@ function toggle(): void {
 // otherwise — the same handoff as `userOpen` above.
 const internalSelected = ref<string | null>(null)
 const selection = computed(() => props.selectedId ?? internalSelected.value)
+// A selection change eases the rows' fill; a hover repaints at once.
+const morphing = useMorphWindow(selection, 150)
 
 const isLink = (row: AgentTraceRow): boolean => props.variant === 'search' && !!row.href
 const isSelectable = computed(() => props.variant === 'coding')
@@ -122,7 +125,7 @@ function stepGlyph(row: AgentTraceRow, index: number): StepGlyph {
 </script>
 
 <template>
-  <div class="tx-bui-agent-trace" :data-variant="variant">
+  <div class="tx-bui-agent-trace" :class="{ 'is-morphing': morphing }" :data-variant="variant">
     <button
       type="button"
       class="tx-bui-agent-trace__header"
@@ -300,7 +303,6 @@ function stepGlyph(row: AgentTraceRow, index: number): StepGlyph {
     padding: 4px 6px;
     border-radius: var(--tx-bui-radius-control, 8px);
     cursor: pointer;
-    transition: background-color 0.1s ease;
 
     &:hover {
       background: var(--tx-bui-hover-2, #e7e9eb);
@@ -324,7 +326,7 @@ function stepGlyph(row: AgentTraceRow, index: number): StepGlyph {
 
   .tx-bui-agent-trace__label {
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     white-space: nowrap;
 
     &.is-working {
@@ -398,6 +400,9 @@ function stepGlyph(row: AgentTraceRow, index: number): StepGlyph {
     color: inherit;
     text-align: left;
     text-decoration: none;
+  }
+
+  &.is-morphing .tx-bui-agent-trace__row {
     transition: background-color 0.15s ease;
   }
 
@@ -428,7 +433,7 @@ function stepGlyph(row: AgentTraceRow, index: number): StepGlyph {
     height: 14px;
     border-radius: 999px;
     background: var(--tx-bui-accent, #0285ff);
-    color: #fff;
+    color: var(--tx-color-white, #fff);
   }
 
   // Upstream cycles the source dots through accent / orange / green.
@@ -467,7 +472,7 @@ function stepGlyph(row: AgentTraceRow, index: number): StepGlyph {
     overflow: hidden;
     color: var(--tx-bui-ink, #1f2124);
     font-size: 12.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -558,8 +563,7 @@ function stepGlyph(row: AgentTraceRow, index: number): StepGlyph {
   // The mixins carry their own guards; these are the hand-written ones. The
   // trace still runs its state machine — only the tweening stops.
   .tx-bui-agent-trace .tx-bui-agent-trace__chevron,
-  .tx-bui-agent-trace .tx-bui-agent-trace__row,
-  .tx-bui-agent-trace .tx-bui-agent-trace__header,
+  .tx-bui-agent-trace.is-morphing .tx-bui-agent-trace__row,
   .tx-bui-agent-trace .tx-bui-agent-trace__primary::after {
     transition: none;
   }

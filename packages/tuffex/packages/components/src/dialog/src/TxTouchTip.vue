@@ -172,6 +172,8 @@ onUnmounted(() => {
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 @keyframes tx-touch-tip-enter {
   0% {
     opacity: 0;
@@ -206,7 +208,6 @@ onUnmounted(() => {
     min-height: 260px;
     width: min(420px, 88vw);
     color: var(--tx-text-color-primary, #303133);
-    border-radius: 12px;
     box-shadow: 9px 18px 65px rgba(0, 0, 0, 0.25);
     transform: translate(-50%, -50%);
     animation: tx-touch-tip-enter 0.25s ease;
@@ -214,7 +215,14 @@ onUnmounted(() => {
 
     --fake-opacity: 0.75;
     --fake-inner-opacity: 0.75;
-    --fake-radius: 12px;
+    // No `--fake-radius`: the backdrop layer inherits the smoothed outline below.
+    @include tx-squircle(12px);
+
+    // High contrast: the panel is opaque and frosts nothing.
+    @include tx-when-high-contrast {
+      --fake-opacity: 1;
+      backdrop-filter: none;
+    }
   }
 
   &__title {
@@ -224,7 +232,7 @@ onUnmounted(() => {
     height: 32px;
     line-height: 32px;
     font-size: 18px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   &__content {

@@ -2,7 +2,7 @@ import type { FlowLightVariant } from '../../flow-light/src/types'
 
 export type TxCardVariant = 'solid' | 'dashed' | 'plain'
 
-export type TxCardBackground = 'pure' | 'mask' | 'blur' | 'glass' | 'refraction'
+export type TxCardBackground = 'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'
 
 export type TxCardShadow = 'none' | 'soft' | 'medium'
 
@@ -37,6 +37,11 @@ export interface TxCardProps {
   /** Multiplies the flow light's theme opacity; default 1. */
   flowLightIntensity?: number
   clickable?: boolean
+  /**
+   * A faint light that follows the pointer over the card and glints along its border, drawn in
+   * dark themes only. Follows `clickable` when absent.
+   */
+  specular?: boolean
   loading?: boolean
   loadingSpinnerSize?: number
   disabled?: boolean

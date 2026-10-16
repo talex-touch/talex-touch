@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { StepsContext, StepStatus } from './types'
 import { computed, getCurrentInstance, inject, onBeforeUnmount, useId } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import { TxIcon } from '../../icon'
 
 interface Props {
@@ -60,6 +61,10 @@ const status = computed(() => {
   return props.status
 })
 
+// Reaching a step eases its title's ink; hovering a clickable step repaints it
+// at once.
+const morphing = useMorphWindow(status, 200)
+
 // A string key names the step but carries no position, so the visible number
 // falls back to the step's order among its siblings.
 const stepNumber = computed(() => {
@@ -97,6 +102,7 @@ function handleClick() {
         'tx-step--completed': isCompleted,
         'tx-step--clickable': clickable && !disabled,
         'tx-step--disabled': disabled,
+        'is-morphing': morphing,
       },
     ]"
     :style="{ '--tx-step-index': orderIndex }"
@@ -239,7 +245,7 @@ function handleClick() {
   height: var(--tx-step-icon-size);
   border-radius: 50%;
   font-size: calc(var(--tx-step-icon-size) * 0.5);
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   position: relative;
   z-index: 2;
   transition:
@@ -437,10 +443,13 @@ function handleClick() {
 
 // Labels: the reached steps in the primary ink, the ones ahead in the secondary.
 .tx-step__title {
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-step-title, var(--tx-text-color-secondary));
   font-size: var(--tx-step-title-size);
   line-height: 1.4;
+}
+
+.tx-step.is-morphing .tx-step__title {
   transition: color 0.2s ease;
 }
 
@@ -450,7 +459,7 @@ function handleClick() {
 
 .tx-step--active .tx-step__title {
   color: var(--tx-step-title-active, var(--tx-color-primary));
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-step__description {
@@ -463,6 +472,7 @@ function handleClick() {
 // Progress is still legible without motion: state colours stay, only the choreography goes.
 @media (prefers-reduced-motion: reduce) {
   .tx-step__icon,
+  .tx-step.is-morphing .tx-step__title,
   .tx-step__line-fill,
   .tx-step-glyph-enter-active,
   .tx-step-glyph-leave-active {

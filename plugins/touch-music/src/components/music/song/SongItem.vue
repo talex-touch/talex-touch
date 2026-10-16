@@ -192,6 +192,6 @@ onMounted(() => {
   cursor: pointer;
   border-radius: 4px;
   box-sizing: border-box;
-  transition: .25s;
+  transition: width .25s;
 }
 </style>

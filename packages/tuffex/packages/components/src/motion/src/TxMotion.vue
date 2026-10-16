@@ -252,16 +252,18 @@ defineExpose({ replay: () => { played = false; if (isEntrance.value) playEntranc
 .tx-motion--magnetic-button, .tx-motion--glow-button { appearance: none; border: 0; padding: 0; background: var(--tx-fill-color-light); color: var(--tx-text-color-primary); border-radius: 12px; cursor: pointer; }
 .tx-motion--magnetic-button .tx-motion__surface, .tx-motion--glow-button .tx-motion__surface { padding: 10px 18px; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--tx-border-color); }
 .tx-motion--magnetic-button:disabled, .tx-motion--glow-button:disabled { opacity: .5; cursor: not-allowed; }
-.tx-motion__progress--global { position: fixed; top: 0; left: 0; right: 0; z-index: 9999; }
+/* Page chrome: over the page, under every popper, drawer and modal (2001+). */
+.tx-motion__progress--global { position: fixed; top: 0; left: 0; right: 0; z-index: var(--tx-index-top, 1000); }
 .tx-motion--glow-button .tx-motion__surface, .tx-motion--spotlight .tx-motion__surface { overflow: hidden; border-radius: inherit; }
 .tx-motion__glow { position: absolute; inset: 0; pointer-events: none; transition: opacity 300ms; }
 .tx-motion__cursor-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
-.tx-motion__cursor-layer--global { position: fixed; z-index: 9999; }
+/* The trail follows the pointer into drawers and modals, whose z-index has no ceiling (10001+ and rising). */
+.tx-motion__cursor-layer--global { position: fixed; z-index: 2147483647; }
 .tx-motion__cursor { position: absolute; top: 0; left: 0; border-radius: 50%; background: var(--tx-motion-color, var(--tx-color-primary)); pointer-events: none; }
 .tx-motion__cursor--follow { width: auto !important; height: auto !important; min-width: 24px; min-height: 24px; background: color-mix(in srgb, var(--tx-motion-color, var(--tx-color-primary)) 10%, transparent); box-shadow: inset 0 0 0 1px var(--tx-motion-color, var(--tx-color-primary)); }
 .tx-motion__cards { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 12px; }
 .tx-motion__card { position: relative; display: flex; flex-direction: column; gap: 6px; appearance: none; border: 0; background: var(--tx-bg-color); color: var(--tx-text-color-primary); padding: 18px; margin: 6px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--tx-border-color); text-decoration: none; text-align: start; font: inherit; cursor: pointer; }
-.tx-motion__card strong { font-weight: 600; }
+.tx-motion__card strong { font-weight: var(--tx-font-weight-semibold, 600); }
 .tx-motion__card span { color: var(--tx-text-color-regular); font-size: 13px; }
 .tx-motion__card-highlight { position: absolute; top: -6px; left: -6px; padding: 6px; box-sizing: content-box; background: var(--tx-fill-color); border-radius: 18px; transition: transform var(--tx-motion-duration) var(--tx-motion-ease), width var(--tx-motion-duration) var(--tx-motion-ease), height var(--tx-motion-duration) var(--tx-motion-ease), opacity 150ms; }
 .tx-motion__progress { width: 100%; height: var(--tx-motion-progress-height); background: var(--tx-fill-color); overflow: hidden; }
@@ -270,7 +272,7 @@ defineExpose({ replay: () => { played = false; if (isEntrance.value) playEntranc
 .tx-motion__steps, .tx-motion__sticky-visual { width: calc(50% - 16px); }
 .tx-motion__step { min-height: var(--tx-motion-step-height, 50vh); display: flex; flex-direction: column; justify-content: center; opacity: .3; transition: opacity 400ms; }
 .tx-motion__step.is-current { opacity: 1; }
-.tx-motion__step h3 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+.tx-motion__step h3 { font-size: 18px; font-weight: var(--tx-font-weight-semibold, 600); margin: 0 0 8px; }
 .tx-motion__step p { color: var(--tx-text-color-regular); margin: 0; font-size: 14px; }
 .tx-motion__sticky-visual { position: sticky; top: var(--tx-motion-sticky-top); height: var(--tx-motion-visual-height, 40vh); min-height: min(120px, var(--tx-motion-visual-height, 40vh)); border-radius: 12px; background: var(--tx-fill-color-light); box-shadow: inset 0 0 0 1px var(--tx-border-color); }
 .tx-motion__visual { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; opacity: 0; transform: scale(.9); transition: opacity 400ms, transform 400ms; }

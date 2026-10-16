@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { StyleValue } from 'vue'
 import { computed, ref, useAttrs } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
   name: 'TxNumberInput',
@@ -74,6 +75,10 @@ const canDecrease = computed(() => {
 const canIncrease = computed(() => {
   return !props.disabled && !props.readonly && (props.max === undefined || (props.modelValue ?? 0) < props.max)
 })
+
+// Focusing eases the border, and a step that hits a bound eases that control
+// into its disabled ink; hovers repaint at once.
+const morphing = useMorphWindow(() => [isFocused.value, canDecrease.value, canIncrease.value], 200)
 
 function applyPrecision(value: number): number {
   return props.precision === undefined ? value : Number(value.toFixed(props.precision))
@@ -159,6 +164,7 @@ defineExpose({
         'is-readonly': readonly,
         'is-focused': isFocused,
         'has-controls': controls,
+        'is-morphing': morphing,
       },
       attrs.class,
     ]"
@@ -215,6 +221,10 @@ defineExpose({
   border: 1px solid var(--tx-border-color, #dcdfe6);
   border-radius: 10px;
   background: var(--tx-bg-color, #ffffff);
+  transition: box-shadow 0.2s ease;
+}
+
+.tx-number-input.is-morphing {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -262,7 +272,17 @@ defineExpose({
   color: var(--tx-text-color-regular, #606266);
   font: inherit;
   cursor: pointer;
+}
+
+.tx-number-input.is-morphing .tx-number-input__control {
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-number-input.is-morphing,
+  .tx-number-input.is-morphing .tx-number-input__control {
+    transition: none;
+  }
 }
 
 .tx-number-input__control:last-child {

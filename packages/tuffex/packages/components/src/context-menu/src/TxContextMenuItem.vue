@@ -109,7 +109,7 @@ function onClick() {
 }
 
 .tx-context-menu-item :deep(.tx-card-item__title) {
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-context-menu-item-color, var(--tx-text-color-primary, #303133));
 }
 

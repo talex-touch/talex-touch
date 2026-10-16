@@ -788,6 +788,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 .tx-picker {
   --tx-picker-item-height: 36px;
 
@@ -813,7 +815,7 @@ onBeforeUnmount(() => {
 .tx-picker__title {
   text-align: center;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-primary, #303133);
   min-width: 0;
   overflow: hidden;
@@ -920,7 +922,7 @@ onBeforeUnmount(() => {
 
   &.is-selected {
     color: var(--tx-text-color-primary, #303133);
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   &.is-disabled {
@@ -969,6 +971,18 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   border: 1px solid color-mix(in srgb, var(--tx-border-color, #dcdfe6) 60%, transparent);
+}
+
+// High contrast: the panel, its toolbar and the popup sheet are opaque, and nothing behind them
+// is frosted.
+.tx-picker,
+.tx-picker__toolbar,
+.tx-picker-popup__panel {
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color-overlay, #fff);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .tx-picker-popup-enter-active,

@@ -296,6 +296,8 @@ onUnmounted(() => {
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-drawer {
   --tx-drawer-transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   --tx-drawer-mask-background: rgba(0, 0, 0, 0.45);
@@ -452,7 +454,7 @@ onUnmounted(() => {
     overflow: hidden;
     color: var(--tx-text-color-primary, #303133);
     font-size: 18px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -469,7 +471,6 @@ onUnmounted(() => {
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.2s ease;
 
     &:hover {
       color: var(--tx-text-color-primary, #303133);
@@ -495,6 +496,20 @@ onUnmounted(() => {
     min-height: 0;
     padding: 20px;
     overflow: auto;
+  }
+}
+
+// High contrast: the see-through panel turns opaque, and neither it nor the mask frosts the
+// page. The mask still dims it.
+.tx-drawer {
+  @include tx-when-high-contrast {
+    --tx-drawer-panel-background-transparent: var(--tx-drawer-panel-background);
+
+    .tx-drawer__mask,
+    .tx-drawer__panel {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
   }
 }
 </style>

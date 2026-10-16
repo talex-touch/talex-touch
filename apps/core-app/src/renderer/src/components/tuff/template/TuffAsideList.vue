@@ -144,8 +144,6 @@ function handleSelect(item: T): void {
   gap: 0.75rem;
   text-align: left;
   transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
     transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.2s ease;
   cursor: pointer;

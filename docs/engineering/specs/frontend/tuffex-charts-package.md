@@ -31,7 +31,7 @@
 
 ## Known Divergences from kumo (intentional — don't "fix")
 
-Registered in the parity appendix of the archived task record [`08-30-tuffex-charts/design.md`](https://github.com/talex-touch/tuff/blob/0ca5b37b8c4a8e177b6dc0ac06f30e51c5ea748e/.trellis/tasks/archive/2026-08/08-30-tuffex-charts/design.md) §12: no `echarts`/`isDarkMode`/`optionUpdateBehavior`/`onEvents` props; `enableLegendSelection` → `v-model:hidden-series` + `highlighted-series`; tooltip boundary simplified to container clamp + viewport flip; no transient out-of-brush dimming; `projection` takes a d3-geo instance (`null` = equirectangular); sankey cycles degrade to empty render + dev warning instead of throwing.
+Registered in the parity appendix of the archived task record [`08-30-tuffex-charts/design.md`](https://github.com/talex-touch/tuff/blob/0ca5b37b8c4a8e177b6dc0ac06f30e51c5ea748e/.trellis/tasks/archive/2026-08/08-30-tuffex-charts/design.md) §12: no `echarts`/`isDarkMode`/`optionUpdateBehavior`/`onEvents` props; `enableLegendSelection` → `v-model:hidden-series` + `highlighted-series`; tooltip boundary simplified to container clamp + viewport flip; no transient out-of-brush dimming; hover emphasis that dims or recolours (series blur, sankey adjacency, choropleth blur) snaps instead of easing over `stateAnimation`, per the TuffEx hover rule — only geometric emphasis (arc shift, bubble scale) keeps 300ms `cubicOut`, and the ECharts host sets `stateAnimation.duration: 0`; `projection` takes a d3-geo instance (`null` = equirectangular); sankey cycles degrade to empty render + dev warning instead of throwing.
 
 ## Docs
 

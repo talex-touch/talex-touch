@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { NavBarEmits, NavBarProps } from './types'
 import { computed, useSlots } from 'vue'
+import { TxIcon } from '../../icon'
 
 defineOptions({ name: 'TxNavBar' })
 
@@ -87,7 +88,7 @@ function onLeftAction() {
             class="tx-nav-bar__back"
             aria-hidden="true"
           >
-            <i class="i-carbon-arrow-left" />
+            <TxIcon name="arrow-left" />
           </span>
         </slot>
       </button>
@@ -114,6 +115,8 @@ function onLeftAction() {
 </template>
 
 <style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-nav-bar {
   --tx-nav-bar-height: 44px;
 
@@ -127,6 +130,13 @@ function onLeftAction() {
   // `zIndex` prop was inert unless `fixed` (which sets position: sticky) was on.
   position: relative;
   z-index: var(--tx-nav-bar-z-index, 2000);
+
+  // High contrast: opaque, and nothing behind it is frosted.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color-overlay, #fff);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 
   &.is-fixed {
     position: sticky;
@@ -187,7 +197,7 @@ function onLeftAction() {
 .tx-nav-bar__title {
   text-align: center;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

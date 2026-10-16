@@ -1014,10 +1014,6 @@ watch(
   cursor: pointer;
   font-size: 0.72rem;
   white-space: nowrap;
-  transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease;
 }
 
 .category-chip .ClipboardGlyph {

@@ -2,6 +2,8 @@
 // Adapted from Beautiful UI (https://www.beautifului.dev), © 2026 Shane Levine, MIT.
 import type { DiffChangeKind, DiffTableColumn, DiffTableCounts, DiffTableEmits, DiffTableProps, DiffTableRow } from './types'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
+import { TxIcon } from '../../icon'
 
 defineOptions({ name: 'TxDiffTable' })
 
@@ -54,6 +56,11 @@ let timer: ReturnType<typeof setTimeout> | null = null
 
 const finalStage = computed(() => props.stageDelays.length)
 const tinted = computed(() => stage.value >= TINT_STAGE)
+// Bumped when the played sequence or reset() moves the tint, so only those ease
+// it; hovering a row repaints at once. settle() jumps straight to the completed
+// diff, and `play="settled"` registers no timer, this window's included.
+const easedTintChanges = ref(0)
+const morphing = useMorphWindow(easedTintChanges, () => props.duration)
 const expanded = computed(() => stage.value >= EXPAND_STAGE)
 
 function clearTimer(): void {
@@ -63,10 +70,13 @@ function clearTimer(): void {
   timer = null
 }
 
-function setStage(next: number): void {
+function setStage(next: number, eased = false): void {
   if (next === stage.value)
     return
+  const wasTinted = tinted.value
   stage.value = next
+  if (eased && tinted.value !== wasTinted)
+    easedTintChanges.value++
   emit('stageChange', next)
   if (next >= finalStage.value)
     emit('settled')
@@ -79,7 +89,7 @@ function schedule(): void {
   const delay = props.stageDelays[stage.value] ?? 0
   timer = setTimeout(() => {
     timer = null
-    setStage(stage.value + 1)
+    setStage(stage.value + 1, true)
     schedule()
   }, delay)
 }
@@ -92,6 +102,8 @@ function play(): void {
 /** Returns to the plain table and stops any pending stage. */
 function reset(): void {
   clearTimer()
+  if (tinted.value)
+    easedTintChanges.value++
   stage.value = 0
   emit('stageChange', 0)
 }
@@ -294,7 +306,7 @@ defineExpose({ play, reset, settle, stage })
 </script>
 
 <template>
-  <div class="tx-bui-diff-table" :style="shellStyle">
+  <div class="tx-bui-diff-table" :class="{ 'is-morphing': morphing }" :style="shellStyle">
     <div class="tx-bui-diff-table__shell">
       <div v-if="title || $slots.title || hint || $slots.hint" class="tx-bui-diff-table__bar">
         <span class="tx-bui-diff-table__title">
@@ -368,7 +380,7 @@ defineExpose({ play, reset, settle, stage })
                           :aria-label="rowToggleLabel(isAccepted(entry.row.key), entry.change)"
                           @click.stop="toggleRow(entry.row)"
                         >
-                          <i class="i-carbon-checkmark" aria-hidden="true" />
+                          <TxIcon name="check" />
                         </button>
                       </span>
                     </div>
@@ -409,7 +421,7 @@ defineExpose({ play, reset, settle, stage })
                   :aria-label="rowToggleLabel(isAccepted(entry.row.key), entry.change)"
                   @click.stop="toggleRow(entry.row)"
                 >
-                  <i class="i-carbon-checkmark" aria-hidden="true" />
+                  <TxIcon name="check" />
                 </button>
               </td>
             </tr>
@@ -464,7 +476,7 @@ defineExpose({ play, reset, settle, stage })
 
 .tx-bui-diff-table__title {
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink, #1f2124);
 }
 
@@ -559,9 +571,9 @@ defineExpose({ play, reset, settle, stage })
   border: 0;
   border-radius: 999px;
   background: var(--tx-bui-accent, #0285ff);
-  color: #fff;
+  color: var(--tx-color-white, #fff);
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 1;
   cursor: pointer;
 
@@ -588,7 +600,7 @@ defineExpose({ play, reset, settle, stage })
   @include bui-card-bar;
 
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink-3, #9a9da3);
   border-bottom: 1px solid var(--tx-bui-line, #ecedef);
 }
@@ -617,7 +629,7 @@ defineExpose({ play, reset, settle, stage })
 
 .tx-bui-diff-table__cell:first-child {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink, #1f2124);
 }
 
@@ -639,6 +651,9 @@ defineExpose({ play, reset, settle, stage })
 
 .tx-bui-diff-table__row {
   border-bottom: 1px solid var(--tx-bui-line, #ecedef);
+}
+
+.tx-bui-diff-table.is-morphing .tx-bui-diff-table__row {
   transition: background-color var(--tx-bui-diff-table-duration, 400ms)
     var(--tx-transition-function, cubic-bezier(0.4, 0, 0.2, 1));
 }
@@ -721,12 +736,12 @@ defineExpose({ play, reset, settle, stage })
 
 .tx-bui-diff-table__cell.is-added:first-child {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-green, #189a4d);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tx-bui-diff-table__row,
+  .tx-bui-diff-table.is-morphing .tx-bui-diff-table__row,
   .tx-bui-diff-table__cell,
   .tx-bui-diff-table__reveal {
     transition: none;

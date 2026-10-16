@@ -200,7 +200,7 @@ export default defineComponent({
 .tx-avatar-group.is-hover-lift :deep(.tx-avatar-group__item:not(.tx-avatar-group__more-ref):hover) {
   z-index: var(--tx-avatar-group-hover-z, 999);
   transform: translateY(-4px) scale(1.06);
-  box-shadow: 3px 6px 16px color-mix(in srgb, #000 18%, transparent);
+  box-shadow: 3px 6px 16px color-mix(in srgb, var(--tx-color-black, #000) 18%, transparent);
 }
 
 // The popover's reference is a square wrapper, so lifting it directly would draw
@@ -210,7 +210,7 @@ export default defineComponent({
 // z-index promotion of its own.
 .tx-avatar-group.is-hover-lift :deep(.tx-avatar-group__more-ref:hover .tx-avatar-group__more) {
   transform: translateY(-4px) scale(1.06);
-  box-shadow: 3px 6px 16px color-mix(in srgb, #000 18%, transparent);
+  box-shadow: 3px 6px 16px color-mix(in srgb, var(--tx-color-black, #000) 18%, transparent);
 }
 
 .tx-avatar-group :deep(.tx-avatar-group__more-ref .tx-avatar-group__more) {
@@ -226,7 +226,7 @@ export default defineComponent({
 .tx-avatar-group__more {
   --tx-avatar-bg: var(--tx-avatar-group-more-bg, var(--tx-fill-color-light, #f5f7fa));
   --tx-avatar-text: var(--tx-avatar-group-more-text, var(--tx-text-color-secondary, #909399));
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   letter-spacing: 0;
 }
 

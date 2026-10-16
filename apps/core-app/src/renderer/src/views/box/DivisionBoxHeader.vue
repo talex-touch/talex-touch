@@ -269,7 +269,7 @@ async function handleDebug(): Promise<void> {
     background: transparent;
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: opacity 0.15s ease;
     opacity: 0.7;
 
     &:hover {

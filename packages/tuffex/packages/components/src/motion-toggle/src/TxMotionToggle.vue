@@ -200,7 +200,7 @@ useMotionResources(() => activity.active.value, () => stopAnimations)
 .tx-motion-toggle--t-pill { width: auto; gap: 2px; background: var(--tx-fill-color-light); }
 .tx-motion-toggle__indicator { position: absolute; left: 0; top: 0; background: var(--tx-bg-color); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--tx-border-color); transition: transform var(--tx-mt-duration) var(--tx-mt-ease), width var(--tx-mt-duration) var(--tx-mt-ease); }
 .tx-motion-toggle__tab { position: relative; z-index: 1; appearance: none; border: 0; border-radius: 999px; background: transparent; color: var(--tx-text-color-regular); padding: 3px 12px; font: inherit; cursor: pointer; white-space: nowrap; }
-.tx-motion-toggle__tab[aria-selected='true'] { color: var(--tx-text-color-primary); font-weight: 500; }
+.tx-motion-toggle__tab[aria-selected='true'] { color: var(--tx-text-color-primary); font-weight: var(--tx-font-weight-medium, 500); }
 .tx-motion-toggle:disabled, .tx-motion-toggle__tab:disabled { opacity: .5; cursor: not-allowed; }
 .tx-motion-toggle:focus-visible, .tx-motion-toggle__tab:focus-visible { outline: 2px solid var(--tx-color-primary); outline-offset: 3px; }
 .tx-motion-toggle:not(.is-active) * { transition: none; }

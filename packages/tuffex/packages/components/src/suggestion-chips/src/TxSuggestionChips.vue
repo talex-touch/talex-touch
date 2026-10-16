@@ -95,7 +95,6 @@ const emit = defineEmits<{
     font-size: 12.5px;
     white-space: nowrap;
     cursor: pointer;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
 
     &:hover {
       border-color: var(--tx-color-primary, #409eff);

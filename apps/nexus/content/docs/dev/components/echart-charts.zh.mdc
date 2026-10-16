@@ -63,7 +63,7 @@ import { TxEChart, TxLineChart } from '@talex-touch/tuffex/charts'
 
 ## 主题化宿主
 
-`TxEChart` 负责整个生命周期：解析当前主题的图表 token、应用主题、再把你的 option 画上去。旭日图已注册，可直接传入分层数据；未内置注册的其它 ECharts 类型需要先注册对应模块。
+`TxEChart` 负责整个生命周期：解析当前主题的图表 token、应用主题、再把你的 option 画上去。主题把 `stateAnimation.duration` 设为 0，悬停高亮与其余 series 变淡都在指针到达的那一帧完成；要恢复 ECharts 的 300ms 过渡，在 option 里传 `stateAnimation`。旭日图已注册，可直接传入分层数据；未内置注册的其它 ECharts 类型需要先注册对应模块。
 
 ```vue
 <script setup lang="ts">

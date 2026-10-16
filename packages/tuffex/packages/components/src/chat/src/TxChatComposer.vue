@@ -550,8 +550,8 @@ onBeforeUnmount(stopTrayMotion)
 }
 
 .tx-chat-composer__attachment.is-pending {
-  border-color: color-mix(in srgb, #f59e0b 32%, transparent);
-  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  border-color: color-mix(in srgb, var(--tx-chat-composer-pending-color, #f59e0b) 32%, transparent);
+  background: color-mix(in srgb, var(--tx-chat-composer-pending-color, #f59e0b) 14%, transparent);
 }
 
 .tx-chat-composer__attachment-label {

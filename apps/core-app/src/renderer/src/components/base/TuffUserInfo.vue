@@ -447,9 +447,7 @@ watch(profileVisible, (visible) => {
   &.clickable {
     cursor: pointer;
     border-radius: 8px;
-    transition:
-      background-color 0.2s ease,
-      transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 
     &:hover {
       background-color: var(--tx-fill-color-light);

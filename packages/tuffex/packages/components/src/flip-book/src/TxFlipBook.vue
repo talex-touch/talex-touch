@@ -289,7 +289,7 @@ defineExpose({ previous, next, goTo, replayIntro })
 .tx-flip-book__content { width: 100%; height: 100%; border-radius: var(--tx-book-radius); box-shadow: 2px 4px var(--tx-book-shadow) color-mix(in srgb, var(--tx-text-color-primary) 15%, transparent); overflow: hidden; }
 .tx-flip-book__content img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .tx-flip-book__text { display: flex; height: 100%; box-sizing: border-box; flex-direction: column; justify-content: center; gap: 8px; padding: 12px; overflow: auto; }
-.tx-flip-book__text strong { font-size: 14px; font-weight: 600; }
+.tx-flip-book__text strong { font-size: 14px; font-weight: var(--tx-font-weight-semibold, 600); }
 .tx-flip-book__text p { font-size: 13px; margin: 0; line-height: 1.5; }
 .tx-flip-book__crease { position: absolute; inset-block: 0; width: var(--tx-book-crease-width); pointer-events: none; background: linear-gradient(to right, color-mix(in srgb, var(--tx-text-color-primary) var(--tx-book-crease), transparent), color-mix(in srgb, var(--tx-text-color-primary) var(--tx-book-crease-soft), transparent), transparent); box-shadow: inset 4px 0 10px color-mix(in srgb, var(--tx-text-color-primary) 10%, transparent); left: 0; }
 .is-left > .tx-flip-book__crease, .is-back > .tx-flip-book__crease { left: auto; right: 0; transform: scaleX(-1); }

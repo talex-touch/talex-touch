@@ -900,7 +900,7 @@ async function handlePrimaryAction(): Promise<void> {
   gap: 12px;
   padding: 10px 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: opacity 0.2s;
   font-size: 14px;
   color: var(--tx-text-color-primary);
 

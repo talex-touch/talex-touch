@@ -63,8 +63,6 @@ defineEmits<{ activate: [] }>()
   box-sizing: border-box;
 
   &.navigable {
-    transition: background-color 0.15s ease;
-
     &:hover {
       background-color: var(--shell-surface);
     }

@@ -9,6 +9,7 @@ import type {
   PromptBarSource,
 } from './types'
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxPromptBarMenu from './TxPromptBarMenu.vue'
 import { useAutosize } from './use-autosize'
 import { useTokenMenu } from './use-token-menu'
@@ -121,6 +122,10 @@ const canSend = computed(
     && !props.submitting
     && (props.allowEmptySend || draft.value.trim().length > 0 || attachments.value.length > 0),
 )
+
+// The plus menu opening, dictation going live and send arming ease the
+// controls' fill and ink; a hover repaints at once.
+const morphing = useMorphWindow(() => [plusOpen.value, listening.value, canSend.value], 150)
 
 const placeholder = computed(() => (listening.value ? props.listeningPlaceholder : props.placeholder))
 
@@ -428,7 +433,7 @@ defineExpose({
   <div
     ref="rootRef"
     class="tx-bui-prompt-bar"
-    :class="[`is-${variant}`, { 'is-disabled': disabled }]"
+    :class="[`is-${variant}`, { 'is-disabled': disabled, 'is-morphing': morphing }]"
   >
     <TxPromptBarMenu
       v-if="menuOpen"
@@ -727,7 +732,6 @@ defineExpose({
     border-radius: 4px;
     color: var(--tx-bui-ink-3, #9a9da3);
     cursor: pointer;
-    transition: background-color 0.1s ease, color 0.1s ease;
 
     &:hover {
       background: color-mix(in oklab, var(--tx-bui-line, #ecedef) 70%, transparent);
@@ -808,10 +812,7 @@ defineExpose({
     border-radius: var(--tx-bui-radius-control, 8px);
     color: var(--tx-bui-ink-3, #9a9da3);
     cursor: pointer;
-    transition:
-      background-color 0.15s ease,
-      color 0.15s ease,
-      transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+    transition: transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
     &:not(:disabled):active {
       transform: scale(0.94);
@@ -820,6 +821,13 @@ defineExpose({
     &:disabled {
       cursor: not-allowed;
     }
+  }
+
+  &.is-morphing .tx-bui-prompt-bar__control {
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
   }
 
   .tx-bui-prompt-bar__plus,
@@ -867,13 +875,10 @@ defineExpose({
     border-radius: var(--tx-bui-radius-control, 8px);
     color: var(--tx-bui-ink-2, #62656b);
     font-size: 12px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     white-space: nowrap;
     cursor: pointer;
-    transition:
-      background-color 0.15s ease,
-      color 0.15s ease,
-      transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+    transition: transform 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
     &:not(:disabled):hover {
       background: var(--tx-bui-hover, #f4f5f6);
@@ -935,7 +940,7 @@ defineExpose({
     flex: none;
     color: var(--tx-bui-ink, #1f2124);
     font-size: 12.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
 
     &.is-grow {
       flex: 1;
@@ -966,7 +971,7 @@ defineExpose({
     flex: none;
     color: var(--tx-bui-accent-ink, #0170dd);
     font-size: 12px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
 
     &.is-connected {
       color: var(--tx-bui-green, #189a4d);
@@ -1015,8 +1020,8 @@ defineExpose({
 @media (prefers-reduced-motion: reduce) {
   .tx-bui-prompt-bar {
     .tx-bui-prompt-bar__composer,
-    .tx-bui-prompt-bar__attachment-remove,
     .tx-bui-prompt-bar__control,
+    &.is-morphing .tx-bui-prompt-bar__control,
     .tx-bui-prompt-bar__model {
       transition: none;
     }

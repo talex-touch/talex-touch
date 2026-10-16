@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FileUploaderEmits, FileUploaderFile, FileUploaderProps } from './types'
 import { computed, ref } from 'vue'
+import { TxIcon } from '../../icon'
 
 defineOptions({ name: 'TxFileUploader' })
 
@@ -216,7 +217,7 @@ defineExpose({ pick })
           :disabled="disabled"
           @click="remove(item.id)"
         >
-          <i class="i-carbon-close" aria-hidden="true" />
+          <TxIcon name="close" />
         </button>
       </div>
     </div>
@@ -268,7 +269,7 @@ defineExpose({ pick })
 
 .tx-file-uploader__drop-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-file-uploader__drop-hint {
@@ -280,7 +281,7 @@ defineExpose({ pick })
   margin-top: 4px;
   border: none;
   background: var(--tx-color-primary, #409eff);
-  color: #fff;
+  color: var(--tx-color-on-primary, #fff);
   border-radius: 10px;
   padding: 6px 12px;
   font-size: 12px;
@@ -316,7 +317,7 @@ defineExpose({ pick })
 
 .tx-file-uploader__name {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-file-uploader__size {

@@ -66,7 +66,7 @@ catch (error) {
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease;
 }
 
 .test-widget button:hover {
