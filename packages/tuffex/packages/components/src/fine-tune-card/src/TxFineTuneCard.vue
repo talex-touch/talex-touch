@@ -16,12 +16,14 @@ const props = withDefaults(defineProps<FineTuneCardProps>(), {
   edited: undefined,
   title: 'Fine-tune',
   layoutLabel: 'Layout',
+  layoutLabels: undefined,
   typeLabel: 'Type',
   typeOptions: () => [],
   typePlaceholder: 'Select type',
   adjustLabel: 'Adjust',
   editedLabel: 'Edited',
   fieldLabels: undefined,
+  valueLabelFormatter: (label: string) => `${label} value`,
   ranges: undefined,
   disabled: false,
 })
@@ -57,6 +59,10 @@ const SEGMENTED_STYLE = {
 
 function labelOf(field: FineTuneField): string {
   return props.fieldLabels?.[field] ?? DEFAULT_LABELS[field]
+}
+
+function layoutLabelOf(layout: FineTuneLayout): string {
+  return props.layoutLabels?.[layout] ?? `${layout} layout`
 }
 
 function rangeOf(field: FineTuneField): FineTuneRange {
@@ -129,7 +135,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
           v-for="layout in LAYOUTS"
           :key="layout"
           :value="layout"
-          :aria-label="`${layout} layout`"
+          :aria-label="layoutLabelOf(layout)"
         >
           <span class="tx-bui-fine-tune-card__glyph" :class="`is-${layout}`" aria-hidden="true">
             <span v-for="dot in LAYOUT_DOTS[layout]" :key="dot" class="tx-bui-fine-tune-card__dot" />
@@ -141,6 +147,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
         <TxScrubField
           :model-value="values.width"
           :label="labelOf('width')"
+          :value-label="valueLabelFormatter(labelOf('width'))"
           :min="rangeOf('width').min"
           :max="rangeOf('width').max"
           :active="isChanged('width')"
@@ -150,6 +157,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
         <TxScrubField
           :model-value="values.height"
           :label="labelOf('height')"
+          :value-label="valueLabelFormatter(labelOf('height'))"
           :min="rangeOf('height').min"
           :max="rangeOf('height').max"
           :active="isChanged('height')"
@@ -162,6 +170,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
         <TxScrubField
           :model-value="values.radius"
           :label="labelOf('radius')"
+          :value-label="valueLabelFormatter(labelOf('radius'))"
           :min="rangeOf('radius').min"
           :max="rangeOf('radius').max"
           :active="isChanged('radius')"
@@ -171,6 +180,7 @@ function onLayout(value: TxFlatRadioValue | TxFlatRadioValue[]): void {
         <TxScrubField
           :model-value="values.opacity"
           :label="labelOf('opacity')"
+          :value-label="valueLabelFormatter(labelOf('opacity'))"
           :min="rangeOf('opacity').min"
           :max="rangeOf('opacity').max"
           suffix="%"

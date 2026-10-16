@@ -39,6 +39,8 @@ export interface FineTuneCardProps {
   title?: string
   /** @default 'Layout' */
   layoutLabel?: string
+  /** Accessible names for the three layout options. @default row layout / col layout / grid layout */
+  layoutLabels?: Partial<Record<FineTuneLayout, string>>
   /** @default 'Type' */
   typeLabel?: string
   typeOptions?: FineTuneTypeOption[]
@@ -50,6 +52,8 @@ export interface FineTuneCardProps {
   editedLabel?: string
   /** Captions for the four numeric fields. @default W / H / Radius / Opacity */
   fieldLabels?: Partial<Record<FineTuneField, string>>
+  /** Builds each numeric field's value-input aria-label from its caption. @default (label) => `${label} value` */
+  valueLabelFormatter?: (label: string) => string
   /** Per-field bounds. @default width 40–999, height 24–999, radius 0–64, opacity 0–100 */
   ranges?: Partial<Record<FineTuneField, FineTuneRange>>
   disabled?: boolean

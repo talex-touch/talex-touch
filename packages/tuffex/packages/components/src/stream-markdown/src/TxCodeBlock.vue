@@ -17,6 +17,10 @@ const props = withDefaults(
     previewable?: boolean
     previewLabel?: string
     codeLabel?: string
+    /** Builds the preview frame's accessible name from the fence language. @default (lang) => `${lang} preview` */
+    frameLabelFormatter?: (lang: string) => string
+    copyLabel?: string
+    copiedLabel?: string
   }>(),
   {
     lang: '',
@@ -27,6 +31,9 @@ const props = withDefaults(
     previewable: true,
     previewLabel: 'Preview',
     codeLabel: 'Code',
+    frameLabelFormatter: (lang: string) => `${lang} preview`,
+    copyLabel: 'Copy',
+    copiedLabel: 'Copied',
   },
 )
 
@@ -142,7 +149,13 @@ const previewDocument = computed(() =>
         >
           {{ showPreview ? codeLabel : previewLabel }}
         </button>
-        <TxCopyButton :text="code" size="sm" class="tx-code-block__copy" />
+        <TxCopyButton
+          :text="code"
+          :copy-label="copyLabel"
+          :copied-label="copiedLabel"
+          size="sm"
+          class="tx-code-block__copy"
+        />
       </div>
     </div>
 
@@ -152,7 +165,7 @@ const previewDocument = computed(() =>
       v-if="canPreview && showPreview"
       class="tx-code-block__preview"
       sandbox=""
-      :title="`${lang} preview`"
+      :title="frameLabelFormatter(lang)"
       :srcdoc="previewDocument"
     />
     <!-- Shiki output is generated markup with the code text already escaped —

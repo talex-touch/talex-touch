@@ -24,6 +24,18 @@ const props = withDefaults(
     closed?: boolean
     streaming?: boolean
     theme?: 'light' | 'dark'
+    /** Accessible label for the rendered diagram, which opens the preview. @default 'Zoom diagram' */
+    zoomLabel?: string
+    /** Accessible name of the fullscreen preview. @default 'Diagram preview' */
+    previewLabel?: string
+    /** Accessible label for the preview's close button. @default 'Close preview' */
+    closeLabel?: string
+    /** Shown above the source when the diagram fails to render. @default 'Diagram failed to render — showing source.' */
+    errorText?: string
+    /** Copy button text of that source fallback. @default 'Copy' */
+    copyLabel?: string
+    /** Shown on the fallback's copy button after a successful copy. @default 'Copied' */
+    copiedLabel?: string
   }>(),
   {
     lang: 'mermaid',
@@ -31,6 +43,12 @@ const props = withDefaults(
     closed: false,
     streaming: false,
     theme: 'light',
+    zoomLabel: 'Zoom diagram',
+    previewLabel: 'Diagram preview',
+    closeLabel: 'Close preview',
+    errorText: 'Diagram failed to render — showing source.',
+    copyLabel: 'Copy',
+    copiedLabel: 'Copied',
   },
 )
 
@@ -128,7 +146,7 @@ onBeforeUnmount(() => {
       v-if="svg"
       type="button"
       class="tx-mermaid-block__figure"
-      aria-label="Zoom diagram"
+      :aria-label="zoomLabel"
       @click="zoomOpen = true"
     >
       <div class="tx-mermaid-block__svg" v-html="svg" />
@@ -136,9 +154,16 @@ onBeforeUnmount(() => {
 
     <div v-else-if="failed" class="tx-mermaid-block__fallback">
       <p class="tx-mermaid-block__error" role="alert">
-        Diagram failed to render — showing source.
+        {{ errorText }}
       </p>
-      <TxCodeBlock lang="mermaid" :code="code" :closed="true" :theme="theme" />
+      <TxCodeBlock
+        lang="mermaid"
+        :code="code"
+        :closed="true"
+        :theme="theme"
+        :copy-label="copyLabel"
+        :copied-label="copiedLabel"
+      />
     </div>
 
     <div v-else class="tx-mermaid-block__skeleton" aria-hidden="true">
@@ -152,14 +177,14 @@ onBeforeUnmount(() => {
         class="tx-mermaid-block__overlay"
         role="dialog"
         aria-modal="true"
-        aria-label="Diagram preview"
+        :aria-label="previewLabel"
         :style="{ zIndex: overlayZIndex }"
         @click.self="closeZoom"
       >
         <button
           type="button"
           class="tx-mermaid-block__close"
-          aria-label="Close preview"
+          :aria-label="closeLabel"
           @click="closeZoom"
         >
           ×

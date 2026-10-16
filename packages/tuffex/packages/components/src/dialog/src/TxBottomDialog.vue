@@ -39,6 +39,7 @@ const props = withDefaults(defineProps<BottomDialogProps>(), {
   btns: () => [],
   icon: '',
   index: 0,
+  closeLabel: 'Close',
 })
 
 /**
@@ -219,7 +220,7 @@ async function forClose(): Promise<void> {
           <p v-if="title" :id="titleId" class="tx-bottom-dialog__title">
             {{ title }}
           </p>
-          <button type="button" class="tx-bottom-dialog__close" aria-label="Close" @click="forClose">
+          <button type="button" class="tx-bottom-dialog__close" :aria-label="closeLabel" @click="forClose">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>

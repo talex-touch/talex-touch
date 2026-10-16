@@ -19,4 +19,8 @@ export interface TxToastHostProps {
   offset?: number
   /** Let a pointer drag flick a toast off toward its own edge. */
   swipeToDismiss?: boolean
+  /** Accessible name of the notification region. @default 'Notifications' */
+  ariaLabel?: string
+  /** Accessible label for each toast's close button. @default 'Dismiss notification' */
+  closeLabel?: string
 }
