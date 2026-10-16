@@ -389,7 +389,7 @@ async function confirmDelete() {
       </AdminTable>
     </AdminSection>
 
-    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.updates.detail.title', 'Update details')" size="520px">
+    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.updates.detail.title', 'Update details')" :close-label="t('common.close', 'Close')" size="520px">
       <TxDescriptions v-if="detailUpdate" :columns="1" size="sm">
         <TxDescriptionsItem :label="t('dashboard.sections.updates.form.titleZh', 'Title (ZH)')">
           {{ detailUpdate.title.zh }}

@@ -164,7 +164,7 @@ async function confirmDelete() {
             <TxSpinner :size="14" />
             {{ t('dashboard.sections.images.uploading', 'Uploading...') }}
           </p>
-          <TxAlert v-if="uploadError" type="error" :message="uploadError" closable @close="uploadError = null" />
+          <TxAlert v-if="uploadError" type="error" :message="uploadError" :close-label="t('common.close', 'Close')" closable @close="uploadError = null" />
         </div>
       </AdminSection>
 

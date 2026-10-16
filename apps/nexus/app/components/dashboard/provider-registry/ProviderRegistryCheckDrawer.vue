@@ -52,7 +52,7 @@ function providerModel(item: ProviderCapabilityRecord): string {
 </script>
 
 <template>
-  <TxDrawer v-model:visible="open" :title="t('dashboard.providerRegistry.providers.testTitle', 'Test service channel')" size="min(720px, 100vw)" direction="right">
+  <TxDrawer v-model:visible="open" :title="t('dashboard.providerRegistry.providers.testTitle', 'Test service channel')" :close-label="t('common.close', 'Close')" size="min(720px, 100vw)" direction="right">
     <div v-if="provider" class="RegistryForm">
       <section class="RegistryForm-Group">
         <h3 class="RegistryForm-GroupTitle">

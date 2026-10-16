@@ -1544,6 +1544,7 @@ async function deletePluginVersion(plugin: DashboardPlugin, version: DashboardPl
       v-if="deleteConfirmVisible"
       :title="deleteConfirmTitle"
       :message="deleteConfirmMessage"
+      :close-label="t('common.close', 'Close')"
       :btns="[
         { content: t('dashboard.sections.plugins.cancel', 'Cancel'), type: 'info', onClick: () => true },
         { content: t('dashboard.sections.plugins.delete', 'Delete'), type: 'error', onClick: executeDeleteConfirm },

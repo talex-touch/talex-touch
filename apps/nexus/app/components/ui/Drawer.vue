@@ -29,6 +29,8 @@ const emit = defineEmits<{
   (e: 'open'): void
   (e: 'close'): void
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
@@ -42,6 +44,7 @@ const emit = defineEmits<{
     :close-on-press-escape="closeOnPressEscape"
     :mobile-adapt="mobileAdapt"
     :z-index="zIndex"
+    :close-label="t('common.close', 'Close')"
     v-bind="$attrs"
     @update:visible="(v) => emit('update:visible', v)"
     @open="() => emit('open')"

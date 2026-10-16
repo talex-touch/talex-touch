@@ -567,6 +567,7 @@ function useOperationId() {
     <TxModal
       :model-value="confirmRequest !== null"
       :title="confirmRequest?.title ?? ''"
+      :close-label="t('common.close', 'Close')"
       width="520px"
       @update:model-value="(open: boolean) => { if (!open) confirmRequest = null }"
     >

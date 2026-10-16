@@ -225,7 +225,7 @@ defineExpose({
       </AdminTable>
     </AdminSection>
 
-    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.docComments.detail.title', 'Comment')" size="520px">
+    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.docComments.detail.title', 'Comment')" :close-label="t('common.close', 'Close')" size="520px">
       <TxDescriptions v-if="detailComment" :columns="1" size="sm">
         <TxDescriptionsItem :label="t('dashboard.sections.docComments.table.author', 'Author')">
           <AdminIdentity :name="detailComment.userName" :avatar="detailComment.userImage" :fallback="authorName(detailComment)" size="sm" />
