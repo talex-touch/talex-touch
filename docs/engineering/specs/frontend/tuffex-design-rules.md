@@ -195,11 +195,11 @@ Never put `color`, `background-color` or `border-color` in a `transition` that f
 
 Transitioning `opacity`, `transform` or `box-shadow` geometry on hover is fine — those are motion, not colour. `TxSensitiveInput`'s copy tab transitions `opacity` alone for exactly this reason.
 
-Legacy violations exist (`TxCopyButton` line 146 transitions `color`/`background-color`; `TxInput` line 197 transitions `border-color`). They are grandfathered; new components must not add more.
+No component is grandfathered any more: `TxCopyButton` and `TxInput`, once listed here, gate their colour on `.is-morphing` like the rest. A highlight the pointer moves is a hover too — an `is-active` option set from `mousemove`/`pointerenter`, a path a hover expands (`TxCascaderRow`), a JS `is-hovering` class that swaps a colour variable (`TxSlider`'s track) — so it repaints at once.
 
 ### A state change may ease colour; gate the transition on the change, not the element
 
-A tone or mode switch (`muted` → `danger`) is not a hover, so easing its fill and ink is allowed. Declaring `transition: background-color …` on the element would ease every hover as well, though, because a transition applies to every change of the property. Put the colour transition on a class that exists only while the state is changing:
+A tone or mode switch (`muted` → `danger`) is not a hover, so easing its fill and ink is allowed. Declaring `transition: background-color …` on the element would ease every hover as well, though, because a transition applies to every change of the property. Put the colour transition on a class that exists only while the state is changing; `useMorphWindow(source, longestColourMs)` (`packages/tuffex/packages/utils/use-morph-window.ts`) returns that flag:
 
 ```scss
 // Wrong — the hover rule below now eases too
@@ -277,12 +277,12 @@ Adding a class that is already on the element does not restart its CSS animation
 
 Worked example: `TxStatusHint` (2026-09-27). One watcher over `text` and `pulseKey` flips `is-pulse-a` / `is-pulse-b`, so a message that changes both in one update replays once; nothing flips on mount (the entrance plays) or while `animated` is false.
 
-### A looping effect runs on the compositor, with its parameters outside the keyframes
+### A looping effect runs on the compositor
 
 A loading or ambient effect plays exactly while the main thread is busy (a search in flight, a model streaming), so no frame of it may need the main thread:
 
 - Animate only `translate`, `scale`, `rotate` and `opacity`, as individual properties. Two animations on one element then never compete for `transform`, and a static `transform` can still hold a base size that the animated `scale` composes with.
-- Keep `var()` out of `@keyframes`. Per-element parameters such as period, phase and hue sit on the element as custom properties and reach the animation through `calc()` in `animation-duration` / `animation-delay`, never through keyframe values.
+- Never animate a custom property itself. Keyframes on `--x` read through `scale: var(--x)` interpolate `--x` on the main thread every frame; the `scale` is only restyled to follow, so nothing reaches the compositor. Animate the compositor property directly. Per-element parameters such as period, phase and hue sit on the element as custom properties and reach the animation through `calc()` in `animation-duration` / `animation-delay`, or as a `var()` in a keyframe value: Chromium resolves that per element when the animation starts, and again when the variable changes, and the animation stays on the compositor (DevTools trace, Chromium 152, 2026-10).
 - Write the per-instance custom properties inline and keep one rule for every instance, instead of generating a selector per instance.
 
 Additive light only works on dark surfaces. `mix-blend-mode: plus-lighter` is what makes overlapping beams merge towards white on dark. A near-white page leaves nothing to add up to: blended with the page the beams vanish, and isolated in their own layer the overlaps only get denser. A white core reads as a grey smudge there too, so light mode keeps the core coloured and blends `normal`. `multiply` is not the fix: it turns blue over yellow into olive.

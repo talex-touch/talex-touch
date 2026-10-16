@@ -31,42 +31,54 @@ G2 倒角 (超椭圆 / Squircle):
 $$\kappa = \frac{1}{R}$$
 在直线段，曲率 $\kappa = 0$；一旦进入圆弧接触点，曲率瞬间跳跃为 $\frac{1}{16} = 0.0625$。在人眼视网膜的高阶边缘检测机制中，二阶导数的阶跃会导致边缘反差感知（Mach Band 效应），在光照或者反光材质下会形成明显的“硬接缝”。
 
-Apple 从 iOS 7 开始，在所有应用图标、硬件外壳及系统视窗中强制采用超椭圆（Lamé Curve）：
+Apple 从 iOS 7 开始把应用图标换成「连续圆角」（continuous corners），这种外形常被近似为超椭圆（Lamé Curve）：
 $$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \approx 4 \sim 5)$$
-通过引入欧拉螺线（Euler Spiral / Clothoid）作为缓和曲线，使得直线与曲线交汇点的曲率变化率为零（$\frac{d\kappa}{ds} = 0$）。
+$n = 2$ 时它就是圆。$n > 2$ 时，超椭圆在与直线相接处的曲率为 0，与直线的曲率接得上（$G^2$）；$n > 3$ 时，相接处的曲率变化率 $\frac{d\kappa}{ds}$ 也为 0，曲率从 0 平缓爬升到 45° 方向的峰值。欧拉螺线（Euler Spiral / Clothoid）是另一种缓和曲线：它的曲率随弧长线性增长，$\frac{d\kappa}{ds}$ 是一个不为 0 的常数，超椭圆里并没有它。
 
 ### 1.3 TuffEx 中的 G2 连续工程实现
 
-由于现代浏览器尚未原生普及 `corner-shape: squircle`，TuffEx 在核心视窗、CoreBox 主浮层与重点卡片组件中，通过 SVG 路径计算与参数化 CSS Mask 实现 G2 等效的超椭圆形态：
+TuffEx 用 CSS 的 `corner-shape` 画平滑圆角：`border-radius` 仍然决定拐角占多大，`corner-shape: superellipse(K)` 把这段拐角从圆弧换成超椭圆，指数 $n = 2^K$（K = 1 是圆弧，K = 2 是常说的 squircle）。Chromium 139 起支持，TuffEx 所在的 Electron 41（Chromium 146）可以直接用；Safari 和 Firefox 还不支持。
 
 ```scss
-// packages/tuffex/packages/components/style/mixins.scss
-// 核心 G2 平滑剪裁参数化生成
-@mixin tx-squircle($radius: 16px, $smoothness: 0.6) {
-  // 当浏览器支持 CSS corner-shape 时原生优先
-  @supports (corner-shape: squircle) {
-    border-radius: $radius;
-    corner-shape: squircle;
-  }
-  // 否则通过精密拟合的平滑贝塞尔曲线或 SVG Mask 赋予 G2 外形
-  @supports not (corner-shape: squircle) {
-    border-radius: $radius;
-    // 使用更高阶的光学半角拟合，降低过渡突兀感
-    clip-path: url("data:image/svg+xml,...");
+// packages/tuffex/packages/components/style/mixins.scss（节选）
+$tx-squircle-smoothness: 0.6 !default;
+
+// $inset：子层离宿主外缘的距离（宿主的边框、内边距），每个圆角减去它
+@mixin tx-squircle($radius: 16px, $smoothness: $tx-squircle-smoothness, $inset: 0) {
+  border-radius: tx-squircle-inset($radius, $inset);
+  @supports (corner-shape: superellipse(2)) {
+    // 每个圆角乘以 1 + $smoothness；指数让 45° 方向切入的深度保持为圆弧 R 的深度
+    border-radius: tx-squircle-inset(tx-squircle-radius($radius, $smoothness), $inset);
+    corner-shape: superellipse(#{tx-squircle-exponent($smoothness)});
   }
 }
+
+.tx-modal__content {
+  @include tx-squircle(16px); // → border-radius: 25.6px; corner-shape: superellipse(1.777)
+}
 ```
+
+* **`$smoothness` 与 Figma 的 Corner smoothing 同义**：拐角沿每条边多占 `$smoothness × R`，超椭圆的半轴 $a = (1 + s) \cdot R$。
+* **指数由「45° 方向切入深度相等」求出**：超椭圆在对角线上切入 $a(1 - 2^{-1/n})$，令它等于半径 R 的圆弧切入的 $R(1 - 1/\sqrt{2})$。默认 $s = 0.6$ 时 $a = 1.6R$、$n \approx 3.43$、$K \approx 1.777$。拐角看起来和原来的 R 一样大，只是曲线从 1.6R 处就开始弯，曲率从 0 爬升到 45° 方向的约 $1.31/R$，中间没有阶跃。
+* **实测**（Chrome 152，从拐角沿 3°～45° 的射线做命中测试）：R = 16 / 18 / 24 时，45° 方向与同 R 圆角的边界相差不超过 0.02px；靠近曲线起点处超椭圆略向内收，法向不到 0.3px。
+* **令牌与工具类**：拿不到 mixin 的代码（如 core-app）读 `--tx-corner-smooth-scale`（1.6）与 `--tx-corner-smooth-shape`（`superellipse(1.777)`），在 `@supports (corner-shape: superellipse(2))` 里把半径乘上前者、再设后者。模板里可以直接用 `.tx-corner-smooth-sm`、`-md`、`-lg`，分别对应 8 / 16 / 24px 的圆角。
+* **已接入**：TxCard、TxModal、TxCommandPalette、TxFlipOverlay、TxPopperDialog、TxBlowDialog、TxBottomDialog、TxTouchTip，以及 core-app 的 CoreBox。CoreBox 默认外观的圆角为 0，选「圆角」外观（12px）时才看得到。主窗口的圆角由系统绘制（macOS 的 vibrancy 窗口、Windows 的 DWM），CSS 改不了。
+* **子层要一起继承形状**：`corner-shape` 不会继承。用 `border-radius: inherit` 复制外形的子层必须同时写 `corner-shape: inherit`，否则拿到的是放大后的半径配圆弧，在拐角处向内缺一块。TxBaseSurface 的各层、TxFlowLight、`.fake-background` 的伪元素都已这样处理；TxBaseSurface 传了自己的 `radius` 时保持圆弧。平滑圆角的宿主不要再设 `--fake-radius`，它会盖掉继承下来的半径。
+* **在边框或内边距以内的子层不能直接继承**：继承来的是宿主外缘的半径，放在内缘上，每个拐角都会在两者之间留出一道透出背景的月牙缝。这样的子层给 `tx-squircle` 传 `$inset`，例如 `@include tx-squircle(var(--tx-card-radius, 14px), $inset: 1px)`：半径减去这段距离、超椭圆的指数不变，与宿主同心（见 2.1）。
+* **不支持 `corner-shape` 的浏览器保留普通圆角（$G^1$），不用 SVG 遮罩补形**。`mask` / `clip-path` 会剪掉元素外侧的 `box-shadow`，还会让元素成为背景滤镜的根：实测在 Chrome 里，带遮罩的宿主内部的 `backdrop-filter` 只取得到宿主自己，底下的条纹原样露出（红色通道 51～219）；去掉遮罩才是均匀的模糊（135）。默认的琉光（refraction）与玻璃材质都靠 `backdrop-filter`，遮罩补形会让它们失效。
+* **矮盒子的拐角会变方**：盒子的高或宽小于 $2 \times 1.6R$ 时，浏览器按比例缩小半径，拐角比原来的 R 更方。例如 R = 18 的 TxCard 要至少 57.6px 高才不受影响；40px 高时，45° 方向少切约 1.6px。
 
 #### 对比示例：错误与正确
 
 ```html
-<!-- 错误：机械使用固定大圆角，在 600px+ 的浮层上暴露出四角生硬的圆弧折线 -->
-<div class="corebox-window" style="border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+<!-- 错误：在 600px+ 的浮层上直接写大圆角，四角是圆弧，曲率在接缝处跳变 -->
+<div class="launcher" style="border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
   ...
 </div>
 
-<!-- 正确：采用 TuffEx G2 连续曲率平滑方案，结合光学折射边缘 -->
-<div class="corebox-window tx-surface-refraction tx-corner-smooth-lg">
+<!-- 正确：平滑圆角工具类定外形，铺在里面的琉光材质（TxBaseSurface 默认 refraction）继承同一外形 -->
+<div class="launcher tx-corner-smooth-lg">
+  <TxBaseSurface class="launcher__surface" />
   ...
 </div>
 ```
@@ -81,9 +93,9 @@ $$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \appr
 
 ```
 错误嵌套 (内外皆为 12px，Padding = 8px):
-拐角处的实际物理距离：
-D_corner = (R + P) * √2 - R = (12 + 8) * 1.414 - 12 ≈ 16.28px
-与边缘平直处的间距 8px 相比，拐角处间距骤增一倍！
+拐角处（沿 45° 对角线）的实际物理距离：
+D_corner = P * √2 = 8 * 1.414 ≈ 11.31px
+与边缘平直处的间距 8px 相比，拐角处间距凭空多出约 41%！
 视觉表现：内部容器像是被“挤压”或“悬空”，两道弧线无法平行。
 
 正确嵌套 (R_outer = R_inner + Padding):
@@ -93,22 +105,36 @@ D_corner = (R + P) * √2 - R = (12 + 8) * 1.414 - 12 ≈ 16.28px
 
 ### 2.2 TuffEx 黄金嵌套实战
 
-在 `TxSensitiveInput`、`TxCard` 与 `TxTabs` 等多层嵌套组件中，TuffEx 严格执行 CSS `calc()` 动态同心约束：
+TuffEx 的嵌套组件用 CSS `calc()` 从同一个半径变量推出内外两层，改一个尺寸，两层一起变：
 
 ```scss
-// TxSensitiveInput 中的同心设计实装
-.tx-sensitive-input {
-  --tx-si-radius: 12px;
-  border-radius: var(--tx-si-radius);
-  padding: 4px;
+// TxMotionControl 的分段控件，建在 TxTabs 上（节选）
+.tx-motion-control {
+  --tx-mc-radius: 14px; // xs / sm / lg 为 10 / 12 / 16px
 
-  // 内部复制按钮 Tab 位于右侧内侧，保持同心圆角
-  .tx-sensitive-input__copy-tab {
-    // 外层半径减去内边距，确保内外圆弧完全同心平行
-    border-radius: calc(var(--tx-si-radius) - 4px); // 即 8px
-  }
+  // 轨道
+  :deep(.tx-tabs__nav) { padding: 0; border-radius: var(--tx-mc-radius); }
+  // 3px 写在标签列表上，替换 TxTabs 自带的 6px 8px，顶部导航下的分隔线也去掉，
+  // 3px 就是标签项四周的全部间隙
+  :deep(.tx-tabs .tx-tabs__nav) { border-bottom: 0; }
+  :deep(.tx-tabs .tx-tabs__nav-inner) { padding: 3px; }
+  // 标签项：轨道半径减去 3px
+  :deep(.tx-tab-item) { border-radius: calc(var(--tx-mc-radius) - 3px); }
+}
+
+// 「频率」变体的外框：6px 内边距里装的是触发按钮或轨道，半径都是 --tx-mc-radius
+.tx-motion-control__frequency {
+  padding: 6px;
+  border-radius: calc(var(--tx-mc-radius) + 6px);
 }
 ```
+
+* **TxMotionControl**：md 尺寸下，轨道 14px，标签项 11px，外框 20px。外框到标签项的间隙是 6 + 3 = 9px，20 − 9 正好等于 11。TxTabs 的 `pill` 指示器每次定位时读取当前标签项的计算圆角，所以也是 11px。
+* **TxChoiceCard** 由内往外推：外框半径 `calc(var(--tx-choice-card-option-radius, 10px) + var(--tx-choice-card-pad, 8px))`，选项 10px，外框 18px。
+* **TxCollapse**：外框 10px，有 1px 边框。首个标题与收起时末个标题的外侧两角是 `calc(var(--tx-collapse-radius, 12px) - 1px)`，悬停底色和焦点环都沿着外框走。
+* **TxMorph**：`--tx-morph-radius` 注册为可继承的 `<length>`。内容的圆角写成 `calc(var(--tx-morph-radius) - var(--tx-morph-inset))`，就与外框同心；形状变形的途中读到的是动画中的半径，也保持同心。
+* **TxCard**：材质层、封面与加载遮罩铺满卡片的边框以内，圆角取卡片的平滑圆角减去边框宽度 `--tx-card-border-width`（`solid`、`dashed` 为 1px，`plain` 为 0），形状相同。默认 18px 的卡片外缘是 28.8px，这三层是 27.8px。
+* **内边距大于外框半径时无法同心**：$R_{\text{outer}} - \text{Padding}$ 为负，内层只能用自己的最小圆角。TxTabs 的外框是 12px，标签项离外框外沿 13～17px（1px 边框、导航内边距与标签项外边距之和），所以标签项用自己的 10px。
 
 ```vue
 <!-- 错误写法：硬编码内外圆角导致断层 -->
@@ -152,9 +178,9 @@ $$Padding_{\text{horizontal}} \ge R$$
 TuffEx 的单行文字包裹层黄金光学比例：
 $$Padding_{\text{vertical}} \approx 0.6 \sim 0.75 \times Padding_{\text{horizontal}}$$
 
-* `TxScrubField`（26px 高度）：`padding: 4px 8px 4px 6px`。
-* `TxButton`（32px 标准高度）：`padding: 6px 12px`。
-* `TxTag`（微型标签）：`padding: 2px 6px`。
+* `TxScrubField`：固定 26px 高，12px 字的行高 14.5px，上下各留 5.75px，写着的 4px 上下内边距不起作用。两端的字离边缘 9px：拖动柄一侧是 5px 内边距加柄自己的 4px，单位一侧是 8px 加 1px，比值约 0.64。
+* `TxModeChip`：固定 28px 高、行高 18px，上下各留 5px，左右 8px（`height: 28px; padding: 0 8px`），比值 0.625。
+* `TxTag` 的 md 尺寸：直接写作 `padding: 5px 8px`，比值同为 0.625。
 
 ---
 
@@ -164,18 +190,17 @@ $$Padding_{\text{vertical}} \approx 0.6 \sim 0.75 \times Padding_{\text{horizont
 
 在未经深思的工程体系中，开发人员遇到遮挡问题往往随意加大 `z-index`，最终导致全局层级失控（Modal 被 Select 遮挡、Tooltip 穿透系统托盘）。
 
-TuffEx 建立了不可逾越的 7 级 Z 轴拓扑系统：
+固定的层级档位也解决不了这个问题：弹窗里打开的下拉菜单必须盖住弹窗，抽屉里打开的弹窗又必须盖住抽屉。谁该在上面，取决于打开的先后，而不是组件的种类。所以 TuffEx 不给浮层分固定档位，而是让它们按打开顺序，从同一个 z-index 分配器（`packages/tuffex/packages/utils/z-index-manager.ts`）取号：
 
-| 标号 | 层级令牌 | Z-Index | 对应物理实体 | 遮挡规则 |
-|---|---|---|---|---|
-| L0 | `--tx-z-floor` | `0` | 主工作区底板、Canvas 画布 | 任何组件均在其上方 |
-| L1 | `--tx-z-surface` | `1` | 普通卡片、表格行、分组容器 | 局部文档流层级 |
-| L2 | `--tx-z-sticky` | `10` | 表格吸顶头、侧边栏固定操作条 | 仅盖住当前滚动容器的下层内容 |
-| L3 | `--tx-z-popover` | `100` | 下拉菜单、日期选择器、上下文菜单 | 随宿主滚动或脱标，可被抽屉覆盖 |
-| L4 | `--tx-z-drawer` | `500` | 侧滑配置抽屉、详情侧面板 | 遮盖整个应用主体 |
-| L5 | `--tx-z-modal` | `1000` | 对话框、危险操作阻断弹窗 | 全局遮罩遮蔽所有背景内容 |
-| L6 | `--tx-z-system` | `5000` | CoreBox 快捷指令盘、全局搜索栏 | 跨越一切应用窗口的系统级交互 |
-| L7 | `--tx-z-toast` | `9999` | 错误报警、状态通知、Tooltip 气泡 | 永远处于最高可见层，不可被阻拦 |
+* **取号**：浮层打开时调用 `next()`，拿到当前值加 1，后打开的总是盖在先打开的上面。取号的有 TxModal；基于 TxBaseAnchor 的浮层，如 TxPopover、TxTooltip、TxSelect、TxDropdownMenu、TxContextMenu；以及 TxCommandPalette、TxFlipOverlay、TxPicker、TxLoadingOverlay 和各类 Dialog。TxToastHost 在每次调用 `toast()` 时取号。
+* **起点**：计数器从 2000 起步（`DEFAULT_Z_INDEX_SEED`），第一个浮层拿到 2001。不带参数调用 `refresh()` 时，会改读 CSS 变量 `--tx-index-popper`，取两者中较大的那个。
+* **抽屉**：TxDrawer 打开时先 `refresh(10000)`，把计数抬到至少 10000 再取号，所以第一个抽屉是 10001，在抽屉里打开的浮层从 10002 往上排。传了 `z-index` 时直接用这个值，并把计数抬到至少这个值。
+* **只增不减**：关闭浮层不会退号，下一个浮层照样取更大的号。
+* **按应用隔离**：`app.use(Tuffex)` 时为这个应用建一个分配器，没有 Vue 应用的调用方共用模块级的那一个。
+
+业务代码要做自己的浮层时，同样用 `useZIndexAllocator()` 取号，不要写死数字。
+
+`variables.scss` 里另有 `--tx-index-normal: 1`、`--tx-index-top: 1000`、`--tx-index-popper: 2000` 三个令牌：`--tx-index-popper` 除了作分配器的起点，也是 TxVersionCapsule 面板的层级；`--tx-index-top` 给 TxMotion 的全局进度条用，让它压在所有浮层之下；`--tx-index-normal` 组件没有用到。TxMotion 的全局指针层是例外，固定为 2147483647：它要跟着指针盖过抽屉和对话框，而分配器的号没有上限。组件内部写死的 `z-index` 大多是 −1 到 10 的小数值，只在组件自己的层叠上下文里排先后。
 
 ### 4.2 吸顶分离准则：使用 1px 细线而非投影
 
