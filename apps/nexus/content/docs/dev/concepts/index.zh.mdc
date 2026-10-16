@@ -17,9 +17,9 @@ Tuff 的设计体系不是简单的视觉样式罗列，而是建立在**人机�
 
 ## 材质物理与环境感知
 
-- **[Surface 5 种材质选型与确认门禁](./surface-taxonomy.zh.mdc)** — TxBaseSurface 的 refraction、glass、blur、mask、pure 五种材质，各组件的默认值与切换门禁。
+- **[Surface 8 种材质物理选型与确认门禁](./surface-taxonomy.zh.mdc)** — Refraction（默认）、Glass、Acrylic、Mica 等 8 种材质选型矩阵与严肃确认门禁。
 - **[琉光折射管线与光谱色散模型](./refraction-physics.zh.mdc)** — 斯涅尔定律、SVG 位移贴图滤镜、Smoothstep 强度映射与 RGB 色散。
-- **[材质运动降级与分层恢复](./surface-deduction.zh.mdc)** — `moving` 与 `autoDetect` 两个入口，blur / glass 换成 fallbackMode，refraction 分层降级、分层恢复。
+- **[材质自动推断与 120Hz 运动降级](./surface-deduction.zh.mdc)** — 指针速度感知、窗口移动监听、帧预算探针与省电信号，0ms 降级与 140ms 非对称恢复。
 - **[Alpha 噪点掩膜与光斑追踪](./noise-and-specular.zh.mdc)** — 解决 Overlay 发灰的 `mask-composite: intersect` Alpha 噪点方案与卡片物理反光追踪。
 
 ## 色彩科学与暗色模式

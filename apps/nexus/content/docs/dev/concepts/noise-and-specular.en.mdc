@@ -1,6 +1,6 @@
 ---
 title: Alpha Noise Masks & Specular Tracking
-description: "Overcoming dirty greys from overlay blending via mask-composite: intersect, and the spring that lets TxCard's refraction light follow the pointer."
+description: "Overcoming dirty greys from overlay blending via mask-composite: intersect, generating physical card cursor specular reflections, and the spring that lets TxCard's refraction light follow the pointer."
 ---
 
 # Alpha Noise Masks & Specular Tracking
@@ -48,10 +48,28 @@ The noise governs purely "how much light passes through"; the underlying canvas 
 
 ## Card Specular Light Cursor Tracking
 
-`TxCard`'s light follow is off by default and works only with `background="refraction"` and `refraction-light-follow-mouse` turned on:
+On `TxCard`, moving the pointer draws a faint radial specular highlight that travels with the cursor across the card's surface and along its edge. The `specular` prop controls it: left unset it follows `clickable`, so clickable cards have it by default, and disabled cards never draw it.
+
+- **Normalized Coordinates**: as the pointer moves over the card, the component converts its position to percentages within the card and writes them to the specular layer as `--tx-card-light-x` and `--tx-card-light-y`.
+- **Subtle Ambient Alpha**: the highlight is one 600px circular radial gradient, 6% white at its centre and fully transparent at 40%. Its strength is held at `0.06`, and it is drawn in dark themes only (6% white does not read on a light ground) and not at all in high contrast, so it casts a soft sheen without competing with the card's text. It fades in over 240ms when the pointer enters and out when it leaves.
+
+## Damped Smoothing & Normal Map Illusion
+
+To keep the highlight from jumping mechanically during rapid pointer travel, the light does not jump to the cursor; every frame it closes part of the gap:
+$$\vec{P}_{\text{render}}(t) = \vec{P}_{\text{render}}(t-1) + \alpha' \cdot \left(\vec{P}_{\text{cursor}}(t) - \vec{P}_{\text{render}}(t-1)\right), \qquad \alpha' = 1 - (1 - \alpha)^{\Delta}$$
+α = 0.18 is the share one 60Hz frame closes, and Δ is the frame interval divided by 16.67ms (clamped to 0.1–2). Compounded over Δ, the light travels on a 120Hz or 144Hz display as it does at 60Hz; worked out at 60Hz, a jump is 95% covered after 16 frames (about 267ms). When the pointer enters the card the light starts right under it, rather than sliding over from where it last went out; with reduce motion on, the light always jumps straight to the cursor and does not fade.
+
+As the highlight glances off the card's 1px boundary, the ring the border occupies draws a second, tighter and brighter light, 240px with 30% white at its centre, cut down to the border by `mask-composite: exclude`; it creates the optical illusion of light grazing a physical bevel (Normal Map Illusion), heightening spatial depth. Only the solid border of a `solid` card draws this ring: a `dashed` border would light up its gaps along with its dashes, so it draws none, and a `plain` card has no border.
+
+:::TuffDemoWrapper{demo="ConceptCardSpecularDemo"}
+:::
+
+## Refraction Light Follow
+
+A second light that follows the pointer belongs to the refraction material itself. `TxCard`'s refraction light follow is off by default and works only with `background="refraction"` and `refraction-light-follow-mouse` turned on:
 
 - **Normalized Coordinates**: as the pointer moves over the card, the component converts its position to 0–1 coordinates within the card and uses them as the light's target; when the pointer leaves, the target returns to the centre (0.5, 0.5).
-- **Moving the Refraction's Light Point**: the light point goes through `TxBaseSurface`'s `refraction-light-x/y` into `--tx-surface-refraction-light-x/y`, which places several radial glows on the refraction's filter and tint layers, one of them at the mirrored point in the opposite corner. The component adds no separate white highlight.
+- **Moving the Refraction's Light Point**: the light point goes through `TxBaseSurface`'s `refraction-light-x/y` into `--tx-surface-refraction-light-x/y`, which places several radial glows on the refraction's filter and tint layers, one of them at the mirrored point in the opposite corner. This path adds no white highlight of its own; that is `specular`, above.
 - **Strength and Angle Follow the Pointer**: the farther the light is from the centre, the more refraction strength it adds, up to 16 × `refraction-light-follow-intensity` (0.45 by default, so at most +7.2); the refraction angle is interpolated toward the pointer by the same factor.
 
 ## Spring Smoothing
