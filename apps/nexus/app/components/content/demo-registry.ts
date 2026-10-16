@@ -114,6 +114,7 @@ export const demoLoaders: Record<string, DemoLoader> = {
   ComponentsReleasePolicyDemo: () => import('./demos/ComponentsReleasePolicyDemo.vue'),
   ComponentsSearchFiltersDemo: () => import('./demos/ComponentsSearchFiltersDemo.vue'),
   ComponentsWorkflowPanelDemo: () => import('./demos/ComponentsWorkflowPanelDemo.vue'),
+  ConceptCardSpecularDemo: () => import('./demos/ConceptCardSpecularDemo.vue'),
   ConceptColorMixContrastDemo: () => import('./demos/ConceptColorMixContrastDemo.vue'),
   ConceptCompositorDemo: () => import('./demos/ConceptCompositorDemo.vue'),
   ConceptConcentricInsetDemo: () => import('./demos/ConceptConcentricInsetDemo.vue'),

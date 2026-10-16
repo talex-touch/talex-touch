@@ -17,9 +17,9 @@ This section systematically breaks down the "why" and "how" behind every design 
 
 ## Surfaces and Material Physics
 
-- **[Surface 5-Material Taxonomy & Gatekeepers](./surface-taxonomy.en.mdc)** — TxBaseSurface's five modes (refraction, glass, blur, mask and pure), each component's default, and the confirmation gate for switching.
+- **[Surface 8-Material Taxonomy & Gatekeepers](./surface-taxonomy.en.mdc)** — Refraction (default), Glass, Acrylic, Mica and the 8-surface matrix with explicit user confirmation gatekeepers.
 - **[Refraction Pipeline & Chromatic Dispersion](./refraction-physics.en.mdc)** — Snell's Law, SVG displacement-map filters, Smoothstep intensity mapping, and RGB chromatic dispersion.
-- **[Surface Motion Fallback & Layered Recovery](./surface-deduction.en.mdc)** — The `moving` and `autoDetect` inputs, blur and glass switching to fallbackMode, and refraction's layered fallback and recovery.
+- **[Adaptive Surface Deduction & 120Hz Fallback](./surface-deduction.en.mdc)** — Pointer velocity sensing, window move hooks, frame budget probes and power saving, with a 0ms fallback and 140ms asymmetric recovery.
 - **[Alpha Noise Masks & Specular Tracking](./noise-and-specular.en.mdc)** — Solving overlay greyness via `mask-composite: intersect` alpha noise and card specular cursor tracking.
 
 ## Color Science and Dark Mode

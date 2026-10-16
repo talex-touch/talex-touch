@@ -64,6 +64,10 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let mutationObserver: MutationObserver | null = null
   let observedElements: HTMLElement[] = []
+  // The two local sources, each ended only by its own kind of event: the transform
+  // transitions running on observed elements, and whether an inline transform is present.
+  const runningTransitions = new Map<EventTarget, Set<string>>()
+  let inlineTransforming = false
   let refractionRecoveryRaf: number | null = null
   let refractionMaskPeakRampRaf: number | null = null
   let refractionEdgeRevealRaf: number | null = null
@@ -264,16 +268,39 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
     startSettleTimer()
   }
 
-  function handleTransitionStart(e: TransitionEvent) {
-    if (e.propertyName === 'transform' || e.propertyName === 'translate') {
+  /**
+   * Whether a transition event reports one of the observed elements moving. Transition
+   * events bubble, so the listener on `<html>` also hears a switch thumb sliding elsewhere
+   * on the page; only the element the listener sits on moves the surface.
+   */
+  function isOwnTransformTransition(e: TransitionEvent) {
+    return e.target === e.currentTarget && (e.propertyName === 'transform' || e.propertyName === 'translate')
+  }
+
+  function syncLocalMotion() {
+    if (runningTransitions.size > 0 || inlineTransforming)
       localGuard.onMotionStart()
-    }
+    else
+      localGuard.onMotionEnd()
+  }
+
+  function handleTransitionStart(e: TransitionEvent) {
+    if (!isOwnTransformTransition(e) || !e.target)
+      return
+    const properties = runningTransitions.get(e.target) ?? new Set<string>()
+    properties.add(e.propertyName)
+    runningTransitions.set(e.target, properties)
+    syncLocalMotion()
   }
 
   function handleTransitionEnd(e: TransitionEvent) {
-    if (e.propertyName === 'transform' || e.propertyName === 'translate') {
-      localGuard.onMotionEnd()
-    }
+    if (!isOwnTransformTransition(e) || !e.target)
+      return
+    const properties = runningTransitions.get(e.target)
+    properties?.delete(e.propertyName)
+    if (!properties?.size)
+      runningTransitions.delete(e.target)
+    syncLocalMotion()
   }
 
   /**
@@ -319,15 +346,17 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
         if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
           const target = mutation.target as HTMLElement
           if (hasInlineTransform(target)) {
-            localGuard.onMotionStart()
+            inlineTransforming = true
+            syncLocalMotion()
           }
-          // A style write on a non-transforming element only ends the motion once
-          // nothing under observation is transforming any more. Checking just the
-          // mutated element would let an unrelated write cancel an in-flight
-          // transition — flip-overlay's body scroll lock sets `body.style.overflow`,
-          // and body is an observed ancestor.
-          else if (localMoving.value && !targets.some(hasInlineTransform)) {
-            localGuard.onMotionEnd()
+          // A style write on a non-transforming element only ends the inline motion once
+          // nothing under observation is transforming any more. Checking just the mutated
+          // element would let an unrelated write end it: flip-overlay's body scroll lock
+          // sets `body.style.overflow`, and body is an observed ancestor. Nor does a style
+          // write end a transition: the surface rewrites its own variables every frame it moves.
+          else if (inlineTransforming && !targets.some(hasInlineTransform)) {
+            inlineTransforming = false
+            syncLocalMotion()
           }
         }
       }
@@ -347,6 +376,8 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
     observedElements = []
     mutationObserver?.disconnect()
     mutationObserver = null
+    runningTransitions.clear()
+    inlineTransforming = false
     localGuard.dispose()
     localMoving.value = false
     clearTimeout(settleTimer)
