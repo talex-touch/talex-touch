@@ -21,6 +21,7 @@ const labels = computed(() => (locale.value === 'zh'
       remBody: '支持 rem 等 CSS 长度。',
       percentBody: '上下方向时，百分比 size 会作为高度。',
       fullBody: 'full prop 会让抽屉在当前方向上 100% 打开；也可以写成 size="full"。',
+      close: '关闭抽屉',
     }
   : {
       pxTrigger: 'size px',
@@ -35,6 +36,7 @@ const labels = computed(() => (locale.value === 'zh'
       remBody: 'CSS lengths such as rem are supported.',
       percentBody: 'For top/bottom directions, percentage size becomes height.',
       fullBody: 'The full prop opens the drawer at 100% on the active axis; size="full" is equivalent.',
+      close: 'Close drawer',
     }))
 </script>
 
@@ -54,16 +56,16 @@ const labels = computed(() => (locale.value === 'zh'
     </TxButton>
   </div>
 
-  <TxDrawer v-model:visible="visiblePx" :title="labels.pxTitle" size="400px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visiblePx" :title="labels.pxTitle" :close-label="labels.close" size="400px" :mobile-adapt="false">
     <p>{{ labels.pxBody }}</p>
   </TxDrawer>
-  <TxDrawer v-model:visible="visibleRem" :title="labels.remTitle" size="24rem" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleRem" :title="labels.remTitle" :close-label="labels.close" size="24rem" :mobile-adapt="false">
     <p>{{ labels.remBody }}</p>
   </TxDrawer>
-  <TxDrawer v-model:visible="visiblePercent" :title="labels.percentTitle" direction="bottom" size="55%">
+  <TxDrawer v-model:visible="visiblePercent" :title="labels.percentTitle" :close-label="labels.close" direction="bottom" size="55%">
     <p>{{ labels.percentBody }}</p>
   </TxDrawer>
-  <TxDrawer v-model:visible="visibleFull" :title="labels.fullTitle" full>
+  <TxDrawer v-model:visible="visibleFull" :title="labels.fullTitle" :close-label="labels.close" full>
     <p>{{ labels.fullBody }}</p>
   </TxDrawer>
 </template>

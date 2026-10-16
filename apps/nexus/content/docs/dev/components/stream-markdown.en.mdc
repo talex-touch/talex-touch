@@ -38,6 +38,7 @@ code: |
 - Set `streaming` to false when generation ends, or the caret stays at the tail.
 - In custom renderers, show a loading state while `closed` is false instead of parsing a partial block.
 - Key `renderers` by the lowercase first word of the fence (` ```chart ` → `chart`).
+- On non-English surfaces, pass the code and diagram wording along with the image and table copy: the built-in blocks show it, and it defaults to English.
 - Use `TxMarkdownView` for static Markdown; it needs none of the block and caret machinery.
 
 ## API Reference
@@ -59,6 +60,41 @@ code: |
 | `allowSessionImagesText` | `string` | `'Allow for this conversation'` | Text of the button that allows every remote image for the conversation. |
 | `copyTableText` | `string` | `'Copy CSV'` | Text of a table's copy-as-CSV button. |
 | `copiedTableText` | `string` | `'Copied'` | Button text shown briefly after a successful copy. |
+| `codePreviewText` | `string` | `'Preview'` | Text of a code block's button that shows HTML, SVG, or XML rendered. |
+| `codeSourceText` | `string` | `'Code'` | Text of the same button while the preview shows, which returns to the source. |
+| `codeFrameLabelFormatter` | `(lang: string) => string` | `` (lang) => `${lang} preview` `` | Builds the preview frame's accessible name from the fence language. |
+| `copyCodeText` | `string` | `'Copy'` | Text of a code block's copy button. |
+| `copiedCodeText` | `string` | `'Copied'` | Copy button text shown briefly after a successful copy. |
+| `diagramZoomLabel` | `string` | `'Zoom diagram'` | Accessible name of a rendered diagram, which opens the preview. |
+| `diagramPreviewLabel` | `string` | `'Diagram preview'` | Accessible name of the fullscreen diagram preview. |
+| `diagramCloseLabel` | `string` | `'Close preview'` | Accessible name of the preview's close button. |
+| `diagramErrorText` | `string` | `'Diagram failed to render — showing source.'` | Shown above the source when a diagram fails to render. |
+
+### TxCodeBlock Props
+
+The built-in renderer for every language without one of its own, also exported for showing code outside a document. It receives `StreamMarkdownBlockContext` as props; inside `TxStreamMarkdown`, its copy comes from the `code*` props and `copyCodeText` / `copiedCodeText`.
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `previewable` | `boolean` | `true` | Offers a rendered view of a settled HTML, SVG, or XML fence. |
+| `previewLabel` | `string` | `'Preview'` | Text of the button that shows the rendered view. |
+| `codeLabel` | `string` | `'Code'` | Text of the same button while the preview shows. |
+| `frameLabelFormatter` | `(lang: string) => string` | `` (lang) => `${lang} preview` `` | Builds the preview frame's accessible name from the fence language. |
+| `copyLabel` | `string` | `'Copy'` | Text of the copy button. |
+| `copiedLabel` | `string` | `'Copied'` | Copy button text shown briefly after a successful copy. |
+
+### TxMermaidBlock Props
+
+The built-in `mermaid` renderer, which also receives `StreamMarkdownBlockContext` as props; inside `TxStreamMarkdown`, its copy comes from the `diagram*` props and `copyCodeText` / `copiedCodeText`.
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `zoomLabel` | `string` | `'Zoom diagram'` | Accessible name of the rendered diagram, which opens the preview. |
+| `previewLabel` | `string` | `'Diagram preview'` | Accessible name of the fullscreen preview. |
+| `closeLabel` | `string` | `'Close preview'` | Accessible name of the preview's close button. |
+| `errorText` | `string` | `'Diagram failed to render — showing source.'` | Shown above the source when the diagram fails to render. |
+| `copyLabel` | `string` | `'Copy'` | Text of the copy button on the source shown after a failed render. |
+| `copiedLabel` | `string` | `'Copied'` | Copy button text shown briefly after a successful copy. |
 
 ## Overview
 

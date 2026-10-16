@@ -4,10 +4,10 @@ const { locale } = useI18n()
 
 <template>
   <div v-if="locale === 'zh'">
-        <TxAlert title="提示" message="检查一下配置项。" type="info" />
-        <TxAlert title="成功" message="已保存。" type="success" />
-        <TxAlert title="注意" message="有需要处理的内容。" type="warning" />
-        <TxAlert title="失败" message="保存失败。" type="error" />
+        <TxAlert title="提示" message="检查一下配置项。" type="info" close-label="关闭" />
+        <TxAlert title="成功" message="已保存。" type="success" close-label="关闭" />
+        <TxAlert title="注意" message="有需要处理的内容。" type="warning" close-label="关闭" />
+        <TxAlert title="失败" message="保存失败。" type="error" close-label="关闭" />
   </div>
   <div v-else>
         <TxAlert title="Heads up" message="Check your configuration." type="info" />

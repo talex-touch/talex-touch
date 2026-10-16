@@ -16,19 +16,32 @@ verified: true
 ---
 code: |
   <script setup lang="ts">
-  const attachments = [
+  import type { AiAttachment, AiAttachmentFile } from '@talex-touch/tuffex/ai-elements'
+  import { ref } from 'vue'
+
+  const attachments = ref<AiAttachment[]>([
     { kind: 'image', id: 'i1', url: 'https://picsum.photos/id/1015/400/300', name: 'canyon.jpg' },
+    { kind: 'image', id: 'i2', url: 'https://picsum.photos/id/1043/400/300', name: 'shore.jpg', uploading: true, progress: 0.6 },
     { kind: 'file', id: 'f1', name: 'report.pdf', size: 240_000 },
     { kind: 'file', id: 'f2', name: 'uploading.zip', size: 1_200_000, uploading: true, progress: 0.4 },
-  ]
+  ])
+
+  // The component never mutates the list: the host drops removed and cancelled ids.
+  function drop(id: string) {
+    attachments.value = attachments.value.filter(item => item.id !== id)
+  }
+
+  function onOpen(file: AiAttachmentFile) {
+    // Opening or downloading the file is up to the host.
+  }
   </script>
 
   <template>
     <TxAttachmentTray
       :attachments="attachments"
       removable
-      @remove="onRemove"
-      @cancel="onCancel"
+      @remove="drop"
+      @cancel="drop"
       @open="onOpen"
     />
   </template>
@@ -37,11 +50,11 @@ code: |
 
 ### Best Practices
 
-- Set `removable` in a composer; leave it off on sent messages so they stay read-only.
-- Handle `remove` and `cancel` by dropping that `id` from your list; the component never mutates `attachments`.
+- Set `removable` in a composer and drop the `id` on `remove` and `cancel`; keep sent messages read-only.
 - Give an in-flight attachment both `uploading: true` and `progress` (0–1); without `progress`, no progress shows.
 - Handle `open`; otherwise clicking a file chip does nothing.
 - On non-English surfaces, override every text prop and `sizeFormatter`; `previousText` and `nextText` are visible text.
+- Resize thumbnails with `--tx-attachment-tray-thumb-size` rather than overriding the component's internal classes.
 
 ## API Reference
 
@@ -58,6 +71,7 @@ code: |
 | `nextLabel` | `string` | `'Next image'` | Accessible name of the next button. |
 | `previousText` | `string` | `'Prev'` | Visible text of the previous button. |
 | `nextText` | `string` | `'Next'` | Visible text of the next button. |
+| `closeLabel` | `string` | `'Close'` | Accessible name of the preview's close button. |
 | `removeLabel` | `string` | `'Remove attachment'` | Accessible name of remove buttons. |
 | `cancelLabel` | `string` | `'Cancel upload'` | Accessible name of cancel-upload buttons. |
 | `sizeFormatter` | `(bytes: number) => string` | — | Formats file sizes; defaults to whole bytes under 1 KB, then KB/MB/GB with one decimal. |
@@ -90,10 +104,28 @@ code: |
 | `cancel` | `(id: string)` | Fires when cancel-upload is clicked. |
 | `open` | `(attachment: AiAttachment & { kind: 'file' })` | Fires when the chip body is clicked. |
 
+### CSS Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--tx-attachment-tray-thumb-size` | `72px` | Side length of an image thumbnail. |
+
+- The variable is not declared on the root, so setting it on the component or any ancestor takes effect.
+
 ## Overview
 
 - `kind: 'image'` items go to the image grid and `kind: 'file'` items to file chips; pass both in one `attachments` array.
 - Each file renders as a `TxAttachmentChip`; the tray forwards `removable`, `removeLabel`, `cancelLabel`, and `sizeFormatter` to it.
-- Clicking an image opens the built-in viewer (on `TxModal`), which pages through images only and emits nothing.
-- An `uploading` attachment always shows a cancel button: images draw a progress ring, file chips show a percentage.
-- A thumbnail that fails to load becomes a placeholder and is not retried.
+- An `uploading` attachment always has a cancel button: images draw a progress ring, file chips show a percentage and a thin progress bar.
+- An image's remove or cancel button sits inside the thumbnail's top-right corner; it appears on hover or keyboard focus and stays visible on touch screens.
+- Clicking an image opens the built-in viewer, which emits nothing; with focus in the viewer, ← / → page through images, and focus moves to the opposite button at either end.
+- Until an image arrives, the viewer holds its place, shaped by the attachment's `width` / `height` when given and otherwise like the last image that loaded, and shows a shimmering placeholder there once 150 ms have passed.
+- An image that fails to load shows a placeholder icon in both the thumbnail and the viewer; the same URL is not retried, and a new `url` loads again.
+
+## Technologies
+
+- Thumbnails pin their own `img` margin and size, so an article's typography cannot shift them; the viewer is mounted on `<body>`, outside the article's styles.
+- The viewer is the same internal component as `TxImageGallery`'s lightbox, shown here as a centered `TxModal` panel, and its styles live in the `image-gallery` sheet. The on-demand style plugin loads it; when importing styles by hand, add `@talex-touch/tuffex/image-gallery/style.css` and `@talex-touch/tuffex/modal/style.css`.
+- Source: `packages/tuffex/packages/components/src/attachment-tray/`.
+
+<TuffDocSourceLink />

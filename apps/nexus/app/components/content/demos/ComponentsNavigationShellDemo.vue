@@ -24,6 +24,7 @@ const labels = computed(() => {
       rollback: '回滚批次',
       openDrawer: '打开配置抽屉',
       policyTitle: '发布策略',
+      closeDrawer: '关闭抽屉',
       policyDesc: '展示当前分区的发布约束、护栏与审批配置。',
       insight: '策略说明',
       insightBody: '浮层只放短说明和轻量动作；长表单、权限矩阵和审计详情放进 Drawer。',
@@ -49,6 +50,7 @@ const labels = computed(() => {
     rollback: 'Rollback batch',
     openDrawer: 'Open config drawer',
     policyTitle: 'Release policy',
+    closeDrawer: 'Close drawer',
     policyDesc: 'Shows release constraints, guardrails, and approval settings for the active section.',
     insight: 'Policy notes',
     insightBody: 'Keep popovers short and action-light; move long forms, permission matrices, and audit detail into Drawer.',
@@ -173,6 +175,7 @@ watch(
       <TxDrawer
         v-model:visible="drawerVisible"
         :title="labels.policyTitle"
+        :close-label="labels.closeDrawer"
         width="min(420px, 92vw)"
       >
         <div class="navigation-shell-demo__drawer">

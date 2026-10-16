@@ -45,6 +45,8 @@ code: |
 - Use `change` for the undo stack and `update:values` for state; both fire, so don't do the work twice in one handler.
 - Give `ranges` the real constraints (a `radius` no larger than half the short side) and let clamping block invalid values.
 - The inspector is narrow (240px), so abbreviate captions; `fieldLabels` replaces the whole set for localization.
+- On non-English surfaces, pass `layoutLabels`: the three layout options are glyph-only, so these names are all a screen reader announces.
+- Each value input's `aria-label` is built from its caption by `valueLabelFormatter`; on non-English surfaces pass one too, or it reads as "<caption> value".
 
 ## API Reference
 
@@ -57,10 +59,12 @@ code: |
 | `edited` | `boolean` | — | Forces the header state, ignoring `defaults`. |
 | `title` | `string` | `'Fine-tune'` | Card title. |
 | `layoutLabel` / `typeLabel` | `string` | `'Layout'` / `'Type'` | Section headings. |
+| `layoutLabels` | `Partial<Record<FineTuneLayout, string>>` | `row layout / col layout / grid layout` | Accessible names of the three layout options. |
 | `typeOptions` | `FineTuneTypeOption[]` | `[]` | Type options, `{ value, label }`. |
 | `typePlaceholder` | `string` | `'Select type'` | Shown until a type is picked. |
 | `adjustLabel` / `editedLabel` | `string` | `'Adjust'` / `'Edited'` | The header's two states. |
 | `fieldLabels` | `Partial<Record<FineTuneField, string>>` | `W / H / Radius / Opacity` | Captions for the four numeric fields. |
+| `valueLabelFormatter` | `(label: string) => string` | `` (label) => `${label} value` `` | Builds each value input's `aria-label` from its caption. |
 | `ranges` | `Partial<Record<FineTuneField, FineTuneRange>>` | see below | Per-field bounds. |
 | `disabled` | `boolean` | `false` | Disables every control at once. |
 

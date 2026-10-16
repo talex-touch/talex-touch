@@ -21,6 +21,7 @@ const labels = computed(() => (locale.value === 'zh'
       rightBody: '从右侧滑入，size 作为宽度。',
       topBody: '从顶部滑入，size 作为高度。',
       bottomBody: '从底部滑入，适合移动端 Bottom Sheet。',
+      close: '关闭抽屉',
     }
   : {
       leftTrigger: 'Left',
@@ -35,6 +36,7 @@ const labels = computed(() => (locale.value === 'zh'
       rightBody: 'Slides in from the right. The size prop becomes width.',
       topBody: 'Slides down from the top. The size prop becomes height.',
       bottomBody: 'Slides up from the bottom, ideal for mobile bottom sheets.',
+      close: 'Close drawer',
     }))
 </script>
 
@@ -53,16 +55,16 @@ const labels = computed(() => (locale.value === 'zh'
       {{ labels.bottomTrigger }}
     </TxButton>
   </div>
-  <TxDrawer v-model:visible="visibleLeft" :title="labels.leftTitle" direction="left" size="360px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleLeft" :title="labels.leftTitle" :close-label="labels.close" direction="left" size="360px" :mobile-adapt="false">
     <p>{{ labels.leftBody }}</p>
   </TxDrawer>
-  <TxDrawer v-model:visible="visibleRight" :title="labels.rightTitle" direction="right" size="360px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleRight" :title="labels.rightTitle" :close-label="labels.close" direction="right" size="360px" :mobile-adapt="false">
     <p>{{ labels.rightBody }}</p>
   </TxDrawer>
-  <TxDrawer v-model:visible="visibleTop" :title="labels.topTitle" direction="top" size="18rem" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleTop" :title="labels.topTitle" :close-label="labels.close" direction="top" size="18rem" :mobile-adapt="false">
     <p>{{ labels.topBody }}</p>
   </TxDrawer>
-  <TxDrawer v-model:visible="visibleBottom" :title="labels.bottomTitle" direction="bottom" size="45%">
+  <TxDrawer v-model:visible="visibleBottom" :title="labels.bottomTitle" :close-label="labels.close" direction="bottom" size="45%">
     <p>{{ labels.bottomBody }}</p>
   </TxDrawer>
 </template>

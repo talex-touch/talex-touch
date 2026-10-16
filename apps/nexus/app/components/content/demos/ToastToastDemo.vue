@@ -21,6 +21,8 @@ const labels = computed(() => {
       expand: '常驻展开',
       hint: '把指针移到通知上：栈会展开，计时也会停住。向下拖可以甩掉一条。',
       variants: { success: '成功', warning: '警告', danger: '错误', info: '信息' },
+      region: '通知',
+      dismiss: '关闭通知',
     }
   }
 
@@ -34,6 +36,8 @@ const labels = computed(() => {
     expand: 'Keep expanded',
     hint: 'Hover the stack: it fans out and the countdowns stop. Drag one toward the edge to flick it away.',
     variants: { success: 'Success', warning: 'Warning', danger: 'Danger', info: 'Info' },
+    region: 'Notifications',
+    dismiss: 'Dismiss notification',
   }
 })
 
@@ -59,7 +63,7 @@ function fireAction() {
 
 <template>
   <div class="tx-demo tx-demo__col" style="gap: 14px;">
-    <TxToastHost :position="position" :expand="expand" />
+    <TxToastHost :position="position" :expand="expand" :aria-label="labels.region" :close-label="labels.dismiss" />
 
     <TxFlatRadio v-model="position" size="sm">
       <TxFlatRadioItem value="top-left" label="top-left" />

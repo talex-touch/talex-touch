@@ -65,6 +65,7 @@ code: |
 ### Best Practices
 
 - Mount one host near the app root and pass `position`; extra hosts draw nothing but still cost a container and a development warning.
+- On non-English surfaces, pass `ariaLabel` and `closeLabel` to the host: screen readers name the region with the first, and the icon-only close button announces only the second.
 - Give task, save, sync, and retry notifications a stable `id` so repeated status updates replace the previous toast.
 - Show persistent status with a stable `id` and `duration: 0`, and clear it when leaving the page or when the task resolves.
 - Keep descriptions short; long progress, errors with recovery, and forms belong in panels, drawers, or pages.
@@ -82,6 +83,8 @@ code: |
 | `gap` | `number` | `14` | Pixels between toasts, also the collapsed peek. |
 | `offset` | `number` | `16` | Distance from the viewport edges. |
 | `swipeToDismiss` | `boolean` | `true` | Lets a drag flick a toast off toward its own edge. |
+| `ariaLabel` | `string` | `'Notifications'` | Accessible name of the notification region. |
+| `closeLabel` | `string` | `'Dismiss notification'` | Accessible name of each toast's close button. |
 
 ### toast(options)
 

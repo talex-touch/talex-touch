@@ -45,6 +45,8 @@ code: |
 - 撤销栈用 `change`，状态用 `update:values`；两者同时发出，不要在一个处理器里做两遍。
 - `ranges` 贴合真实约束（如 `radius` 不超过短边的一半），让夹取挡住非法值。
 - 检查器很窄（240px），标签用缩写；`fieldLabels` 可整套替换为本地化文案。
+- 非英文界面传入 `layoutLabels`：三个布局选项只有图形，读屏读到的就是这些名称。
+- 每个数值框的 `aria-label` 由 `valueLabelFormatter` 从标签生成；非英文界面一并传入，否则读屏读作「<标签> value」。
 
 ## API 参考
 
@@ -57,10 +59,12 @@ code: |
 | `edited` | `boolean` | — | 强制头部状态，忽略 `defaults`。 |
 | `title` | `string` | `'Fine-tune'` | 卡片标题。 |
 | `layoutLabel` / `typeLabel` | `string` | `'Layout'` / `'Type'` | 两个分区的标题。 |
+| `layoutLabels` | `Partial<Record<FineTuneLayout, string>>` | `row layout / col layout / grid layout` | 三个布局选项的可访问名称。 |
 | `typeOptions` | `FineTuneTypeOption[]` | `[]` | 类型选项 `{ value, label }`。 |
 | `typePlaceholder` | `string` | `'Select type'` | 未选择时的占位文案。 |
 | `adjustLabel` / `editedLabel` | `string` | `'Adjust'` / `'Edited'` | 头部两态的文案。 |
 | `fieldLabels` | `Partial<Record<FineTuneField, string>>` | `W / H / Radius / Opacity` | 四个数值域的标签。 |
+| `valueLabelFormatter` | `(label: string) => string` | `` (label) => `${label} value` `` | 由标签生成每个数值框的 `aria-label`。 |
 | `ranges` | `Partial<Record<FineTuneField, FineTuneRange>>` | 见下 | 逐字段的取值范围。 |
 | `disabled` | `boolean` | `false` | 一次性禁用全部控件。 |
 

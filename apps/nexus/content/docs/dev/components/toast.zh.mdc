@@ -65,6 +65,7 @@ code: |
 ### 最佳实践
 
 - 只在应用根部附近挂一个 host，用 `position` 控制方位；多余的 host 不会绘制，但仍有一个容器和一条开发告警。
+- 非英文界面给 host 传入 `ariaLabel` 与 `closeLabel`：读屏用前者念出通知区域，关闭按钮只有图标，读到的就是后者。
 - 任务、保存、同步、重试类通知用稳定的 `id`，让重复的状态更新替换上一条。
 - 常驻状态用稳定 `id` 加 `duration: 0`；离开所属页面或任务结束时清理。
 - 描述保持简短；长进度、带恢复动作的错误或表单放到面板、抽屉或页面。
@@ -82,6 +83,8 @@ code: |
 | `gap` | `number` | `14` | 通知间距（px），也是收拢时露出的边。 |
 | `offset` | `number` | `16` | 与视口边缘的距离。 |
 | `swipeToDismiss` | `boolean` | `true` | 允许把通知朝它所靠的边甩出去。 |
+| `ariaLabel` | `string` | `'Notifications'` | 通知区域的可访问名称。 |
+| `closeLabel` | `string` | `'Dismiss notification'` | 每条通知关闭按钮的可访问名称。 |
 
 ### toast(options)
 

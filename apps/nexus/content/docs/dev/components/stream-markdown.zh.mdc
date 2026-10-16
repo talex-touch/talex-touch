@@ -38,6 +38,7 @@ code: |
 - 生成结束后把 `streaming` 置为 `false`，否则光标一直留在末尾。
 - 自定义渲染器在 `closed` 为 `false` 时显示加载态，不解析半截内容。
 - `renderers` 的 key 用围栏首个单词的小写形式（` ```chart ` → `chart`）。
+- 非英文界面除了图片与表格文案，代码块和图表的文案也要一并传入：内置的块会显示它们，默认是英文。
 - 静态 Markdown 用 `TxMarkdownView`，不需要这套分块与光标机制。
 
 ## API 参考
@@ -59,6 +60,41 @@ code: |
 | `allowSessionImagesText` | `string` | `'Allow for this conversation'` | 放行本次会话全部远程图片的按钮文字。 |
 | `copyTableText` | `string` | `'Copy CSV'` | 表格「复制为 CSV」按钮的文字。 |
 | `copiedTableText` | `string` | `'Copied'` | 复制成功后按钮短暂显示的文字。 |
+| `codePreviewText` | `string` | `'Preview'` | 代码块中把 HTML、SVG、XML 渲染出来查看的按钮文字。 |
+| `codeSourceText` | `string` | `'Code'` | 预览显示时同一按钮的文字，点击回到源码。 |
+| `codeFrameLabelFormatter` | `(lang: string) => string` | `` (lang) => `${lang} preview` `` | 由围栏语言生成预览框的可访问名称。 |
+| `copyCodeText` | `string` | `'Copy'` | 代码块复制按钮的文字。 |
+| `copiedCodeText` | `string` | `'Copied'` | 复制成功后按钮短暂显示的文字。 |
+| `diagramZoomLabel` | `string` | `'Zoom diagram'` | 渲染好的图表（点击打开预览）的可访问名称。 |
+| `diagramPreviewLabel` | `string` | `'Diagram preview'` | 图表全屏预览的可访问名称。 |
+| `diagramCloseLabel` | `string` | `'Close preview'` | 预览关闭按钮的可访问名称。 |
+| `diagramErrorText` | `string` | `'Diagram failed to render — showing source.'` | 图表渲染失败、改为显示源码时，源码上方的提示。 |
+
+### TxCodeBlock 属性
+
+没有专属渲染器的语言都由它渲染；它也单独导出，可在文档之外展示代码。它以 props 接收 `StreamMarkdownBlockContext`；在 `TxStreamMarkdown` 里，文案来自 `code*` 系列属性与 `copyCodeText` / `copiedCodeText`。
+
+| 属性名 | 类型 | 默认值 | 说明 |
+|------|------|---------|------|
+| `previewable` | `boolean` | `true` | 已闭合的 HTML、SVG、XML 围栏提供渲染预览。 |
+| `previewLabel` | `string` | `'Preview'` | 切换到渲染预览的按钮文字。 |
+| `codeLabel` | `string` | `'Code'` | 预览显示时同一按钮的文字。 |
+| `frameLabelFormatter` | `(lang: string) => string` | `` (lang) => `${lang} preview` `` | 由围栏语言生成预览框的可访问名称。 |
+| `copyLabel` | `string` | `'Copy'` | 复制按钮的文字。 |
+| `copiedLabel` | `string` | `'Copied'` | 复制成功后按钮短暂显示的文字。 |
+
+### TxMermaidBlock 属性
+
+内置的 `mermaid` 渲染器，同样以 props 接收 `StreamMarkdownBlockContext`；在 `TxStreamMarkdown` 里，文案来自 `diagram*` 系列属性与 `copyCodeText` / `copiedCodeText`。
+
+| 属性名 | 类型 | 默认值 | 说明 |
+|------|------|---------|------|
+| `zoomLabel` | `string` | `'Zoom diagram'` | 渲染好的图表（点击打开预览）的可访问名称。 |
+| `previewLabel` | `string` | `'Diagram preview'` | 全屏预览的可访问名称。 |
+| `closeLabel` | `string` | `'Close preview'` | 预览关闭按钮的可访问名称。 |
+| `errorText` | `string` | `'Diagram failed to render — showing source.'` | 图表渲染失败、改为显示源码时，源码上方的提示。 |
+| `copyLabel` | `string` | `'Copy'` | 渲染失败后所显示源码的复制按钮文字。 |
+| `copiedLabel` | `string` | `'Copied'` | 复制成功后按钮短暂显示的文字。 |
 
 ## 概述
 

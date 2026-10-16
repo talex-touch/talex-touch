@@ -18,7 +18,6 @@ import type { FileUploaderFile } from '@tuffex-components/file-uploader'
 import type { ImageUploaderFile } from '@tuffex-components/image-uploader'
 import type { AiChainStep, AiElementMessage } from '@tuffex-components/ai-elements'
 import type { ContextChunk } from '@tuffex-components/context-cards'
-import type { OrbState } from '@tuffex-components/thinking-orb'
 import {
   TxBlankSlate,
   TxEmpty,
@@ -50,10 +49,14 @@ import GalleryStreamElement from './gallery/GalleryStreamElement.vue'
 import GalleryStreamMarkdown from './gallery/GalleryStreamMarkdown.vue'
 import GalleryStreamText from './gallery/GalleryStreamText.vue'
 import GalleryTextMorph from './gallery/GalleryTextMorph.vue'
+import GalleryThinkingOrb from './gallery/GalleryThinkingOrb.vue'
 import GalleryTransitionLanes from './gallery/GalleryTransitionLanes.vue'
 import GalleryVirtualList from './gallery/GalleryVirtualList.vue'
 import type { DocsSuiteKey } from '~/utils/docs-suites'
 import GalleryAmicroSpecimen from './gallery/GalleryAmicroSpecimen.vue'
+import GalleryAttachmentTray from './gallery/GalleryAttachmentTray.vue'
+import GalleryImageGallery from './gallery/GalleryImageGallery.vue'
+import { tileImage } from './gallery/tile-image'
 // One band per render: every suite has its own overview page, so the gallery
 // only ever shows that page's suite. There is no cross-suite hub grid.
 const props = defineProps<{ suite: Exclude<DocsSuiteKey, 'concepts' | 'templates'> }>()
@@ -117,6 +120,7 @@ const copy = computed(() => (localeKey.value === 'zh'
       reviewing: '审阅中',
       failed: '失败',
       aboutTitle: 'Tuffex 是什么？',
+      close: '关闭', closeDrawer: '关闭抽屉', toastRegion: '通知', toastDismiss: '关闭通知',
       aboutBody: '一套服务 Talex Touch 生态的 Vue 组件库。',
       installTitle: '如何安装？',
       installBody: 'pnpm add @talex-touch/tuffex',
@@ -183,6 +187,10 @@ const copy = computed(() => (localeKey.value === 'zh'
       streamSentence: '开心果是这个月增长最快的口味，销量涨了 23%，核果类口味也在同一区间升温。',
       streamMarkdown: '### 开心果周报\n\n开心果本月**增长最快**，销量涨了 23%。\n\n- 核果类口味同步升温\n- 下周补货 `pistachio-base`',
       streamAnswer: '开心果这个月增长最快 [1]，建议：\n\n- 补货 `pistachio-base`\n- 周末加一场试吃',
+      fineTune: {
+        title: '微调', layoutLabel: '布局', layoutLabels: { row: '横向布局', col: '纵向布局', grid: '网格布局' }, typeLabel: '类型', typePlaceholder: '选择类型',
+        adjustLabel: '可调整', editedLabel: '已修改', fieldLabels: { width: '宽', height: '高', radius: '圆角', opacity: '不透明' }, valueLabelFormatter: (label: string) => `${label}数值`,
+      },
       next: '下一步',
       hoverMe: '悬停',
     }
@@ -228,6 +236,7 @@ const copy = computed(() => (localeKey.value === 'zh'
       reviewing: 'Reviewing',
       failed: 'Failed',
       aboutTitle: 'What is Tuffex?',
+      close: 'Close', closeDrawer: 'Close drawer', toastRegion: 'Notifications', toastDismiss: 'Dismiss notification',
       aboutBody: 'A Vue component family powering the Talex Touch ecosystem.',
       installTitle: 'How to install?',
       installBody: 'pnpm add @talex-touch/tuffex',
@@ -294,6 +303,10 @@ const copy = computed(() => (localeKey.value === 'zh'
       streamSentence: 'Pistachio is your fastest-growing flavor, up 23% this month, and stone-fruit is trending in the same range.',
       streamMarkdown: '### Pistachio weekly\n\nPistachio is the **fastest-growing** flavor, up 23%.\n\n- Stone-fruit is warming up too\n- Restock `pistachio-base` next week',
       streamAnswer: 'Pistachio grew fastest this month [1], so:\n\n- Restock `pistachio-base`\n- Add a weekend tasting',
+      fineTune: {
+        title: 'Fine-tune', layoutLabel: 'Layout', layoutLabels: { row: 'Row layout', col: 'Column layout', grid: 'Grid layout' }, typeLabel: 'Type', typePlaceholder: 'Select type',
+        adjustLabel: 'Adjust', editedLabel: 'Edited', fieldLabels: { width: 'W', height: 'H', radius: 'Radius', opacity: 'Opacity' },
+      },
       next: 'Next',
       hoverMe: 'hover me',
     }))
@@ -575,27 +588,12 @@ const filterChipItems = computed(() => [
   { value: 'all', label: copy.value.suiteBase, count: 91 },
   { value: 'beta', label: copy.value.reviewing, count: 12, dot: 'var(--tx-color-warning)' },
 ])
-/* Inline SVG so the gallery never waits on (or fails) a network image. Three
-   flat swatches read as colour chips, not as photographs, which made the cell
-   look like the wrong component; a gradient with a horizon and a light source
-   is enough for a thumbnail grid to read as one. */
-function tileImage(from: string, to: string, sun: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120">`
-    + `<defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1">`
-    + `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/>`
-    + `</linearGradient></defs>`
-    + `<rect width="160" height="120" fill="url(#s)"/>`
-    + `<circle cx="38" cy="34" r="16" fill="${sun}" opacity="0.85"/>`
-    + `<path d="M0 92 L46 62 L84 86 L118 60 L160 88 L160 120 L0 120 Z" fill="#0f172a" opacity="0.42"/>`
-    + `<path d="M0 104 L54 78 L96 100 L134 80 L160 96 L160 120 L0 120 Z" fill="#0f172a" opacity="0.62"/>`
-    + `</svg>`
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`
-}
-const galleryItems = [
-  { id: 'a', url: tileImage('#1e3a8a', '#60a5fa', '#e0f2fe'), name: 'Dawn ridge' },
-  { id: 'b', url: tileImage('#064e3b', '#4ade80', '#fef9c3'), name: 'Pine valley' },
-  { id: 'c', url: tileImage('#7c2d12', '#fbbf24', '#fff7ed'), name: 'Dune pass' },
+const galleryTiles = [
+  { id: 'a', url: tileImage('#1e3a8a', '#60a5fa', '#e0f2fe'), en: 'Dawn ridge', zh: '山脊晨光' },
+  { id: 'b', url: tileImage('#064e3b', '#4ade80', '#fef9c3'), en: 'Pine valley', zh: '松谷' },
+  { id: 'c', url: tileImage('#7c2d12', '#fbbf24', '#fff7ed'), en: 'Dune pass', zh: '沙丘垭口' },
 ]
+const galleryItems = computed(() => galleryTiles.map(({ id, url, en, zh }) => ({ id, url, name: localeKey.value === 'zh' ? zh : en })))
 // Keyed rather than labelled: the list reorders this ref in place, so labels
 // come from a locale lookup instead of being frozen into the items.
 const sortableItems = ref([
@@ -669,7 +667,7 @@ const autoSizerLabel = computed(() => {
   return `${Math.round(size.width)} × ${Math.round(size.height ?? 0)}`
 })
 // Twice over, so the feed is tall enough to keep scrolling through the blur.
-const blurFeed = [...galleryItems, ...galleryItems]
+const blurFeed = computed(() => [...galleryItems.value, ...galleryItems.value])
 const staggerItems = [
   { icon: 'i-carbon-copy', label: 'Clipboard' },
   { icon: 'i-carbon-earth', label: 'Browser' },
@@ -693,9 +691,6 @@ const composerTray = ref<'top' | 'bottom'>('bottom')
 const composerUnrestricted = ref(false)
 const modeChipOn = ref(false)
 const promptDraft = ref('')
-const aiAttachments = ref([
-  { kind: 'file' as const, id: 'a1', name: 'manifest.json', size: 2048, mime: 'application/json' },
-])
 const chatMessages = computed<AiElementMessage[]>(() => [
   { id: 'u1', role: 'user' as const, content: copy.value.suggestions[0]?.text ?? '', createdAt: 1_705_000_000_000 },
   { id: 'a1', role: 'assistant' as const, content: copy.value.aboutBody, createdAt: 1_705_000_001_000 },
@@ -777,7 +772,7 @@ const fineTuneValues = {
   width: 320,
   height: 180,
   radius: 14,
-  opacity: 1,
+  opacity: 100,
   type: null,
 }
 const recommendationOptions = computed(() => [
@@ -990,8 +985,6 @@ const statusStates = computed<StatusCell[]>(() => [
   { slug: 'permission-state', is: TxPermissionState, en: 'PermissionState', zh: '权限态', props: statusCopy('permission-state') },
   { slug: 'search-empty', is: TxSearchEmpty, en: 'SearchEmpty', zh: '搜索无结果', props: statusCopy('search-empty') },
 ])
-
-const orbStates: OrbState[] = ['working', 'searching', 'solving']
 
 const citeSources = [
   { id: 'repo', url: 'https://github.com/talex-touch/talex-touch' },
@@ -2364,6 +2357,7 @@ const motionGalleryItems = [
                   :title="copy.online"
                   :message="copy.aboutBody"
                   type="success"
+                  :close-label="copy.close"
                   @close="alertsVisible.success = false"
                 />
                 <TxAlert
@@ -2372,6 +2366,7 @@ const motionGalleryItems = [
                   :title="copy.failed"
                   :message="copy.dialogMessage"
                   type="error"
+                  :close-label="copy.close"
                   @close="alertsVisible.error = false"
                 />
               </TransitionGroup>
@@ -2392,7 +2387,7 @@ const motionGalleryItems = [
             <TxButton @click="drawerOpen = true">
               {{ copy.dividerSection }}
             </TxButton>
-            <TxDrawer v-model:visible="drawerOpen" :title="copy.aboutTitle">
+            <TxDrawer v-model:visible="drawerOpen" :title="copy.aboutTitle" :close-label="copy.closeDrawer">
               <p class="docs-gallery__muted">
                 {{ copy.aboutBody }}
               </p>
@@ -2433,7 +2428,7 @@ const motionGalleryItems = [
             <TxButton variant="primary" @click="modalOpen = true">
               {{ copy.aboutTitle }}
             </TxButton>
-            <TxModal v-model="modalOpen" :title="copy.aboutTitle" width="min(92vw, 420px)">
+            <TxModal v-model="modalOpen" :title="copy.aboutTitle" :close-label="copy.close" width="min(92vw, 420px)">
               <p class="docs-gallery__muted">
                 {{ copy.aboutBody }}
               </p>
@@ -2538,7 +2533,7 @@ const motionGalleryItems = [
                 {{ copy.toastUndo }}
               </TxButton>
             </div>
-            <TxToastHost />
+            <TxToastHost :aria-label="copy.toastRegion" :close-label="copy.toastDismiss" />
             <template #fallback>
               <div class="docs-gallery__ph" />
             </template>
@@ -2638,7 +2633,7 @@ const motionGalleryItems = [
         <div class="docs-gallery__stage not-prose">
           <ClientOnly>
             <div class="docs-gallery__block">
-              <TxImageGallery :items="galleryItems" />
+              <GalleryImageGallery :items="galleryItems" />
             </div>
             <template #fallback>
               <div class="docs-gallery__ph" />
@@ -3021,7 +3016,7 @@ const motionGalleryItems = [
               </div>
               <pre class="docs-gallery__md-source">{{ markdownDraft }}</pre>
             </div>
-            <TxModal v-model="markdownOpen" :title="copy.releaseNotes" width="min(92vw, 640px)">
+            <TxModal v-model="markdownOpen" :title="copy.releaseNotes" :close-label="copy.close" width="min(92vw, 640px)">
               <TxMarkdownEditor v-model="markdownDraft" :min-height="220" :max-height="360" />
             </TxModal>
             <template #fallback>
@@ -3559,15 +3554,7 @@ const motionGalleryItems = [
         </NuxtLink>
         <div class="docs-gallery__stage not-prose">
           <ClientOnly>
-            <div class="docs-gallery__row docs-gallery__row--loose">
-              <TxThinkingOrb
-                v-for="state in orbStates"
-                :key="state"
-                :state="state"
-                :size="20"
-                :display-size="36"
-              />
-            </div>
+            <GalleryThinkingOrb />
             <template #fallback>
               <div class="docs-gallery__ph" />
             </template>
@@ -3708,7 +3695,7 @@ const motionGalleryItems = [
         <div class="docs-gallery__stage not-prose">
           <ClientOnly>
             <div class="docs-gallery__block">
-              <TxAttachmentTray :attachments="aiAttachments" removable />
+              <GalleryAttachmentTray />
             </div>
             <template #fallback>
               <div class="docs-gallery__ph" />
@@ -4163,7 +4150,7 @@ const motionGalleryItems = [
         <div class="docs-gallery__stage not-prose">
           <ClientOnly>
             <div class="docs-gallery__block">
-              <TxFineTuneCard :values="fineTuneValues" />
+              <TxFineTuneCard :values="fineTuneValues" v-bind="copy.fineTune" />
             </div>
             <template #fallback>
               <div class="docs-gallery__ph" />

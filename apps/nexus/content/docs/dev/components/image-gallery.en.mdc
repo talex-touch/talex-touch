@@ -59,6 +59,7 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 - Keep the list modest: every thumbnail renders, with no virtualization.
 - Normalize or proxy untrusted remote image URLs at your application boundary.
 - Don't mutate `items` synchronously in `@open` in a way that invalidates the opened image.
+- On non-English surfaces, override every text prop and both formatters; `previousText` and `nextText` are visible text.
 
 ## API Reference
 
@@ -73,6 +74,7 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 | `previousText` | `string` | `'Prev'` | Visible text of the previous button. |
 | `nextText` | `string` | `'Next'` | Visible text of the next button. |
 | `previewTitle` | `string` | `'Preview'` | Preview title when the current image has no `name`. |
+| `closeLabel` | `string` | `'Close'` | Accessible name of the preview's close button. |
 | `itemLabelFormatter` | `(index: number) => string` | `` (i) => `Image ${i + 1}` `` | Builds a display name when `item.name` is absent. |
 | `openLabelFormatter` | `(label: string) => string` | `` (label) => `Open ${label} preview` `` | Builds a thumbnail's `aria-label` from its display name. |
 
@@ -96,13 +98,18 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 - Each thumbnail is a native `<button type="button">` whose `aria-label` comes from `openLabelFormatter`.
 - Thumbnail and preview `alt` text is `item.name`; unnamed images deliberately get empty alt text.
 - The lightbox traps Tab focus, closes on Escape or the close button, and returns focus to the thumbnail that opened it.
-- Navigation is bounded: previous is disabled on the first image, next on the last; when a button disables, focus moves to the other.
+- With focus in the lightbox, ← / → page through images. Navigation is bounded: previous is disabled on the first image, next on the last; when a button disables, focus moves to the other.
+- The footer's position count is an `aria-live="polite"` region, so screen readers announce each page.
 - The image is contained, never cropped, between the header and footer bars.
+- Until an image loads, its place is held at the shape of the last image that loaded (4:3 for the first), and a shimmering placeholder appears there only after 150 ms, so an image that arrives sooner never flashes one; an image that has loaded shows at once when paged back to. With reduced motion, the placeholder does not shimmer.
+- A preview image that fails to load shows a placeholder icon; the same URL is not retried, and a new `url` loads again.
 - When `items` becomes empty, the preview closes and the index resets to `0`.
 
 ## Technologies
 
 - The lightbox is `TxModal` in `fullscreen` mode (teleported to `body`), not a separate overlay.
+- `TxAttachmentTray` previews images in the same internal viewer, so paging, keys, and placeholders behave alike; the viewer is not exported.
+- The loading placeholder is sized with container query units (`cqw` / `cqh`) to the box the contained image will take.
 - Source: `packages/tuffex/packages/components/src/image-gallery/`.
 
 <TuffDocSourceLink />

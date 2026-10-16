@@ -18,6 +18,7 @@ const labels = computed(() => (locale.value === 'zh'
       fullscreenTitle: '发布说明',
       fullscreenBody: '全屏模态把面板撑满可见视口：头部与底栏固定，正文滚动，因此很长的内容不会把操作挤出屏幕。',
       fullscreenClose: '关闭预览',
+      close: '关闭',
     }
   : {
       open: 'Open Modal',
@@ -31,6 +32,7 @@ const labels = computed(() => (locale.value === 'zh'
       fullscreenTitle: 'Release notes',
       fullscreenBody: 'A fullscreen modal stretches the panel to the visible viewport: the header and footer stay fixed while the body scrolls, so very long content never pushes the actions off screen.',
       fullscreenClose: 'Close preview',
+      close: 'Close',
     }))
 </script>
 
@@ -43,7 +45,7 @@ const labels = computed(() => (locale.value === 'zh'
       {{ labels.openFullscreen }}
     </TxButton>
 
-    <TxModal v-model="open" :title="labels.title" width="min(92vw, 520px)">
+    <TxModal v-model="open" :title="labels.title" :close-label="labels.close" width="min(92vw, 520px)">
       <p class="modal-demo__copy">
         {{ labels.body }}
       </p>
@@ -61,7 +63,7 @@ const labels = computed(() => (locale.value === 'zh'
       </template>
     </TxModal>
 
-    <TxModal v-model="fullscreen" fullscreen :title="labels.fullscreenTitle">
+    <TxModal v-model="fullscreen" fullscreen :title="labels.fullscreenTitle" :close-label="labels.close">
       <p v-for="i in 12" :key="i" class="modal-demo__copy">
         {{ labels.fullscreenBody }}
       </p>
