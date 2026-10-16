@@ -78,7 +78,7 @@ function refresh(value) {
   color: inherit;
   background: transparent;
   border-radius: 8px;
-  transition: .1s;
+  transition: transform .1s;
 }
 
 .PlayPause-Container svg {

@@ -460,7 +460,7 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 14px;
   color: #666;
-  transition: all 0.2s ease;
+  transition: gap 0.2s ease, transform 0.2s ease;
   overflow: hidden;
   white-space: nowrap;
 }
