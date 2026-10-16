@@ -61,7 +61,7 @@ describe('txFlowLight stylesheet', () => {
   const block = parse(source).descriptor.styles[0]!
   const { code, errors } = compileStyle({
     source: block.content,
-    filename: 'TxFlowLight.vue',
+    filename: resolve(here, '../src/TxFlowLight.vue'),
     id: 'data-v-flow',
     scoped: true,
     preprocessLang: 'scss',
@@ -97,8 +97,9 @@ describe('txFlowLight stylesheet', () => {
       .toContain(`--tx-flow-light-default-opacity: ${dark}`)
   })
 
-  it('hides under high contrast', () => {
-    expect(ruleFor(`html[data-tx-contrast=high] .tx-flow-light[data-v-flow], html.contrast .tx-flow-light[data-v-flow] {`))
+  it('hides under high contrast, the system preference included', () => {
+    expect(ruleFor(`html.contrast .tx-flow-light[data-v-flow], html[data-tx-contrast=high] .tx-flow-light[data-v-flow] {`))
       .toContain('display: none')
+    expect(css).toContain('@media (prefers-contrast: more) { html:not([data-tx-contrast=normal]) .tx-flow-light[data-v-flow] { display: none; } }')
   })
 })

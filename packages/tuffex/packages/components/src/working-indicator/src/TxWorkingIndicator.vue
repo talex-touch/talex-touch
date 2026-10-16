@@ -127,7 +127,7 @@ const elapsedText = computed(() => (props.elapsedFormatter ?? formatElapsed)(ela
     @include bui-shimmer-text;
 
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     white-space: nowrap;
   }
 

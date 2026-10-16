@@ -219,7 +219,6 @@ const { t } = useI18n()
   font-size: var(--shell-fs-body);
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover {
@@ -287,9 +286,6 @@ const { t } = useI18n()
   color: var(--shell-text-muted);
   font-size: 16px;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
   -webkit-app-region: no-drag;
 
   &:hover:not(:disabled) {

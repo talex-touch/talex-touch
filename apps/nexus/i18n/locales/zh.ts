@@ -66,6 +66,7 @@ export default {
     placeholder: '搜索文档与功能',
     empty: '没有搜索结果',
     loading: '正在搜索...',
+    unavailable: '文档索引没能加载，继续输入会自动重试',
     poweredBy: 'Powered by Tuff Intelligence.',
     shortcuts: {
       label: '搜索快捷键',
@@ -631,6 +632,15 @@ export default {
       motionToggles: '切换控件',
       motionTransitions: '转场',
       misc: '其他',
+    },
+    conceptsManual: '设计工程概念手册',
+    conceptGroups: {
+      geometry: '几何与空间形态',
+      surfaces: '材质物理与环境感知',
+      color: '色彩科学与暗色模式',
+      typography: '排版美学与文本工程',
+      motion: '微动效与微交互节拍',
+      ai: 'AI 原生交互与流式生成',
     },
     families: {
       avatarBasic: '基础头像',

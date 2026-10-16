@@ -140,7 +140,7 @@ code: |
 - 一层铺满容器的装饰层：`aria-hidden`、不接收指针、继承容器圆角。
 - 颜色固定为 Tuff 品牌色（与输入框的流光同源），不随背后的内容变化；琉光（refraction）的色散只能染出背后已有的颜色，背后一片黑时就没有光。
 - `[data-theme='dark']` 或 `.dark` 祖先下，每种画法的透明度更高。
-- 高对比度（`html[data-tx-contrast='high']`、`html.contrast`）下隐藏，不降低正文对比度。
+- 高对比度（`html.contrast`、`html[data-tx-contrast='high']`，或 `prefers-contrast: more` 且无 `html[data-tx-contrast='normal']`）下隐藏，不降低正文对比度。
 - 静态，不做动画，减少动态效果时无需降级。
 
 ## 技术实现

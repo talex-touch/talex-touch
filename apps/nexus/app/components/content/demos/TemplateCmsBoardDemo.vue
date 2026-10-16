@@ -1947,7 +1947,7 @@ onBeforeUnmount(() => {
 
         <span class="board-sr-only" role="status" aria-live="polite">{{ announcement }}</span>
 
-        <TxModal v-model="detailOpen" :title="detailCard ? L(detailCard.title) : ''" width="min(640px, calc(100vw - 48px))">
+        <TxModal v-model="detailOpen" :title="detailCard ? L(detailCard.title) : ''" :close-label="copy.detail.close" width="min(640px, calc(100vw - 48px))">
           <div v-if="detailCard" class="board-detail" :style="{ '--card-hue': SECTION_META[detailCard.section].color }">
             <span class="board-detail__cover" aria-hidden="true" />
             <div class="board-detail__badges">

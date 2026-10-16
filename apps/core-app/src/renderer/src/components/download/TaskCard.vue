@@ -227,7 +227,6 @@ function formatSize(bytes: number): string {
   border-left: 2px solid var(--task-accent);
   border-radius: 10px;
   padding: 16px;
-  transition: border-color 0.2s ease;
   cursor: move;
   --task-accent: #111111;
   --task-strong: var(--tx-text-color-primary);

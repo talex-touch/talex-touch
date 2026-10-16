@@ -1,17 +1,62 @@
+@use '../../../../style/mixins.scss' as *;
+
+// Fractal noise tiled at 140px, the texture TxStatusHint weaves into its wash.
+$grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='1.6' intercept='-0.2'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
 .tx-base-surface {
   position: relative;
   border-radius: var(--tx-surface-radius, inherit);
+  // Without a `radius` of its own the surface copies its host's outline, smooth corners
+  // (`tx-squircle`) included; with one it keeps a circular corner of that radius.
+  corner-shape: inherit;
   overflow: hidden;
 
-  // ---- Mode: pure ----
-  &--pure {
+  &--own-radius {
+    corner-shape: round;
+  }
+
+  // ---- Mode: pure / flat ----
+  // flat is pure under the name the material table gives a solid panel.
+  &--pure,
+  &--flat {
     background: var(--tx-surface-color, var(--tx-fill-color-lighter, #fafafa));
+  }
+
+  // ---- Mode: mica ----
+  // One opaque layer and no backdrop read: the surface colour with a breath of the brand,
+  // under two wide tints of the brand and of its neighbour hue 40° on. The tints are anchored
+  // to the viewport, not the box, so a surface shows the part of the field it sits over, the
+  // way Mica shows the part of the wallpaper behind its window. `fixed` repaints with every
+  // scroll of the container, so mica is for bases that do not scroll.
+  &--mica {
+    --tx-surface-mica-harmonic: var(--tx-color-primary, #409eff);
+
+    background:
+      radial-gradient(
+        70% 80% at 0% 0%,
+        color-mix(in oklab, var(--tx-color-primary, #409eff) var(--tx-surface-mica-primary-weight, 12%), transparent),
+        transparent
+      ),
+      radial-gradient(
+        70% 80% at 100% 100%,
+        color-mix(in oklab, var(--tx-surface-mica-harmonic) var(--tx-surface-mica-harmonic-weight, 8%), transparent),
+        transparent
+      ),
+      color-mix(in oklab, var(--tx-surface-color, var(--tx-fill-color-lighter, #fafafa)) 95%, var(--tx-color-primary, #409eff));
+    background-attachment: fixed;
+
+    @supports (color: oklch(from red l c h)) {
+      --tx-surface-mica-harmonic: oklch(from var(--tx-color-primary, #409eff) l c calc(h + 40));
+    }
   }
 
   .tx-base-surface__layer {
     position: absolute;
     inset: 0;
     border-radius: inherit;
+    // With the radius: a host with smooth corners (`tx-squircle`) hands down a longer radius,
+    // which as a circular arc would cut far inside its outline.
+    corner-shape: inherit;
     pointer-events: none;
     transition:
       opacity var(--tx-surface-transition, 299ms) ease,
@@ -21,6 +66,9 @@
 
   .tx-base-surface__layer--glass {
     z-index: 0;
+    // TxGlassSurface writes its own radius inline for its displacement map, so it keeps a
+    // circular corner of that radius; a superellipse of it would cut inside the host's outline.
+    corner-shape: round;
 
     .tx-glass-surface {
       width: 100%;
@@ -49,6 +97,37 @@
     z-index: 3;
     background: var(--tx-surface-color, var(--tx-fill-color-lighter, #fafafa));
     opacity: var(--tx-surface-mask-opacity, 0.75);
+  }
+
+  // ---- Mode: acrylic ----
+  // The filter layer blurs the backdrop three times as wide as blur does (the component writes
+  // the radius) and lifts its saturation and light, so the colour under the sheet still shows
+  // through the tint, which is what Windows gets from a `luminosity` blend. A blend mode here
+  // would isolate the stacking context the surface sits in, and every backdrop filter in that
+  // context, this one included, would then sample an empty layer instead of the page.
+  &.tx-base-surface--acrylic .tx-base-surface__layer--filter {
+    backdrop-filter:
+      blur(var(--tx-surface-filter-blur, 30px))
+      saturate(calc(var(--tx-surface-filter-saturation, 1.5) * 1.2))
+      contrast(var(--tx-surface-filter-contrast, 1))
+      brightness(calc(var(--tx-surface-filter-brightness, 1) * 1.06));
+    -webkit-backdrop-filter:
+      blur(var(--tx-surface-filter-blur, 30px))
+      saturate(calc(var(--tx-surface-filter-saturation, 1.5) * 1.2))
+      contrast(var(--tx-surface-filter-contrast, 1))
+      brightness(calc(var(--tx-surface-filter-brightness, 1) * 1.06));
+  }
+
+  // The tint is the mask layer. The noise lives in its own alpha, as in TxStatusHint: its
+  // coverage wanders between 88% and 100% in a fractal pattern, so the sheet scatters light
+  // like a diffusing material and adds no grey veil.
+  &--acrylic .tx-base-surface__layer--mask {
+    mask-image: linear-gradient(rgb(0 0 0 / 0.88), rgb(0 0 0 / 0.88)), $grain;
+    -webkit-mask-image: linear-gradient(rgb(0 0 0 / 0.88), rgb(0 0 0 / 0.88)), $grain;
+    mask-size: 100% 100%, 140px 140px;
+    -webkit-mask-size: 100% 100%, 140px 140px;
+    mask-repeat: no-repeat, repeat;
+    -webkit-mask-repeat: no-repeat, repeat;
   }
 
   // Above the veil, under the edge: the light tints the material, and the rim stays crisp over it.
@@ -104,6 +183,7 @@
     position: relative;
     z-index: 5;
     border-radius: inherit;
+    corner-shape: inherit;
     min-height: inherit;
   }
 
@@ -225,7 +305,9 @@
       content: '';
       position: absolute;
       inset: 0;
-      border-radius: var(--tx-surface-radius, inherit);
+      // The root's own outline, whether it comes from `radius` or from a host that smooths it.
+      border-radius: inherit;
+      corner-shape: inherit;
       background: var(--tx-surface-fake-bg);
       opacity: var(--tx-surface-fake-opacity, 0.75);
       z-index: var(--tx-surface-fake-index, 0);
@@ -239,6 +321,30 @@
   &--settling {
     transition: backdrop-filter var(--tx-surface-transition, 299ms) ease-out,
                 background var(--tx-surface-transition, 299ms) ease-out;
+  }
+
+  // ---- High contrast ----
+  // No material lets the page through: every mode paints what `pure` paints, the layers that
+  // blur, tint or rim the backdrop go, and the fake backdrop shows its colour at full strength.
+  // plain has no material to make solid, so it stays a bare container.
+  @include tx-when-high-contrast {
+    background: var(--tx-surface-color, var(--tx-fill-color-lighter, #fafafa));
+
+    &.tx-base-surface--plain {
+      background: none;
+    }
+
+    .tx-base-surface__layer--glass,
+    .tx-base-surface__layer--filter,
+    .tx-base-surface__layer--motion-cover,
+    .tx-base-surface__layer--mask,
+    .tx-base-surface__layer--refraction-edge {
+      display: none;
+    }
+
+    &.tx-base-surface--fake:not(.tx-base-surface--plain)::before {
+      opacity: 1;
+    }
   }
 }
 
@@ -256,7 +362,7 @@
 [data-theme='dark'],
 .dark {
   .tx-base-surface--preset-card.tx-base-surface--blur .tx-base-surface__layer--filter {
-    background: color-mix(in srgb, #fff 14%, transparent);
+    background: color-mix(in srgb, var(--tx-color-white, #fff) 14%, transparent);
     backdrop-filter:
       blur(var(--tx-surface-filter-blur, 30px))
       saturate(calc(var(--tx-surface-filter-saturation, 1.5) * 1.1))

@@ -159,7 +159,7 @@ code: |
 | `class` | Icon class name (recommended). |
 | `emoji` | Lightweight emphasis. |
 | `file` / `url` | Local or remote icons. |
-| `builtin` | Built-in icons: `check`, `chevron-down`, `close`, `search`, `user`, `star`, `star-half`, `info`, `check-circle`, `x-circle`, `alert-triangle`. |
+| `builtin` | Built-in icons: `check`, `chevron-down`, `chevron-right`, `chevron-left`, `arrow-left`, `arrow-up`, `arrow-down`, `plus`, `close`, `search`, `user`, `star`, `star-half`, `info`, `check-circle`, `x-circle`, `alert-triangle`. |
 
 Set `colorful` on the component or as `icon.colorful`.
 

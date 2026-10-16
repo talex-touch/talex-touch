@@ -144,6 +144,7 @@ rows:
 - Safari, Firefox, SSR, and environments without `CSS.supports` skip refraction; the fallbacks keep size, radius, and readability but drop RGB refraction.
 - The displacement map is built from the measured size and regenerated when the size or an optical prop changes.
 - The generated SVG is decorative, non-interactive, and sits below the content layer.
+- Under high contrast (triggers in [Theming](./theming.en.mdc)) it neither refracts nor blurs, and paints the opaque overlay background instead.
 
 ## Technologies
 

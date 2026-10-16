@@ -1,8 +1,9 @@
 import type { ComputedRef, Ref } from 'vue'
-import type { BaseSurfaceProps } from './types'
+import type { BaseSurfaceMode, BaseSurfaceProps } from './types'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { hasWindow } from '../../../../utils/env'
 import { clamp, smoothstep01 } from './base-surface-math'
+import { SURFACE_MOTION_SETTLE_MS, useSurfaceMotionGuard } from './surface-environment'
 
 export const SURFACE_MOTION_DURATION_MS = 299
 export const REFRACTION_PARAM_BLEND_DURATION_MS = 182
@@ -27,6 +28,12 @@ export const REFRACTION_MOVING_PARAM_FLOOR = 0.28
 
 interface UseBaseSurfaceMotionOptions {
   props: Readonly<BaseSurfaceProps>
+  /** The mode the surface renders, after `autoDetect`'s environment degradation; `props.mode` when absent. */
+  mode?: ComputedRef<BaseSurfaceMode>
+  /** Page-wide motion `autoDetect` infers (a fast drag, a moving window), already held for its settle time. */
+  environmentMoving?: ComputedRef<boolean>
+  /** How long the surface's own transform signals stay quiet before the motion ends; 140ms by default. */
+  autoDetectSettleMs?: number
   rootRef: Ref<HTMLElement | null>
   needsFallback: ComputedRef<boolean>
   settleDelayMs: ComputedRef<number>
@@ -36,8 +43,17 @@ interface UseBaseSurfaceMotionOptions {
 
 export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   const { props, rootRef, needsFallback, settleDelayMs, refractionRecoveryBlendDurationMs, refractionRecoveryTotalDurationMs } = options
+  const mode = options.mode ?? computed<BaseSurfaceMode>(() => props.mode ?? 'refraction')
 
-  const autoMoving = ref(false)
+  // Transform transitions and inline transforms on the surface or an ancestor. They pass
+  // through the same asymmetric clock as the page-wide signals: on at once, off 140ms later.
+  const localMoving = ref(false)
+  const localGuard = useSurfaceMotionGuard((value) => {
+    localMoving.value = value
+  }, { settleMs: options.autoDetectSettleMs ?? SURFACE_MOTION_SETTLE_MS })
+  const autoMoving = computed(() =>
+    !!props.autoDetect && (localMoving.value || !!options.environmentMoving?.value),
+  )
   const settling = ref(false)
   const refractionRecovering = ref(false)
   const refractionRecoveryProgress = ref(1)
@@ -48,6 +64,10 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let mutationObserver: MutationObserver | null = null
   let observedElements: HTMLElement[] = []
+  // The two local sources, each ended only by its own kind of event: the transform
+  // transitions running on observed elements, and whether an inline transform is present.
+  const runningTransitions = new Map<EventTarget, Set<string>>()
+  let inlineTransforming = false
   let refractionRecoveryRaf: number | null = null
   let refractionMaskPeakRampRaf: number | null = null
   let refractionEdgeRevealRaf: number | null = null
@@ -75,7 +95,7 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   }
 
   function startRefractionEdgeReveal() {
-    if (props.mode !== 'refraction') {
+    if (mode.value !== 'refraction') {
       refractionEdgeRevealProgress.value = 1
       return
     }
@@ -124,7 +144,7 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   }
 
   function startRefractionMaskPeakRamp() {
-    if (props.mode !== 'refraction') {
+    if (mode.value !== 'refraction') {
       refractionMaskPeakRampProgress.value = 1
       return
     }
@@ -170,7 +190,7 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   }
 
   function startRefractionRecovery() {
-    if (props.mode !== 'refraction') {
+    if (mode.value !== 'refraction') {
       return
     }
     if (isMoving.value) {
@@ -230,36 +250,57 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
     }, settleDelayMs.value)
   }
 
-  function onTransformStart() {
-    autoMoving.value = true
+  function onAutoMotionStart() {
     clearTimeout(settleTimer)
     settling.value = false
-    if (props.mode === 'refraction') {
+    if (mode.value === 'refraction') {
       stopRefractionRecovery(false)
       refractionRecoveryProgress.value = 0
       refractionRecoveryElapsed.value = 0
     }
   }
 
-  function onTransformEnd() {
-    autoMoving.value = false
-    if (props.mode === 'refraction') {
+  function onAutoMotionEnd() {
+    if (mode.value === 'refraction') {
       startRefractionRecovery()
       return
     }
     startSettleTimer()
   }
 
+  /**
+   * Whether a transition event reports one of the observed elements moving. Transition
+   * events bubble, so the listener on `<html>` also hears a switch thumb sliding elsewhere
+   * on the page; only the element the listener sits on moves the surface.
+   */
+  function isOwnTransformTransition(e: TransitionEvent) {
+    return e.target === e.currentTarget && (e.propertyName === 'transform' || e.propertyName === 'translate')
+  }
+
+  function syncLocalMotion() {
+    if (runningTransitions.size > 0 || inlineTransforming)
+      localGuard.onMotionStart()
+    else
+      localGuard.onMotionEnd()
+  }
+
   function handleTransitionStart(e: TransitionEvent) {
-    if (e.propertyName === 'transform' || e.propertyName === 'translate') {
-      onTransformStart()
-    }
+    if (!isOwnTransformTransition(e) || !e.target)
+      return
+    const properties = runningTransitions.get(e.target) ?? new Set<string>()
+    properties.add(e.propertyName)
+    runningTransitions.set(e.target, properties)
+    syncLocalMotion()
   }
 
   function handleTransitionEnd(e: TransitionEvent) {
-    if (e.propertyName === 'transform' || e.propertyName === 'translate') {
-      onTransformEnd()
-    }
+    if (!isOwnTransformTransition(e) || !e.target)
+      return
+    const properties = runningTransitions.get(e.target)
+    properties?.delete(e.propertyName)
+    if (!properties?.size)
+      runningTransitions.delete(e.target)
+    syncLocalMotion()
   }
 
   /**
@@ -305,15 +346,17 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
         if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
           const target = mutation.target as HTMLElement
           if (hasInlineTransform(target)) {
-            onTransformStart()
+            inlineTransforming = true
+            syncLocalMotion()
           }
-          // A style write on a non-transforming element only ends the motion once
-          // nothing under observation is transforming any more. Checking just the
-          // mutated element would let an unrelated write cancel an in-flight
-          // transition — flip-overlay's body scroll lock sets `body.style.overflow`,
-          // and body is an observed ancestor.
-          else if (autoMoving.value && !targets.some(hasInlineTransform)) {
-            onTransformEnd()
+          // A style write on a non-transforming element only ends the inline motion once
+          // nothing under observation is transforming any more. Checking just the mutated
+          // element would let an unrelated write end it: flip-overlay's body scroll lock
+          // sets `body.style.overflow`, and body is an observed ancestor. Nor does a style
+          // write end a transition: the surface rewrites its own variables every frame it moves.
+          else if (inlineTransforming && !targets.some(hasInlineTransform)) {
+            inlineTransforming = false
+            syncLocalMotion()
           }
         }
       }
@@ -333,14 +376,25 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
     observedElements = []
     mutationObserver?.disconnect()
     mutationObserver = null
+    runningTransitions.clear()
+    inlineTransforming = false
+    localGuard.dispose()
+    localMoving.value = false
     clearTimeout(settleTimer)
     stopRefractionEdgeReveal()
     stopRefractionMaskPeakRamp()
     stopRefractionRecovery()
   }
 
+  watch(autoMoving, (moving, wasMoving) => {
+    if (moving && !wasMoving)
+      onAutoMotionStart()
+    else if (!moving && wasMoving)
+      onAutoMotionEnd()
+  })
+
   watch(() => props.moving, (newVal, oldVal) => {
-    if (props.mode === 'refraction') {
+    if (mode.value === 'refraction') {
       if (newVal) {
         stopRefractionRecovery(false)
         refractionRecoveryProgress.value = 0
@@ -358,7 +412,7 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   })
 
   watch(isMoving, (moving, prevMoving) => {
-    if (props.mode !== 'refraction') {
+    if (mode.value !== 'refraction') {
       stopRefractionMaskPeakRamp()
       stopRefractionEdgeReveal()
       return
@@ -374,9 +428,9 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
   }, { flush: 'sync' })
 
   watch(
-    [isMoving, refractionRecovering, () => props.mode],
-    ([moving, recovering, mode], [prevMoving, prevRecovering, prevMode]) => {
-      if (mode !== 'refraction') {
+    [isMoving, refractionRecovering, mode],
+    ([moving, recovering, current], [prevMoving, prevRecovering, prevMode]) => {
+      if (current !== 'refraction') {
         stopRefractionEdgeReveal()
         return
       }
@@ -391,8 +445,8 @@ export function useBaseSurfaceMotion(options: UseBaseSurfaceMotionOptions) {
     { flush: 'sync' },
   )
 
-  watch(() => props.mode, (mode) => {
-    if (mode !== 'refraction') {
+  watch(mode, (current) => {
+    if (current !== 'refraction') {
       stopRefractionMaskPeakRamp()
       stopRefractionEdgeReveal()
       stopRefractionRecovery()

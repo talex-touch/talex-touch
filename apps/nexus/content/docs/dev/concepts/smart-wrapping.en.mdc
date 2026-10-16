@@ -1,6 +1,6 @@
 ---
 title: Modern Soft Wrapping & Zero Tracking
-description: text-wrap: pretty orphan prevention, balance heading symmetry, banning hard breaks, and zero tracking on body copy.
+description: "text-wrap: pretty orphan prevention, balance heading symmetry, banning hard breaks, and zero tracking on body copy."
 ---
 
 # Modern Soft Wrapping & Zero Tracking
@@ -14,26 +14,25 @@ These orphans unbalance the bottom boundary of the paragraph, leaving awkward ne
 
 ## Modern CSS Soft Wrapping: pretty and balance
 
-From Chrome 117+ and Safari 17.4+ onward, browser engines feature dynamic programming wrapping algorithms. TuffEx establishes them as system defaults:
+According to MDN's compatibility data, `balance` works from Chrome 114, Firefox 121 and Safari 17.5; `pretty` from Chrome 117 and Safari 26, and Firefox does not support it yet. Browsers without support simply wrap as `wrap` does. TuffEx components do not declare `text-wrap` today; the header of these docs (DocHero) uses both:
 
 :::TuffCodeBlock{lang="scss"}
 ---
 code: |
-  // 1. Headings and short titles (≤6 lines): Balanced line variance
-  .tx-heading,
-  .tx-modal__title {
+  // apps/nexus/app/components/docs/DocHero.vue (excerpt)
+  // Title: keep the lines close in width
+  .docs-hero__title {
     text-wrap: balance;
   }
 
-  // 2. Body prose and descriptions: Orphan prevention
-  .tx-prose p,
-  .tx-description {
+  // Description: keep the last line from holding a word or two
+  .docs-hero__desc {
     text-wrap: pretty;
   }
 ---
 :::
 
-- `text-wrap: balance`: The layout engine minimizes character variance across lines, rendering harmonious inverted-pyramid or balanced blocks.
+- `text-wrap: balance`: The layout engine minimizes character variance across lines, rendering harmonious inverted-pyramid or balanced blocks; Chrome applies it only to text of six lines or fewer.
 - `text-wrap: pretty`: Targets terminal orphans. When a single trailing word is detected, it pulls the preceding word down to form a balanced couplet.
 
 ## Banning Hardcoded Line Breaks
@@ -43,9 +42,12 @@ Hard breaks hardcode current viewport assumptions into text models. When users r
 
 ## Zero Tracking on Body Copy and Permitted Exceptions
 
-Type foundries spend years tuning kerning pairs (e.g. `AV`, `To`, `We`). Injecting `letter-spacing: 1px` onto body text shatters these optical locks, decreasing reading comprehension velocity by over 20%.
+Type foundries spend years tuning kerning pairs (e.g. `AV`, `To`, `We`). Injecting `letter-spacing: 1px` onto body text does not remove those pairs: CSS adds the 1px between adjacent characters on top of kerning, diluting the rhythm the foundry tuned. CSS Text also says that once letter-spacing is non-zero, browsers should stop applying optional ligatures such as `fi` and `fl`.
 
 TuffEx mandates: **Zero tracking on body text**. Letter-spacing is permitted strictly across three edge cases:
-1. **≤11px Uppercase Micro-labels** (`TxSidebarNav` headers at `0.08em`): Prevents small caps from collapsing together.
-2. **≥20px Display Numerals** (`TxInsightMetric` at `-0.01em`): Tightens oversized numerals.
-3. **Centered Avatar Initials**: The glyph functions as graphic art rather than prose.
+1. **≤11px Uppercase Micro-labels**: Prevents small caps from collapsing together. `TxSidebarNav` group labels at 10.5px and `0.08em`, `TxSelect` group labels at 11px and `0.06em`, `TxCodeBlock` language labels at 11px and `0.04em`; `TxTag`'s 11px labels keep `0.05em` too.
+2. **≥17px Titles and Display Numerals**: Tightens large type, always by `-0.01em`. `TxInsightMetric` values and `TxBlowDialog` titles at 17px, `TxModal` and `TxBottomDialog` titles at 18px, `TxStatCard` values at 28px.
+3. **Centered Avatar Initials** (`TxAvatar` at `0.02em`): The glyph functions as graphic art rather than prose.
+
+:::TuffDemoWrapper{demo="ConceptTextWrapDemo"}
+:::

@@ -1,5 +1,4 @@
 import { reactive } from 'vue'
-import { getZIndex, nextZIndex } from './z-index-manager'
 
 export type TxToastVariant = 'default' | 'info' | 'success' | 'warning' | 'danger'
 
@@ -34,7 +33,12 @@ const DEFAULT_DURATION = 2600
 
 export const toastStore = reactive({
   items: [] as TxToastItem[],
-  zIndex: getZIndex(),
+  /**
+   * Bumped by every `toast()` call. The owning `TxToastHost` raises itself on
+   * each bump through its app's z-index allocator — the one drawers and modals
+   * draw from — which a module-level function has no way to reach.
+   */
+  raised: 0,
 })
 
 function generateId() {
@@ -83,7 +87,7 @@ function clearDismissTimer(id: string): void {
 }
 
 export function toast(options: TxToastOptions): string {
-  toastStore.zIndex = nextZIndex()
+  toastStore.raised++
   const id = options.id ?? generateId()
   const duration = options.duration ?? DEFAULT_DURATION
 

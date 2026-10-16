@@ -13,13 +13,13 @@ const emit = defineEmits<{ select: [item: MotionControlItem] }>()
 
 <template>
   <template v-for="item in items" :key="item.value">
-    <TxContextMenuSubmenu v-if="context && item.children?.length" :disabled="disabled || item.disabled" panel-background="pure">
+    <TxContextMenuSubmenu v-if="context && item.children?.length" :disabled="disabled || item.disabled">
       {{ item.label }}
       <template #menu>
         <MotionControlMenuItems :items="item.children" context :disabled="disabled" @select="emit('select', $event)" />
       </template>
     </TxContextMenuSubmenu>
-    <TxDropdownSubmenu v-else-if="item.children?.length" :disabled="disabled || item.disabled" panel-background="pure">
+    <TxDropdownSubmenu v-else-if="item.children?.length" :disabled="disabled || item.disabled">
       {{ item.label }}
       <template #menu>
         <MotionControlMenuItems :items="item.children" :disabled="disabled" @select="emit('select', $event)" />

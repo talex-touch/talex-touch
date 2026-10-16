@@ -4,6 +4,7 @@ import type { TxToastItem, TxToastVariant } from '../../../../utils/toast'
 import type { TxToastPosition } from './types'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { dismissToast, pauseToasts, resumeToasts, toastStore } from '../../../../utils/toast'
+import { useZIndexAllocator } from '../../../../utils/z-index-manager'
 import { TxIcon } from '../../icon'
 import { claimToastHost, ownsToastHost, releaseToastHost } from './host-registry'
 
@@ -53,6 +54,15 @@ const token = Symbol('tx-toast-host')
 const owns = computed(() => ownsToastHost(token))
 
 const items = computed(() => (owns.value ? toastStore.items : []))
+
+const zIndexAllocator = useZIndexAllocator()
+const zIndex = ref(zIndexAllocator.get())
+// Every call lifts the stack over whatever opened before it, drawers and
+// modals included, because they share this allocator.
+watch(() => toastStore.raised, () => {
+  if (owns.value)
+    zIndex.value = zIndexAllocator.next()
+})
 const isTop = computed(() => props.position.startsWith('top'))
 /** Which way the stack grows: down from a top edge, up from a bottom one. */
 const lift = computed(() => (isTop.value ? 1 : -1))
@@ -103,7 +113,7 @@ const stackHeight = computed(() => {
 })
 
 const hostStyle = computed(() => ({
-  zIndex: toastStore.zIndex,
+  zIndex: zIndex.value,
   height: `${stackHeight.value}px`,
   '--tx-toast-gap': `${props.gap}px`,
   '--tx-toast-edge': `${props.offset}px`,
@@ -390,6 +400,8 @@ defineExpose({ pause: pauseToasts, resume: resumeToasts, expanded })
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-toast-host {
   --tx-toast-width: 364px;
   --tx-toast-ease: cubic-bezier(0.21, 1.02, 0.73, 1);
@@ -453,6 +465,13 @@ defineExpose({ pause: pauseToasts, resume: resumeToasts, expanded })
     transform 0.4s var(--tx-toast-ease),
     height 0.4s var(--tx-toast-ease),
     opacity 0.3s var(--tx-toast-ease);
+
+  // High contrast: opaque, and nothing behind it is frosted.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color, #fff);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 
   &[data-front='true'] {
     pointer-events: auto;
@@ -531,7 +550,7 @@ defineExpose({ pause: pauseToasts, resume: resumeToasts, expanded })
 
 .tx-toast__title {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 1.4;
   color: var(--tx-text-color-primary, #303133);
 }
@@ -553,7 +572,7 @@ defineExpose({ pause: pauseToasts, resume: resumeToasts, expanded })
   border-radius: 8px;
   font: inherit;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-bg-color, #fff);
   background: var(--tx-toast-accent, var(--tx-text-color-primary, #303133));
   cursor: pointer;
@@ -579,7 +598,7 @@ defineExpose({ pause: pauseToasts, resume: resumeToasts, expanded })
   color: var(--tx-text-color-secondary, #909399);
   opacity: 0.6;
   cursor: pointer;
-  transition: opacity 0.2s, background-color 0.2s;
+  transition: opacity 0.2s;
 
   &:hover,
   &:focus-visible {

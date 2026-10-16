@@ -77,7 +77,7 @@ const style = computed(() => ({
   height: var(--tx-bui-icon-chip-size, 14px);
   border-radius: var(--tx-bui-icon-chip-radius, 4px);
   font-size: var(--tx-bui-icon-chip-font-size, 7px);
-  font-weight: 700;
+  font-weight: var(--tx-font-weight-bold, 700);
   line-height: 1;
   letter-spacing: 0.01em;
 
@@ -98,7 +98,7 @@ const style = computed(() => ({
   // Solid tones. The chip is a filled plate, so it carries no ring — the one
   // exception is `neutral`, which needs the hairline to read against `surface`.
   &.is-solid {
-    color: #fff;
+    color: var(--tx-color-white, #fff);
 
     &.is-neutral {
       color: var(--tx-bui-ink-2, #62656b);

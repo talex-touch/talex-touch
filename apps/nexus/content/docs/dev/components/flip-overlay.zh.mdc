@@ -45,7 +45,7 @@ code: |
 - 把真实触发元素或它的 `DOMRect` 传给 `source`；`null` 会退化为没有起点的居中卡片。
 - 堆叠时各层的 `duration` 保持接近默认值，让共享遮罩与卡片动效同步。
 - 尺寸约束（`width`、`maxHeight`）放进 `cardStyle`，可复用的视觉变体放进 `cardClass`。
-- 常规卡片用 `surface="mask"`；`glass` / `refraction` 只在背景仍可读时用，完全自定义卡片时用 `pure`。
+- 卡片表面默认 `refraction`。它以 fake 模式渲染，材质底下垫一层半透明的 `surfaceColor`：默认 50% 不透明，既保住文字的可读性，又让后面的页面透上来被模糊、折射；`mask` 下这层底色默认 96%。两者都可以用 `surfaceOpacity` 改，完全自定义卡片时用 `pure`。
 - 优先用 `#header-display`、`#header-actions`、`#header-close`；`#header` 会连同关闭布局一起替换。
 
 ## API 参考
@@ -68,9 +68,9 @@ code: |
 | `maskClosable` | `boolean` | `true` | 点击遮罩或按 Escape 时关闭。 |
 | `preventAccidentalClose` | `boolean` | `false` | 拦截遮罩关闭与页面退出，并闪红光警示。 |
 | `globalMask` | `boolean` | `true` | 渲染 body 级共享遮罩。 |
-| `surface` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction'` | `'mask'` | 内置卡片背景。 |
+| `surface` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction'` | `'refraction'` | 内置卡片背景。 |
 | `surfaceColor` | `string` | `''` | 背景基础色；默认跟随主题。 |
-| `surfaceOpacity` | `number` | `0.96` | 背景不透明度（`mask` 模式）。 |
+| `surfaceOpacity` | `number` | `mask` 为 `0.96`，`blur` / `glass` / `refraction` 为 `0.5` | 卡片底色的不透明度；`pure` 下恒为不透明。 |
 | `speedBoost` | `number` | `1.12` | 进度超过 `speedBoostAt` 后的加速倍率。 |
 | `speedBoostAt` | `number` | `0.7` | 启用 `speedBoost` 的动画进度阈值。 |
 | `transitionName` | `string` | `'TxFlipOverlay-Mask'` | 遮罩的 Vue transition 名称。 |

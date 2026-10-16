@@ -205,7 +205,7 @@ watch(
 
   .tx-tool-call-card__name {
     flex: none;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   .tx-tool-call-card__summary {
@@ -224,7 +224,7 @@ watch(
     background: color-mix(in srgb, var(--tx-text-color-secondary, #6b7280) 12%, transparent);
     color: var(--tx-text-color-secondary, #6b7280);
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   &[data-status='running'] .tx-tool-call-card__status {
@@ -279,7 +279,7 @@ watch(
   .tx-tool-call-card__section-label {
     color: var(--tx-text-color-secondary, #6b7280);
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
@@ -303,8 +303,8 @@ watch(
     max-height: 160px;
     overflow: auto;
     border-radius: 8px;
-    background: color-mix(in srgb, #000 82%, transparent);
-    color: #d6e2f0;
+    background: color-mix(in srgb, var(--tx-color-black, #000) 82%, transparent);
+    color: var(--tx-tool-call-card-log-color, #d6e2f0);
     font-size: 11.5px;
     line-height: 1.55;
     white-space: pre-wrap;

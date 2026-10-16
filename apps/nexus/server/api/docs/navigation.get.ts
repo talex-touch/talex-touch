@@ -8,6 +8,9 @@ import { normalizeDocsPagePath } from '../../utils/docsPath'
 const DEV_NAVIGATION_RETRY_ATTEMPTS = 3
 const DEV_NAVIGATION_RETRY_DELAY_MS = 80
 const NAVIGATION_COMPONENTS_SCOPE = 'components'
+// The concepts handbook lives beside the component docs but is listed in the
+// components sidebar's Concepts suite, so the scope carries both trees.
+const NAVIGATION_COMPONENTS_SCOPE_ROOTS = ['/docs/dev/components', '/docs/dev/concepts']
 
 function toPlainJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -96,8 +99,9 @@ function scopeNavigation(items: unknown, scope: typeof NAVIGATION_COMPONENTS_SCO
   if (scope !== NAVIGATION_COMPONENTS_SCOPE)
     return items
 
-  const components = findNavigationNodeByPath(items, '/docs/dev/components')
-  return components ? [components] : []
+  return NAVIGATION_COMPONENTS_SCOPE_ROOTS
+    .map(root => findNavigationNodeByPath(items, root))
+    .filter(Boolean)
 }
 
 async function queryDocsNavigation(event: H3Event) {

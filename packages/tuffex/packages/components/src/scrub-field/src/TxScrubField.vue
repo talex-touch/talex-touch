@@ -278,8 +278,12 @@ defineExpose({
   min-width: 0;
   height: 26px;
   // Horizontal breathing room: the handle glyph and the value both sat hard
-  // against the chip's edge, which reads as clipped rather than compact.
-  padding: 4px 8px 4px 6px;
+  // against the chip's edge, which reads as clipped rather than compact. The
+  // fixed height, not the 4px, leaves 5.75px above and below the 12px line, so
+  // the glyph at either end sits 9px in (5px plus the handle's 4px, or 8px plus
+  // the suffix's 1px): a vertical-to-horizontal ratio of 0.64, inside the
+  // 0.6–0.75 TuffEx keeps for single-line chips.
+  padding: 4px 8px 4px 5px;
   background: var(--tx-bui-field, #f2f2f3);
   border-radius: var(--tx-bui-radius-chip, 6px);
   transition:
@@ -352,7 +356,7 @@ defineExpose({
 
 .tx-bui-scrub-field__suffix {
   flex-shrink: 0;
-  padding-right: 2px;
+  padding-right: 1px;
   font-size: 11.5px;
   color: var(--tx-bui-ink-3, #9a9da3);
 }

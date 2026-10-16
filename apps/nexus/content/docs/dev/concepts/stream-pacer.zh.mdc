@@ -18,30 +18,44 @@ description: 大模型网络 Token 到达脉冲抖动、useStreamPacer 恒定节
 
 ## useStreamPacer 时钟调度状态机
 
-TuffEx 的 `TxStreamText` 与 `TxStreamElement` 将底层网络流与渲染呈现解耦，通过内部时钟平滑输出：
+TuffEx 的 `TxStreamText` 与 `TxStreamElement` 将底层网络流与渲染呈现解耦，通过内部时钟平滑输出。`TxStreamText` 内部这样调用节拍器（节选）：
 
 :::TuffCodeBlock{lang="typescript"}
 ---
 code: |
-  useStreamPacer({
-    wordMs: () => 24,    // 恒定释放步长：每 24ms 释放一个词元单位
-    maxLagMs: () => 600, // 积压保护：任何词元停留超 600ms，强行提速排空
-    drainMs: () => 320,  // 流终止后，在 320ms 内匀速出清剩余缓冲
-    pauseMs: () => 400,  // 400ms 无新数据判定为暂停，光标进入呼吸态
+  // 节拍参数取自 props，不传时用 STREAM_PACING_DEFAULTS
+  const pacer = useStreamPacer({
+    total: () => available.value,     // 已到达的词元数
+    streaming: () => props.streaming, // 源是否仍在输出
+    wordMs: () => props.wordMs,       // 默认 24：至少每 24ms 释放一个词元
+    maxLagMs: () => props.maxLagMs,   // 默认 600：每个词元最迟在到达后 600ms 显示
+    drainMs: () => props.drainMs,     // 默认 320：源结束后，剩余积压在 320ms 内出清
+    pauseMs: () => props.pauseMs,     // 默认 400：源未结束、400ms 没有词元可放，状态记为 paused
   })
 ---
 :::
 
-- **正常阶段**：词元以 24ms 的优美节奏匀速吐出。
-- **突发加速**：如果服务端倾泻大量 Token 导致积压即将突破 `maxLagMs`（600ms），系统无感提速，确保渲染与推理进度紧密贴合。
+- **正常阶段**：至少每 24ms 释放一个词元。
+- **持续追赶**：流式期间，释放速率取「1 ÷ wordMs」与「积压 ÷ 最老未显示词元剩余的期限」中较大的一个，期限是它的到达时间加 `maxLagMs`（600ms）。整段积压在这个期限前均匀放完，突发读起来是一段加快的字流，而不是一次砸下一大块；源一直快过 24ms 一个词元时，显示延迟稳定在略低于 600ms。
+- **收尾**：源结束的那一刻，速率定为「1 ÷ wordMs」与「积压 ÷ drainMs」中较大的一个，剩余积压在 320ms 内放完。
+- **暂停**：源仍在输出、显示已追平且 400ms 没有新的释放时，状态变为 `paused`。光标的外观不随状态变化，任何实时状态下都是同一个环绕加呼吸的动画。
+- **末词等待**：`TxStreamText` 会留住最后一个还没写完的词，等到空白、收尾标点，或源安静 200ms 后再放出。
+
+`useStreamPacer` 也从 `stream-text` 导出，可以单独使用，`total` 与 `streaming` 两项必填。
 
 ## 微渐显风格预设（Aurora 与 Blur）
 
 新释放的词元在进入 DOM 时，可配置微妙的过渡效果：
-- **`aurora`（460ms）**：带有轻微光谱发散与冷调微光的晶莹渐入。
-- **`blur`（420ms）**：模拟墨水晕染，文字从轻度高斯模糊（`filter: blur(2px)`）在 90ms～120ms 内锐化为清晰文字。
-- **`hue`（180ms）**：轻量级微色相滑入。
-- **`none`（0ms）**：纯文本即时呈现（性能极佳）。
+- **`aurora`（默认，460ms）**：从 4px 模糊中淡入，颜色同时由蓝经紫、粉扫到正文墨色。
+- **`hue`（180ms）**：同样的淡入与色彩扫过，但没有模糊。
+- **`blur`（420ms）**：只从 4px 模糊中淡入，不带颜色。
+- **`languid`（900ms）**：从 8px 模糊中淡入，同时上浮 4px。
+- **`none`（0ms）**：纯文本即时呈现。
+
+系统开启「减弱动态效果」时，`TxStreamText` 跳过节拍、不播放入场，文字一到达就以最终样式出现。
+
+:::TuffDemoWrapper{demo="ConceptStreamPacerDemo"}
+:::
 
 ## 全屏唯一光标交接契约
 

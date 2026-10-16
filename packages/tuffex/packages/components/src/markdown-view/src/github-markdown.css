@@ -1416,7 +1416,7 @@ body[data-theme="light"] :where(.tx-md) .markdown-body {
 .tx-markdown-view.dark .markdown-body,
 .tx-markdown-view[data-theme="dark"] .markdown-body {
   /* Align with GitHub dark baseline */
-  color: #e6edf3;
+  color: var(--fgColor-default, #e6edf3);
   --fgColor-default: #e6edf3 !important;
   --fgColor-muted: #7d8590 !important;
   --fgColor-accent: #2f81f7 !important;

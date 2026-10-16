@@ -217,7 +217,9 @@ if (availableProviders.value.length > 0) {
   background: var(--tx-fill-color-blank);
   color: var(--tx-text-color-primary);
   font-size: 0.875rem;
-  transition: all 0.2s;
+  transition:
+    box-shadow 0.2s,
+    opacity 0.2s;
   font-family: var(--tx-font-family);
   min-width: 0;
   max-width: 100%;

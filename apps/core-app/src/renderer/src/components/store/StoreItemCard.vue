@@ -271,10 +271,7 @@ function handleInstall(): void {
     0 10px 24px rgba(15, 23, 42, 0.045);
   cursor: pointer;
   overflow: hidden;
-  transition:
-    border-color 0.25s ease,
-    box-shadow 0.25s ease,
-    background 0.25s ease;
+  transition: box-shadow 0.25s ease;
 
   &:hover {
     border-color: color-mix(

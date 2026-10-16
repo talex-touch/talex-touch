@@ -140,7 +140,7 @@ code: |
 - One decorative layer filling its box: `aria-hidden`, no pointer events, the box's own radius.
 - The colours are the Tuff brand stops (shared with the composer's live rim) and do not depend on what is behind the panel; refraction's dispersion can only tint with colours already behind it, so over an empty dark page it shows none.
 - Under a `[data-theme='dark']` or `.dark` ancestor each variant is brighter.
-- Hidden under high contrast (`html[data-tx-contrast='high']`, `html.contrast`) so it never lowers text contrast.
+- Hidden under high contrast (`html.contrast`, `html[data-tx-contrast='high']`, or `prefers-contrast: more` without `html[data-tx-contrast='normal']`) so it never lowers text contrast.
 - Static: no animation, so reduced motion needs no fallback.
 
 ## Technologies

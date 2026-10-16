@@ -217,7 +217,7 @@ function formatSpeed(bytesPerSecond: number): string {
   border: 1px solid var(--tx-border-color-light);
   border-radius: 8px;
   padding: 16px;
-  transition: all 0.3s ease;
+  transition: box-shadow 0.3s ease;
   overflow: hidden;
 }
 

@@ -173,7 +173,7 @@ watch(
   border-radius: 12px;
   padding: 0 12px;
   height: 32px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid var(--tx-border-color-lighter);
 
   &:hover {
@@ -214,7 +214,6 @@ watch(
   font-size: 14px;
   margin-left: 8px;
   cursor: pointer;
-  transition: all 0.3s ease;
   border-radius: 50%;
   width: 16px;
   height: 16px;

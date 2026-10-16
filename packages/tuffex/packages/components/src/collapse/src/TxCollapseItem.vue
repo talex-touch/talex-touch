@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CollapseContext } from './types'
 import { computed, inject, useId } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import { TxIcon } from '../../icon'
 
 defineOptions({ name: 'TxCollapseItem' })
@@ -24,6 +25,9 @@ const itemName = computed(() => props.name || props.title || '')
 const isActive = computed(() => {
   return collapse?.activeNames.value.includes(itemName.value) || false
 })
+
+// Opening and closing ease the header's tint; a hover repaints at once.
+const morphing = useMorphWindow(isActive, 180)
 
 function handleHeaderClick() {
   if (props.disabled || !collapse)
@@ -69,6 +73,7 @@ function onAfterLeave(el: Element) {
       :class="{
         'tx-collapse-item__header--active': isActive,
         'tx-collapse-item__header--disabled': disabled,
+        'is-morphing': morphing,
       }"
       :disabled="disabled"
       :aria-expanded="isActive"
@@ -127,17 +132,25 @@ function onAfterLeave(el: Element) {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 1.45;
   text-align: left;
   user-select: none;
   background: var(--tx-collapse-header-bg, var(--tx-bg-color-overlay, #ffffff));
   color: var(--tx-collapse-header-text, var(--tx-text-color-primary, #374151));
   outline: none;
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease;
+  transition: box-shadow 0.18s ease;
+
+  &.is-morphing {
+    transition:
+      background-color 0.18s ease,
+      color 0.18s ease,
+      box-shadow 0.18s ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 }
 
 // Corner nesting. The frame clips its children with `overflow: hidden`, so a
@@ -238,6 +251,7 @@ function onAfterLeave(el: Element) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tx-collapse-item__header,
   .tx-collapse-item__arrow,
   .tx-collapse-enter-active,
   .tx-collapse-leave-active,

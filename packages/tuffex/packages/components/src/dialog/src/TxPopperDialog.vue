@@ -124,6 +124,8 @@ provide('destroy', destroy)
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 @keyframes tx-popper-dialog-enter {
   0% {
     opacity: 0;
@@ -158,20 +160,27 @@ provide('destroy', destroy)
     padding: 16px;
     width: min(360px, 80vw);
     max-height: 80vh;
-    border-radius: 16px;
     box-sizing: border-box;
     overflow: hidden;
     transition: all 0.25s ease;
     animation: tx-popper-dialog-enter 0.25s ease;
 
-    --fake-radius: 16px;
+    // No `--fake-radius`: the backdrop layer inherits the smoothed outline below.
     --fake-inner-opacity: 0.12;
+    @include tx-squircle(16px);
+
+    // High contrast: the panel is opaque and frosts nothing. The blur is an inline style, hence
+    // the `!important`.
+    @include tx-when-high-contrast {
+      --fake-opacity: 1;
+      backdrop-filter: none !important;
+    }
   }
 
   &__title {
     margin: 0;
     font-size: 18px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     text-align: center;
     color: var(--tx-text-color-primary, #303133);
   }

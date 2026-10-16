@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
 
   &.is-selected {
     color: var(--tx-color-primary, #409eff);
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     background: color-mix(in srgb, var(--tx-color-primary, #409eff) 8%, transparent);
   }
 

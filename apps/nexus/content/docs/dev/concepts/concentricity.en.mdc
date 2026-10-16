@@ -18,8 +18,11 @@ $$R_{\text{outer}} = R_{\text{inner}} + \text{Padding}$$
 
 When nested containers naively reuse the same radius (e.g. outer 12px, inner 12px, gap 8px):
 - Straight edges maintain an 8px distance.
-- Corner distance balloons to $(12 + 8) \times \sqrt{2} - 12 \approx 16.28\text{px}$!
-Doubling the distance at the corner produces an ungrounded, pinched visual defect where the inner element feels floating or squeezed.
+- Corner distance balloons to $8 \times \sqrt{2} \approx 11.31\text{px}$!
+Some 41% more distance at the corner produces an ungrounded, pinched visual defect where the inner element feels floating or squeezed.
+
+:::TuffDemoWrapper{demo="ConceptConcentricRadiusDemo"}
+:::
 
 ## Caret Clipping Prevention via Horizontal Inset
 
@@ -36,4 +39,7 @@ Because type carries font leading (internal line-height buffers), identical hori
 
 TuffEx applies the optical ratio:
 $$Padding_{\text{vertical}} \approx 0.6 \sim 0.75 \times Padding_{\text{horizontal}}$$
-For instance, a 26px chip uses `padding: 4px 8px`, anchoring the text baseline with optical symmetry.
+For instance, the 26px TxScrubField sets 12px text on a 14.5px line, leaving 5.75px above and below, and keeps the glyph at either end 9px from the edge: a ratio of about 0.64. TxModeChip is a fixed 28px around an 18px line, which leaves 5px above and below against 8px sideways (`height: 28px; padding: 0 8px`), a ratio of 0.625; TxTag's md size writes the same inset as `padding: 5px 8px`.
+
+:::TuffDemoWrapper{demo="ConceptConcentricInsetDemo"}
+:::

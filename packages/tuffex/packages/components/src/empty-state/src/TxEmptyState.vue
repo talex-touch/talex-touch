@@ -626,7 +626,7 @@ function getActionSize(action?: EmptyStateAction) {
 }
 
 .tx-empty-state__search-question {
-  fill: #fff;
+  fill: var(--tx-bg-color, #fff);
   stroke: none;
 }
 
@@ -768,7 +768,7 @@ function getActionSize(action?: EmptyStateAction) {
 
 /* --- Blank Slate --- */
 .tx-empty-state__sheet {
-  fill: #fff;
+  fill: var(--tx-color-white, #fff);
   stroke: color-mix(in srgb, currentColor 30%, transparent);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
   animation: tx-empty-state-paper-fold 3s ease-in-out infinite;
@@ -789,7 +789,7 @@ function getActionSize(action?: EmptyStateAction) {
 }
 
 .tx-empty-state__sheet-plus-icon {
-  stroke: #fff;
+  stroke: var(--tx-color-on-primary, #fff);
   stroke-width: 2.5;
   animation: tx-empty-state-bounce 2s infinite;
   transform-origin: center;
@@ -1024,7 +1024,7 @@ function getActionSize(action?: EmptyStateAction) {
 
 .tx-empty-state__title {
   font-size: var(--tx-empty-state-title-size, 15px);
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-primary, #303133);
 }
 

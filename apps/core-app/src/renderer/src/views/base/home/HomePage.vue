@@ -3250,7 +3250,6 @@ onBeforeUnmount(disposeCommands)
   font-family: inherit;
   font-size: 12.5px;
   cursor: pointer;
-  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 
   // The block itself is already `danger-soft`, so the hover has to go a step deeper to register.
   &:hover {

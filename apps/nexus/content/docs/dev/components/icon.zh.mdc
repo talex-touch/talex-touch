@@ -159,7 +159,7 @@ code: |
 | `class` | 图标类名（推荐）。 |
 | `emoji` | 轻量强调。 |
 | `file` / `url` | 本地或远程图标。 |
-| `builtin` | 内置图标：`check`、`chevron-down`、`close`、`search`、`user`、`star`、`star-half`、`info`、`check-circle`、`x-circle`、`alert-triangle`。 |
+| `builtin` | 内置图标：`check`、`chevron-down`、`chevron-right`、`chevron-left`、`arrow-left`、`arrow-up`、`arrow-down`、`plus`、`close`、`search`、`user`、`star`、`star-half`、`info`、`check-circle`、`x-circle`、`alert-triangle`。 |
 
 `colorful` 可写在组件属性上，也可写在 `icon.colorful` 中。
 

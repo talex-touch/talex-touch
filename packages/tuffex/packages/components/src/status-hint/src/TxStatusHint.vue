@@ -177,7 +177,7 @@ $spring: var(--tx-status-hint-spring-duration, 620ms) var(--tx-status-hint-sprin
   // An outcome phrase that stands alone on its line: the weight the CoreBox feedback it
   // replaces already used, and a step under the 700 the design rules forbid on prose.
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 18px;
   white-space: nowrap;
 }

@@ -163,7 +163,7 @@ defineExpose({ previous, next, goTo })
 
 .tx-bui-insight-cards__title {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-bui-ink, #1f2124);
 }
 
@@ -189,10 +189,7 @@ defineExpose({ previous, next, goTo })
   color: var(--tx-bui-ink-3, #9a9da3);
   cursor: pointer;
   border-radius: var(--tx-bui-radius-chip, 6px);
-  transition:
-    background-color 0.1s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-    color 0.1s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 0.1s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: transform 0.1s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
   &:hover:not(:disabled) {
     color: var(--tx-bui-ink, #1f2124);
@@ -243,7 +240,6 @@ defineExpose({ previous, next, goTo })
   background: var(--tx-bui-surface, #fff);
   border-radius: 999px;
   box-shadow: var(--tx-bui-shadow-btn, 0 0 0 1px #e0e2e5, 0 1px 2px #1018280d);
-  transition: background-color 0.1s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
   &:hover {
     background: var(--tx-bui-hover, #f4f5f6);
@@ -252,10 +248,6 @@ defineExpose({ previous, next, goTo })
   &:focus-visible {
     outline: 2px solid var(--tx-bui-accent, #0285ff);
     outline-offset: 1px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
   }
 }
 </style>

@@ -143,8 +143,7 @@ function clearValue() {
     transform: scale(0.8);
     transition:
       opacity 0.2s ease,
-      transform 0.2s ease,
-      color 0.15s ease;
+      transform 0.2s ease;
 
     &:hover {
       color: var(--tx-text-color-primary);

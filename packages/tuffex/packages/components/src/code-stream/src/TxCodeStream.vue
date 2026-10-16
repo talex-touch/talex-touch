@@ -626,7 +626,7 @@ const rootStyle = computed(() => (live.value ? { '--tx-stream-reveal-duration': 
     color: var(--tx-bui-ink, #1f2124);
     font-family: var(--tx-bui-font-mono, "JetBrains Mono", ui-monospace, "SF Mono", monospace);
     font-size: 12px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -758,7 +758,7 @@ const rootStyle = computed(() => (live.value ? { '--tx-stream-reveal-duration': 
     box-shadow: none;
     color: var(--tx-bui-ink-3, #9a9da3);
     font-size: 11.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     // The child's own transition is replaced by ours below, and by none at all
     // under reduced motion.
     transition: none;
@@ -811,7 +811,9 @@ const rootStyle = computed(() => (live.value ? { '--tx-stream-reveal-duration': 
       animation: tx-bui-fade-up 250ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) both;
     }
 
-    .tx-bui-code-stream__copy.tx-copy-button {
+    // Only the copied / failed swap eases: TxCopyButton holds `is-morphing`
+    // for that window, so a hover repaints at once.
+    .tx-bui-code-stream__copy.tx-copy-button.is-morphing {
       transition: background-color 0.1s ease, color 0.1s ease;
     }
   }

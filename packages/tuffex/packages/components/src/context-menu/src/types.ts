@@ -4,7 +4,7 @@ export type ContextMenuTrigger = 'contextmenu' | 'click' | 'both' | 'manual'
 export type ContextMenuAnchorMode = 'pointer' | 'reference'
 
 export type ContextMenuPanelVariant = 'solid' | 'dashed' | 'plain'
-export type ContextMenuPanelBackground = 'pure' | 'mask' | 'blur' | 'glass' | 'refraction'
+export type ContextMenuPanelBackground = 'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'
 export type ContextMenuPanelShadow = 'none' | 'soft' | 'medium'
 
 export interface ContextMenuPoint {

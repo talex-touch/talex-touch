@@ -230,7 +230,7 @@ function handleAgree(): void {
     // so the only card that read as clickable was the one already selected.
     border: 2px solid var(--tx-border-color-lighter);
     background-color: var(--tx-fill-color-lighter);
-    transition: all 0.3s ease;
+    transition: box-shadow 0.3s ease;
 
     .tag {
       margin-left: 8px;

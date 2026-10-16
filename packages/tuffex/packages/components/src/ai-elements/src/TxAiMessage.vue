@@ -235,7 +235,7 @@ const statusLabel = computed(() => {
   color: var(--tx-color-success, #67c23a);
   background: color-mix(in srgb, var(--tx-color-success, #67c23a) 12%, transparent);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--tx-font-weight-bold, 700);
 }
 
 .tx-ai-message__avatar img {
@@ -263,7 +263,7 @@ const statusLabel = computed(() => {
 .tx-ai-message__role {
   color: var(--tx-text-color-secondary, #6b7280);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--tx-font-weight-bold, 700);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -274,7 +274,7 @@ const statusLabel = computed(() => {
   color: var(--tx-color-primary, #409eff);
   background: color-mix(in srgb, var(--tx-color-primary, #409eff) 10%, transparent);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-ai-message__content {

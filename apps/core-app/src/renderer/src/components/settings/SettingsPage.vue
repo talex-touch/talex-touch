@@ -227,9 +227,6 @@ function goBack(): void {
   font-family: inherit;
   font-size: var(--shell-fs-body);
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
 
   &:hover {
     background: var(--shell-surface-2);

@@ -1,6 +1,6 @@
 ---
 title: Light Modes & Hue Sorting
-description: Why plus-lighter glows collapse into muddy grey on white surfaces; independent hue ordering pipelines and TxPrismGlow dual-track execution.
+description: Why plus-lighter glows collapse into muddy grey on white surfaces; separate hue orders for dark and light, and how TxPrismGlow implements them.
 ---
 
 # Light Modes & Hue Sorting
@@ -22,23 +22,32 @@ Light-mode canvases already sit near pure white:
 
 ## Light-Mode Adjacent Hue Ordering Pipeline
 
-To maintain crisp vibrancy on light canvases, TuffEx enforces an **adjacent hue ordering constraint**:
-- In light mode, overlapping light cones must restrict their angular hue delta to under 60° (e.g. cyan, sky blue, mint green).
-- Complementary hues (blue and orange, purple and yellow) are strictly forbidden from co-occurring in the same spatial frame.
+To maintain crisp vibrancy on light canvases, TuffEx sets an **adjacent hue rule** for cones that set off together:
+- In light mode, cones that set off together, and so overlap, stay within 120° of each other in hue.
+- Two hues more than 120° apart (blue and yellow, purple and yellow) never set off in the same group.
 
-## TxPrismGlow Dual-Hue Architecture
+:::TuffDemoWrapper{demo="ConceptLightBlendDemo"}
+:::
 
-The `TxPrismGlow` component implements two completely isolated hue generation pipelines:
+## TxPrismGlow's Two Hue Orders
+
+`TxPrismGlow`'s six cones use the same six hues on dark and light surfaces; the light surface only reorders them. `cones.ts` gives every cone a `hue` for dark surfaces and a `lightHue` for light ones (oklch degrees), and the light order trades cone 2's yellow for cone 4's purple:
 
 :::TuffCodeBlock{lang="typescript"}
 ---
 code: |
-  // Dark mode: Full spectrum dispersion accumulating toward white
-  export const DARK_HUE_ORDER = [0, 60, 120, 180, 240, 300];
-
-  // Light mode: Constrained to adjacent cool spectrum (< 60° delta)
-  export const LIGHT_HUE_ORDER = [210, 230, 250, 190, 220];
+  // prism-glow/src/cones.ts (hues only)
+  export const PRISM_GLOW_CONES = [
+    { hue: 350, lightHue: 350 },
+    { hue: 95, lightHue: 300 }, // cone 2: yellow on dark, purple on light
+    { hue: 205, lightHue: 205 },
+    { hue: 300, lightHue: 95 }, // cone 4: purple on dark, yellow on light
+    { hue: 150, lightHue: 150 },
+    { hue: 258, lightHue: 258 },
+  ]
 ---
 :::
 
-Automated test gates in `prism-glow.test.ts` continuously assert that light-mode hue orders never cross the 120° grey-collapse threshold.
+The phases decide which cones set off together: cone 2 travels with cone 6 for the first 0.4 × duration (2.4s at the default 6s, the whole of a CoreBox search), and cones 3, 4 and 5 start out together near the right edge. In the dark order cones 2 and 6 are yellow and blue, 163° apart; in the light order cone 2 is purple, only 42° from cone 6's blue. Dark surfaces add overlaps towards white with `plus-lighter`, so any two hues merge cleanly; light surfaces blend them `normal`, and an overlap is the average of the two colours. The accent palette, which follows the primary colour, spans 100° in all, so it needs no light order.
+
+The gate in `prism-glow.test.ts` computes exactly this rule: during the opening stretch, any two cones whose light hues are more than 120° apart keep their centres at least 30cqw apart, so their halos never meet. The same test asserts that the dark order does clash (blue catches yellow) as a positive control. After the opening the cones' periods differ and they still catch each other up; the gate covers only the opening.

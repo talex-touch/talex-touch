@@ -99,7 +99,6 @@ function handleClick(item: BreadcrumbItem, index: number) {
   color: var(--tx-breadcrumb-text, var(--tx-text-color-secondary));
   text-decoration: none;
   font-size: 14px;
-  transition: color 0.2s;
   padding: 4px 8px;
   border-radius: 4px;
   /* Reset native <button> chrome so a clickable crumb matches its <a>/<span> siblings. */
@@ -122,7 +121,7 @@ function handleClick(item: BreadcrumbItem, index: number) {
 
 .tx-breadcrumb__link--current {
   color: var(--tx-breadcrumb-current, var(--tx-text-color-primary));
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   cursor: default;
 }
 

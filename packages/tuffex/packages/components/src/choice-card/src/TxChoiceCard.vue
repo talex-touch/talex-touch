@@ -543,7 +543,7 @@ watch(() => props.loading, (loading, was) => {
 .tx-choice-card__title {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 20px;
   overflow-wrap: anywhere;
 
@@ -650,7 +650,7 @@ watch(() => props.loading, (loading, was) => {
 
 .tx-choice-card__label {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: var(--tx-choice-card-label-line, 20px);
 }
 

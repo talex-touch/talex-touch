@@ -167,7 +167,7 @@ function handleAgree(): void {
     border-radius: 12px;
     box-sizing: border-box;
     border: 2px solid transparent;
-    transition: all 0.3s ease;
+    transition: box-shadow 0.3s ease;
 
     .tag {
       margin-left: 8px;

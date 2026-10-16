@@ -18,8 +18,8 @@
   &--lg { --tx-mm-pad: 24px; --tx-mm-gap: 22px; --tx-mm-number: 32px; }
   &.is-monochrome { --tx-color-primary: var(--tx-text-color-primary); }
   h2, h3, p, figure, dl, ol { margin: 0; }
-  h2 { font-size: 16px; font-weight: 600; }
-  h3 { font-size: 14px; font-weight: 600; }
+  h2 { font-size: 16px; font-weight: var(--tx-font-weight-semibold, 600); }
+  h3 { font-size: 14px; font-weight: var(--tx-font-weight-semibold, 600); }
   p, small, time { color: var(--tx-text-color-regular); }
   small, time { font-size: 12px; }
   button, select { font: inherit; cursor: pointer; }
@@ -35,10 +35,10 @@
   .tx-mm-section { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding-block: 10px; border-bottom: 1px solid var(--tx-border-color-lighter); }
   .tx-mm-section__heading, .tx-mm-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .tx-mm-actions { justify-content: flex-end; }
-  .tx-mm-value { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--tx-mm-number); line-height: 1.3; font-weight: 600; font-variant-numeric: tabular-nums; small { font-weight: 500; } }
+  .tx-mm-value { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--tx-mm-number); line-height: 1.3; font-weight: var(--tx-font-weight-semibold, 600); font-variant-numeric: tabular-nums; small { font-weight: var(--tx-font-weight-medium, 500); } }
   .tx-mm-target { font-size: 14px; font-weight: 400; color: var(--tx-text-color-regular); }
   .tx-mm-readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 12px; min-width: 0; }
-  .tx-mm-readouts--compact { grid-template-columns: 1fr; gap: 8px; > div { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; } dt { color: var(--tx-text-color-regular); } dd { margin: 0; font-weight: 500; } p { grid-column: 1/-1; font-size: 12px; } }
+  .tx-mm-readouts--compact { grid-template-columns: 1fr; gap: 8px; > div { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; } dt { color: var(--tx-text-color-regular); } dd { margin: 0; font-weight: var(--tx-font-weight-medium, 500); } p { grid-column: 1/-1; font-size: 12px; } }
   .tx-mm-grade, .tx-mm-badge, .tx-mm-regions span { padding: 3px 8px; background: var(--tx-fill-color); border-radius: 6px; }
   .tx-mm-allocation { display: flex; gap: 3px; height: 18px; overflow: hidden; border-radius: 6px; span { min-width: 0; } }
   .tx-mm-allocation--tall { height: 38px; }
@@ -57,16 +57,16 @@
   .tx-mm-matrix--calendar button { color: var(--tx-text-color-primary); min-height: 30px; }
   .tx-mm-plot { min-width: 0; }
   .tx-mm-plot__canvas { position: relative; padding-top: 42px; svg { width: 100%; } }
-  .tx-mm-plot__tooltip { position: absolute; top: 0; transform: translateX(-50%); padding: 5px 8px; color: var(--tx-text-color-primary); background: var(--tx-bg-color); box-shadow: inset 0 0 0 1px var(--tx-border-color); border-radius: 8px; font-size: 12px; pointer-events: none; max-width: 80%; display: flex; gap: 3px 8px; flex-wrap: wrap; span:first-child { font-weight: 600; } }
+  .tx-mm-plot__tooltip { position: absolute; top: 0; transform: translateX(-50%); padding: 5px 8px; color: var(--tx-text-color-primary); background: var(--tx-bg-color); box-shadow: inset 0 0 0 1px var(--tx-border-color); border-radius: 8px; font-size: 12px; pointer-events: none; max-width: 80%; display: flex; gap: 3px 8px; flex-wrap: wrap; span:first-child { font-weight: var(--tx-font-weight-semibold, 600); } }
   .tx-mm-plot__grid { stroke: var(--tx-chart-grid-line, var(--tx-border-color)); stroke-dasharray: 4 4; }
   .tx-mm-plot__ticks { display: flex; justify-content: space-between; gap: 8px; color: var(--tx-text-color-regular); font-size: 12px; margin-top: 4px; }
   .tx-mm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; span { display: flex; align-items: center; gap: 6px; } i { width: 8px; height: 8px; border-radius: 2px; } }
-  .tx-mm-pill-bars { display: grid; gap: 10px; button { position: relative; padding: 9px 12px; border: 0; background: var(--tx-fill-color-light); border-radius: 30px; text-align: start; color: var(--tx-text-color-primary); } span { position: absolute; inset-block: 0; left: 0; background: var(--tx-color-primary-light-9); border-radius: inherit; max-width: 100%; } strong { position: relative; display: flex; justify-content: space-between; gap: 4px; font-weight: 500; } button[aria-pressed='true'] span { box-shadow: inset 0 0 0 1px var(--tx-color-primary); } }
+  .tx-mm-pill-bars { display: grid; gap: 10px; button { position: relative; padding: 9px 12px; border: 0; background: var(--tx-fill-color-light); border-radius: 30px; text-align: start; color: var(--tx-text-color-primary); } span { position: absolute; inset-block: 0; left: 0; background: var(--tx-color-primary-light-9); border-radius: inherit; max-width: 100%; } strong { position: relative; display: flex; justify-content: space-between; gap: 4px; font-weight: var(--tx-font-weight-medium, 500); } button[aria-pressed='true'] span { box-shadow: inset 0 0 0 1px var(--tx-color-primary); } }
   .tx-mm-calendar-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; gap: 4px; color: var(--tx-text-color-regular); }
   .tx-mm-rank, .tx-mm-status-label { background: var(--tx-fill-color-light); border-radius: 8px; padding: 6px 10px; }
   .tx-mm-status-label { margin-bottom: 12px; }
   .tx-mm-profile { display: flex; align-items: center; gap: 10px; }
-  .tx-mm-avatar { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--tx-fill-color); font-weight: 500; }
+  .tx-mm-avatar { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--tx-fill-color); font-weight: var(--tx-font-weight-medium, 500); }
   .tx-mm-campaign { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); align-items: center; gap: 12px; }
   .tx-mm-field { display: flex; flex-direction: column; gap: 6px; }
   .tx-mm-noise-pills { display: flex; gap: 6px; span { flex: 1; padding: 12px 10px; border-radius: 10px; background: var(--tx-fill-color); } span:first-child { background: var(--tx-color-success-light-9); } }

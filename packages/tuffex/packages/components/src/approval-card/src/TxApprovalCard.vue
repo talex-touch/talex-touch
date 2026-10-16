@@ -406,20 +406,15 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
 
   padding: 8px 12px;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-bui-ink, #1f2124);
   cursor: pointer;
   background: var(--tx-bui-surface, #fff);
   border-radius: var(--tx-bui-radius-control, 8px);
   box-shadow: var(--tx-bui-shadow-btn, 0 0 0 1px #e0e2e5, 0 1px 2px #1018280d);
-  transition: background-color 0.15s ease;
 
   &:hover {
     background: var(--tx-bui-hover, #f4f5f6);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
   }
 }
 
@@ -460,7 +455,7 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
     justify-content: center;
     width: 24px;
     height: 24px;
-    color: #fff;
+    color: var(--tx-color-white, #fff);
     background: var(--tx-bui-green, #189a4d);
     border-radius: 999px;
   }
@@ -469,13 +464,13 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
     @include bui-fade-up(350ms, 100ms);
 
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink, #1f2124);
   }
 
   .tx-bui-approval-card__restart {
     font-size: 12px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-accent-ink, #0170dd);
     cursor: pointer;
 
@@ -500,7 +495,7 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
 
   .tx-bui-approval-card__question {
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink, #1f2124);
   }
 
@@ -514,7 +509,6 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
     color: var(--tx-bui-ink-3, #9a9da3);
     cursor: pointer;
     border-radius: var(--tx-bui-radius-control, 8px);
-    transition: background-color 0.1s ease, color 0.1s ease;
 
     &:hover {
       color: var(--tx-bui-ink, #1f2124);
@@ -538,7 +532,6 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
     padding: 4px 6px;
     text-align: left;
     border-radius: var(--tx-bui-radius-control, 8px);
-    transition: background-color 0.1s ease;
   }
 
   .tx-bui-approval-card__option {
@@ -656,7 +649,6 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
     color: var(--tx-bui-ink-3, #9a9da3);
     cursor: pointer;
     border-radius: 5px;
-    transition: background-color 0.1s ease, color 0.1s ease;
 
     &:disabled {
       cursor: default;
@@ -755,13 +747,9 @@ defineExpose({ next: () => goTo(currentIndex.value + 1), prev: () => goTo(curren
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .tx-bui-approval-card__dismiss,
-    .tx-bui-approval-card__option,
-    .tx-bui-approval-card__custom,
     .tx-bui-approval-card__indicator,
     .tx-bui-approval-card__dot,
     .tx-bui-approval-card__option-label,
-    .tx-bui-approval-card__nav,
     .tx-bui-approval-card__dot-button,
     .tx-bui-approval-card__send {
       transition: none;

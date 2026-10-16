@@ -95,7 +95,7 @@ const headline = computed(() => {
 
   display: block;
   font-size: 17px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   letter-spacing: -0.01em;
   color: var(--tx-bui-ink, #1f2124);
 }

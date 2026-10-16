@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SegmentedSliderEmits, SegmentedSliderProps, SegmentedSliderSegment } from './types'
 import { computed, onMounted, ref } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
   name: 'TxSegmentedSlider',
@@ -23,6 +24,10 @@ const currentIndex = computed(() => {
   const index = props.segments.findIndex(seg => seg.value === props.modelValue)
   return Math.max(0, index)
 })
+
+// Moving the value eases the stops and labels into their new colours; a hover
+// repaints at once.
+const morphing = useMorphWindow(() => props.modelValue, 200)
 
 const progressPercent = computed(() => {
   if (props.segments.length <= 1)
@@ -118,6 +123,7 @@ onMounted(() => {
     :class="{
       'is-disabled': disabled,
       'is-vertical': vertical,
+      'is-morphing': morphing,
     }"
     role="radiogroup"
     :aria-disabled="disabled || undefined"
@@ -241,7 +247,7 @@ onMounted(() => {
 
       .tx-segmented-slider__label {
         color: var(--tx-color-primary, #409eff);
-        font-weight: 600;
+        font-weight: var(--tx-font-weight-semibold, 600);
       }
     }
 
@@ -268,8 +274,6 @@ onMounted(() => {
       width 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
       height 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
       transform 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
-      background-color 0.2s ease,
-      border-color 0.2s ease,
       box-shadow 0.2s ease;
     margin: 0 auto;
     position: relative;
@@ -284,14 +288,32 @@ onMounted(() => {
     font-size: 12px;
     color: var(--tx-text-color-secondary, #909399);
     white-space: nowrap;
-    transition: color 0.2s ease, font-weight 0.2s ease;
+    transition: font-weight 0.2s ease;
     line-height: 1.2;
+  }
+
+  &.is-morphing {
+    .tx-segmented-slider__dot {
+      transition:
+        width 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
+        height 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
+        transform 0.2s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)),
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+    }
+
+    .tx-segmented-slider__label {
+      transition: color 0.2s ease, font-weight 0.2s ease;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .tx-segmented-slider__progress,
     .tx-segmented-slider__dot,
-    .tx-segmented-slider__label {
+    .tx-segmented-slider__label,
+    &.is-morphing .tx-segmented-slider__dot,
+    &.is-morphing .tx-segmented-slider__label {
       transition: none;
     }
   }

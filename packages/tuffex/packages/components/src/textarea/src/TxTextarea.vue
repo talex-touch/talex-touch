@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { StyleValue } from 'vue'
 import { computed, ref, useAttrs } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
   name: 'TxTextarea',
@@ -42,6 +43,9 @@ const emit = defineEmits<{
 const attrs = useAttrs()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const isFocused = ref(false)
+// Focus, status and disabled changes ease the border and fill; a hover
+// repaints the border at once.
+const morphing = useMorphWindow(() => [isFocused.value, props.status, props.disabled], 200)
 
 const textareaAttrs = computed(() => {
   const { class: _class, style: _style, ...rest } = attrs
@@ -91,6 +95,7 @@ defineExpose({
         'is-readonly': readonly,
         'is-focused': isFocused,
         'has-counter': showCount,
+        'is-morphing': morphing,
       },
       attrs.class,
     ]"
@@ -128,7 +133,17 @@ defineExpose({
   border: 1px solid var(--tx-border-color, #dcdfe6);
   border-radius: 12px;
   background: var(--tx-bg-color, #ffffff);
+  transition: box-shadow 0.2s ease;
+}
+
+.tx-textarea.is-morphing {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-textarea.is-morphing {
+    transition: none;
+  }
 }
 
 .tx-textarea:hover:not(.is-disabled) {

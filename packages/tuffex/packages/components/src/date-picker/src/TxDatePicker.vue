@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { PickerColumn, PickerValue } from '../../picker/src/types'
 import type { DatePickerEmits, DatePickerPanelView, DatePickerProps, DateRangeValue } from './types'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxPicker from '../../picker/src/TxPicker.vue'
 import TxPopover from '../../popover/src/TxPopover.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -381,6 +382,12 @@ watch(
   },
 )
 
+// Opening eases the field's border; a hover repaints it at once.
+const fieldMorphing = useMorphWindow(fieldOpen, 200)
+// A pick eases the day it lands on. Hovering for a range's far end moves the
+// preview band with the pointer, so that repaints at once.
+const dayMorphing = useMorphWindow(() => [localParts.value, rangeStart.value, rangeEnd.value], 160)
+
 const isDesktopViewport = ref(false)
 
 function syncAdaptiveViewport() {
@@ -744,7 +751,7 @@ function onCancel() {
       <button
         type="button"
         class="tx-date-picker-field"
-        :class="{ 'is-disabled': disabled, 'is-open': fieldOpen }"
+        :class="{ 'is-disabled': disabled, 'is-open': fieldOpen, 'is-morphing': fieldMorphing }"
         :disabled="disabled"
         :aria-label="title"
       >
@@ -759,7 +766,7 @@ function onCancel() {
       </button>
     </template>
 
-    <div class="tx-date-picker-calendar" :class="{ 'is-range': isRange }">
+    <div class="tx-date-picker-calendar" :class="{ 'is-range': isRange, 'is-morphing': dayMorphing }">
       <div class="tx-date-picker-calendar__header">
         <button
           type="button"
@@ -906,7 +913,15 @@ function onCancel() {
   color: var(--tx-text-color-primary, #303133);
   background: var(--tx-bg-color, #fff);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  transition: box-shadow 0.2s;
+
+  &.is-morphing {
+    transition: border-color 0.2s, box-shadow 0.2s;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 }
 
 .tx-date-picker-field:hover:not(.is-disabled),
@@ -923,7 +938,7 @@ function onCancel() {
 .tx-date-picker-field__value {
   min-width: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -966,12 +981,11 @@ function onCancel() {
   border: 0;
   border-radius: 10px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: var(--tx-font-weight-bold, 700);
   color: var(--tx-text-color-primary, #303133);
   background: transparent;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: background 0.16s ease;
 }
 
 .tx-date-picker-calendar__title:hover:not(:disabled) {
@@ -1024,7 +1038,7 @@ function onCancel() {
   margin-bottom: 6px;
   color: var(--tx-text-color-secondary, #606266);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--tx-font-weight-bold, 700);
   text-align: center;
 }
 
@@ -1036,10 +1050,18 @@ function onCancel() {
   color: var(--tx-text-color-primary, #303133);
   background: transparent;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: calc(var(--tx-font-weight-bold, 700) - 50);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  transition: box-shadow 0.16s;
+}
+
+.tx-date-picker-calendar.is-morphing .tx-date-picker-calendar__cell {
   transition: background 0.16s, color 0.16s, box-shadow 0.16s;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 // `:hover` on its own outranks `.is-selected`, so hovering the selected day
@@ -1059,7 +1081,7 @@ function onCancel() {
 
 .tx-date-picker-calendar__cell.is-selected {
   color: var(--tx-color-on-primary, #fff);
-  background: linear-gradient(135deg, var(--tx-color-primary, #409eff), color-mix(in srgb, var(--tx-color-primary, #409eff) 72%, #111827));
+  background: linear-gradient(135deg, var(--tx-color-primary, #409eff), color-mix(in srgb, var(--tx-color-primary, #409eff) 72%, var(--tx-date-picker-selected-shade, #111827)));
   box-shadow: 4px 8px 18px color-mix(in srgb, var(--tx-color-primary, #409eff) 28%, transparent);
   // Landing on a day is the moment the picker answers, so the cell settles
   // into place rather than appearing fully formed.
@@ -1137,10 +1159,12 @@ function onCancel() {
   color: var(--tx-text-color-primary, #303133);
   background: transparent;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: calc(var(--tx-font-weight-bold, 700) - 50);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: background 0.16s, color 0.16s, box-shadow 0.16s;
+  // Picking a tile swaps the whole grid, so its selected fill never gets to
+  // ease; the only colour change left to tween would be the hover.
+  transition: box-shadow 0.16s;
 }
 
 .tx-date-picker-calendar__tile:hover:not(:disabled):not(.is-selected) {
@@ -1157,7 +1181,7 @@ function onCancel() {
 
 .tx-date-picker-calendar__tile.is-selected {
   color: var(--tx-color-on-primary, #fff);
-  background: linear-gradient(135deg, var(--tx-color-primary, #409eff), color-mix(in srgb, var(--tx-color-primary, #409eff) 72%, #111827));
+  background: linear-gradient(135deg, var(--tx-color-primary, #409eff), color-mix(in srgb, var(--tx-color-primary, #409eff) 72%, var(--tx-date-picker-selected-shade, #111827)));
   box-shadow: 4px 8px 18px color-mix(in srgb, var(--tx-color-primary, #409eff) 28%, transparent);
 }
 

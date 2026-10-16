@@ -3,6 +3,7 @@ import type { SliderEmits, SliderProps } from './types'
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { TxGlassSurface } from '../../glass-surface'
 import { stepSpring } from '../../../../utils/animation/spring'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import { useReducedMotion } from '../../../../utils/use-reduced-motion'
 import { useThumbJelly } from './use-thumb-jelly'
 import { clamp01, useTooltipMotion } from './use-tooltip-motion'
@@ -65,6 +66,8 @@ const tooltipWidth = ref(0)
 const dragging = ref(false)
 const hovering = ref(false)
 const focusVisible = ref(false)
+// Focus and drag ease the track's tint; a hover repaints it at once.
+const morphing = useMorphWindow([focusVisible, dragging], 180)
 
 /** Value-space kinematics, fed by `input` events (covers keyboard and pointer alike). */
 const lastInputTs = ref<number | null>(null)
@@ -679,6 +682,7 @@ onBeforeUnmount(() => { mounted = false; suspended.value = true; stopResources()
       'is-hovering': isHovering,
       'is-dragging': dragging,
       'is-focused': focusVisible,
+      'is-morphing': morphing,
       'has-surface': thumbSurface,
       [`is-thumb-${thumbVariant}`]: thumbSurface,
     }"
@@ -767,6 +771,8 @@ onBeforeUnmount(() => { mounted = false; suspended.value = true; stopResources()
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-slider {
   // Geometry. `TxSlider` measures `--tx-slider-thumb-size` to place the fill,
   // so it must not change between states. On the surface path it *is* the
@@ -920,6 +926,10 @@ onBeforeUnmount(() => { mounted = false; suspended.value = true; stopResources()
     border-radius: 999px;
     background: var(--tx-slider-track-color);
     pointer-events: none;
+    transition: height var(--tx-slider-hover-duration) var(--tx-slider-hover-ease);
+  }
+
+  &.is-morphing .tx-slider__track {
     transition:
       height var(--tx-slider-hover-duration) var(--tx-slider-hover-ease),
       background-color var(--tx-slider-hover-duration) var(--tx-slider-hover-ease);
@@ -1017,7 +1027,7 @@ onBeforeUnmount(() => { mounted = false; suspended.value = true; stopResources()
     padding: 6px 10px;
     border-radius: 999px;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     color: var(--tx-text-color-primary, #303133);
     background: color-mix(in srgb, var(--tx-bg-color-overlay, #fff) 12%, transparent);
     backdrop-filter: blur(18px) saturate(150%);
@@ -1083,7 +1093,7 @@ onBeforeUnmount(() => { mounted = false; suspended.value = true; stopResources()
       height: var(--tx-slider-thumb-size);
       border-radius: 999px;
       background: var(--tx-slider-thumb-color);
-      border: 1px solid color-mix(in srgb, #000 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--tx-color-black, #000) 12%, transparent);
       box-shadow: var(--tx-slider-thumb-ring), var(--tx-slider-thumb-shadow);
       margin-top: calc((var(--tx-slider-height) - var(--tx-slider-thumb-size)) / 2);
       transform: scale(var(--tx-slider-thumb-scale));
@@ -1134,6 +1144,23 @@ onBeforeUnmount(() => { mounted = false; suspended.value = true; stopResources()
 @media (prefers-reduced-motion: reduce) {
   .tx-slider {
     --tx-slider-hover-duration: 0ms;
+  }
+}
+
+// High contrast: the pill and the tooltip are opaque, nothing under them is frosted, and the glass
+// body stays hidden while the pill is held.
+.tx-slider {
+  @include tx-when-high-contrast {
+    .tx-slider__surface,
+    .tx-slider__tooltip {
+      background: var(--tx-bg-color-overlay, #fff);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    .tx-slider__glass {
+      display: none;
+    }
   }
 }
 </style>

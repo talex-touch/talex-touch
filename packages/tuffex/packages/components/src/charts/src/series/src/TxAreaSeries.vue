@@ -143,12 +143,5 @@ const linePath = computed(() => {
   </g>
 </template>
 
-<style>
-/* ECharts `stateAnimation` (300ms, cubicOut): the fallthrough `opacity`
-   attribute used to dim a series eases instead of snapping. */
-@media (prefers-reduced-motion: no-preference) {
-  .tx-series--area {
-    transition: opacity 300ms cubic-bezier(0.33, 1, 0.68, 1);
-  }
-}
-</style>
+<!-- No opacity transition: the fallthrough `opacity` that dims a series snaps,
+     since TuffEx switches hover emphasis on the frame the pointer arrives. -->

@@ -110,7 +110,7 @@ const dangerous = computed(() => props.risk !== 'read')
   }
 
   .tx-tool-confirmation__name {
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   .tx-tool-confirmation__risk {
@@ -119,7 +119,7 @@ const dangerous = computed(() => props.risk !== 'read')
     background: color-mix(in srgb, var(--tx-text-color-secondary, #6b7280) 12%, transparent);
     color: var(--tx-text-color-secondary, #6b7280);
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   &[data-risk='write'] .tx-tool-confirmation__risk,
@@ -191,7 +191,7 @@ const dangerous = computed(() => props.risk !== 'read')
   .tx-tool-confirmation__allow {
     border: 1px solid transparent;
     background: var(--tx-color-primary, #409eff);
-    color: #fff;
+    color: var(--tx-color-on-primary, #fff);
 
     &:hover {
       opacity: 0.9;

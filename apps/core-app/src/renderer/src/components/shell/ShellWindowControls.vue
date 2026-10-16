@@ -114,9 +114,6 @@ onBeforeUnmount(() => {
   color: var(--shell-text-secondary);
   font-size: 14px;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
 
   &:hover {
     background: var(--shell-surface-2);

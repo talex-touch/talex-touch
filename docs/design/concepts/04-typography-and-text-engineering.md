@@ -17,15 +17,22 @@
 
 ### 18.2 TuffEx 字阶梯标准
 
-在 TuffEx 整个组件库中，字号分布严格锁定在以下阶梯：
+全局只有三个字号令牌：`--tx-font-size-small` 12px、`--tx-font-size-base` 14px、`--tx-font-size-large` 16px。组件里写的字号按下面的阶梯取值（2026-10 按全部组件样式统计）：
 
 ```
 Micro-labels (微标签 / 徽标): 10px ~ 11px  (全大写 / 纯数字 / 仅作视觉修饰)
 Secondary (辅助说明 / 灰色提示): 12px      (严格限于非关键信息)
-Body / Controls (主正文 / 操作控件): 13px ~ 14px (用户阅读与操作的主战场)
-Headings (分组标题 / 模块标题): 16px ~ 18px (结构分割点)
-Display (大尺寸数值指标): 24px ~ 32px     (核心监控大屏与统计数字)
+Body / Controls (主正文 / 操作控件): 13px ~ 14px (用户阅读与操作的主战场；大号按钮、命令面板输入框到 15px)
+Headings (分组标题 / 模块标题): 15px ~ 18px (结构分割点)
+Display (大尺寸数值指标): 22px ~ 32px     (统计卡、图表摘要与指标数字)
 ```
+
+Display 一档：TxMotionMetric 按尺寸取 22 / 24 / 28 / 32px，TxMonoChart 的指标 22px，TxDitherChart 的摘要 24px，TxStatCard 的数值 28px。
+
+阶梯之外有三类，都是有意的：
+* AI 套件里移植自 Beautiful UI 的组件与原站逐像素对齐，保留它的半像素字号（10.5、11.5、12.5、13.5px）；
+* 用 `font-size` 定尺寸的图标和字形（星级、关闭按钮、表情、标签栏图标），15–30px，不是正文；
+* 装饰性大字，如 TxKeyframeStrokeText 默认 64px。
 
 > **铁律原则**：任何需要使用 16px 呈现正文内容的业务组件，必然是其**信息层级架构出现了严重混乱**。解决办法是梳理层级，而不是调大字号。
 
@@ -33,7 +40,7 @@ Display (大尺寸数值指标): 24px ~ 32px     (核心监控大屏与统计数
 
 ## 第 19 章：无衬线与等宽字体的 X 高度调和
 
-### 19.1 为什么内联代码必须设为 `0.9em`？
+### 19.1 为什么行内代码要缩到 `0.9em` 左右？
 
 在专业界面中，技术术语与代码标识通常以行内代码块（`<code>` 或 `<kbd>`）形式混排在正文中。
 无衬线 UI 字体（如 San Francisco、Inter）与等宽字体（如 JetBrains Mono、Fira Code、SF Mono）在字体设计度量衡（Font Metrics）上存在根本差异：
@@ -43,8 +50,10 @@ UI 无衬线字体 (Inter / SF Pro):
 X 高度 (x-height) 适中，字宽紧凑，基线稳定。
 
 等宽编程字体 (JetBrains Mono):
-为了保证编程时的清晰可辨，等宽字体刻意拉大了字腔，其 X 高度通常比同字号无衬线字体高出 12% ～ 18%！
+为了保证编程时的清晰可辨，等宽字体刻意拉大了字腔，其 x 高度往往比同字号无衬线字体略高。
 ```
+
+按 macOS 自带字体文件量出的 x 高度（与字号之比）：苹方 0.517、SF Pro 0.508、SF Mono 0.526、Menlo 0.547，等宽体只比正文高出约 1.7%～7.7%。
 
 如果内联代码块直接使用 `font-size: 1em`（继承 100%）：
 * 代码文字在视觉上会**生硬地向外凸起**，犹如正文中的突兀补丁。
@@ -52,20 +61,20 @@ X 高度 (x-height) 适中，字宽紧凑，基线稳定。
 
 ### 19.2 TuffEx 解决方案
 
+TuffEx 里渲染行内代码的组件（TxStreamText、TxMarkdownView、TxMarkdownEditor、TxChainOfThought）都把它缩到 0.9em，TxStreamMarkdown 和 Nexus 文档正文用 0.875em。以 TxStreamText 为例：
+
 ```scss
-// TuffEx 标准行内代码样式
-.tx-prose code,
-.tx-inline-code {
-  font-family: var(--tx-font-family-mono);
-  // 严格缩放至 0.9em，抹平等宽字体的 X 高度膨胀
-  font-size: 0.9em;
-  padding: 0.15em 0.35em;
+// packages/tuffex/packages/components/src/stream-text/src/TxStreamText.vue
+.tx-stream-text__code {
+  padding: 0.1em 0.35em;
   border-radius: 4px;
-  background-color: var(--tx-fill-color-light);
-  // 微调基线，使中西文与代码符号垂直居中绝对对齐
-  vertical-align: baseline;
+  background: var(--tx-fill-color-light, #f5f7fa);
+  font-family: var(--tx-font-mono, ui-monospace, 'SF Mono', Menlo, monospace);
+  font-size: 0.9em;
 }
 ```
+
+0.9em 是个近似值。让两种 x 高度对齐的字号是「正文 x 高度 ÷ 代码 x 高度」：在 macOS 的 Chrome 里实测 Nexus 文档正文 0.508em、代码（落到 Menlo）0.547em，比值 1.077，恰好对齐要 0.929em，0.9em 还矮 3.1%。按上面几款字体两两组合，恰好对齐的字号落在 0.93em～0.98em 之间。
 
 ---
 
@@ -83,28 +92,25 @@ X 高度 (x-height) 适中，字宽紧凑，基线稳定。
 
 ### 20.2 浏览器原生软换行（CSS Text Module Level 4）
 
-从 Chrome 117 与 Safari 17.4 开始，现代浏览器正式实现了基于动态规划的智能断行算法。TuffEx 将其确立为核心排版标准：
+按 MDN 的兼容数据，`balance` 从 Chrome 114、Firefox 121、Safari 17.5 起可用；`pretty` 从 Chrome 117、Safari 26 起可用，Firefox 尚未支持。不支持的浏览器按普通 `wrap` 断行，不会出错。TuffEx 组件目前没有声明 `text-wrap`；Nexus 文档的页头（DocHero）是这样用的：
 
 ```scss
-// 1. 标题与短提示（≤6 行）：追求每行字数均衡对称
-.tx-card__title,
-.tx-modal__title,
-.tx-heading {
+// apps/nexus/app/components/docs/DocHero.vue（节选）
+// 标题：让各行宽度尽量接近
+.docs-hero__title {
   text-wrap: balance;
 }
 
-// 2. 长段落正文、卡片描述：追求终结孤字、优先版面优雅
-.tx-prose p,
-.tx-description,
-.tx-help-text {
+// 描述段落：避免末行只剩一两个字
+.docs-hero__desc {
   text-wrap: pretty;
 }
 ```
 
-* `text-wrap: balance`：浏览器通过多轮计算，寻找行宽方差最小的最优解，使标题呈现和谐的倒梯形或对称形态。
+* `text-wrap: balance`：浏览器通过多轮计算，寻找行宽方差最小的最优解，使标题呈现和谐的倒梯形或对称形态；Chrome 只对 6 行以内的文本生效。
 * `text-wrap: pretty`：专门针对末尾孤字进行优化。如果发现段末只剩下一个单字，排版引擎会自动将上一行的倒数第二个词拉至新行，保持双字或多字收尾。
 
-> **流式生成例外**：在 AI 流式输出中（如 `TxStreamText`），正在接收 Token 时保持 `text-wrap: wrap`；当段落彻底生成完毕后，再无缝切换为 `pretty`，防止流式输出过程中每输出一个词都触发全局排版重算。
+> **流式生成例外**：在 AI 流式输出中，正在接收 Token 的段落应保持普通 `wrap`，段落生成完毕后再切换为 `pretty`，防止每输出一个词都触发整段重排。`TxStreamText` 目前没有声明 `text-wrap`，始终按普通 `wrap` 断行。
 
 ---
 
@@ -114,9 +120,7 @@ X 高度 (x-height) 适中，字宽紧凑，基线稳定。
 
 许多初级开发者为了追求所谓的“呼吸感”或“设计感”，喜欢在普通正文上加 `letter-spacing: 1px` 或 `0.05em`。
 世界顶级字体厂商（如 Monotype、Apple Typography Group）耗费数年时间校准字体的字偶间距表（Kerning Pairs，如 `AV`、`To`、`We` 的微缩补偿）。
-一旦声明了全局 `letter-spacing`：
-* 字体的字偶互锁机制瞬间被全部强制瓦解！
-* 字母与汉字之间的连贯感知断裂，人脑阅读速度暴跌 20% 以上。
+在普通正文上声明 `letter-spacing: 1px` 并不会去掉字偶间距，而是在字偶间距之外，给相邻字符之间再统一加 1px，把厂商调好的字距节奏整体冲淡；CSS Text 规范还规定，字距不为 0 时浏览器不应再应用 `fi`、`fl` 这类可选连字。
 
 ### 21.2 TuffEx 仅有的三类字距豁免
 
@@ -124,12 +128,13 @@ X 高度 (x-height) 适中，字宽紧凑，基线稳定。
 
 1. **≤11px 的全大写微型标签（Uppercase Micro-labels）**：
    全大写拉丁字母字腔方正密集，在极小尺寸下笔画易糊在一起。
-   * 例如：`TxSidebarNav` 章节头 `letter-spacing: 0.08em`。
-2. **≥20px 的巨大展示数字（Display Numerals）**：
-   大号数字因笔画粗大，默认设置显得松垮。
-   * 例如：`TxInsightMetric` `letter-spacing: -0.01em`（微负字距紧凑收拢）。
+   * 例如：`TxSidebarNav` 分组标题 10.5px、`0.08em`，`TxSelect` 分组标题 11px、`0.06em`，`TxCodeBlock` 语言标签 11px、`0.04em`；`TxTag` 的 11px 标签也留了 `0.05em`。
+2. **≥17px 的标题与展示数字（Headings & Display Numerals）**：
+   大字号默认字距显得松垮，统一取 `-0.01em` 微负字距收紧。
+   * 例如：`TxInsightMetric` 数值与 `TxBlowDialog` 标题 17px，`TxModal`、`TxBottomDialog` 标题 18px，`TxStatCard` 数值 28px。
 3. **用户头像缩写（Avatar Initials）**：
    此时文字本质上是几何居中图标，非连续阅读文本。
+   * 例如：`TxAvatar` `0.02em`。
 
 ---
 
@@ -146,24 +151,12 @@ X 高度 (x-height) 适中，字宽紧凑，基线稳定。
 ### 22.2 系统字体回退链的严密顺序
 
 ```scss
-// TuffEx 标准无衬线字体栈
---tx-font-family: 
-  -apple-system,              // macOS / iOS 最新系统字体 (San Francisco)
-  BlinkMacSystemFont,         // Chrome on macOS 回退
-  "SF Pro Text",              // 明确指定的 SF
-  "Segoe UI",                 // Windows 现代字体
-  system-ui,                  // 现代 W3C 标准系统字体
-  "PingFang SC",              // macOS 简体中文首选 (苹方)
-  "Hiragino Sans GB",         // macOS 早期中文回退 (冬青黑体)
-  "Microsoft YaHei",          // Windows 简体中文 (微软雅黑)
-  sans-serif;                 // 最终兜底
+// packages/tuffex/packages/components/style/variables.scss
+// 无衬线字体栈
+--tx-font-family: "Inter", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
 
-// 等宽代码字体栈
---tx-font-family-mono:
-  "JetBrains Mono",           // 专业开发环境首选
-  SFMono-Regular,             // macOS 原生等宽
-  Consolas,                   // Windows 经典等宽
-  Menlo,                      // macOS 经典等宽
-  monospace;
+// 等宽代码字体栈；--tx-font-family-mono 是它的别名
+--tx-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+--tx-font-family-mono: var(--tx-font-mono);
 ```
-这一优先级保证了在任何操作系统下，优先由原生排版引擎的高精度字体接管渲染，消除非矢量毛刺与字符变形。
+浏览器逐字查找：拉丁字母与数字先找 Inter；Inter 没有中文字形，中文落到苹方（macOS）或微软雅黑（Windows）；没装 Inter 的机器上，拉丁字母落到 Helvetica Neue 或 Arial。TuffEx 不自带 Inter 的字体文件，只有系统装了 Inter 或宿主页面自己加载了它时才会用上。等宽栈在没装 JetBrains Mono 的 macOS Chrome 里实测落到 Menlo。

@@ -965,7 +965,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 .tx-data-table__th {
   position: relative;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-regular, #606266);
   background: var(--tx-fill-color-lighter, #fafafa);
   user-select: none;
@@ -1146,10 +1146,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 
 .tx-data-table__expand-toggle {
   color: var(--tx-text-color-secondary, #909399);
-  transition:
-    transform 160ms ease,
-    background-color 160ms ease,
-    color 160ms ease;
+  transition: transform 160ms ease;
 
   &:hover {
     color: var(--tx-text-color-primary, #303133);
@@ -1221,6 +1218,12 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   border-radius: inherit;
   background: color-mix(in srgb, var(--tx-bg-color, #fff) 70%, transparent);
   backdrop-filter: blur(4px);
+
+  // High contrast: an opaque veil, so the spinner never sits on the rows it covers.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color, #fff);
+    backdrop-filter: none;
+  }
 }
 
 .tx-data-table__loading-row > td {
@@ -1392,7 +1395,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
 .tx-data-table__tag-pill {
   padding: 2px 8px;
   border-radius: 9999px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   background: var(--tx-fill-color, #f0f2f5);
 }
 
@@ -1402,7 +1405,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   background: var(--tx-fill-color-lighter, #fafafa);
   border: 1px solid var(--tx-border-color-lighter, #ebeef5);
   color: var(--tx-text-color-secondary, #909399);

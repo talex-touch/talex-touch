@@ -421,9 +421,7 @@ defineExpose({
     text-align: left;
     cursor: pointer;
     border-radius: var(--tx-bui-radius-control, 8px);
-    transition:
-      background-color 100ms ease,
-      transform 150ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+    transition: transform 150ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
     &:hover {
       background: var(--tx-bui-hover, #f4f5f6);
@@ -445,7 +443,7 @@ defineExpose({
     display: block;
     overflow: hidden;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     line-height: 1.25;
     color: var(--tx-bui-ink, #1f2124);
     text-overflow: ellipsis;
@@ -532,14 +530,12 @@ defineExpose({
     padding: 6px 8px;
     margin-bottom: 8px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-accent, #0285ff);
     text-align: left;
     cursor: pointer;
     border-radius: var(--tx-bui-radius-control, 8px);
-    transition:
-      background-color 100ms ease,
-      transform 150ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
+    transition: transform 150ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
     &:hover {
       background: var(--tx-bui-accent-tint, #e9f3ff);
@@ -566,7 +562,7 @@ defineExpose({
     justify-content: center;
     width: 16px;
     height: 16px;
-    color: #fff;
+    color: var(--tx-color-white, #fff);
     background: var(--tx-bui-accent, #0285ff);
     border-radius: 999px;
   }
@@ -603,7 +599,7 @@ defineExpose({
   &__group-label {
     padding: 4px 8px;
     font-size: 10.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink-3, #9a9da3);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -688,7 +684,7 @@ defineExpose({
     height: 18px;
     padding: 0 4px;
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     color: var(--tx-bui-accent-ink, #0170dd);
     background: var(--tx-bui-accent-tint, #e9f3ff);
     border-radius: 999px;
@@ -708,10 +704,7 @@ defineExpose({
     cursor: pointer;
     border-radius: 5px;
     opacity: 0;
-    transition:
-      background-color 100ms ease,
-      color 100ms ease,
-      opacity 100ms ease;
+    transition: opacity 100ms ease;
 
     &:hover {
       color: var(--tx-bui-ink-2, #62656b);
@@ -741,7 +734,7 @@ defineExpose({
     }
 
     .tx-bui-sidebar-nav__label {
-      font-weight: 500;
+      font-weight: var(--tx-font-weight-medium, 500);
       color: var(--tx-bui-ink, #1f2124);
     }
 

@@ -59,13 +59,10 @@ function onClick(event: MouseEvent): void {
   color: var(--tx-bui-accent-ink, #0170dd);
   text-decoration-line: none;
   text-underline-offset: 3px;
-  transition:
-    color 0.12s ease-out,
-    text-decoration-color 0.12s ease-out;
 
   &.is-muted {
     color: var(--tx-bui-ink, #1f2124);
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
   }
 
   // The permanent underline is tinted down to 35% so a dense column of links
@@ -93,10 +90,6 @@ function onClick(event: MouseEvent): void {
     outline: 2px solid var(--tx-bui-accent, #0285ff);
     outline-offset: 2px;
     border-radius: 2px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
   }
 }
 

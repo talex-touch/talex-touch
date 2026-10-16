@@ -342,7 +342,7 @@ class="tx-motion-dock__items" role="toolbar" aria-orientation="horizontal" :aria
 .tx-motion-dock__item.is-active { box-shadow: inset 0 0 0 2px var(--tx-color-primary, #409eff); }
 .tx-motion-dock__item.is-dragging { z-index: 1; cursor: grabbing; }
 .tx-motion-dock__item.is-disabled { cursor: not-allowed; opacity: .5; }
-.tx-motion-dock__icon { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 8px; background: var(--tx-color-primary-light-9, #ecf5ff); font-weight: 500; }
+.tx-motion-dock__icon { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 8px; background: var(--tx-color-primary-light-9, #ecf5ff); font-weight: var(--tx-font-weight-medium, 500); }
 .tx-motion-dock__label { position: absolute; top: calc(100% + 8px); left: 50%; translate: -50% 0; white-space: nowrap; line-height: 1.5; }
 .tx-motion-dock:has(.tx-motion-dock__label) { margin-bottom: 28px; }
 .tx-motion-dock__sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

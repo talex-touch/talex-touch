@@ -215,7 +215,7 @@ onBeforeUnmount(() => {
   background-color: var(--tx-mode-chip-fill, transparent);
   font: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   line-height: 18px;
   color: var(--tx-mode-chip-ink, #606266);
   white-space: nowrap;

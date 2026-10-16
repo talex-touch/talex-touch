@@ -46,7 +46,7 @@ export interface PopoverProps {
   toggleOnReferenceClick?: boolean
 
   panelVariant?: 'solid' | 'dashed' | 'plain'
-  panelBackground?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction'
+  panelBackground?: 'pure' | 'mask' | 'blur' | 'glass' | 'refraction' | 'acrylic' | 'mica' | 'flat' | 'plain'
   panelShadow?: 'none' | 'soft' | 'medium'
   panelRadius?: number
   panelPadding?: number

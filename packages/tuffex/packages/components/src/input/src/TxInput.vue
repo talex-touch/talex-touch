@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { StyleValue } from 'vue'
 import { computed, ref, useAttrs } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
   name: 'TuffInput',
@@ -65,6 +66,8 @@ const inputValue = computed({
 const inputEl = ref<HTMLInputElement | HTMLTextAreaElement | null>(null)
 const isFocused = ref(false)
 const capsLockOn = ref(false)
+// Focusing eases the border and ring; a hover repaints the border at once.
+const morphing = useMorphWindow(isFocused, 250)
 
 const showClear = computed(() => {
   return props.clearable && inputValue.value !== '' && inputValue.value !== null && inputValue.value !== undefined && !props.disabled && !props.readonly
@@ -116,6 +119,7 @@ defineExpose({
         'is-readonly': readonly,
         'is-textarea': type === 'textarea',
         'is-focused': isFocused,
+        'is-morphing': morphing,
       },
       attrs.class,
     ]"
@@ -195,7 +199,15 @@ defineExpose({
   border-radius: 12px;
   border: 1px solid var(--tx-border-color, #dcdfe6);
   background-color: var(--tx-bg-color, #fff);
-  transition: border-color 0.25s, box-shadow 0.25s;
+  transition: box-shadow 0.25s;
+
+  &.is-morphing {
+    transition: border-color 0.25s, box-shadow 0.25s;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 
   &:hover:not(.is-disabled) {
     border-color: var(--tx-color-primary-light-3, #79bbff);
@@ -279,7 +291,6 @@ defineExpose({
     background: transparent;
     cursor: pointer;
     color: var(--tx-text-color-placeholder, #a8abb2);
-    transition: color 0.2s;
     flex-shrink: 0;
 
     &:hover {

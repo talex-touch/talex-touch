@@ -89,6 +89,7 @@ String sizes are kept as-is, so CSS variables and multi-value padding work.
 | `--tx-gradient-inner-padding` | `padding` | Padding of the content wrapper. |
 | `--tx-gradient-duration` | `animationDuration` | Rotation duration, with an `s` suffix. |
 | `--tx-gradient-angle` | internal animation | Registered angle property the gradient uses. |
+| `--tx-gradient-border-color-1` … `-4` | — | The gradient's four stops, by default `#0894ff`, `#c959dd`, `#ff2e54` and `#ff9004`. |
 
 ## Overview
 

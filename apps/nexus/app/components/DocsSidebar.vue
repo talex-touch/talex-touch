@@ -8,6 +8,7 @@ import { GLIDE, stepSpring, useIndicatorBox, useJellyIndicator } from '@talex-to
 import { hasWindow } from '@talex-touch/utils/env'
 import type { DocsSuiteKey } from '~/utils/docs-suites'
 import { coerceJsonArray } from '~/utils/docs-api'
+import { CONCEPTS_MANUAL_GROUPS, CONCEPTS_MANUAL_PATH, isConceptsManualPath } from '~/utils/docs-concepts-manual'
 import { categoryI18nKey, CATEGORY_SUITE_MAP, SUITE_CATEGORY_KEYS } from '~/utils/docs-suites'
 import { requestDocsPage } from '~/utils/docs-page-client-cache'
 import { useTypedFetch } from '~/utils/request'
@@ -42,7 +43,12 @@ const navRef = ref<HTMLElement | null>(null)
 const sidebarHydrated = ref(false)
 const docsLocale = computed(() => resolveDocsLocaleFromRoute(route.path))
 const normalizedRoutePath = computed(() => normalizeDocsPagePath(route.path))
-const isComponentDocsRoute = computed(() => normalizedRoutePath.value.startsWith('/docs/dev/components'))
+// The design concepts handbook sits beside the component docs but belongs to the
+// Concepts suite, so its pages keep the components sidebar.
+const isConceptsManualRoute = computed(() => isConceptsManualPath(normalizedRoutePath.value))
+const isComponentDocsRoute = computed(
+  () => normalizedRoutePath.value.startsWith('/docs/dev/components') || isConceptsManualRoute.value,
+)
 const shouldLoadComponentDocs = computed(() => sidebarHydrated.value && isComponentDocsRoute.value)
 const docsNavigationScope = computed(() => (isComponentDocsRoute.value ? 'components' : undefined))
 const docsNavigationEndpoint = computed(
@@ -71,6 +77,9 @@ const {
   server: false,
   lazy: true,
   immediate: false,
+  // Pointer and focus on the sidebar ask for the list again while it is still loading; each
+  // ask used to cancel the request in flight and start it over.
+  dedupe: 'defer',
   responseType: 'json',
   default: () => [],
 })
@@ -112,8 +121,8 @@ const TOP_SECTIONS = computed(() => [
   {
     key: 'components',
     basePath: '/docs/dev/components',
-    // The section root, not `/index`: they render the same document, but only
-    // this spelling matches the Concepts Overview row's exact-match highlight.
+    // The section root, not `/index`: they render the same document, and the
+    // root is the spelling the Concepts Overview row links.
     entryPath: '/docs/dev/components',
     label: t('docsSidebar.components'),
     icon: 'i-carbon-cube',
@@ -544,11 +553,14 @@ const SUITES = computed<SuiteDef[]>(() => [
     categories: suiteCategories('concepts'),
     // The overview is the components index itself: it carries the library
     // positioning and the full component catalog, and lives at the section
-    // root, so it is linked as `/docs/dev/components`.
+    // root, so it is linked as `/docs/dev/components`. The concepts handbook's
+    // index sits where the overview's own table lists it; its pages follow as
+    // groups (CONCEPTS_MANUAL_GROUPS).
     standalonePages: [
       '/docs/dev/components/index',
       '/docs/dev/components/installation',
       '/docs/dev/components/foundations',
+      CONCEPTS_MANUAL_PATH,
       '/docs/dev/components/theming',
       '/docs/dev/components/icons',
       '/docs/dev/components/accessibility',
@@ -628,6 +640,7 @@ const selectedSuite = ref<SuiteKey | null>(null)
 
 const suiteOfRoute = computed<SuiteKey | null>(() => {
   if (!isComponentDocsRoute.value) return null
+  if (isConceptsManualRoute.value) return 'concepts'
   // Compared by canonical identity: the Concepts overview is the section's
   // index document, so the route `/docs/dev/components` and the item's
   // `/docs/dev/components/index` are the same page under different spellings.
@@ -687,6 +700,9 @@ const suiteDocCounts = computed(() => {
     if (suite)
       counts[suite] = (counts[suite] ?? 0) + 1
   }
+  // The concepts handbook is not in that metadata: its index plus its pages.
+  if (counts.concepts && conceptsManualPages.value.length)
+    counts.concepts += conceptsManualPages.value.length + 1
   return counts
 })
 
@@ -808,7 +824,7 @@ function localizedDocsPath(path: string | null | undefined) {
 function shouldPrefetchDocsTarget(path: string | null | undefined) {
   if (!path) return false
   const normalized = normalizeContentPath(path)
-  return Boolean(normalized?.startsWith('/docs/dev/components/'))
+  return Boolean(normalized?.startsWith('/docs/dev/components/') || normalized?.startsWith(`${CONCEPTS_MANUAL_PATH}/`))
 }
 
 function prefetchDocsRouteTarget(normalized: string, locale: 'en' | 'zh') {
@@ -1011,6 +1027,19 @@ function groupComponentFamilies(children: any[]): any[] {
   })
 }
 
+// The handbook's pages follow its own index's six domains (CONCEPTS_MANUAL_GROUPS);
+// a page missing from them lands in the misc canary bucket instead of vanishing.
+// Read off the navigation tree, which the components scope also carries: the
+// component metadata covers `/docs/dev/components` only. The index is left out;
+// it is the handbook's standalone row.
+const conceptsManualPages = computed(() => {
+  const node = findSectionByPath(items.value, CONCEPTS_MANUAL_PATH)
+  const children: any[] = Array.isArray(node?.children) ? node.children : []
+  return children
+    .map(child => ({ ...child, normalizedPath: normalizeContentPath(child.path) }))
+    .filter(child => child.normalizedPath && canonicalDocsPageIdentity(child.normalizedPath) !== CONCEPTS_MANUAL_PATH)
+})
+
 const resolvedComponentSections = computed(() => {
   const sourceItems = componentItems.value ?? []
   if (!sourceItems.length) return []
@@ -1041,6 +1070,15 @@ const resolvedComponentSections = computed(() => {
   }
 
   for (const standalonePath of activeSuiteDef.value.standalonePages) {
+    if (standalonePath === CONCEPTS_MANUAL_PATH) {
+      sections.push({
+        title: t('docsSidebar.conceptsManual'),
+        path: CONCEPTS_MANUAL_PATH,
+        children: [],
+        page: true,
+      })
+      continue
+    }
     const isIndex = standalonePath === COMPONENTS_INDEX_PATH
     const item = isIndex ? indexItem : entries.find(entry => entry.normalizedPath === standalonePath)
     if (!item) continue
@@ -1061,6 +1099,14 @@ const resolvedComponentSections = computed(() => {
     addSection(category.label, children)
   }
 
+  const manualPages = activeSuite.value === 'concepts' ? conceptsManualPages.value : []
+  for (const group of CONCEPTS_MANUAL_GROUPS) {
+    const children = group.pages
+      .map(slug => manualPages.find(page => page.normalizedPath === `${CONCEPTS_MANUAL_PATH}/${slug}`))
+      .filter(Boolean)
+    addSection(t(`docsSidebar.conceptGroups.${group.key}`), children)
+  }
+
   // Canary bucket: same-suite entries not covered by the groups above, plus
   // entries whose category is unknown to CATEGORY_SUITE_MAP (visible in every
   // suite). Stays empty while taxonomy, script and this file agree.
@@ -1072,7 +1118,8 @@ const resolvedComponentSections = computed(() => {
     }),
     '/docs/dev/components',
   )
-  addSection(t('docsSidebar.categories.misc'), remaining)
+  const ungroupedManualPages = manualPages.filter(page => !used.has(page.normalizedPath))
+  addSection(t('docsSidebar.categories.misc'), [...remaining, ...ungroupedManualPages])
 
   return sections
 })
@@ -1120,6 +1167,9 @@ function componentSyncBadge(item: any) {
 
 const activeTopSection = computed(() => {
   if (isTutorialRoute.value) return 'tutorial'
+  // Before the base-path scan: the concepts handbook is under `/docs/dev`, the
+  // extensions base path, yet it is listed with the components.
+  if (isComponentDocsRoute.value) return 'components'
   const path = normalizedRoutePath.value
   for (const section of TOP_SECTIONS.value) {
     if (path.startsWith(section.basePath)) return section.key
@@ -1228,7 +1278,10 @@ const sections = computed(() => {
   const children = sortTree(filterByLocale(data.children ?? []), normalizeContentPath(data.path))
   const filtered =
     activeTopSection.value === 'extensions'
-      ? children.filter((child: any) => normalizeContentPath(child.path) !== '/docs/dev/components')
+      ? children.filter((child: any) => {
+          const childPath = normalizeContentPath(child.path)
+          return childPath !== '/docs/dev/components' && childPath !== CONCEPTS_MANUAL_PATH
+        })
       : children
 
   // If there are subdirectories (features, scenes, api, etc.), show them as sections
@@ -1276,6 +1329,15 @@ function isLinkActive(path: string) {
 
   if (normalizedRoutePath.value === normalizedTarget) return true
   return normalizedRoutePath.value.startsWith(`${normalizedTarget}/`)
+}
+
+// A page row names one document, which a section root and its `/index`
+// spelling both reach: the overview's link to the handbook lands on
+// `/docs/dev/concepts/index`, the row links `/docs/dev/concepts`.
+function isPageRowActive(section: any) {
+  const target = linkTarget(section)
+  if (!target) return false
+  return canonicalDocsPageIdentity(target) === canonicalDocsPageIdentity(normalizedRoutePath.value)
 }
 
 function itemTitle(title?: string, path?: string) {
@@ -1663,11 +1725,7 @@ onBeforeUnmount(() => {
         <DocSection
           v-for="section in sections"
           :key="sectionKey(section)"
-          :active="
-            section.children?.length
-              ? isSectionExpanded(section)
-              : normalizedRoutePath === (linkTarget(section) || '')
-          "
+          :active="section.children?.length ? isSectionExpanded(section) : isPageRowActive(section)"
           :link="linkTarget(section) ? localizedDocsPath(linkTarget(section)) : undefined"
           :list="section.children?.length || 0"
           @click="toggleSection(section)"

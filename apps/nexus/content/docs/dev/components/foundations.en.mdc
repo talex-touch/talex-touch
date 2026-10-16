@@ -21,9 +21,9 @@ It governs not merely raw CSS variables, but the physical geometric, material, a
 
 Standard CSS `border-radius` relies on circular fillets ($G^1$ tangent continuity). Curvature $\kappa$ jumps abruptly from $0$ on straight edges to $1/R$ at the fillet boundary, inducing an optical crease (the Specular Break defect).
 
-TuffEx implements superellipses (Lamé curves / squircles) on windows and cards:
-$$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \approx 4 \sim 5)$$
-The rate of curvature change across the boundary is zero ($G^2$ continuity), delivering seamless optical continuity and eliminating corner pinching.
+TuffEx draws superellipse (Lamé curve / squircle) corners on TxCard, TxModal, TxCommandPalette, TxFlipOverlay, the dialogs and CoreBox:
+$$\left| \frac{x}{a} \right|^n + \left| \frac{y}{a} \right|^n = 1 \quad (n \approx 3.43)$$
+The superellipse meets the straight edge with zero curvature ($G^2$ continuity) and cuts as deep along the 45° diagonal as the plain radius, so reflections run unbroken around the corner. The implementation is `tx-squircle` in `style/mixins.scss`; browsers without `corner-shape` keep the plain radius.
 
 ### Concentric Radii Geometric Law
 
@@ -63,8 +63,8 @@ Why reject pure black `#000000`?
 
 ### Dark Mode Retinal Bloom Weight Compensation
 
-Under the Helmholtz optical irradiation effect, white strokes over dark canvases bleed into the retina, **appearing 10%–15% bolder than light mode equivalents**.
-Under variable font environments, TuffEx calibrates dark weights downward:
+Under the Helmholtz optical irradiation effect, white strokes over dark canvases bleed into the retina, **reading bolder than the same weight in light mode**; how much depends on luminance, contrast and size, with no fixed percentage.
+TuffEx does not lower weights in its dark theme today. When the font has a weight axis, a dark theme can tune its weights like this:
 - Body copy: `400` (Light) $\to$ `380`–`400` (Dark)
 - Inline emphasis: `500` (Light) $\to$ `460` (Dark)
 - Headings: `600` (Light) $\to$ `560` (Dark)

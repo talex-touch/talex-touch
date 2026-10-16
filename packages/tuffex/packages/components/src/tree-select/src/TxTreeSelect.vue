@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TreeSelectEmits, TreeSelectKey, TreeSelectNode, TreeSelectProps, TreeSelectValue } from './types'
 import { computed, ref, useId, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxCardItem from '../../card-item/src/TxCardItem.vue'
 import TxCheckbox from '../../checkbox/src/TxCheckbox.vue'
 import TuffInput from '../../input/src/TxInput.vue'
@@ -28,6 +29,8 @@ const props = withDefaults(defineProps<TreeSelectProps>(), {
 const emit = defineEmits<TreeSelectEmits>()
 
 const open = ref(false)
+// Opening eases the trigger's border; a hover repaints at once.
+const morphing = useMorphWindow(open, 250)
 const query = ref('')
 const triggerRef = ref<HTMLElement | null>(null)
 // Stable id so the combobox trigger can point aria-controls at the popup.
@@ -144,7 +147,7 @@ defineExpose({
       <div
         ref="triggerRef"
         class="tx-tree-select"
-        :class="{ 'is-open': open, 'is-disabled': disabled }"
+        :class="{ 'is-open': open, 'is-disabled': disabled, 'is-morphing': morphing }"
         :tabindex="disabled ? -1 : 0"
         role="combobox"
         aria-haspopup="tree"
@@ -286,8 +289,16 @@ defineExpose({
   background: var(--tx-bg-color, #fff);
   box-sizing: border-box;
   cursor: pointer;
-  transition: border-color 0.25s, box-shadow 0.25s;
+  transition: box-shadow 0.25s;
   outline: none;
+
+  &.is-morphing {
+    transition: border-color 0.25s, box-shadow 0.25s;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
 
   &:hover:not(.is-disabled) {
     border-color: var(--tx-color-primary-light-3, #79bbff);

@@ -618,7 +618,7 @@ function isSuppressedFence(block: StreamBlock): boolean {
 
     h1, h2, h3, h4, h5, h6 {
       margin: 1.6em 0 0.7em;
-      font-weight: 600;
+      font-weight: var(--tx-font-weight-semibold, 600);
       line-height: 1.35;
     }
 
@@ -641,7 +641,7 @@ function isSuppressedFence(block: StreamBlock): boolean {
     }
 
     strong {
-      font-weight: 600;
+      font-weight: var(--tx-font-weight-semibold, 600);
     }
 
     ul, ol {
@@ -729,7 +729,7 @@ function isSuppressedFence(block: StreamBlock): boolean {
     }
 
     .tx-stream-md__blocked-image-title {
-      font-weight: 500;
+      font-weight: var(--tx-font-weight-medium, 500);
     }
 
     .tx-stream-md__blocked-image-alt {
@@ -835,7 +835,7 @@ function isSuppressedFence(block: StreamBlock): boolean {
 
       th {
         background-color: var(--tx-fill-color-light, #fafafa);
-        font-weight: 600;
+        font-weight: var(--tx-font-weight-semibold, 600);
       }
     }
 

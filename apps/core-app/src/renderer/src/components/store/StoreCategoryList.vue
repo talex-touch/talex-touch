@@ -84,7 +84,6 @@ function getCategoryIcon(category: CategoryTag): string {
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
   text-align: left;
   font-size: 0.875rem;
   color: var(--tx-text-color-regular);
@@ -124,7 +123,6 @@ function getCategoryIcon(category: CategoryTag): string {
 .category-icon {
   font-size: 1.125rem;
   color: var(--tx-text-color-secondary);
-  transition: color 0.2s ease;
   flex-shrink: 0;
 }
 

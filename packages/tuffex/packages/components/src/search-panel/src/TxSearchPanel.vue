@@ -319,7 +319,6 @@ defineExpose({
     height: 40px;
     padding: 0 12px;
     border-bottom: 1px solid var(--tx-bui-line, #ecedef);
-    transition: background-color 100ms ease;
 
     &:hover:not(.is-disabled) {
       background: var(--tx-bui-hover, #f4f5f6);
@@ -365,9 +364,6 @@ defineExpose({
     color: var(--tx-bui-ink-3, #9a9da3);
     cursor: pointer;
     border-radius: 999px;
-    transition:
-      background-color 100ms ease,
-      color 100ms ease;
     animation: tx-bui-fade-in 150ms ease-out both;
 
     &:hover {
@@ -399,11 +395,12 @@ defineExpose({
     white-space: nowrap;
     cursor: pointer;
     border-radius: 6px;
-    transition: background-color 100ms ease;
     animation: tx-bui-fade-in 200ms ease-out both;
 
     // Focus stays in the combobox, so the highlight is `is-active`, not
     // `:focus` — `:hover` alone would leave keyboard users with no cursor.
+    // The pointer moves it too (`mousemove`), so it repaints at once, as a
+    // hover does.
     &.is-active {
       background: var(--tx-bui-hover, #f4f5f6);
     }
@@ -441,12 +438,6 @@ defineExpose({
   }
 
   @media (prefers-reduced-motion: reduce) {
-    &__field,
-    &__clear,
-    &__option {
-      transition: none;
-    }
-
     &__clear,
     &__option,
     &__empty {

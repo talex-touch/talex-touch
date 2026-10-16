@@ -35,7 +35,7 @@ description: 动效是空间锚点不是娱乐表演；悬停 0ms 瞬间响应�
 
 那么，什么时候才允许平滑过渡颜色？**仅在组件发生长周期的语义状态切换时（例如普通态切换为危险确认态）**。
 
-为了防止状态过渡污染正常的悬停交互，TuffEx 规定：**颜色过渡属性必须挂载在临时形变类上，绝不可写在元素本体上**：
+为了防止状态过渡污染正常的悬停交互，TuffEx 的规则是：**颜色过渡属性必须挂载在临时形变类上，绝不可写在元素本体上**。下面是 TxModeChip 的写法（略去了变量的兜底值）：
 
 :::TuffCodeBlock{lang="scss"}
 ---
@@ -44,6 +44,7 @@ code: |
     // 悬停必须瞬间生效，零延迟
     &:hover:not(:disabled) {
       background-color: var(--tx-mode-chip-fill-hover);
+      color: var(--tx-mode-chip-ink-hover, var(--tx-mode-chip-ink));
     }
 
     // 仅在状态形变期间由 JS 挂载 .is-morphing
@@ -57,3 +58,8 @@ code: |
 :::
 
 通过类名隔离，悬停保持了 0ms 的雷厉风行，而业务状态切换则享有平滑优雅的形变。
+
+现在 TuffEx 的组件都守这条规则：悬停一律瞬间换色。颜色过渡要么只在 `.is-morphing` 存在时生效（选中、展开、聚焦这类状态切换时挂上，最长的一段颜色过渡走完就摘掉），要么只写在悬停根本不改颜色的元素上。跟着指针走的高亮也算悬停，例如 TxSearchPanel 的候选项、TxCascader 展开的路径，同样瞬间换色。
+
+:::TuffDemoWrapper{demo="ConceptHoverLatencyDemo"}
+:::

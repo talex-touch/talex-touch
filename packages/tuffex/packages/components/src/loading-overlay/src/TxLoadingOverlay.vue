@@ -108,6 +108,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-loading-overlay__container {
   position: relative;
 }
@@ -122,6 +124,13 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(10px) saturate(140%);
   -webkit-backdrop-filter: blur(10px) saturate(140%);
   z-index: 1;
+
+  // High contrast: an opaque veil, so the label never sits on the content it covers.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color, #fff);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .tx-loading-overlay--fullscreen {

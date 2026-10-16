@@ -207,7 +207,7 @@ function handleClose(event: MouseEvent): void {
   color: var(--tx-tag-text, var(--tx-tag-color, var(--tx-color-primary)));
   background: var(--tx-tag-bg, color-mix(in srgb, currentColor 12%, transparent));
   border: 1px solid var(--tx-tag-border, color-mix(in srgb, currentColor 32%, transparent));
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   font-size: 11px;
   letter-spacing: 0.05em;
   line-height: 1;

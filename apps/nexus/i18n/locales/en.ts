@@ -66,6 +66,7 @@ export default {
     placeholder: 'Search docs and features',
     empty: 'No results found',
     loading: 'Searching...',
+    unavailable: 'Couldn’t load the docs index. It retries as you type.',
     poweredBy: 'Powered by Tuff Intelligence.',
     shortcuts: {
       label: 'Search shortcuts',
@@ -632,6 +633,15 @@ export default {
       motionToggles: 'Toggles',
       motionTransitions: 'Transitions',
       misc: 'Misc',
+    },
+    conceptsManual: 'Design Concepts Manual',
+    conceptGroups: {
+      geometry: 'Geometry and Curvature',
+      surfaces: 'Surfaces and Material Physics',
+      color: 'Color Science and Dark Mode',
+      typography: 'Typography and Text Engineering',
+      motion: 'Micro-Motion and Interaction Rhythms',
+      ai: 'AI Native Streaming Interfaces',
     },
     families: {
       avatarBasic: 'Basic Avatar',

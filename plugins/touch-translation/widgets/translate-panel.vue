@@ -1265,7 +1265,6 @@ onBeforeUnmount(() => {
   position: relative;
   border-bottom: 1px solid var(--tx-border-color-lighter);
   background: transparent;
-  transition: background 0.2s ease;
 }
 
 .TranslationWidget__history-main {
@@ -1477,7 +1476,6 @@ onBeforeUnmount(() => {
   background: transparent;
   padding: 12px 0;
   cursor: pointer;
-  transition: background 0.2s ease;
 }
 
 .TranslationWidget__provider:hover {

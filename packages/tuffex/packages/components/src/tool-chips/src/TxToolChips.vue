@@ -230,7 +230,6 @@ defineExpose({
     color: var(--tx-bui-ink-2, #62656b);
     cursor: pointer;
     border-radius: var(--tx-bui-radius-control, 8px);
-    transition: background-color 0.1s ease;
 
     &:hover {
       background: var(--tx-bui-hover-2, #e7e9eb);
@@ -287,7 +286,6 @@ defineExpose({
     text-align: left;
     cursor: pointer;
     border-radius: var(--tx-bui-radius-control, 8px);
-    transition: background-color 0.1s ease;
 
     &:hover {
       background: var(--tx-bui-hover-2, #e7e9eb);
@@ -350,7 +348,7 @@ defineExpose({
   .tx-bui-tool-chips__row-label {
     flex: none;
     font-size: 12.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     color: var(--tx-bui-ink, #1f2124);
   }
 
@@ -371,7 +369,6 @@ defineExpose({
     background: var(--tx-bui-tool-chips-chip-bg, var(--tx-bui-hover-2, #e7e9eb));
     border-radius: var(--tx-bui-radius-chip, 6px);
     box-shadow: var(--tx-bui-shadow-hairline, 0 0 0 1px #ecedef);
-    transition: background-color 0.1s ease;
 
     &.is-mono {
       font-family: var(--tx-bui-font-mono, "JetBrains Mono", ui-monospace, "SF Mono", monospace);
@@ -431,12 +428,9 @@ defineExpose({
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .tx-bui-tool-chips__summary,
     .tx-bui-tool-chips__summary-chevron,
-    .tx-bui-tool-chips__row-button,
     .tx-bui-tool-chips__glyph,
-    .tx-bui-tool-chips__row-chevron,
-    .tx-bui-tool-chips__chip {
+    .tx-bui-tool-chips__row-chevron {
       transition: none;
     }
   }

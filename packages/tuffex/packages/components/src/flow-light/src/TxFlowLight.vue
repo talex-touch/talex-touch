@@ -36,6 +36,8 @@ const style = computed<Record<string, string>>(() => {
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 /*
  * A fixed light in the Tuff brand colours, laid over a surface. Unlike the refraction surface's
  * dispersion, which can only colour what happens to sit behind the panel, it looks the same over
@@ -53,6 +55,7 @@ const style = computed<Record<string, string>>(() => {
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  corner-shape: inherit;
   pointer-events: none;
   opacity: calc(
     var(--tx-flow-light-opacity, var(--tx-flow-light-default-opacity))
@@ -112,8 +115,9 @@ const style = computed<Record<string, string>>(() => {
 }
 
 // Decoration only: high contrast drops it rather than tint the panel under its text.
-html[data-tx-contrast='high'] .tx-flow-light,
-html.contrast .tx-flow-light {
-  display: none;
+.tx-flow-light {
+  @include tx-when-high-contrast {
+    display: none;
+  }
 }
 </style>

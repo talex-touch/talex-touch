@@ -80,7 +80,9 @@
     "audit:cursor": "node ./scripts/audit-interactive-cursor.mjs",
     "audit:cursor:self-test": "node ./scripts/audit-interactive-cursor.mjs --self-test",
     "audit:changelog": "node ./scripts/audit-version-changelog.mjs",
-    "audit:changelog:self-test": "node ./scripts/audit-version-changelog.mjs --self-test"
+    "audit:changelog:self-test": "node ./scripts/audit-version-changelog.mjs --self-test",
+    "audit:colors": "node ./scripts/audit-color-literals.mjs",
+    "audit:colors:self-test": "node ./scripts/audit-color-literals.mjs --self-test"
   },
   "files": [
     "dist",

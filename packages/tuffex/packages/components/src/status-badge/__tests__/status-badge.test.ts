@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import TxOsIcon from '../../icon/src/TxOsIcon.vue'
 import TxStatusBadge from '../src/TxStatusBadge.vue'
 
 describe('txStatusBadge', () => {
@@ -48,7 +49,8 @@ describe('txStatusBadge', () => {
 
     // The OS marker stays a bare glyph — it names a platform, not a state — so
     // it keeps `__icon`, while the tone's glyph moved inside the disc.
-    expect(wrapper.find('.tx-status-badge__icon').classes()).toContain('i-simple-icons-apple')
+    expect(wrapper.findComponent(TxOsIcon).classes()).toContain('tx-status-badge__icon')
+    expect(wrapper.findComponent(TxOsIcon).props('os')).toBe('macos')
     expect(wrapper.find('.tx-status-badge__glyph').classes()).toContain('i-carbon-information')
 
     const osOnly = mount(TxStatusBadge, {
@@ -59,7 +61,7 @@ describe('txStatusBadge', () => {
       },
     })
     expect(osOnly.findAll('.tx-status-badge__icon')).toHaveLength(1)
-    expect(osOnly.find('.tx-status-badge__icon').classes()).toContain('i-simple-icons-linux')
+    expect(osOnly.findComponent(TxOsIcon).props('os')).toBe('linux')
     // `osOnly` suppresses the state disc entirely.
     expect(osOnly.find('.tx-status-badge__chip').exists()).toBe(false)
   })

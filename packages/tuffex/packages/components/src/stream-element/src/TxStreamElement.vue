@@ -372,7 +372,7 @@ defineExpose({
   h5,
   h6 {
     margin: 1.2em 0 0.5em;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     line-height: 1.35;
   }
 

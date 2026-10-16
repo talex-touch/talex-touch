@@ -642,7 +642,6 @@ async function reindexAppDiagnosticTarget(mode: AppIndexReindexRequest['mode']) 
   text-align: left;
   cursor: pointer;
   font: inherit;
-  transition: background-color 0.2s ease;
 }
 
 .app-diagnostic-stage:hover {

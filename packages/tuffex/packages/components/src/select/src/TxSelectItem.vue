@@ -128,7 +128,7 @@ function handleClick() {
 }
 
 .tuff-select-item :deep(.tx-card-item__title) {
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-text-color-regular, #606266);
 }
 

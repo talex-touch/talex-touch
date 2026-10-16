@@ -1,9 +1,13 @@
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { flushPromises, mount } from '@vue/test-utils'
 import * as sass from 'sass'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import TxStatCard from '../src/TxStatCard.vue'
 import txStatCardSource from '../src/TxStatCard.vue?raw'
+
+const SFC = resolve(dirname(fileURLToPath(import.meta.url)), '../src/TxStatCard.vue')
 
 vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
   callback(0)
@@ -361,7 +365,7 @@ function parseRules(css: string): StyleRule[] {
 
 const styleRules = parseRules(
   [...txStatCardSource.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
-    .map(match => sass.compileString(match[1] ?? '', { syntax: 'scss' }).css)
+    .map(match => sass.compileString(match[1] ?? '', { url: pathToFileURL(SFC), syntax: 'scss' }).css)
     .join('\n')
     // Loud comments survive the compile, and the parser would read them as selectors.
     .replace(/\/\*[\s\S]*?\*\//g, ''),

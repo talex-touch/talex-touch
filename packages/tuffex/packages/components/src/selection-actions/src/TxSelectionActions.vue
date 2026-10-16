@@ -475,7 +475,7 @@ defineExpose({
   .tx-bui-selection-actions__control {
     font-size: 12px;
     color: var(--tx-bui-ink, #1f2124);
-    transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    transition: transform 0.15s ease;
 
     &:hover {
       background: var(--tx-bui-hover, #f4f5f6);
@@ -512,7 +512,7 @@ defineExpose({
     color: var(--tx-bui-ink, #1f2124);
     cursor: pointer;
     border-radius: 999px;
-    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    transition: transform 0.2s ease;
 
     &:hover {
       background: var(--tx-bui-hover, #f4f5f6);
