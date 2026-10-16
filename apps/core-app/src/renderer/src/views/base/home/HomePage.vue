@@ -1471,7 +1471,16 @@ const markdownLabels = computed(() => ({
   loadImageOnceText: t('home.image.loadOnce'),
   allowSessionImagesText: t('home.image.allowSession'),
   copyTableText: t('home.table.copyTable'),
-  copiedTableText: t('home.table.copiedTable')
+  copiedTableText: t('home.table.copiedTable'),
+  codePreviewText: t('home.code.preview'),
+  codeSourceText: t('home.code.source'),
+  codeFrameLabelFormatter: (lang: string) => t('home.code.frameLabel', { lang }),
+  copyCodeText: t('home.copy'),
+  copiedCodeText: t('home.copied'),
+  diagramZoomLabel: t('home.diagram.zoom'),
+  diagramPreviewLabel: t('home.diagram.preview'),
+  diagramCloseLabel: t('home.diagram.close'),
+  diagramErrorText: t('home.diagram.failed')
 }))
 
 /**
@@ -2060,6 +2069,11 @@ onBeforeUnmount(disposeCommands)
                         class="HomePage-MsgAttachments"
                         :attachments="message.attachments"
                         :preview-title="t('home.attachPreview')"
+                        :previous-label="t('home.attachPrevious')"
+                        :next-label="t('home.attachNext')"
+                        :previous-text="t('home.attachPreviousText')"
+                        :next-text="t('home.attachNextText')"
+                        :close-label="t('common.close')"
                       />
                       <div class="HomePage-UserBubble">
                         {{ message.content }}
@@ -2312,6 +2326,7 @@ onBeforeUnmount(disposeCommands)
           <TxModal
             :model-value="payloadFor !== null"
             :title="`${payloadFor?.name ?? ''} · ${t('home.toolPayload')}`"
+            :close-label="t('common.close')"
             width="640px"
             @update:model-value="payloadFor = null"
           >
@@ -2320,6 +2335,8 @@ onBeforeUnmount(disposeCommands)
               lang="json"
               :code="payloadJson"
               :closed="true"
+              :copy-label="t('home.copy')"
+              :copied-label="t('home.copied')"
             />
           </TxModal>
 
@@ -2441,6 +2458,11 @@ onBeforeUnmount(disposeCommands)
                   :remove-label="t('home.attachRemove')"
                   :cancel-label="t('home.attachCancel')"
                   :preview-title="t('home.attachPreview')"
+                  :previous-label="t('home.attachPrevious')"
+                  :next-label="t('home.attachNext')"
+                  :previous-text="t('home.attachPreviousText')"
+                  :next-text="t('home.attachNextText')"
+                  :close-label="t('common.close')"
                   @remove="removeAttachment"
                 />
 

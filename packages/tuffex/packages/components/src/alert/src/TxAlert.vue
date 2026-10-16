@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<AlertProps>(), {
   type: 'info',
   closable: true,
   showIcon: true,
+  closeLabel: 'Close',
 })
 
 const emit = defineEmits<Emits>()
@@ -72,7 +73,7 @@ defineExpose({ open, close: handleClose, visible })
       v-if="closable"
       class="tx-alert__close"
       type="button"
-      aria-label="Close"
+      :aria-label="closeLabel"
       @click="handleClose"
     >
       <TxIcon name="close" />

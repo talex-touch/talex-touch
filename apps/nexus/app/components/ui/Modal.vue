@@ -17,6 +17,8 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'close'): void
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
@@ -24,6 +26,7 @@ const emit = defineEmits<{
     :model-value="modelValue"
     :title="title"
     :width="width"
+    :close-label="t('common.close', 'Close')"
     v-bind="$attrs"
     @update:model-value="(v) => emit('update:modelValue', v)"
     @close="() => emit('close')"

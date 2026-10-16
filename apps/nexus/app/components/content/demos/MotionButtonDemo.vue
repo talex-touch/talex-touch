@@ -25,7 +25,7 @@ let clipboardGeneration = 0
 const copy = computed(() => locale.value === 'zh'
   ? {
       title: '35 个来源组合', filter: '交互筛选', all: '全部 13 类交互', layout: '布局', grid: '网格', list: '列表', matrix: '图标矩阵',
-      replay: '回放', replayAll: '回放当前组合', reset: '重置状态', disabled: '禁用', animated: '启用动画',
+      replay: '回放', replayAll: '回放当前组合', disabled: '禁用', animated: '启用动画',
       instruction: '悬停或 Tab 聚焦每个控件，按 Enter 或空格激活按钮。磁吸跟随真实指针位置。回放只重播装饰，不执行业务操作。',
       operation: '本演示只切换本地状态并记录激活次数，不模拟下载、上传、提交或支付成功。第 4 项实际写入剪贴板；链接打开真实站点。',
       activated: '激活', times: '次', state: '状态', on: '已选中', off: '未选中', copied: '已复制',
@@ -36,7 +36,7 @@ const copy = computed(() => locale.value === 'zh'
     }
   : {
       title: '35 source combinations', filter: 'Interaction filter', all: 'All 13 interactions', layout: 'Layout', grid: 'Grid', list: 'List', matrix: 'Icon matrix',
-      replay: 'Replay', replayAll: 'Replay visible combinations', reset: 'Reset state', disabled: 'Disabled', animated: 'Animate',
+      replay: 'Replay', replayAll: 'Replay visible combinations', disabled: 'Disabled', animated: 'Animate',
       instruction: 'Hover or Tab to each control. Use Enter or Space to activate buttons. Magnetic pull follows the real pointer. Replay only restarts decoration; it does not run an operation.',
       operation: 'This demo only toggles local state and counts real activations. It does not simulate successful downloads, uploads, submissions or payments. Item 4 writes to your actual clipboard; links open real sites.',
       activated: 'Activated', times: 'times', state: 'State', on: 'Selected', off: 'Not selected', copied: 'Copied',
@@ -95,14 +95,6 @@ function selectLink(item: MotionButtonItem): void {
   countActivation('35')
   lastLink.value = item.label
 }
-function reset(): void {
-  clipboardGeneration++
-  copying.value = false
-  clipboardMessage.value = ''
-  counts.value = {}
-  selected.value = {}
-  lastLink.value = ''
-}
 function replayVisible(): void {
   for (const entry of entries.value) buttons.get(entry.sourceId)?.replay()
 }
@@ -135,9 +127,6 @@ onBeforeUnmount(() => { alive = false; clipboardGeneration++; buttons.clear() })
       <label class="motion-button-demo__check"><input v-model="animated" type="checkbox">{{ copy.animated }}</label>
       <button type="button" @click="replayVisible">
 {{ copy.replayAll }}
-</button>
-      <button type="button" @click="reset">
-{{ copy.reset }}
 </button>
     </div>
     <p>{{ copy.instruction }}</p>

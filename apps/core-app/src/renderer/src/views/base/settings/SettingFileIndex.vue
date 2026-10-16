@@ -2324,6 +2324,7 @@ async function triggerRebuild() {
   <TxDrawer
     v-model:visible="statsDrawerVisible"
     :title="t('settings.settingFileIndex.statsTitle')"
+    :close-label="t('common.close')"
     size="440px"
     data-testid="file-index-stats-drawer"
   >

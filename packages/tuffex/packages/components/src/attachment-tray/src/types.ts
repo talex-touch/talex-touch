@@ -14,6 +14,8 @@ export interface AttachmentTrayProps {
   previousText?: string
   /** Visible text of the next-image button. @default 'Next' */
   nextText?: string
+  /** Accessible label for the preview's close button. @default 'Close' */
+  closeLabel?: string
   /** Accessible label for remove buttons. @default 'Remove attachment' */
   removeLabel?: string
   /** Accessible label for cancel-upload buttons. @default 'Cancel upload' */

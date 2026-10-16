@@ -57,6 +57,7 @@ code: |
 - Put destructive or final actions in the `footer`, and keep secondary actions visually quieter than the primary one.
 - Use `fullscreen` only when the content owns the screen (image or diagram previews), never for a short confirmation.
 - Don't keep long-running async state only inside the modal content; if closing cancels work, model the cancellation in the parent.
+- On non-English surfaces, pass `closeLabel`: the close button is icon-only, so this name is all a screen reader announces.
 
 ## API Reference
 
@@ -68,6 +69,7 @@ code: |
 | `title` | `string` | `''` | Default header title; when set, it is linked through `aria-labelledby`. |
 | `width` | `string` | `'480px'` | Panel width; prefer responsive values such as `min(92vw, 520px)`. Ignored with `fullscreen`. |
 | `fullscreen` | `boolean` | `false` | Fills the visible viewport and drops the panel radius and shadow. |
+| `closeLabel` | `string` | `'Close'` | Accessible name of the header's close button. |
 
 ### Events
 

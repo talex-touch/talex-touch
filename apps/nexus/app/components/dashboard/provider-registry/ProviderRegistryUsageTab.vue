@@ -162,7 +162,7 @@ defineExpose({
       </AdminTable>
     </AdminSection>
 
-    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.providerRegistry.detail.usageTitle', 'Usage row')" size="520px">
+    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.providerRegistry.detail.usageTitle', 'Usage row')" :close-label="t('common.close', 'Close')" size="520px">
       <ProviderRegistryDetailView v-if="detailEntry" :sections="detailSections" />
     </TxDrawer>
   </div>

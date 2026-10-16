@@ -159,6 +159,7 @@ function setField(key: LimitKey, value: number | null): void {
   <TxDrawer
     v-model:visible="visible"
     :title="t('intelligenceAudit.limits.drawerTitle')"
+    :close-label="t('common.close')"
     size="560px"
     data-testid="audit-limits-drawer"
   >

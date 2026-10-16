@@ -1,4 +1,4 @@
-import type { Plugin } from 'vite'
+import type { Plugin, ViteDevServer } from 'vite'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
@@ -64,16 +64,12 @@ function componentNameFromDistEntry(id: string, root: string | undefined): strin
  */
 declare const __TUFFEX_STYLE_DEPS__: Record<string, string[]> | undefined
 
-/**
- * The dependency graph the style build publishes next to the stylesheets.
- *
- * Running from source there is nothing baked in, so the file is read from the
- * workspace instead.
- */
-function loadStyleDeps(): Record<string, string[]> {
-  if (typeof __TUFFEX_STYLE_DEPS__ !== 'undefined' && __TUFFEX_STYLE_DEPS__)
-    return __TUFFEX_STYLE_DEPS__
+function hasBakedStyleDeps(): boolean {
+  return typeof __TUFFEX_STYLE_DEPS__ !== 'undefined' && !!__TUFFEX_STYLE_DEPS__
+}
 
+/** Where the style build publishes the dependency graph when nothing is baked in. */
+function styleDepsCandidates(): string[] {
   const candidates: string[] = []
 
   try {
@@ -93,7 +89,12 @@ function loadStyleDeps(): Record<string, string[]> {
     // No module URL (a CJS host, for instance); the resolved path above stands.
   }
 
-  for (const candidate of candidates) {
+  return [...new Set(candidates)]
+}
+
+/** The first candidate that parses, or undefined when none does (not built, or mid-write). */
+function readStyleDeps(): Record<string, string[]> | undefined {
+  for (const candidate of styleDepsCandidates()) {
     try {
       return JSON.parse(readFileSync(candidate, 'utf-8'))
     }
@@ -101,8 +102,19 @@ function loadStyleDeps(): Record<string, string[]> {
       continue
     }
   }
+  return undefined
+}
 
-  return {}
+/**
+ * The dependency graph the style build publishes next to the stylesheets.
+ *
+ * Running from source there is nothing baked in, so the file is read from the
+ * workspace instead.
+ */
+function loadStyleDeps(): Record<string, string[]> {
+  if (hasBakedStyleDeps())
+    return __TUFFEX_STYLE_DEPS__!
+  return readStyleDeps() ?? {}
 }
 
 /**
@@ -154,6 +166,47 @@ export function expandStyleClosure(
  */
 export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOptions = {}): Plugin {
   let styleDeps: Record<string, string[]> = options.styleDeps ?? {}
+  // Every file whose transform consulted `styleDeps`, with the components it asked for.
+  const dependents = new Map<string, string[]>()
+  const servers: ViteDevServer[] = []
+
+  /**
+   * A dev server outlives the dist it reads: a rebuild that changes the graph
+   * would otherwise keep injecting the old closure until the server restarts.
+   * Only the modules whose closure moved are transformed again.
+   */
+  function reloadStyleDeps() {
+    const next = readStyleDeps()
+    if (!next)
+      return
+    const previous = styleDeps
+    styleDeps = next
+    const changed = new Set(
+      [...new Set([...Object.keys(previous), ...Object.keys(next)])]
+        .filter(name => JSON.stringify(previous[name] ?? []) !== JSON.stringify(next[name] ?? [])),
+    )
+    if (!changed.size)
+      return
+
+    const stale = [...dependents.entries()]
+      .filter(([, names]) => [previous, next].some(table => expandStyleClosure(names, table).some(name => changed.has(name))))
+      .map(([file]) => file)
+    for (const file of stale) {
+      dependents.delete(file)
+      for (const server of servers) {
+        for (const mod of server.moduleGraph.getModulesByFile(file) ?? [])
+          server.moduleGraph.invalidateModule(mod)
+      }
+    }
+    if (!stale.length)
+      return
+    servers[0]?.config.logger.info(
+      `[tuffex-on-demand-style] style-deps.json changed for ${changed.size} component(s); reloading ${stale.length} module(s)`,
+      { timestamp: true },
+    )
+    for (const server of servers)
+      server.ws.send({ type: 'full-reload' })
+  }
 
   return {
     name: 'tuffex-on-demand-style',
@@ -163,6 +216,22 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
         return
       if (!options.styleDeps)
         styleDeps = loadStyleDeps()
+    },
+    configureServer(server) {
+      if (options.enabled === false || options.styleDeps || hasBakedStyleDeps())
+        return
+      servers.push(server)
+      const candidates = styleDepsCandidates()
+      server.watcher.add(candidates)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      server.watcher.on('all', (event, file) => {
+        if ((event !== 'add' && event !== 'change') || !candidates.includes(resolve(file)))
+          return
+        // The build writes the file once, but a watcher can report the create and
+        // the write separately.
+        clearTimeout(timer)
+        timer = setTimeout(reloadStyleDeps, 200)
+      })
     },
     transform(code, id) {
       if (options.enabled === false)
@@ -189,6 +258,7 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
           componentNames.add(name)
       }
       if (distComponentName) {
+        dependents.set(id.split('?')[0]!, [distComponentName])
         const styleImports = createStyleImports([distComponentName], styleDeps, existingStyles)
         return styleImports ? { code: `${styleImports}\n${code}`, map: null } : null
       }
@@ -218,6 +288,8 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
           visit(node[key])
       }
       visit(ast)
+      if (componentNames.size || dynamicImports.length)
+        dependents.set(id.split('?')[0]!, [...componentNames, ...dynamicImports.map(entry => entry.name)])
       if (!styleImports && !dynamicImports.length)
         return null
       const pieces: string[] = [styleImports, '\n']

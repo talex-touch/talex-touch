@@ -158,7 +158,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
 </script>
 
 <template>
-  <TxModal v-model="visible" :title="t('shortcuts.palette')" width="480px">
+  <TxModal
+    v-model="visible"
+    :title="t('shortcuts.palette')"
+    :close-label="t('common.close')"
+    width="480px"
+  >
     <div ref="listRef" class="MainWindowCommandPalette">
       <section
         v-for="section in sections"

@@ -48,7 +48,8 @@ const labels = computed(() => zh.value
       adjust: '可调整',
       edited: '已修改',
       fields: { width: '宽', height: '高', radius: '圆角', opacity: '不透明' },
-      reset: '恢复默认',
+      layouts: { row: '横向布局', col: '纵向布局', grid: '网格布局' },
+      value: (label: string) => `${label}数值`,
       changed: '最近改动：',
     }
   : {
@@ -59,7 +60,8 @@ const labels = computed(() => zh.value
       adjust: 'Adjust',
       edited: 'Edited',
       fields: { width: 'W', height: 'H', radius: 'Radius', opacity: 'Opacity' },
-      reset: 'Reset',
+      layouts: { row: 'Row layout', col: 'Column layout', grid: 'Grid layout' },
+      value: (label: string) => `${label} value`,
       changed: 'Last change: ',
     })
 
@@ -71,6 +73,8 @@ function reset(): void {
   values.value = { ...DEFAULTS }
   lastChange.value = null
 }
+
+defineExpose({ resetDemo: reset })
 
 // Mirrors the inspector onto a live preview, so the numbers visibly do something.
 const previewStyle = computed(() => ({
@@ -93,6 +97,8 @@ const previewStyle = computed(() => ({
       :adjust-label="labels.adjust"
       :edited-label="labels.edited"
       :field-labels="labels.fields"
+      :layout-labels="labels.layouts"
+      :value-label-formatter="labels.value"
       :type-options="typeOptions"
       @change="onChange"
     />
@@ -102,9 +108,6 @@ const previewStyle = computed(() => ({
       <p v-if="lastChange" class="fine-tune-demo__log">
         {{ labels.changed }}<code>{{ lastChange }}</code>
       </p>
-      <TxButton size="sm" variant="secondary" @click="reset">
-        {{ labels.reset }}
-      </TxButton>
     </div>
   </div>
 </template>

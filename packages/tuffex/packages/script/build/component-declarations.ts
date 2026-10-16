@@ -2,14 +2,15 @@ import { spawn, spawnSync } from 'node:child_process'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { distPath } from './dist-path.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const rootPath = resolve(__dirname, '../../..')
-const distEsPath = resolve(rootPath, 'dist/es')
 const utilsSourcePath = resolve(rootPath, 'packages/utils')
-const utilsTypesOutPath = resolve(distEsPath, 'packages/tuffex/packages/utils')
+const distEsPath = () => resolve(distPath(), 'es')
+const utilsTypesOutPath = () => resolve(distEsPath(), 'packages/tuffex/packages/utils')
 
 function quoteWindowsShellArg(value: string) {
   return /[\s"]/g.test(value)
@@ -78,8 +79,8 @@ function toModuleSpecifier(fromFile: string, targetPath: string) {
 
 function toDistUtilsSpecifier(fromFile: string, subpath = '') {
   const target = subpath
-    ? resolve(utilsTypesOutPath, `.${subpath}`)
-    : resolve(utilsTypesOutPath, 'index')
+    ? resolve(utilsTypesOutPath(), `.${subpath}`)
+    : resolve(utilsTypesOutPath(), 'index')
   return toModuleSpecifier(fromFile, target)
 }
 
@@ -92,7 +93,7 @@ async function emitUtilsDeclarations() {
     '--declarationMap',
     'false',
     '--outDir',
-    utilsTypesOutPath,
+    utilsTypesOutPath(),
     '--rootDir',
     utilsSourcePath,
     '--module',
@@ -111,14 +112,14 @@ async function emitUtilsDeclarations() {
 }
 
 async function emitUtilsEntryDeclaration() {
-  const entryPath = resolve(distEsPath, 'utils/index.d.ts')
+  const entryPath = resolve(distEsPath(), 'utils/index.d.ts')
   const specifier = toDistUtilsSpecifier(entryPath)
 
   await writeFile(entryPath, `export * from '${specifier}';\n`)
 }
 
 async function rewriteUtilsReferences() {
-  const declarationFiles = await collectFiles(distEsPath, filePath => filePath.endsWith('.d.ts'))
+  const declarationFiles = await collectFiles(distEsPath(), filePath => filePath.endsWith('.d.ts'))
   const outsideUtilsPattern = /(['"])((?:\.\.\/)+utils((?:\/[\w.-]+)*))\1/g
 
   await Promise.all(
@@ -137,7 +138,7 @@ async function rewriteUtilsReferences() {
 }
 
 async function rewriteVueGlobalComponentReferences() {
-  const declarationFiles = await collectFiles(distEsPath, filePath => filePath.endsWith('.d.ts'))
+  const declarationFiles = await collectFiles(distEsPath(), filePath => filePath.endsWith('.d.ts'))
   const globalComponentsPattern = /import\(['"]vue['"]\)\.GlobalComponents/g
   const globalDirectivesPattern = /import\(['"]vue['"]\)\.GlobalDirectives/g
   const duplicateEmitEventParamPattern = /\(\(event: ("[^"]+"), event:/g

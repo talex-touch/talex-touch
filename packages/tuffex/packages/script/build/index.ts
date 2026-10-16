@@ -4,10 +4,12 @@ import autoPrefixer from 'gulp-autoprefixer'
 import * as sassLang from 'sass'
 import { Buffer } from 'node:buffer'
 import { Transform } from 'node:stream'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { delPath } from './del.ts'
+import { distPath, publishedDistPath } from './dist-path.ts'
+import { replaceTree } from './replace-tree.ts'
 import run from './run.ts'
 import { buildComponentStyles } from './component-styles.ts'
 import { fixComponentDeclarations } from './component-declarations.ts'
@@ -16,12 +18,59 @@ import '../../../config/env.ts'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-const distPath = resolve(__dirname, '../../../dist')
 const componentPath =resolve(__dirname, '../../components')
 const baseStyleSourcePath = resolve(componentPath, 'style/index.scss')
 
-export const removeDist = () => {
-  return delPath(distPath);
+/**
+ * Every step writes into a staging directory, whose files are moved over `dist`
+ * only once the whole build has passed.
+ *
+ * Building in place deleted `dist` first and took ~30 s to write it back, so the
+ * Nexus dev server answering from it 500ed on every page that needed a file not
+ * written yet (`base.css` lands last), and a step that failed left the package
+ * with no usable dist until the next successful build. The pid keeps two
+ * concurrent builds out of each other's way.
+ */
+const stagingRoot = resolve(publishedDistPath, '../.cache')
+const stagingPath = resolve(stagingRoot, `dist-next-${process.pid}`)
+
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  }
+  catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/** Staging left behind by a build that was killed before it could clean up. */
+async function removeAbandonedStaging() {
+  const names = await readdir(stagingRoot).catch(() => [] as string[])
+  await Promise.all(names.map(async (name) => {
+    const pid = Number(/^dist-next-(\d+)$/.exec(name)?.[1])
+    if (pid && !isRunning(pid))
+      await delPath(resolve(stagingRoot, name))
+  }))
+}
+
+/** This build's staging, and the directory holding it once no other build uses it. */
+async function removeStaging() {
+  await delPath(stagingPath)
+  await rmdir(stagingRoot).catch(() => {})
+}
+
+export const prepareDist = async () => {
+  await removeAbandonedStaging()
+  await delPath(stagingPath)
+  process.env.TUFFEX_DIST_DIR = stagingPath
+}
+
+/** File by file rather than as one directory; `replaceTree` says why. */
+export const publishDist = async () => {
+  await replaceTree(stagingPath, publishedDistPath)
+  delete process.env.TUFFEX_DIST_DIR
+  await removeStaging()
 }
 
 /**
@@ -61,16 +110,16 @@ export const buildStyle = () => {
 return src(`${componentPath}/src/**/src/style/**/*.scss`)
 .pipe(sass())
 .pipe(autoPrefixer())
-.pipe(dest(`${distPath}/lib`))
-.pipe(dest(`${distPath}/es`))
+.pipe(dest(`${distPath()}/lib`))
+.pipe(dest(`${distPath()}/es`))
 }
 
 export const buildBaseStyle = () => {
   return src(`${componentPath}/style/index.scss`)
     .pipe(sass())
     .pipe(autoPrefixer())
-    .pipe(dest(`${distPath}/lib`))
-    .pipe(dest(`${distPath}/es`))
+    .pipe(dest(`${distPath()}/lib`))
+    .pipe(dest(`${distPath()}/es`))
 }
 
 export const buildComponent = async () => {
@@ -86,7 +135,7 @@ export const buildComponent = async () => {
  * outside this repo can actually follow.
  */
 export const buildVitePlugin = async () => {
-  const outDir = resolve(distPath, 'vite')
+  const outDir = resolve(distPath(), 'vite')
   await mkdir(outDir, { recursive: true })
 
   const source = resolve(__dirname, 'on-demand-style-plugin.ts')
@@ -96,7 +145,7 @@ export const buildVitePlugin = async () => {
   // locate a JSON file inside its own package is at the mercy of the consumer's
   // resolution rules, and when it comes up empty it injects one stylesheet
   // instead of the closure — a silently under-styled page, with no error.
-  const styleDeps = await readFile(resolve(distPath, 'es/style-deps.json'), 'utf-8')
+  const styleDeps = await readFile(resolve(distPath(), 'es/style-deps.json'), 'utf-8')
 
   await viteBuild({
     configFile: false,
@@ -136,10 +185,10 @@ export const buildVitePlugin = async () => {
 
 async function readBaseStyle(): Promise<string> {
   const generatedCandidates = [
-    resolve(distPath, 'es/index.css'),
-    resolve(distPath, 'es/base.css'),
-    resolve(distPath, 'lib/index.css'),
-    resolve(distPath, 'lib/base.css'),
+    resolve(distPath(), 'es/index.css'),
+    resolve(distPath(), 'es/base.css'),
+    resolve(distPath(), 'lib/index.css'),
+    resolve(distPath(), 'lib/base.css'),
   ]
 
   for (const candidate of generatedCandidates) {
@@ -154,15 +203,16 @@ async function readBaseStyle(): Promise<string> {
 }
 
 export const buildStyleEntry = async () => {
-  await mkdir(distPath, { recursive: true })
+  const dist = distPath()
+  await mkdir(dist, { recursive: true })
   const baseStyle = await readBaseStyle()
   await Promise.all([
-    writeFile(resolve(distPath, 'es/base.css'), baseStyle),
-    writeFile(resolve(distPath, 'lib/base.css'), baseStyle),
-    rm(resolve(distPath, 'es/index.css'), { force: true }),
-    rm(resolve(distPath, 'lib/index.css'), { force: true }),
+    writeFile(resolve(dist, 'es/base.css'), baseStyle),
+    writeFile(resolve(dist, 'lib/base.css'), baseStyle),
+    rm(resolve(dist, 'es/index.css'), { force: true }),
+    rm(resolve(dist, 'lib/index.css'), { force: true }),
   ])
-  await writeFile(resolve(distPath, 'style.css'), '@import "./es/components.css";\n')
+  await writeFile(resolve(dist, 'style.css'), '@import "./es/components.css";\n')
 }
 
 /**
@@ -176,15 +226,15 @@ export const buildStyleEntry = async () => {
  * `require('./x.js')` specifier the build produces.
  */
 export const writeCjsScopeManifest = async () => {
-  await mkdir(resolve(distPath, 'lib'), { recursive: true })
+  await mkdir(resolve(distPath(), 'lib'), { recursive: true })
   await writeFile(
-    resolve(distPath, 'lib/package.json'),
+    resolve(distPath(), 'lib/package.json'),
     `${JSON.stringify({ type: 'commonjs' }, null, 2)}\n`,
   )
 }
 
-const build: TaskFunction = series(
-  async () => removeDist(),
+const steps: TaskFunction = series(
+  async () => prepareDist(),
   parallel(
     async () => buildStyle(),
     async () => buildBaseStyle(),
@@ -195,6 +245,14 @@ const build: TaskFunction = series(
   async () => buildStyleEntry(),
   async () => buildVitePlugin(),
   async () => writeCjsScopeManifest(),
+  async () => publishDist(),
 )
+
+/** A failed step leaves `dist` as it was and takes only its own staging directory with it. */
+const build: TaskFunction = done => steps((error?: Error | null) => {
+  if (error)
+    void removeStaging()
+  done(error)
+})
 
 export default build

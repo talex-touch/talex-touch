@@ -449,6 +449,7 @@ export const demoLoaders: Record<string, DemoLoader> = {
   TextTransformerTextTransformerDemo: () => import('./demos/TextTransformerTextTransformerDemo.vue'),
   TextTransformerTitleSubtitleDemo: () => import('./demos/TextTransformerTitleSubtitleDemo.vue'),
   TextareaTextareaDemo: () => import('./demos/TextareaTextareaDemo.vue'),
+  ThinkingOrbGradientDemo: () => import('./demos/ThinkingOrbGradientDemo.vue'),
   ThinkingOrbThinkingOrbDemo: () => import('./demos/ThinkingOrbThinkingOrbDemo.vue'),
   TimelineTimelineDemo: () => import('./demos/TimelineTimelineDemo.vue'),
   TimeseriesChartAxisDemo: () => import('./demos/TimeseriesChartAxisDemo.vue'),

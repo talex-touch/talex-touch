@@ -65,7 +65,7 @@ function confirm() {
 </script>
 
 <template>
-  <TxModal :model-value="open" :title="title" width="440px" @update:model-value="requestClose">
+  <TxModal :model-value="open" :title="title" :close-label="t('common.close', 'Close')" width="440px" @update:model-value="requestClose">
     <div class="AdminConfirmDialog">
       <p v-if="description" class="AdminConfirmDialog-Description">
         {{ description }}

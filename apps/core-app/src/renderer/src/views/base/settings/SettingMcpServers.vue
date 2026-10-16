@@ -732,7 +732,12 @@ onActivated(() => {
       />
     </div>
 
-    <TxDrawer v-model:visible="drawerVisible" :title="drawerTitle" size="520px">
+    <TxDrawer
+      v-model:visible="drawerVisible"
+      :title="drawerTitle"
+      :close-label="t('common.close')"
+      size="520px"
+    >
       <SettingMcpServerForm
         v-if="editing"
         v-model="draft"
@@ -805,6 +810,7 @@ onActivated(() => {
       v-if="confirmRequest"
       :title="confirmRequest.title"
       :message="confirmRequest.message"
+      :close-label="t('common.close')"
       :btns="confirmButtons"
       :close="closeConfirm"
     />

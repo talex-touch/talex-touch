@@ -68,6 +68,7 @@ Set `closable=false` when the message is page state and must not be dismissed.
 - Use an alert for contextual page feedback; use a toast for a transient action result.
 - Match `type` to the user impact: `error` for failed actions, `warning` for risk, `info` for neutral guidance.
 - Set `closable=false` for compliance, blocking, or always-relevant notices; persist dismissal in `close` when it must stick.
+- On non-English surfaces, pass `closeLabel`: the close button is icon-only, so this name is all a screen reader announces.
 - Keep copy short and actionable, and don't mount several new alerts at once.
 - Place action buttons after the alert, not inside its body.
 
@@ -81,6 +82,7 @@ Set `closable=false` when the message is page state and must not be dismissed.
 | `title` | `string` | - | Title; the title row is skipped when neither it nor the `title` slot is set. |
 | `message` | `string` | - | Body text; the default slot takes precedence. |
 | `closable` | `boolean` | `true` | Shows the close button. |
+| `closeLabel` | `string` | `'Close'` | Accessible name of the close button. |
 | `showIcon` | `boolean` | `true` | Shows the leading semantic icon. |
 
 ### Events

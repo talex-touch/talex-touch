@@ -43,7 +43,7 @@ code: |
 
 ```vue
 <template>
-  <TxAlert type="success" @close="dismissed = true">
+  <TxAlert type="success" close-label="关闭" @close="dismissed = true">
     <template #title>
       运行时证据已收集
     </template>
@@ -68,6 +68,7 @@ code: |
 - 页面上下文反馈用 Alert，瞬时的操作结果用 Toast。
 - 按用户影响选择 `type`：失败用 `error`，风险用 `warning`，中性引导用 `info`。
 - 合规、阻塞或始终相关的提示设置 `closable=false`；需要记住关闭状态时在 `close` 中持久化。
+- 非英文界面传入 `closeLabel`：关闭按钮只有图标，读屏读到的就是这个名称。
 - 文案简短、可执行，不要同时挂载多个新 Alert。
 - 操作按钮放在 Alert 之后，不放进正文。
 
@@ -81,6 +82,7 @@ code: |
 | `title` | `string` | - | 标题；未设置且无 `title` 插槽时不渲染标题行。 |
 | `message` | `string` | - | 正文；默认插槽优先。 |
 | `closable` | `boolean` | `true` | 显示关闭按钮。 |
+| `closeLabel` | `string` | `'Close'` | 关闭按钮的可访问名称。 |
 | `showIcon` | `boolean` | `true` | 显示前置语义图标。 |
 
 ### 事件

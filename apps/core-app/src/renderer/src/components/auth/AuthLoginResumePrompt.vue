@@ -37,6 +37,7 @@ function handleClose() {
   <TModal
     v-model="visible"
     :title="t('auth.loginResumePrompt.title')"
+    :close-label="t('common.close')"
     width="560px"
     @close="handleClose"
   >

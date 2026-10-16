@@ -306,6 +306,7 @@ function closeDeleteConfirm() {
     v-if="deleteConfirmVisible"
     :title="t('settings.intelligence.deleteConfirmTitle')"
     :message="t('settings.intelligence.deleteConfirmMessage', { name: provider.name })"
+    :close-label="t('common.close')"
     :btns="[
       { content: t('common.cancel'), type: 'info', onClick: () => true },
       {

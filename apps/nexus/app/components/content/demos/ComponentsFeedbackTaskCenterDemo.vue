@@ -30,6 +30,8 @@ const labels = computed(() => {
       tasks: ['同步组件文档', '生成截图证据', '刷新 Tuff 预览'],
       owners: ['Docs', 'QA', 'Deploy'],
       states: ['运行中', '等待认证', '预览可用'],
+      toastRegion: '通知',
+      toastDismiss: '关闭通知',
     }
   }
 
@@ -55,6 +57,8 @@ const labels = computed(() => {
     tasks: ['Sync component docs', 'Generate screenshot evidence', 'Refresh Tuff preview'],
     owners: ['Docs', 'QA', 'Deploy'],
     states: ['Running', 'Awaiting proof', 'Preview ready'],
+    toastRegion: 'Notifications',
+    toastDismiss: 'Dismiss notification',
   }
 })
 
@@ -96,7 +100,7 @@ onMounted(() => {
 
 <template>
   <section class="feedback-task-demo">
-    <TxToastHost />
+    <TxToastHost :aria-label="labels.toastRegion" :close-label="labels.toastDismiss" />
 
     <header class="feedback-task-demo__header">
       <div>

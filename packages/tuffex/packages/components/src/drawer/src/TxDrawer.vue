@@ -36,6 +36,7 @@ const props = withDefaults(defineProps<DrawerProps>(), {
   showHeader: true,
   showFooter: true,
   showClose: true,
+  closeLabel: 'Close drawer',
   closeOnClickMask: true,
   closeOnPressEscape: true,
   maskEffect: 'blur',
@@ -260,7 +261,7 @@ onUnmounted(() => {
               v-if="showClose"
               type="button"
               class="tx-drawer__close"
-              aria-label="Close drawer"
+              :aria-label="closeLabel"
               @click="handleClose"
             >
               <svg

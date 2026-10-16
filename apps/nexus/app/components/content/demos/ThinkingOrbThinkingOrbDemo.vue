@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+
+const { locale } = useI18n()
+const zh = computed(() => locale.value === 'zh')
 
 const FORMS = [
   'working',
@@ -22,10 +25,10 @@ const rollKey = ref(0)
     <div class="flex items-center gap-3">
       <TxThinkingOrb :key="rollKey" :size="64" />
       <TxButton size="sm" variant="secondary" @click="rollKey++">
-        Reroll (remount)
+        {{ zh ? '换一颗（重新挂载）' : 'Reroll (remount)' }}
       </TxButton>
       <span class="text-sm text-[var(--tx-text-color-secondary)]">
-        `state` defaults to random and is fixed per mount.
+        {{ zh ? '默认随机形态，挂载后保持不变。' : 'The form is random by default and kept for the whole mount.' }}
       </span>
     </div>
 

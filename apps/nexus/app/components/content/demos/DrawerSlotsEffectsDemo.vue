@@ -45,6 +45,7 @@ const labels = computed(() => (locale.value === 'zh'
       closeManual: '手动关闭',
       cancel: '取消',
       save: '保存配置',
+      close: '关闭抽屉',
     }
   : {
       chromeTrigger: 'Header / Footer',
@@ -78,6 +79,7 @@ const labels = computed(() => (locale.value === 'zh'
       closeManual: 'Close manually',
       cancel: 'Cancel',
       save: 'Save config',
+      close: 'Close drawer',
     }))
 </script>
 
@@ -119,7 +121,7 @@ const labels = computed(() => (locale.value === 'zh'
           <strong>{{ labels.title }}</strong>
           <p>{{ labels.subtitle }}</p>
         </div>
-        <TxButton variant="ghost" size="sm" icon="i-carbon-close" @click="close" />
+        <TxButton variant="ghost" size="sm" icon="i-carbon-close" :aria-label="labels.close" @click="close" />
       </div>
     </template>
 
@@ -143,27 +145,27 @@ const labels = computed(() => (locale.value === 'zh'
     <p>{{ labels.noChromeBody }}</p>
   </TxDrawer>
 
-  <TxDrawer v-model:visible="visibleMaskBlur" :title="labels.maskBlurTitle" mask-effect="blur" size="420px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleMaskBlur" :title="labels.maskBlurTitle" :close-label="labels.close" mask-effect="blur" size="420px" :mobile-adapt="false">
     <p>{{ labels.maskBlurBody }}</p>
   </TxDrawer>
 
-  <TxDrawer v-model:visible="visibleMaskOpacity" :title="labels.maskOpacityTitle" mask-effect="opacity" size="420px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleMaskOpacity" :title="labels.maskOpacityTitle" :close-label="labels.close" mask-effect="opacity" size="420px" :mobile-adapt="false">
     <p>{{ labels.maskOpacityBody }}</p>
   </TxDrawer>
 
-  <TxDrawer v-model:visible="visibleMaskTransparent" :title="labels.maskTransparentTitle" mask-effect="transparent" size="420px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleMaskTransparent" :title="labels.maskTransparentTitle" :close-label="labels.close" mask-effect="transparent" size="420px" :mobile-adapt="false">
     <p>{{ labels.maskTransparentBody }}</p>
   </TxDrawer>
 
-  <TxDrawer v-model:visible="visiblePanelTransparent" :title="labels.panelTitle" mask-effect="opacity" panel-transparent size="420px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visiblePanelTransparent" :title="labels.panelTitle" :close-label="labels.close" mask-effect="opacity" panel-transparent size="420px" :mobile-adapt="false">
     <p>{{ labels.panelBody }}</p>
   </TxDrawer>
 
-  <TxDrawer v-model:visible="visibleMobileDefault" :title="labels.mobileDefaultTitle" direction="right" size="420px">
+  <TxDrawer v-model:visible="visibleMobileDefault" :title="labels.mobileDefaultTitle" :close-label="labels.close" direction="right" size="420px">
     <p>{{ labels.mobileDefaultBody }}</p>
   </TxDrawer>
 
-  <TxDrawer v-model:visible="visibleMobileDisabled" :title="labels.mobileDisabledTitle" direction="right" size="420px" :mobile-adapt="false">
+  <TxDrawer v-model:visible="visibleMobileDisabled" :title="labels.mobileDisabledTitle" :close-label="labels.close" direction="right" size="420px" :mobile-adapt="false">
     <p>{{ labels.mobileDisabledBody }}</p>
   </TxDrawer>
 

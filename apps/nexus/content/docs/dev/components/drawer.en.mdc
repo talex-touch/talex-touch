@@ -175,6 +175,7 @@ code: |
 
 - Put long forms, audit details, permission matrices, and flows that need a footer action bar in a drawer, not a popover.
 - Give a meaningful `title` even with `showHeader=false`; it is the dialog's accessible name.
+- On non-English surfaces, pass `closeLabel`: the close button is icon-only, so this name is all a screen reader announces.
 - Size the drawer with `size` or `full`; `width` exists only for older call sites.
 - Set `mobileAdapt=false` only when a side entrance matters more on small screens than a bottom sheet.
 - Let the drawer manage focus instead of moving it from outside; form fields in the body still need explicit labels.
@@ -222,6 +223,10 @@ rows:
     description: 'Shows the close button in the default header.'
     type: 'boolean'
     default: 'true'
+  - name: closeLabel
+    description: "Accessible name of the default header's close button."
+    type: 'string'
+    default: "'Close drawer'"
   - name: closeOnClickMask
     description: 'Closes when the mask is clicked.'
     type: 'boolean'

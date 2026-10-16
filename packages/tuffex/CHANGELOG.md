@@ -1,5 +1,23 @@
 # TouchX UI 更新日志
 
+## [Unreleased]
+
+### 📦 组件变动 (Components)
+
+- **更新组件**: `alert`, `attachment-tray`, `dialog`, `drawer`, `fine-tune-card`, `image-gallery`, `modal`, `stream-markdown`, `thinking-orb`, `toast`
+
+### ✨ 组件增强
+
+- `TxThinkingOrb` 新增 `variant="gradient"` 彩色渐变变体：每个点按它在画面中的横向位置从 `palette` 的色标取色，球转动时颜色随之流动，原有的远近明暗不变；深色背景下各点保持原来的亮度，最近的点接近白色，浅色背景下色标略微加深以保持对比。`palette` 接受九组内置配色名（`amber`、`glacier`、`violet`、`rose`、`magenta`、`teal`、`indigo`、`lagoon`、`forest`）或从左到右排列的 CSS 颜色数组（不解析 `var()`），未传时每种形态使用各自的配色；内容相同的新数组不会重启绘制。新增导出 `ORB_PALETTES`、`ORB_STATE_PALETTES` 及 `OrbVariant`、`OrbPaletteName`、`OrbPalette` 类型，状态文字可以取同一组色标做渐变。默认的 `mono` 绘制与此前一致。
+- 重构 `TxAttachmentTray`：移除/取消按钮移到缩略图右上角内侧，使用 SVG 图标，悬停或键盘聚焦时出现、触屏上常显；可移除时上传结束后同一按钮由「取消上传」改为「移除」，焦点不丢。图片预览改用 `TxImageGallery` 的预览器（见下条），加载占位的比例取图片附件的 `width` / `height`，未给时沿用上一张已加载的图片；图片加载失败时缩略图也显示占位图标，同一地址不再重试；点击缩略图时先让它获得焦点，关闭预览后焦点在 WebKit 中也能回到缩略图；上传中的文件胶囊显示细进度条；所有按钮带 `:focus-visible` 焦点环，过渡只在未开启减少动态效果时生效。新增 CSS 变量 `--tx-attachment-tray-thumb-size`（默认 `72px`）。预览器的样式随 `image-gallery` 的样式表提供：按需样式插件会一并加载，手动引入样式时需另引 `@talex-touch/tuffex/image-gallery/style.css`。新增 `closeLabel`（预览关闭按钮的可访问名称，默认 `'Close'`），其余 props、事件与导出不变。
+- `TxImageGallery` 的灯箱与 `TxAttachmentTray` 共用同一个内部预览器：焦点在灯箱内时可用 ← / → 翻页，翻到两端时焦点移到另一侧按钮；图片加载完成前按上一张已加载图片的比例留出位置，150 ms 后仍未加载才显示闪烁占位，翻回已加载的图片直接显示，减少动态效果时不闪烁；预览图加载失败时显示占位图标，同一地址不再重试；底栏计数改为 `aria-live="polite"` 区域；翻页按钮带 `:focus-visible` 焦点环。新增 `closeLabel`（预览关闭按钮的可访问名称，默认 `'Close'`），其余 props、事件与导出不变。
+- `TxModal` 新增 `closeLabel`：头部关闭按钮的可访问名称，默认 `'Close'`，此前写死为英文；`TModal` 同步转发。
+- 此前写死为英文的图标按钮名称改为可传入的 props，默认值与此前一致：`TxDrawer` 新增 `closeLabel`（默认 `'Close drawer'`）；`TxAlert` 与 `TxBottomDialog` 新增 `closeLabel`（默认 `'Close'`）；`TxToastHost` 新增 `ariaLabel`（通知区域名称，默认 `'Notifications'`）与 `closeLabel`（每条通知的关闭按钮，默认 `'Dismiss notification'`）；`TxMermaidBlock` 新增 `zoomLabel`、`previewLabel`、`closeLabel`、`errorText`，以及渲染失败后源码复制按钮的 `copyLabel` / `copiedLabel`；`TxCodeBlock` 新增复制按钮的 `copyLabel` / `copiedLabel`（默认 `'Copy'` / `'Copied'`）与预览框名称的 `frameLabelFormatter`（默认 `` (lang) => `${lang} preview` ``）；`TxStreamMarkdown` 新增 `codePreviewText`、`codeSourceText`、`codeFrameLabelFormatter`、`copyCodeText`、`copiedCodeText`、`diagramZoomLabel`、`diagramPreviewLabel`、`diagramCloseLabel`、`diagramErrorText`，只转发给内置的 `TxCodeBlock` 与 `TxMermaidBlock`，自定义渲染器仍只收到 `StreamMarkdownBlockContext`；`TxFineTuneCard` 新增 `layoutLabels`，按 `row` / `col` / `grid` 覆盖三个布局选项的名称，未给的沿用 `'<layout> layout'`；另新增 `valueLabelFormatter`，由标签生成四个数值框的 `aria-label`（默认 `` (label) => `${label} value` ``）。
+
+### 🐛 组件修复
+
+- `TxAttachmentTray` 的缩略图自行固定 `img` 的外边距与尺寸，放进带排版样式的文章（如 `.prose`）里不再下移；内置预览器的样式此前写在托盘选择器之下，`TxModal` 传送到 `<body>` 后从未生效，现已生效。
+
 ## [0.8.0] - 2026-10-14
 
 ### 📦 组件变动 (Components)

@@ -4,6 +4,16 @@ export interface ImageGalleryItem {
   name?: string
 }
 
+/**
+ * What the preview dialog shows; `ImageGalleryItem` and `AiAttachmentImage` both fit.
+ * `width` and `height`, when known, shape the placeholder drawn while the picture loads.
+ * Internal: TxAttachmentTray opens the same dialog, but neither index exports this.
+ */
+export interface ImageGalleryViewerItem extends ImageGalleryItem {
+  width?: number
+  height?: number
+}
+
 export interface ImageGalleryProps {
   items: ImageGalleryItem[]
   startIndex?: number
@@ -17,6 +27,8 @@ export interface ImageGalleryProps {
   nextText?: string
   /** Fallback modal title when the current item has no `name`. @default 'Preview' */
   previewTitle?: string
+  /** Accessible label for the preview's close button. @default 'Close' */
+  closeLabel?: string
   /** Builds an item's display name when `item.name` is absent. @default (i) => `Image ${i + 1}` */
   itemLabelFormatter?: (index: number) => string
   /** Builds a thumbnail's aria-label from an item's display name. @default (label) => `Open ${label} preview` */

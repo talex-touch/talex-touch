@@ -837,6 +837,7 @@ onDeactivated(() => {
     <TxDrawer
       v-model:visible="drawerModel"
       :title="drawerTitle"
+      :close-label="t('common.close')"
       :size="builtinId ? '600px' : '520px'"
     >
       <IntelligenceCapabilityInfo
@@ -910,6 +911,7 @@ onDeactivated(() => {
     <TxDrawer
       v-model:visible="dirsVisible"
       :title="t('settings.skillsPage.dirsTitle')"
+      :close-label="t('common.close')"
       size="520px"
     >
       <SettingSkillDirs :dirs="inventory?.dirs ?? []" :busy="dirsBusy" @remove="removeDir" />
@@ -934,6 +936,7 @@ onDeactivated(() => {
       v-if="closeRequest"
       :title="t('settings.skillsPage.closeTitle', { name: closeRequest.name })"
       :message="t('settings.skillsPage.closeMessage')"
+      :close-label="t('common.close')"
       :btns="closeButtons"
       :close="dismissClose"
     />

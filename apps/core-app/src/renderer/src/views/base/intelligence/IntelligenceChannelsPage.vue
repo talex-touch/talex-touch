@@ -411,6 +411,7 @@ useKeyboardNavigation({
       <TxDrawer
         v-model:visible="basicEditorVisible"
         :title="t('settings.intelligence.editProviderBasic')"
+        :close-label="t('common.close')"
       >
         <div class="p-4 space-y-3">
           <TuffBlockSlot

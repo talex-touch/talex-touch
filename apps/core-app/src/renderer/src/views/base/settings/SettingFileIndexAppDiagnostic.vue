@@ -302,6 +302,7 @@ async function reindexAppDiagnosticTarget(mode: AppIndexReindexRequest['mode']) 
   <TModal
     v-model="appDiagnosticDialogVisible"
     :title="t('settings.settingFileIndex.appDiagnosticTitle')"
+    :close-label="t('common.close')"
     width="min(92vw, 860px)"
   >
     <div class="app-diagnostic">

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { OrbSize, OrbState, OrbTheme } from './types'
+import type { OrbPalette, OrbSize, OrbState, OrbTheme, OrbVariant } from './types'
 import { hasWindow } from '@talex-touch/utils/env'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAutoTheme } from '../../stream-markdown/src/use-auto-theme'
+import { gradientInk, monoInk } from './engine/ink'
 import { MODE_DRAWS } from './engine/registry'
+import { resolvePalette } from './palettes'
 import { resolvePreset } from './presets'
 import { ORB_STATES } from './types'
 
@@ -20,6 +22,13 @@ const props = withDefaults(
     speed?: number
     paused?: boolean
     theme?: OrbTheme
+    /** `gradient` colours the dots with `palette`; depth shading is kept. */
+    variant?: OrbVariant
+    /**
+     * Gradient stops, left → right; only read by `variant="gradient"`.
+     * @default the state's own palette (`ORB_STATE_PALETTES`)
+     */
+    palette?: OrbPalette
     /** Accessible label. @default an English label for the state */
     label?: string
   }>(),
@@ -29,6 +38,7 @@ const props = withDefaults(
     speed: 1,
     paused: false,
     theme: 'auto',
+    variant: 'mono',
   },
 )
 
@@ -57,6 +67,13 @@ const ariaLabel = computed(() => props.label ?? LABELS[resolvedState.value])
 const cssSize = computed(() => props.displaySize ?? props.size)
 
 const resolvedTheme = useAutoTheme(() => props.theme ?? 'auto')
+
+// A palette array is often a fresh literal per parent render; key it by
+// content so only a real colour change restarts the loop.
+const paletteKey = computed(() => {
+  const palette = props.palette
+  return typeof palette === 'string' || palette === undefined ? palette : palette.join('|')
+})
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
@@ -120,11 +137,14 @@ function setup(): void {
   const { mode, speed: baseSpeed, opts } = resolvePreset(resolvedState.value, size)
   const draw = MODE_DRAWS[mode]
   const effSpeed = baseSpeed * props.speed
+  const ink = props.variant === 'gradient'
+    ? gradientInk(dark, size, resolvePalette(props.palette, resolvedState.value))
+    : monoInk(dark)
 
   const frame = (tSec: number): void => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, size, size)
-    draw(ctx, size, tSec, dark, opts)
+    draw(ctx, size, tSec, ink, opts)
   }
 
   // Reduced motion → one static, deterministic frame.
@@ -176,7 +196,7 @@ onMounted(() => {
 })
 
 watch(
-  [resolvedState, () => props.size, resolvedTheme, () => props.speed, () => props.paused, reduced],
+  [resolvedState, () => props.size, resolvedTheme, () => props.speed, () => props.paused, () => props.variant, paletteKey, reduced],
   () => setup(),
 )
 

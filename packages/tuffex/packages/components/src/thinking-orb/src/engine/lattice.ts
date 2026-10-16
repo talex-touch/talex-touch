@@ -93,7 +93,7 @@ function makeMoves(count: number): Move[] {
 
 // --- Globe: lat/long field, a scan meridian sweeps — searching --------
 
-export const drawGlobe: ModeDraw = (ctx, size, t, dark, o) => {
+export const drawGlobe: ModeDraw = (ctx, size, t, ink, o) => {
   const spin = 0.5;
   const cx = size / 2;
   const cy = size / 2;
@@ -131,12 +131,12 @@ export const drawGlobe: ModeDraw = (ctx, size, t, dark, o) => {
       });
     }
   }
-  paint(ctx, dots, dark, o.rMin);
+  paint(ctx, dots, ink, o.rMin);
 };
 
 // --- Rubik: bands twist in quarter turns, scramble → solve — solving --
 
-export const drawRubik: ModeDraw = (ctx, size, t, dark, o) => {
+export const drawRubik: ModeDraw = (ctx, size, t, ink, o) => {
   const cx = size / 2;
   const cy = size / 2;
   const R = (size / 2) * 0.82;
@@ -169,12 +169,12 @@ export const drawRubik: ModeDraw = (ctx, size, t, dark, o) => {
       });
     }
   }
-  paint(ctx, dots, dark, o.rMin);
+  paint(ctx, dots, ink, o.rMin);
 };
 
 // --- Wave: a waveform rolls through the rings — listening -------------
 
-export const drawWave: ModeDraw = (ctx, size, t, dark, o) => {
+export const drawWave: ModeDraw = (ctx, size, t, ink, o) => {
   const cx = size / 2;
   const cy = size / 2;
   // 0.76 base × 1.15 — the undulation pulls the sphere inward, so wave read
@@ -208,5 +208,5 @@ export const drawWave: ModeDraw = (ctx, size, t, dark, o) => {
       });
     }
   }
-  paint(ctx, dots, dark, o.rMin);
+  paint(ctx, dots, ink, o.rMin);
 };

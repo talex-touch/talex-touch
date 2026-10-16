@@ -675,6 +675,7 @@ watch(() => route.query, applyRequestedEntry)
       <TxModal
         :model-value="pendingShortcut !== null"
         :title="t('appDetail.shortcutConflictTitle')"
+        :close-label="t('common.close')"
         width="420px"
         @update:model-value="(value: boolean) => !value && cancelShortcutOverride()"
       >

@@ -18,6 +18,25 @@ export type OrbSize = 20 | 64
 
 export type OrbTheme = 'auto' | 'dark' | 'light'
 
+// TuffEx additions below — upstream inks in grey only.
+
+/** `mono` is upstream's grey ink; `gradient` colours the dots with a palette. */
+export type OrbVariant = 'mono' | 'gradient'
+
+export type OrbPaletteName
+  = | 'amber'
+    | 'glacier'
+    | 'violet'
+    | 'rose'
+    | 'magenta'
+    | 'teal'
+    | 'indigo'
+    | 'lagoon'
+    | 'forest'
+
+/** A named palette, or CSS colours laid left → right across the orb. */
+export type OrbPalette = OrbPaletteName | readonly string[]
+
 export const ORB_STATES: readonly OrbState[] = [
   'working',
   'searching',

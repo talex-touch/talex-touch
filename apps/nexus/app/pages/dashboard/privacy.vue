@@ -560,6 +560,7 @@ onUnmounted(() => {
       v-if="securityConfirmOpen"
       :title="t('dashboard.privacy.allowCliIpMismatch', '允许 CLI 跨 IP 授权')"
       :message="t('dashboard.privacy.cliIpMismatchConfirm', '允许 CLI 跨 IP 授权会降低授权来源校验强度。仅在代理、隧道或远程开发导致 IP 不一致时临时开启，确认继续？')"
+      :close-label="t('common.close', 'Close')"
       :btns="securityConfirmButtons"
       :close="closeSecurityConfirm"
       icon="i-carbon-warning-filled"

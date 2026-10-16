@@ -219,6 +219,7 @@ async function submit() {
   <TxDrawer
     :visible="open"
     :title="mode === 'create' ? t('dashboard.sections.updates.addButton', 'New update') : t('dashboard.sections.updates.editButton', 'Edit update')"
+    :close-label="t('common.close', 'Close')"
     size="520px"
     :close-on-click-mask="!saving"
     :close-on-press-escape="!saving"
@@ -340,7 +341,7 @@ async function submit() {
         />
       </div>
 
-      <TxAlert v-if="error" type="error" :message="error" />
+      <TxAlert v-if="error" type="error" :message="error" :close-label="t('common.close', 'Close')" />
     </form>
 
     <template #footer>

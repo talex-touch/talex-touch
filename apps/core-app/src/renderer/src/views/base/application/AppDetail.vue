@@ -547,6 +547,7 @@ function removeAlias(alias: string): void {
     <TxDrawer
       v-model:visible="diagnosticOpen"
       :title="t('settings.settingFileIndex.appIndexManagerDiagnose')"
+      :close-label="t('common.close')"
       size="560px"
     >
       <div class="AppDetail-DiagnosticPanel">
@@ -584,7 +585,12 @@ function removeAlias(alias: string): void {
       is what the page persists against, and buffering a draft list here would mean the chips the
       dialog shows and the aliases the index answers to could disagree until it is closed.
     -->
-    <TxModal v-model="aliasDialogOpen" :title="t('appDetail.aliasTitle')" width="480px">
+    <TxModal
+      v-model="aliasDialogOpen"
+      :title="t('appDetail.aliasTitle')"
+      :close-label="t('common.close')"
+      width="480px"
+    >
       <div class="AppDetail-AliasDialog">
         <p class="AppDetail-AliasDialogHint">{{ t('appDetail.aliasDesc') }}</p>
 

@@ -177,6 +177,7 @@ const copy = computed(() => zh.value
         adjust: '可调整',
         edited: '已修改',
         fields: { width: '宽', height: '高', radius: '圆角', opacity: '不透明度' },
+        layouts: { row: '横向布局', col: '纵向布局', grid: '网格布局' },
       },
       preview: '预览',
       previewActions: ['打开', '忽略'],
@@ -280,6 +281,7 @@ const copy = computed(() => zh.value
         adjust: 'Adjust',
         edited: 'Edited',
         fields: { width: 'W', height: 'H', radius: 'Radius', opacity: 'Opacity' },
+        layouts: { row: 'Row layout', col: 'Column layout', grid: 'Grid layout' },
       },
       preview: 'Preview',
       previewActions: ['Open', 'Dismiss'],
@@ -1268,6 +1270,8 @@ function selectTab(value: TxFlatSelectValue | TxFlatSelectValue[]): void {
                   :adjust-label="copy.fineTune.adjust"
                   :edited-label="copy.fineTune.edited"
                   :field-labels="copy.fineTune.fields"
+                  :layout-labels="copy.fineTune.layouts"
+                  :value-label-formatter="copy.fields.value"
                   :type-options="options.type"
                   :ranges="FINE_TUNE_RANGES"
                 />

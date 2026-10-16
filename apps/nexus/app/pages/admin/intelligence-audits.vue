@@ -173,7 +173,7 @@ function openDetail(entry: IntelligenceAuditEntry) {
       </AdminTable>
     </AdminSection>
 
-    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.intelligence.audit.detail.title', 'AI Call')" size="520px">
+    <TxDrawer v-model:visible="detailOpen" :title="t('dashboard.sections.intelligence.audit.detail.title', 'AI Call')" :close-label="t('common.close', 'Close')" size="520px">
       <div v-if="detailEntry" class="CallDetail">
         <TxDescriptions :columns="1" size="sm">
           <TxDescriptionsItem :label="t('dashboard.sections.intelligence.audit.detail.time', 'Time')">
