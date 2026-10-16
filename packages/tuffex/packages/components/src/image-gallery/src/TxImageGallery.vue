@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ImageGalleryEmits, ImageGalleryItem, ImageGalleryProps } from './types'
-import { computed, nextTick, ref, watch } from 'vue'
-import TxModal from '../../modal/src/TxModal.vue'
+import { computed, ref, watch } from 'vue'
+import ImageGalleryViewer from './ImageGalleryViewer.vue'
 
 defineOptions({
   name: 'TxImageGallery',
@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<ImageGalleryProps>(), {
   previousText: 'Prev',
   nextText: 'Next',
   previewTitle: 'Preview',
+  closeLabel: 'Close',
   itemLabelFormatter: (index: number) => `Image ${index + 1}`,
   openLabelFormatter: (label: string) => `Open ${label} preview`,
 })
@@ -22,10 +23,12 @@ const emit = defineEmits<ImageGalleryEmits>()
 
 const visible = ref(false)
 const index = ref(0)
-const previousButton = ref<HTMLButtonElement | null>(null)
-const nextButton = ref<HTMLButtonElement | null>(null)
 
 const list = computed(() => props.items ?? [])
+
+function clampIndex(value: number): number {
+  return Math.min(Math.max(0, value), Math.max(0, list.value.length - 1))
+}
 
 watch(
   () => props.startIndex,
@@ -34,27 +37,6 @@ watch(
   },
   { immediate: true },
 )
-
-watch(
-  () => list.value.length,
-  (length) => {
-    if (length <= 0) {
-      index.value = 0
-      visible.value = false
-      return
-    }
-
-    index.value = clampIndex(index.value)
-  },
-)
-
-const current = computed<ImageGalleryItem | null>(() => {
-  return list.value[index.value] ?? null
-})
-
-function clampIndex(value: number): number {
-  return Math.min(Math.max(0, value), Math.max(0, list.value.length - 1))
-}
 
 function getItemLabel(item: ImageGalleryItem, i: number): string {
   return item.name || props.itemLabelFormatter(i)
@@ -65,34 +47,13 @@ function openAt(i: number, event: MouseEvent): void {
     return
 
   index.value = clampIndex(i)
+  // The dialog returns focus to whatever had it when it opened; WebKit does not focus a
+  // clicked button, so give it the thumbnail explicitly.
   ;(event.currentTarget as HTMLButtonElement | null)?.focus()
   visible.value = true
   const item = list.value[index.value]
   if (item)
     emit('open', { index: index.value, item })
-}
-
-function close(): void {
-  visible.value = false
-  emit('close')
-}
-
-async function prev(): Promise<void> {
-  if (index.value <= 0)
-    return
-  index.value -= 1
-  await nextTick()
-  if (index.value === 0)
-    nextButton.value?.focus()
-}
-
-async function next(): Promise<void> {
-  if (index.value >= list.value.length - 1)
-    return
-  index.value += 1
-  await nextTick()
-  if (index.value === list.value.length - 1)
-    previousButton.value?.focus()
 }
 </script>
 
@@ -111,30 +72,19 @@ async function next(): Promise<void> {
       </button>
     </div>
 
-    <TxModal
-      v-model="visible"
+    <ImageGalleryViewer
+      v-model:open="visible"
+      v-model:index="index"
+      :items="list"
       fullscreen
-      :title="current?.name || previewTitle"
-      @close="close"
-    >
-      <div v-if="current" class="tx-image-gallery__viewer">
-        <img :src="current.url" :alt="current.name || ''">
-      </div>
-
-      <template #footer>
-        <div class="tx-image-gallery__footer">
-          <button ref="previousButton" type="button" class="tx-image-gallery__nav" :aria-label="previousLabel" :disabled="index <= 0" @click="prev">
-            {{ previousText }}
-          </button>
-          <div class="tx-image-gallery__count">
-            {{ index + 1 }} / {{ list.length }}
-          </div>
-          <button ref="nextButton" type="button" class="tx-image-gallery__nav" :aria-label="nextLabel" :disabled="index >= list.length - 1" @click="next">
-            {{ nextText }}
-          </button>
-        </div>
-      </template>
-    </TxModal>
+      :preview-title="previewTitle"
+      :previous-label="previousLabel"
+      :next-label="nextLabel"
+      :previous-text="previousText"
+      :next-text="nextText"
+      :close-label="closeLabel"
+      @close="emit('close')"
+    />
   </div>
 </template>
 
@@ -160,52 +110,5 @@ async function next(): Promise<void> {
   height: 100%;
   object-fit: cover;
   display: block;
-}
-
-// The body of the fullscreen modal is `flex: 1`; the viewer takes that whole
-// box and the image is contained inside it, so `contain` never letterboxes the
-// picture out of the viewport on either axis.
-.tx-image-gallery__viewer {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tx-image-gallery__viewer img {
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 6px;
-}
-
-.tx-image-gallery__footer {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.tx-image-gallery__count {
-  font-size: 12px;
-  color: var(--tx-text-color-secondary, #6b7280);
-}
-
-.tx-image-gallery__nav {
-  border-radius: 12px;
-  border: 1px solid var(--tx-border-color-lighter, #e5e7eb);
-  background: var(--tx-fill-color-blank, #fff);
-  padding: 8px 12px;
-  cursor: pointer;
-}
-
-.tx-image-gallery__nav:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 </style>
