@@ -2,6 +2,7 @@
 import type { TxSelectModelValue } from '../../select'
 import type { PaginationProps } from './types'
 import { computed, useId, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import { TxIcon } from '../../icon'
 import { TxSelect } from '../../select'
 
@@ -44,6 +45,9 @@ const totalPages = computed(() => {
 // the controls never show an enabled button that navigates nowhere or a page with no
 // active item.
 const safePage = computed(() => Math.min(Math.max(props.currentPage, 1), totalPages.value))
+// Turning the page eases the buttons into their new active / disabled colours;
+// a hover repaints at once. 200ms is `--tx-transition-duration-fast`.
+const morphing = useMorphWindow(safePage, 200)
 
 // Self-correct the parent's v-model when the incoming page is out of range instead of
 // leaving it pointing at a page that no longer exists (and relying on callers to reset).
@@ -127,7 +131,7 @@ function handlePageSizeChange(value: TxSelectModelValue) {
 </script>
 
 <template>
-  <nav class="tx-pagination" :class="{ 'has-page-size': pageSizeOptions.length }" :aria-label="ariaLabel">
+  <nav class="tx-pagination" :class="{ 'has-page-size': pageSizeOptions.length, 'is-morphing': morphing }" :aria-label="ariaLabel">
     <ul class="tx-pagination__list">
       <!-- First button -->
       <li v-if="showFirstLast" class="tx-pagination__item">
@@ -277,11 +281,21 @@ function handlePageSizeChange(value: TxSelectModelValue) {
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
+  transition: box-shadow var(--tx-transition-duration-fast, 0.2s);
+}
+
+.tx-pagination.is-morphing .tx-pagination__button {
   transition:
     background-color var(--tx-transition-duration-fast, 0.2s),
     border-color var(--tx-transition-duration-fast, 0.2s),
     color var(--tx-transition-duration-fast, 0.2s),
     box-shadow var(--tx-transition-duration-fast, 0.2s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-pagination.is-morphing .tx-pagination__button {
+    transition: none;
+  }
 }
 
 .tx-pagination__button:hover:not(.tx-pagination__button--disabled) {
@@ -300,7 +314,7 @@ function handlePageSizeChange(value: TxSelectModelValue) {
   background: var(--tx-pagination-active-bg, var(--tx-color-primary, #409eff));
   border-color: var(--tx-pagination-active-border, var(--tx-color-primary, #409eff));
   color: var(--tx-pagination-active-text, var(--tx-color-on-primary, #ffffff));
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-pagination__button--disabled {

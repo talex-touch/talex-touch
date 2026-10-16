@@ -2,6 +2,7 @@
 import type { TxFlatRadioValue } from '../../flat-radio/src/types'
 import type { IconPickerEntry, IconPickerLabels, IconPickerSection, IconPickerShape } from './types'
 import { computed, ref, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxButton from '../../button/src/button.vue'
 import TxFlatRadio from '../../flat-radio/src/TxFlatRadio.vue'
 import TxFlatRadioItem from '../../flat-radio/src/TxFlatRadioItem.vue'
@@ -52,6 +53,8 @@ const SHAPE_LABEL_KEYS: Record<IconPickerShape, keyof IconPickerLabels> = {
 
 const query = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+// Picking a cell eases its fill in; a hover repaints at once.
+const morphing = useMorphWindow(() => props.modelValue, 150)
 
 /** Sections that carry a grid; `file` is an action, not a catalog. */
 const gridSections = computed(() =>
@@ -168,7 +171,7 @@ defineExpose({
     </TxFlatRadio>
 
     <div class="tx-icon-picker-panel__search">
-      <i class="i-ri-search-line" aria-hidden="true" />
+      <TxIcon name="search" />
       <input
         v-model="query"
         type="search"
@@ -180,7 +183,7 @@ defineExpose({
 
     <div class="tx-icon-picker-panel__viewport">
       <Transition :name="slideBack ? 'tx-icon-picker-slide-back' : 'tx-icon-picker-slide'">
-        <div :key="activeSection" class="tx-icon-picker-panel__grid" role="listbox">
+        <div :key="activeSection" class="tx-icon-picker-panel__grid" :class="{ 'is-morphing': morphing }" role="listbox">
           <button
             v-for="entry in visibleEntries"
             :key="entry.id"
@@ -232,11 +235,14 @@ defineExpose({
         class="tx-icon-picker-panel__action"
         variant="flat"
         type="primary"
-        icon="i-ri-folder-image-line"
         :disabled="disabled"
         :loading="fileBusy"
         @click="openFilePicker"
       >
+        <!-- Remix `folder-image-line`, drawn here so the action needs no icon collection -->
+        <svg class="tx-icon-picker-panel__action-glyph" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 5v14h16V7h-8.414l-2-2zm8.414 0H21a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h7.414zM10 10.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 0 1 3 0m8 6.5l-4-6l-7 6z" />
+        </svg>
         {{ labels.chooseFile }}
       </TxButton>
       <TxButton
@@ -423,9 +429,15 @@ defineExpose({
   // it. The ring is animated from a collapsed spread so the selected cell is
   // seen *becoming* selected, on the same overshoot curve as the tab thumb.
   transition:
-    background 0.15s ease,
     box-shadow 0.24s cubic-bezier(0.32, 1.28, 0.5, 1),
     transform 0.24s cubic-bezier(0.32, 1.28, 0.5, 1);
+
+  .tx-icon-picker-panel__grid.is-morphing & {
+    transition:
+      background 0.15s ease,
+      box-shadow 0.24s cubic-bezier(0.32, 1.28, 0.5, 1),
+      transform 0.24s cubic-bezier(0.32, 1.28, 0.5, 1);
+  }
 
   &:hover:not(:disabled) {
     background: var(--tx-fill-color-light, #f5f7fa);
@@ -449,11 +461,12 @@ defineExpose({
   }
 }
 
-// The ring and fill still change — the selected cell must stay identifiable.
-// Only the spring travel and the press scale go.
+// The ring still fades in — the selected cell must stay identifiable. The
+// spring travel and the press scale go, and the fill lands at once (the
+// morph window that eases it stays shut under reduced motion).
 @media (prefers-reduced-motion: reduce) {
   .tx-icon-picker-panel__cell {
-    transition: background 0.15s ease, box-shadow 0.15s ease;
+    transition: box-shadow 0.15s ease;
 
     &:active:not(:disabled) {
       transform: none;
@@ -530,6 +543,13 @@ defineExpose({
 
 .tx-icon-picker-panel__action.is-quiet.is-quiet {
   flex: 0 0 auto;
+}
+
+.tx-icon-picker-panel__action-glyph {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
 }
 
 .tx-icon-picker-panel__file {

@@ -242,6 +242,8 @@ function onPick(v: TabBarValue, disabled?: boolean) {
 </template>
 
 <style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-tab-bar {
 
   width: 100%;
@@ -250,6 +252,13 @@ function onPick(v: TabBarValue, disabled?: boolean) {
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   z-index: var(--tx-tab-bar-z-index, 2000);
+
+  // High contrast: opaque, and nothing behind it is frosted.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color-overlay, #fff);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 
   &.is-fixed {
     position: fixed;
@@ -369,10 +378,10 @@ function onPick(v: TabBarValue, disabled?: boolean) {
   padding: 0 5px;
   border-radius: 999px;
   background: var(--tx-color-danger, #f56c6c);
-  color: #fff;
+  color: var(--tx-color-on-primary, #fff);
   font-size: 11px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-tab-bar__label {

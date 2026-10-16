@@ -394,7 +394,7 @@ defineExpose({
 }
 
 .tx-search-select__item :deep(.tx-card-item__title) {
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-text-color-primary, #303133);
 }
 

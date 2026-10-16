@@ -79,7 +79,7 @@ function handleClick(event: MouseEvent): void {
     width: 120px;
     flex: 0 0 120px;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     color: var(--tx-text-color-secondary, #909399);
     transition: color 0.2s ease;
   }
@@ -97,12 +97,11 @@ function handleClick(event: MouseEvent): void {
 
   .tx-block-line__link-slot {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     color: var(--tx-color-primary, #409eff);
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    transition: color 0.2s ease;
   }
 
   &.link,

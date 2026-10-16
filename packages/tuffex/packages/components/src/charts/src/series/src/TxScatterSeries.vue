@@ -109,12 +109,5 @@ const dotOpacity = computed(() => props.fillOpacity * enterProgress.value)
   </g>
 </template>
 
-<style lang="scss" scoped>
-.tx-series--scatter {
-  // ECharts `stateAnimation` (300ms, `cubicOut`): the fallthrough `opacity`
-  // callers use to dim a series fades on the same state timing.
-  @media (prefers-reduced-motion: no-preference) {
-    transition: opacity 300ms cubic-bezier(0.33, 1, 0.68, 1);
-  }
-}
-</style>
+<!-- No opacity transition: the fallthrough `opacity` that dims a series snaps,
+     since TuffEx switches hover emphasis on the frame the pointer arrives. -->

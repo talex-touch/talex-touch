@@ -199,7 +199,7 @@ describe('txFlatRadio motion', () => {
     const selectedRule = flatRadioItemSource.slice(flatRadioItemSource.indexOf('&.is-selected {'))
     const selectedBody = selectedRule.slice(0, selectedRule.indexOf('}'))
 
-    expect(baseDeclarations).toMatch(/font-weight:\s*500/)
+    expect(baseDeclarations).toMatch(/font-weight:\s*var\(--tx-font-weight-medium, 500\)/)
     expect(selectedBody).not.toMatch(/font-weight/)
   })
 

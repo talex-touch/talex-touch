@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { computed, useSlots } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
   name: 'TxCheckbox',
@@ -63,6 +64,10 @@ const ariaChecked = computed<'mixed' | boolean>(() =>
 // so the ring reads as "busy" instead of inheriting the greyed-out disabled box.
 const isBlocked = computed(() => props.disabled || props.loading)
 
+// Checking, loading or disabling eases the box's fill and border; a hover
+// repaints at once.
+const morphing = useMorphWindow(() => [isChecked.value, props.indeterminate, props.disabled, props.loading], 180)
+
 function toggle() {
   if (isBlocked.value)
     return
@@ -85,6 +90,7 @@ function toggle() {
         'is-indeterminate': indeterminate,
         'is-disabled': disabled,
         'is-loading': loading,
+        'is-morphing': morphing,
       },
       `tx-checkbox--${variant || 'checkmark'}`,
     ]"
@@ -145,8 +151,7 @@ function toggle() {
     border-radius: 6px;
     border: 1px solid var(--tx-border-color, #dcdfe6);
     background-color: var(--tx-bg-color, #fff);
-    transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.12s ease,
-      box-shadow 0.18s ease, border-radius 0.18s ease;
+    transition: transform 0.12s ease, box-shadow 0.18s ease, border-radius 0.18s ease;
 
     // Loading ring. Painted on every checkbox but transparent until `is-loading`,
     // so the box -> ring morph is one transition with no DOM swap. `inset: -1px`
@@ -270,6 +275,15 @@ function toggle() {
   &.is-loading.is-checked,
   &.is-loading.is-indeterminate {
     --tx-checkbox-ring-color: var(--tx-color-primary, #409eff);
+  }
+
+  &.is-morphing .tx-checkbox__box {
+    transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.12s ease,
+      box-shadow 0.18s ease, border-radius 0.18s ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
   }
 
   &:hover:not(.is-disabled):not(.is-loading) {

@@ -1,3 +1,4 @@
+import { EditorView } from '@codemirror/view'
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -13,6 +14,12 @@ vi.mock('dompurify', () => ({
 async function flushMarkdown() {
   await flushPromises()
   await nextTick()
+}
+
+/** The source mode loads its editor on first use. */
+async function flushSource() {
+  await vi.dynamicImportSettled()
+  await flushMarkdown()
 }
 
 describe('txMarkdownEditor', () => {
@@ -40,13 +47,20 @@ describe('txMarkdownEditor', () => {
         modelValue: 'Initial',
         defaultMode: 'source',
       },
+      attachTo: document.body,
     })
+    await flushSource()
 
-    const source = wrapper.find('textarea')
-    await source.setValue('**Changed**')
+    const view = EditorView.findFromDOM(wrapper.find('.cm-editor').element as HTMLElement)!
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: '**Changed**' },
+      userEvent: 'input.type',
+    })
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['**Changed**'])
     expect(wrapper.emitted('change')?.at(-1)).toEqual(['**Changed**'])
+
+    wrapper.unmount()
   })
 
   it('emits mode changes for uncontrolled mode', async () => {
@@ -120,13 +134,19 @@ describe('txMarkdownEditor', () => {
   it('names both editing surfaces so neither announces as an unnamed textbox', async () => {
     const wrapper = mount(TxMarkdownEditor, {
       props: { modelValue: 'x', ariaLabel: 'Notes editor' },
+      attachTo: document.body,
     })
     await flushMarkdown()
 
-    // Pre-fix the role="textbox" WYSIWYG surface and the source <textarea> were
+    // Pre-fix the role="textbox" WYSIWYG surface and the source editor were
     // both unnamed; they now share the localizable ariaLabel.
     expect(wrapper.find('.tx-markdown-editor__surface').attributes('aria-label')).toBe('Notes editor')
-    expect(wrapper.find('textarea').attributes('aria-label')).toBe('Notes editor')
+
+    await wrapper.findAll('.tx-markdown-editor__modes button')[1].trigger('click')
+    await flushSource()
+    expect(wrapper.find('.cm-content').attributes('aria-label')).toBe('Notes editor')
+
+    wrapper.unmount()
   })
 
   it('escapes markdown punctuation typed as literal text', async () => {

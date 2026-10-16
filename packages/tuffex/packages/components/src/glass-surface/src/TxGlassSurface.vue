@@ -289,6 +289,8 @@ watch(
 </template>
 
 <style lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-glass-surface {
   position: relative;
   display: flex;
@@ -296,6 +298,14 @@ watch(
   justify-content: center;
   overflow: hidden;
   transition: opacity 260ms ease-out;
+
+  // High contrast: an opaque panel instead of glass. The material is an inline style, hence the
+  // `!important`.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color-overlay, #fff) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
 }
 
 .tx-glass-surface__svg {

@@ -288,20 +288,16 @@ onBeforeUnmount(() => {
   color: var(--tx-bui-ink, #1f2124);
   cursor: pointer;
   border-radius: var(--tx-bui-radius-chip, 6px);
-  transition: background-color 0.15s var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 
   &.is-selected {
     background: var(--tx-bui-field, #f2f2f3);
   }
 
   // The keyboard cursor: focus stays on the trigger, so the active option has
-  // to read differently from the selected one.
+  // to read differently from the selected one. The pointer moves it too
+  // (`pointerenter`), so it repaints at once, as a hover does.
   &.is-active {
     background: var(--tx-bui-hover-2, #e7e9eb);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
   }
 }
 </style>

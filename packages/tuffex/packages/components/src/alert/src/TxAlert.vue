@@ -132,7 +132,7 @@ defineExpose({ open, close: handleClose, visible })
 }
 
 .tx-alert__title {
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   margin-bottom: 4px;
   color: var(--tx-alert-text);
 }

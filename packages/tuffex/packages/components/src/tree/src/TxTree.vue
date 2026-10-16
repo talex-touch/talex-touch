@@ -3,6 +3,7 @@ import type { ComponentPublicInstance, PropType } from 'vue'
 import type { TxIconSource } from '../../icon'
 import type { TreeEmits, TreeKey, TreeNode, TreeValue } from './types'
 import { computed, nextTick, ref, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import { TxCheckbox } from '../../checkbox'
 import { TxIcon } from '../../icon'
 
@@ -99,6 +100,9 @@ const selectedSet = computed(() => {
     return new Set([v])
   return new Set<TreeKey>()
 })
+
+// Selecting eases the row's tint; a hover repaints at once.
+const morphing = useMorphWindow(() => [...selectedSet.value].join('\u0000'), 150)
 
 function resolveIcon(icon?: TreeNode['icon']): TxIconSource | undefined {
   if (!icon)
@@ -344,7 +348,7 @@ function itemPadding(level: number): string {
 </script>
 
 <template>
-  <div class="tx-tree" role="tree" :aria-multiselectable="multiple || undefined">
+  <div class="tx-tree" :class="{ 'is-morphing': morphing }" role="tree" :aria-multiselectable="multiple || undefined">
     <div v-if="empty" class="tx-tree__empty">
       <slot name="empty">
         No results
@@ -450,7 +454,14 @@ function itemPadding(level: number): string {
   border-radius: 10px;
   cursor: pointer;
   color: var(--tx-text-color-primary, #303133);
+}
+
+.tx-tree.is-morphing .tx-tree__row {
   transition: background 150ms ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 .tx-tree__row.is-selected {

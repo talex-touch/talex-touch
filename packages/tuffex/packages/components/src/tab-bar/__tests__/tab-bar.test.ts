@@ -1,10 +1,14 @@
 import type { VueWrapper } from '@vue/test-utils'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mount } from '@vue/test-utils'
 import * as sass from 'sass'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import TxTabBar from '../src/TxTabBar.vue'
 import tabBarSource from '../src/TxTabBar.vue?raw'
+
+const SFC = resolve(dirname(fileURLToPath(import.meta.url)), '../src/TxTabBar.vue')
 
 const items = [
   { value: 'home', label: 'Home', iconClass: 'i-carbon-home' },
@@ -339,7 +343,7 @@ describe('txTabBar indicator styles', () => {
     // counts. One on transform, width or height would re-ease every frame the
     // engine writes, and the indicator would trail its own spring.
     const css = [...tabBarSource.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
-      .map(([, block = '']) => sass.compileString(block, { syntax: 'scss' }).css)
+      .map(([, block = '']) => sass.compileString(block, { url: pathToFileURL(SFC), syntax: 'scss' }).css)
       .join('\n')
 
     const transitioned: string[][] = []

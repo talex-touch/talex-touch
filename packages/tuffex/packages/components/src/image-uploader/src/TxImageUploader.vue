@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ImageUploaderEmits, ImageUploaderFile, ImageUploaderProps } from './types'
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { TxIcon } from '../../icon'
 
 defineOptions({
   name: 'TxImageUploader',
@@ -132,7 +133,7 @@ onBeforeUnmount(() => {
         :disabled="disabled || value.length >= (max ?? 9)"
         @click="pick"
       >
-        <i class="i-carbon-add" aria-hidden="true" />
+        <TxIcon name="plus" />
         <span class="tx-image-uploader__add-text">{{ uploadText }}</span>
       </button>
 
@@ -149,7 +150,7 @@ onBeforeUnmount(() => {
           :disabled="disabled"
           @click="remove(item.id)"
         >
-          <i class="i-carbon-close" aria-hidden="true" />
+          <TxIcon name="close" />
         </button>
       </div>
     </div>
@@ -157,6 +158,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 .tx-image-uploader__input {
   display: none;
 }
@@ -179,7 +182,6 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: border-color 150ms ease, background 150ms ease;
 }
 
 .tx-image-uploader__add:hover {
@@ -194,7 +196,7 @@ onBeforeUnmount(() => {
 
 .tx-image-uploader__add-text {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
 }
 
 .tx-image-uploader__item {
@@ -229,6 +231,11 @@ onBeforeUnmount(() => {
   justify-content: center;
   opacity: 0;
   transition: opacity 150ms ease;
+
+  // High contrast: opaque over the picture, so the glyph reads on any image.
+  @include tx-when-high-contrast {
+    background: var(--tx-bg-color, #fff);
+  }
 }
 
 .tx-image-uploader__item:hover .tx-image-uploader__remove,

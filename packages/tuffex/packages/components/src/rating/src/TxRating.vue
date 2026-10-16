@@ -391,7 +391,7 @@ function handleMouseLeave() {
 .tx-rating__text {
   font-size: 14px;
   color: var(--tx-rating-text, #6b7280);
-  font-weight: 500;
+  font-weight: var(--tx-font-weight-medium, 500);
 }
 
 @keyframes tx-rating-pop {

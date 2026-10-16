@@ -291,7 +291,6 @@ function pillText(row: TaskRowItem): string | undefined {
     padding: 0 10px;
     text-align: left;
     cursor: pointer;
-    transition: background-color 0.1s ease;
 
     &:hover {
       background: var(--tx-bui-inset, #f7f8f9);
@@ -322,7 +321,7 @@ function pillText(row: TaskRowItem): string | undefined {
     width: 22px;
     height: 22px;
     border-radius: 999px;
-    color: #fff;
+    color: var(--tx-color-white, #fff);
 
     &.is-done {
       background: var(--tx-bui-green, #189a4d);
@@ -358,7 +357,7 @@ function pillText(row: TaskRowItem): string | undefined {
     position: relative;
     color: var(--tx-bui-ink, #1f2124);
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   .tx-bui-task-rows__label {
@@ -367,7 +366,7 @@ function pillText(row: TaskRowItem): string | undefined {
     overflow: hidden;
     color: var(--tx-bui-ink, #1f2124);
     font-size: 13px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -391,7 +390,7 @@ function pillText(row: TaskRowItem): string | undefined {
     background: var(--tx-bui-field, #f2f2f3);
     color: var(--tx-bui-ink-2, #62656b);
     font-size: 11.5px;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     animation: tx-bui-fade-in 200ms ease-out both;
   }
 
@@ -482,7 +481,6 @@ function pillText(row: TaskRowItem): string | undefined {
   // The mixins carry their own guards; these are the hand-written ones. Status
   // still moves through the rows — only the tweening stops.
   .tx-bui-task-rows .tx-bui-task-rows__row,
-  .tx-bui-task-rows .tx-bui-task-rows__toggle,
   .tx-bui-task-rows .tx-bui-task-rows__chevron svg {
     transition: none;
   }

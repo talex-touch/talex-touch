@@ -129,7 +129,7 @@ defineExpose({ select, toggle })
 .tx-card-spread__toggle { display: block; margin: 8px auto; padding: 6px 12px; border: 0; border-radius: 8px; background: var(--tx-fill-color-light); color: var(--tx-text-color-regular); font: inherit; cursor: pointer; }
 .tx-card-spread__toggle:hover { background: var(--tx-fill-color); }
 .tx-card-spread__focus-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; padding: 28px 16px; }
-.tx-card-spread__focus-item { position: relative; padding: 4px 8px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 500; cursor: pointer; text-decoration: none; }
+.tx-card-spread__focus-item { position: relative; padding: 4px 8px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: var(--tx-font-weight-medium, 500); cursor: pointer; text-decoration: none; }
 .tx-card-spread__focus-item.has-brackets { color: var(--tx-color-primary); }
 .tx-card-spread__focus-item::after { content: ''; position: absolute; inset: -4px -8px; border: 2px dashed var(--tx-border-color-darker); border-radius: 8px; pointer-events: none; opacity: 0; transform: scale(1.3); transition: var(--tx-focus-transition); }
 .tx-card-spread__focus-item.has-brackets::after { opacity: 1; transform: scale(1.1); }

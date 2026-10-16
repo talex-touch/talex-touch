@@ -101,9 +101,9 @@ const hovered = shallowRef<Region | null>(null)
 const tooltipEl = ref<HTMLElement | null>(null)
 
 // kumo region emphasis: `focus: 'self'` keeps the hovered region's ramp colour
-// while `blur.itemStyle.opacity` 0.45 dims every other region, over
-// `stateAnimation`.
-const emphasisState = useMapEmphasis<string>()
+// while `blur.itemStyle.opacity` 0.45 dims every other region. kumo eases that
+// over `stateAnimation`; the dim is a hover colour change, so it snaps here.
+const emphasisState = useMapEmphasis<string>(0)
 
 const BLUR_OPACITY = 0.45
 

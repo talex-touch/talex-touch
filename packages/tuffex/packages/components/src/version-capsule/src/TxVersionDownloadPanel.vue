@@ -272,7 +272,6 @@ const highlightedId = computed(() => props.builds.find(build => build.recommende
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out);
 }
 
 .tx-version-download-panel__build:hover {
@@ -358,11 +357,5 @@ const highlightedId = computed(() => props.builds.find(build => build.recommende
   border-top: 1px solid var(--tx-version-panel-border-color);
   background: var(--tx-fill-color-lighter);
   font-size: 12px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tx-version-download-panel__build {
-    transition: none;
-  }
 }
 </style>

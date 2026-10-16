@@ -53,6 +53,10 @@
   --tx-bui-red: #e3474c;
   --tx-bui-red-tint: #fcecec;
 
+  // Violet: only TxFlowchart's chip reads it
+  --tx-bui-violet: #6b3fd4;
+  --tx-bui-violet-tint: #ede4fb;
+
   // Tooltip (inverted surface in light mode)
   --tx-bui-tooltip-bg: #25272b;
   --tx-bui-tooltip-fg: #f6f7f8;
@@ -122,6 +126,10 @@
   --tx-bui-orange-tint: #f68f3c24;
   --tx-bui-red: #ee5c61;
   --tx-bui-red-tint: #ee5c6124;
+
+  // Violet's tint stays opaque: the flowchart chip has always drawn it that way
+  --tx-bui-violet: #c4a9fb;
+  --tx-bui-violet-tint: #2a2140;
 
   --tx-bui-tooltip-bg: #121212;
   --tx-bui-tooltip-fg: #f3f3f3;

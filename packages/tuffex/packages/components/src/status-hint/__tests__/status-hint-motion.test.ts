@@ -331,10 +331,10 @@ describe('txStatusHint style contract', () => {
   })
 
   it('sets the words at 600, with no tracking', () => {
-    expect(find(ROOT)?.get('font-weight')).toBe('600')
+    expect(find(ROOT)?.get('font-weight')).toBe('var(--tx-font-weight-semibold, 600)')
     for (const rule of styleRules) {
       expect(rule.declarations.has('letter-spacing'), rule.selectors.join(', ')).toBe(false)
-      expect(rule.declarations.get('font-weight') ?? '', rule.selectors.join(', ')).not.toMatch(/^(?:700|bold)$/)
+      expect(rule.declarations.get('font-weight') ?? '', rule.selectors.join(', ')).not.toMatch(/\b700\b|--tx-font-weight-bold|^bold$/)
     }
   })
 })

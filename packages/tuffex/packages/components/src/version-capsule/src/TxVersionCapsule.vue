@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { TxVersionCapsulePanel, TxVersionCapsuleProps } from './types'
 import { computed, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({ name: 'TxVersionCapsule' })
 
@@ -44,6 +45,9 @@ const activePanel = computed<TxVersionCapsulePanel>({
     emit('update:panel', value)
   },
 })
+
+// Opening a panel eases the segment's tint; a hover repaints at once.
+const morphing = useMorphWindow(activePanel, 200)
 
 /**
  * A segment whose panel slot is empty is a plain trigger: it still emits, but
@@ -133,7 +137,7 @@ defineExpose({ close, downloadRef, historyRef })
   <div
     ref="rootRef"
     class="tx-version-capsule"
-    :class="[`tx-version-capsule--${tone}`, { 'is-disabled': disabled }]"
+    :class="[`tx-version-capsule--${tone}`, { 'is-disabled': disabled, 'is-morphing': morphing }]"
   >
     <div class="tx-version-capsule__bar">
       <button
@@ -271,6 +275,9 @@ defineExpose({ close, downloadRef, historyRef })
   font: inherit;
   font-size: var(--tx-version-capsule-font-size);
   cursor: pointer;
+}
+
+.tx-version-capsule.is-morphing .tx-version-capsule__segment {
   transition: background-color var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out);
 }
 
@@ -312,6 +319,9 @@ defineExpose({ close, downloadRef, historyRef })
 
 .tx-version-capsule__glyph {
   color: var(--tx-text-color-secondary);
+}
+
+.tx-version-capsule.is-morphing .tx-version-capsule__glyph {
   transition: color var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out);
 }
 
@@ -381,8 +391,8 @@ defineExpose({ close, downloadRef, historyRef })
 
 @media (prefers-reduced-motion: reduce) {
   .tx-version-capsule__bar,
-  .tx-version-capsule__segment,
-  .tx-version-capsule__glyph,
+  .tx-version-capsule.is-morphing .tx-version-capsule__segment,
+  .tx-version-capsule.is-morphing .tx-version-capsule__glyph,
   .tx-version-capsule__chevron,
   .tx-version-capsule-panel-enter-active,
   .tx-version-capsule-panel-leave-active {

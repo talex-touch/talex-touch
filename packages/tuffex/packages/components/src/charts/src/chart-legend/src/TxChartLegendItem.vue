@@ -129,7 +129,7 @@ const interactive = computed(() => !props.loading && 'onClick' in attrs)
 
   &--small &__value {
     font-size: 0.75rem;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     line-height: 1rem;
   }
 
@@ -141,7 +141,7 @@ const interactive = computed(() => !props.loading && 'onClick' in attrs)
 
   &--large &__value {
     font-size: 1.125rem;
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     line-height: 1;
   }
 

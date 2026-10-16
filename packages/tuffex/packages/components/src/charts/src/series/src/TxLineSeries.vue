@@ -146,13 +146,10 @@ const path = computed(() => {
 </template>
 
 <style>
-/* ECharts `stateAnimation` (300ms, cubicOut): the fallthrough `opacity`
-   attribute used to dim a series eases instead of snapping. */
+/* The fallthrough `opacity` that dims a series snaps rather than easing over
+   ECharts' 300ms `stateAnimation`: TuffEx switches hover emphasis on the frame
+   the pointer arrives. */
 @media (prefers-reduced-motion: no-preference) {
-  .tx-series--line {
-    transition: opacity 300ms cubic-bezier(0.33, 1, 0.68, 1);
-  }
-
   /* `enter: 'draw'`: a symbol the stroke has not reached yet. */
   .tx-series__symbol {
     transition: opacity 160ms ease-out;

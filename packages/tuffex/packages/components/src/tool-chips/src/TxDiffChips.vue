@@ -79,7 +79,6 @@ defineSlots<{
     background: var(--tx-bui-surface, #fff);
     border-radius: var(--tx-bui-radius-chip, 6px);
     box-shadow: var(--tx-bui-shadow-btn, 0 0 0 1px #e0e2e5, 0 1px 2px #1018280d);
-    transition: background-color 0.1s ease;
     animation-delay: calc(var(--tx-bui-diff-chips-index, 0) * var(--tx-bui-diff-chips-step, 80ms));
 
     &:hover {
@@ -122,7 +121,6 @@ defineSlots<{
     text-underline-offset: 2px;
     cursor: pointer;
     border-radius: var(--tx-bui-radius-chip, 6px);
-    transition: color 0.1s ease, text-decoration-color 0.1s ease;
     animation: tx-bui-fade-in 300ms ease-out both;
     animation-delay: calc(var(--tx-bui-diff-chips-index, 0) * var(--tx-bui-diff-chips-step, 80ms));
 
@@ -135,7 +133,6 @@ defineSlots<{
   @media (prefers-reduced-motion: reduce) {
     .tx-bui-diff-chips__chip,
     .tx-bui-diff-chips__more {
-      transition: none;
       animation: none;
     }
   }

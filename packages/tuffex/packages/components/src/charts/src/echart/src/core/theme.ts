@@ -130,6 +130,10 @@ export function readEChartThemeTokens(el: HTMLElement | null, mode: EChartMode):
 export function echartThemeOption(tokens: EChartThemeTokens): EChartsOption {
   return {
     backgroundColor: 'transparent',
+    // Hover emphasis and the blur of the other series land on the frame the
+    // pointer arrives, per the TuffEx hover rule, instead of easing over ECharts'
+    // default 300ms. An option that sets `stateAnimation` still wins.
+    stateAnimation: { duration: 0 },
     color: [...tokens.palette],
     textStyle: { color: tokens.text, fontSize: 12, fontFamily: 'inherit' },
     tooltip: {

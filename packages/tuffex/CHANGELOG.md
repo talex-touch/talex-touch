@@ -4,7 +4,7 @@
 
 ### 📦 组件变动 (Components)
 
-- **更新组件**: `alert`, `attachment-tray`, `dialog`, `drawer`, `fine-tune-card`, `image-gallery`, `modal`, `stream-markdown`, `thinking-orb`, `toast`
+- **更新组件**: `alert`, `attachment-tray`, `dialog`, `drawer`, `fine-tune-card`, `image-gallery`, `markdown-editor`, `modal`, `stream-markdown`, `thinking-orb`, `toast`
 
 ### ✨ 组件增强
 
@@ -13,9 +13,11 @@
 - `TxImageGallery` 的灯箱与 `TxAttachmentTray` 共用同一个内部预览器：焦点在灯箱内时可用 ← / → 翻页，翻到两端时焦点移到另一侧按钮；图片加载完成前按上一张已加载图片的比例留出位置，150 ms 后仍未加载才显示闪烁占位，翻回已加载的图片直接显示，减少动态效果时不闪烁；预览图加载失败时显示占位图标，同一地址不再重试；底栏计数改为 `aria-live="polite"` 区域；翻页按钮带 `:focus-visible` 焦点环。新增 `closeLabel`（预览关闭按钮的可访问名称，默认 `'Close'`），其余 props、事件与导出不变。
 - `TxModal` 新增 `closeLabel`：头部关闭按钮的可访问名称，默认 `'Close'`，此前写死为英文；`TModal` 同步转发。
 - 此前写死为英文的图标按钮名称改为可传入的 props，默认值与此前一致：`TxDrawer` 新增 `closeLabel`（默认 `'Close drawer'`）；`TxAlert` 与 `TxBottomDialog` 新增 `closeLabel`（默认 `'Close'`）；`TxToastHost` 新增 `ariaLabel`（通知区域名称，默认 `'Notifications'`）与 `closeLabel`（每条通知的关闭按钮，默认 `'Dismiss notification'`）；`TxMermaidBlock` 新增 `zoomLabel`、`previewLabel`、`closeLabel`、`errorText`，以及渲染失败后源码复制按钮的 `copyLabel` / `copiedLabel`；`TxCodeBlock` 新增复制按钮的 `copyLabel` / `copiedLabel`（默认 `'Copy'` / `'Copied'`）与预览框名称的 `frameLabelFormatter`（默认 `` (lang) => `${lang} preview` ``）；`TxStreamMarkdown` 新增 `codePreviewText`、`codeSourceText`、`codeFrameLabelFormatter`、`copyCodeText`、`copiedCodeText`、`diagramZoomLabel`、`diagramPreviewLabel`、`diagramCloseLabel`、`diagramErrorText`，只转发给内置的 `TxCodeBlock` 与 `TxMermaidBlock`，自定义渲染器仍只收到 `StreamMarkdownBlockContext`；`TxFineTuneCard` 新增 `layoutLabels`，按 `row` / `col` / `grid` 覆盖三个布局选项的名称，未给的沿用 `'<layout> layout'`；另新增 `valueLabelFormatter`，由标签生成四个数值框的 `aria-label`（默认 `` (label) => `${label} value` ``）。
+- 重写 `TxMarkdownEditor`：所见即所得改为按块渲染，光标进入加粗、链接、行内公式等格式时露出 Markdown 标记，可直接编辑；源码模式由 `<textarea>` 改为按需加载的 CodeMirror 6；三种模式共用同一份文档与撤销历史。新增 props：`math`（`$…$` / `$$…$$` 经 KaTeX 渲染）、`emoji`（`:shortcode:` 渲染、`:` 补全与表情选择器）、`highlight`（`==text==` 与五色高亮笔）、`callouts`（GitHub 式 `[!NOTE]` 等提示块）、`slash`（段首 `/` 打开块菜单）、`bubble`（选中文字浮出格式条）与 `statusBar`（字数、字符数与协同者），均默认开启；`codeTheme`（代码块语法高亮预设 `github` / `one` / `vitesse` / `catppuccin` / `solarized`，随编辑器明暗切换，默认 `github`，`none` 关闭）；`ai`（格式条里的 AI 改写，可流式返回，查看逐词改动后替换、插入到下方、重试或放弃）、`comments`（评论线程，锚点随本地与远端编辑移动，原文被删时显示为已脱离；`user` 为本地作者，也是协同者看到的身份）与 `collaboration`（多人协同的变更集传输接口：编辑器只产出和应用变更集，并发变换交给适配器），不传则不启用；`uploadImage`（粘贴、拖入或选择的图片先以带进度的占位插入，完成后换成返回的地址，删除占位即中止上传），不传时图片按钮改为填写地址；`labels` 覆盖全部界面文字。未传 `linkPrompt` 时使用内置的链接输入框，此前链接按钮不起作用。新增事件 `update:comments`、`comment-create`、`comment-reply`、`comment-resolve`、`comment-delete`、`upload-error`、`ai-error`；暴露方法新增 `getSelection`、`setSelection`、`insert`，`setValue` 改为同步，并作为一次编辑发给协同者。工具栏新增 `highlight`、`taskList`、`image`、`table`、`codeBlock`、`math`、`divider`、`emoji`，原有键名不变。任务列表的勾选框改用 `TxCheckbox` 的外观与勾选动效，只有被点击的那个框播放动画，可编辑时在预览模式下也能点击切换。新增导出 `MARKDOWN_EDITOR_DEFAULT_LABELS`、`MARKDOWN_EDITOR_HIGHLIGHT_COLORS`、`MARKDOWN_EDITOR_CALLOUT_TYPES`、`MARKDOWN_EDITOR_CODE_THEMES`、`MARKDOWN_EDITOR_AI_ACTIONS`，变更集工具 `applyMarkdownChanges`、`composeMarkdownChanges`、`mapMarkdownPosition`、`transformMarkdownChanges`，以及配套类型。
 
 ### 🐛 组件修复
 
+- `TxStreamMarkdown` 中行内出现的 `$$`（如 shell 的 `$$`、`$$x$$`）不再被当作公式块的起点：此前 marked 在该处截断段落，块规则不匹配时用换行拼回，在 `breaks: true` 下变成 `<br>`，`$$` 前的空格也被吞掉；现在只在行首查找公式块。
 - `TxAttachmentTray` 的缩略图自行固定 `img` 的外边距与尺寸，放进带排版样式的文章（如 `.prose`）里不再下移；内置预览器的样式此前写在托盘选择器之下，`TxModal` 传送到 `<body>` 后从未生效，现已生效。
 
 ## [0.8.0] - 2026-10-14

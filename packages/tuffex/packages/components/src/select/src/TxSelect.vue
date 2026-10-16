@@ -2,6 +2,7 @@
 import type { StyleValue } from 'vue'
 import type { TxSelectModelValue, TxSelectOption, TxSelectOptionGroup, TxSelectOptionId, TxSelectOptionLike, TxSelectProps, TxSelectValue } from './types'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, useAttrs, useId, watch } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxCardItem from '../../card-item/src/TxCardItem.vue'
 import TuffInput from '../../input/src/TxInput.vue'
 import TxPopover from '../../popover/src/TxPopover.vue'
@@ -64,6 +65,9 @@ function triggerAttrs() {
 }
 
 const isOpen = ref(false)
+// Opening and a status change ease the trigger's border; a hover repaints it
+// at once. 250ms covers TxInput's border leg, the longer of the two.
+const morphing = useMorphWindow(() => [isOpen.value, props.status], 250)
 const listDomId = `${useId() ?? 'tuff-select'}-list`
 const selectedLabel = ref('')
 const multiInput = ref('')
@@ -731,6 +735,7 @@ onBeforeUnmount(() => {
         'is-disabled': disabled,
         'is-status-error': status === 'error',
         'is-status-warning': status === 'warning',
+        'is-morphing': morphing,
       },
     ]"
     :style="attrs.style as StyleValue"
@@ -992,7 +997,7 @@ onBeforeUnmount(() => {
     // Matches the tag transition so a wrapping row and the box that has to make
     // space for it move together; height is only transitionable because the
     // script writes the measured value back as an explicit px.
-    transition: border-color 0.18s ease, box-shadow 0.18s ease,
+    transition: box-shadow 0.18s ease,
       height 0.18s cubic-bezier(0.22, 1, 0.36, 1);
     cursor: pointer;
 
@@ -1003,6 +1008,26 @@ onBeforeUnmount(() => {
     &.is-disabled {
       background-color: var(--tx-disabled-bg-color, #f5f7fa);
       cursor: not-allowed;
+    }
+  }
+
+  &.is-morphing {
+    .tuff-select__multi-trigger {
+      transition: border-color 0.18s ease, box-shadow 0.18s ease,
+        height 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    // TxInput eases its own border only while focusing; open and status
+    // changes here get its 0.25s too.
+    :deep(.tx-input) {
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tuff-select__multi-trigger,
+      :deep(.tx-input) {
+        transition: none;
+      }
     }
   }
 
@@ -1147,7 +1172,7 @@ onBeforeUnmount(() => {
     padding: 10px 10px 4px;
     color: var(--tx-text-color-secondary, #909399);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }

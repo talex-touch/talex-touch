@@ -76,10 +76,10 @@ const rootStyle = computed<CSSProperties>(() => {
   border-radius: inherit;
   background: linear-gradient(
     var(--tx-gradient-angle),
-    #0894ff 0%,
-    #c959dd 34%,
-    #ff2e54 68%,
-    #ff9004 100%
+    var(--tx-gradient-border-color-1, #0894ff) 0%,
+    var(--tx-gradient-border-color-2, #c959dd) 34%,
+    var(--tx-gradient-border-color-3, #ff2e54) 68%,
+    var(--tx-gradient-border-color-4, #ff9004) 100%
   );
   -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
   -webkit-mask-clip: content-box, border-box;

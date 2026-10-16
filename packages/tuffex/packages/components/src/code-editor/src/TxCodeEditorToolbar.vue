@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CodeEditorToolbarAction, CodeEditorToolbarActionKey, CodeEditorToolbarEmits, CodeEditorToolbarProps } from './types'
 import { computed } from 'vue'
+import { useMorphWindow } from '../../../../utils/use-morph-window'
 import { TxIcon } from '../../icon'
 
 defineOptions({
@@ -34,6 +35,9 @@ const resolvedActions = computed(() => {
   return props.actions?.length ? props.actions : defaultActions
 })
 
+// Toggling an action eases its fill and border; a hover repaints at once.
+const morphing = useMorphWindow(() => resolvedActions.value.map(action => (action.active ? 1 : 0)).join(''), 200)
+
 function resolveIconSource(action: CodeEditorToolbarAction) {
   return action.icon && typeof action.icon !== 'string' ? action.icon : null
 }
@@ -54,7 +58,7 @@ function handleAction(action: CodeEditorToolbarAction) {
 </script>
 
 <template>
-  <div class="tx-code-editor-toolbar" :class="{ 'is-compact': compact }">
+  <div class="tx-code-editor-toolbar" :class="{ 'is-compact': compact, 'is-morphing': morphing }">
     <slot name="leading" />
     <div class="tx-code-editor-toolbar__actions">
       <button
@@ -102,7 +106,6 @@ function handleAction(action: CodeEditorToolbarAction) {
     font-size: 12px;
     line-height: 1;
     cursor: pointer;
-    transition: border-color 0.2s, background-color 0.2s, color 0.2s;
 
     &:hover:not(:disabled) {
       background: color-mix(in srgb, currentColor 10%, transparent);
@@ -116,6 +119,14 @@ function handleAction(action: CodeEditorToolbarAction) {
     &.is-active {
       border-color: color-mix(in srgb, currentColor 30%, transparent);
       background: color-mix(in srgb, currentColor 18%, transparent);
+    }
+  }
+
+  &.is-morphing .tx-code-editor-toolbar__action {
+    transition: border-color 0.2s, background-color 0.2s, color 0.2s;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
     }
   }
 

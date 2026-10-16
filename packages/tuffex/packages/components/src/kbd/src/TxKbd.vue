@@ -42,7 +42,7 @@ withDefaults(
   color: var(--tx-text-color-regular, #606266);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--tx-font-weight-semibold, 600);
   line-height: 1;
   white-space: nowrap;
 }

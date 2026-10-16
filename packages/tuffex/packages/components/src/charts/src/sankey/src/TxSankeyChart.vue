@@ -364,17 +364,8 @@ const tooltipRows = computed<Array<[string, string]>>(() => {
     height: 100%;
   }
 
-  // ECharts `stateAnimation` (300ms, `cubicOut` — see core/animate.ts
-  // STATE_DURATION) animates the hover/blur state, so the dim is a tween rather
-  // than a snap.
-  &__link,
-  &__node,
-  &__label {
-    @media (prefers-reduced-motion: no-preference) {
-      transition: opacity 300ms cubic-bezier(0.33, 1, 0.68, 1);
-    }
-  }
-
+  // The dim snaps rather than easing over ECharts' 300ms `stateAnimation`:
+  // TuffEx switches hover emphasis on the frame the pointer arrives.
   // `emphasis: { focus: 'adjacency' }` (set by kumo's sankey series) blurs the
   // non-adjacent elements; ECharts' default blur style is
   // `fromState.opacity * 0.1`. No `lineStyle.opacity` override exists, so a
@@ -396,7 +387,7 @@ const tooltipRows = computed<Array<[string, string]>>(() => {
   }
 
   &__label-value {
-    font-weight: 600;
+    font-weight: var(--tx-font-weight-semibold, 600);
   }
 
   &__tooltip {
@@ -438,7 +429,7 @@ const tooltipRows = computed<Array<[string, string]>>(() => {
   }
 
   &__tooltip-value {
-    font-weight: 500;
+    font-weight: var(--tx-font-weight-medium, 500);
     font-variant-numeric: tabular-nums;
   }
 

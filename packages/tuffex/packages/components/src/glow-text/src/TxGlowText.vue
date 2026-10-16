@@ -146,6 +146,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
 // Band geometry, shared by both sweep layers. `angle` tilts the band away from
 // vertical, so the gradient runs across it at 90deg + angle. `angle` used to be
 // the gradient's own direction: 20deg then laid the band nearly flat, thicker
@@ -280,6 +282,14 @@ onBeforeUnmount(() => {
 
 .tx-glow-text.is-inactive .tx-glow-text__clip-shine {
   display: none;
+}
+
+// Decoration only: high contrast drops the sweep rather than wash a band across the text.
+.tx-glow-text__shine,
+.tx-glow-text__clip-shine {
+  @include tx-when-high-contrast {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
