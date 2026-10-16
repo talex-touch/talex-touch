@@ -63,7 +63,7 @@ The builders themselves are public too — `buildBarChartOption`, `buildLineChar
 
 ## Themed host
 
-`TxEChart` owns the lifecycle: it resolves the chart tokens for the current theme, applies them, then paints your option over them. Sunburst is registered and accepts hierarchical data directly; other ECharts types not registered by the host require their corresponding modules first.
+`TxEChart` owns the lifecycle: it resolves the chart tokens for the current theme, applies them, then paints your option over them. The theme sets `stateAnimation.duration` to 0, so hover emphasis and the dimming of the other series land on the frame the pointer arrives; pass `stateAnimation` in your option to bring back ECharts' 300ms transition. Sunburst is registered and accepts hierarchical data directly; other ECharts types not registered by the host require their corresponding modules first.
 
 ```vue
 <script setup lang="ts">

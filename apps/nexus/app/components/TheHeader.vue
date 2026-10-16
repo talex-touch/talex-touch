@@ -152,6 +152,15 @@ onUnmounted(() => {
           <template v-else-if="isAuthenticated">
             <HeaderUserMenu />
           </template>
+          <!-- Holds the sign-in button's width while the session is checked, which on a cold load
+               takes seconds: everything left of it, the search included, jumped 52px when it came. -->
+          <span
+            v-else
+            aria-hidden="true"
+            class="invisible shrink-0 whitespace-nowrap border rounded-full px-3 py-1 text-sm font-medium leading-none"
+          >
+            {{ t('nav.login') }}
+          </span>
         </div>
 
         <button
@@ -256,8 +265,10 @@ onUnmounted(() => {
   border-color: var(--header-border-color);
   background-color: var(--header-bg-color);
   box-shadow: var(--header-shadow);
+  /* Narrowing on scroll carries the search trigger 108px. At 720ms, easing in, it was still
+     moving half a second later, under a pointer already on its way to it. */
   transition:
-    width 720ms cubic-bezier(0.4, 0, 0.2, 1),
+    width 320ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 620ms cubic-bezier(0.4, 0, 0.2, 1),
     background-color 620ms cubic-bezier(0.4, 0, 0.2, 1),
     backdrop-filter 620ms cubic-bezier(0.4, 0, 0.2, 1),

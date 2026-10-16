@@ -141,6 +141,7 @@ code: |
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `--tx-chat-composer-radius` | `18px` | Corner radius shared by the shell and the card. |
+| `--tx-chat-composer-pending-color` | `#f59e0b` | The amber of a pending attachment chip, mixed in at 32% for the border and 14% for the fill. |
 
 ## Overview
 

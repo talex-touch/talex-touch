@@ -83,6 +83,7 @@ Queues global dialogs by priority and runs them one at a time, with lifecycle ca
 | `parseSpringEase(value)` | `(value: string \| undefined \| null) => ((t: number) => number) \| null` | Parse `spring` / `spring(omega)` / `spring(omega, zeta)`; anything else returns `null` |
 | `createCubicBezier(x1, y1, x2, y2)` | `(x1, y1, x2, y2) => (t: number) => number` | Equivalent to CSS `cubic-bezier()`; the charts entry's `cubicBezier` is this function |
 | `parseCubicBezier(value)` | `(value: string \| undefined \| null) => [number, number, number, number] \| null` | Parse a `cubic-bezier(...)` string; GSAP names, keywords, spring forms, or x controls outside [0, 1] return `null` |
+| `applyThemeTransition(updateTheme, options?)` | `(updateTheme, options?) => Promise<void> \| void` | Run smooth dark/light mode transitions via the View Transitions API (circle blur, diagonal slash, wipe, etc.), see 《[Theming](./theming.en.mdc)》 |
 
 ### Install helper
 

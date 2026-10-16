@@ -19,13 +19,17 @@ description: 生产力工具与营销官网的字号认知差异、13-14px 黄�
 - **操作控件与数据行（13px～14px）**：输入框值、表格单元格、按钮文案。
 - **辅助说明与元数据（12px）**：次级描述、空状态提示、快捷键徽标。
 - **微型标签（10px～11px）**：全大写字母或极小状态标签。
-- **标题层级（16px～18px）**：仅用于模块与卡片标题，正文绝不突破 14px。
+- **标题层级（15px～18px）**：仅用于模块与卡片标题，正文绝不突破 14px。
+- **展示数字（22px～32px）**：统计卡、图表摘要与指标数值。
+
+:::TuffDemoWrapper{demo="ConceptTypeScaleDemo"}
+:::
 
 ## 等宽字体 X 高度膨胀原理
 
 在技术文档与日志中，经常在正文中混排内联代码（`<code>`）。
 无衬线字体（如 Inter、SF Pro）与等宽编程字体（如 JetBrains Mono、SF Mono）在字体设计度量衡（Font Metrics）上存在天然差异：
-等宽字体为了在代码编辑器中清晰可辨，字腔宽大，其 **X 高度（x-height）通常比同字号无衬线字体高出 12%～18%**！
+等宽字体为了在代码编辑器中清晰可辨，字腔宽大，**x 高度（x-height）往往比同字号的无衬线字体略高**。按 macOS 自带字体文件量出的 x 高度（与字号之比）：苹方 0.517、SF Pro 0.508、SF Mono 0.526、Menlo 0.547，等宽体只比正文高出约 1.7%～7.7%。
 
 ## 行内代码缩小至 0.9em 的光学调和
 
@@ -33,21 +37,22 @@ description: 生产力工具与营销官网的字号认知差异、13-14px 黄�
 - 代码文字在视觉上会突兀地凸出，犹如正文中的硬补丁。
 - 上下撑开原本匀称的行高，打乱排版呼吸节奏。
 
-TuffEx 的标准解决方案：
+TuffEx 里渲染行内代码的组件（TxStreamText、TxMarkdownView、TxMarkdownEditor、TxChainOfThought）都把它缩到 0.9em，TxStreamMarkdown 和本站文档正文用 0.875em。以 TxStreamText 为例：
 
 :::TuffCodeBlock{lang="scss"}
 ---
 code: |
-  .tx-prose code,
-  .tx-inline-code {
-    font-family: var(--tx-font-family-mono);
-    // 强制缩减至 0.9em，完全抵消等宽字体的 X 高度膨胀
-    font-size: 0.9em;
-    padding: 0.15em 0.35em;
+  // stream-text/src/TxStreamText.vue
+  .tx-stream-text__code {
+    padding: 0.1em 0.35em;
     border-radius: 4px;
-    background-color: var(--tx-fill-color-light);
-    vertical-align: baseline;
+    background: var(--tx-fill-color-light, #f5f7fa);
+    font-family: var(--tx-font-mono, ui-monospace, 'SF Mono', Menlo, monospace);
+    font-size: 0.9em;
   }
 ---
 :::
-缩减至 0.9em 后，代码文字的主干高度与前后无衬线文字达到完美的视觉水平线，行内节奏浑然天成。
+0.9em 是个近似值。让两种 x 高度对齐的字号是「正文 x 高度 ÷ 代码 x 高度」：本站在 macOS 的 Chrome 里实测正文 0.508em、代码（落到 Menlo）0.547em，比值 1.077，恰好对齐要 0.929em，0.9em 还矮 3.1%。按上面几款字体两两组合，恰好对齐的字号落在 0.93em～0.98em 之间。下图在当前浏览器里实测这两个 x 高度。
+
+:::TuffDemoWrapper{demo="ConceptInlineCodeDemo"}
+:::

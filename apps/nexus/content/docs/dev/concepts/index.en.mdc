@@ -13,19 +13,19 @@ This section systematically breaks down the "why" and "how" behind every design 
 
 - **[G2 Continuous Curvature & Squircle Geometry](./curvature.en.mdc)** — Moving beyond standard `border-radius` fillets, explaining curvature jumps, superellipse formulas, and Apple smooth corners.
 - **[Concentric Radii & Inset Clearance](./concentricity.en.mdc)** — The $R_{\text{outer}} = R_{\text{inner}} + \text{Padding}$ conservation law, caret clipping prevention, and 0.65x vertical optical padding.
-- **[7-Tier Z-Axis Topology & Sticky Dividers](./depth-topology.en.mdc)** — Eliminating `z-index: 99999` chaos, the immutable 7-tier elevation topology, and the 1px line divider rule.
+- **[Open-Order Z-Index & Sticky Dividers](./depth-topology.en.mdc)** — Eliminating `z-index: 99999` chaos: overlays take numbers from one counter in the order they open, drawers first lift it to 10000, and the 1px line divider rule.
 
 ## Surfaces and Material Physics
 
-- **[Surface 8-Material Taxonomy & Gatekeepers](./surface-taxonomy.en.mdc)** — Refraction (default), Glass, Acrylic, Mica and the 8-surface matrix with explicit user confirmation gatekeepers.
-- **[Refraction Pipeline & Chromatic Dispersion](./refraction-physics.en.mdc)** — Snell's Law, SVG Displacement Map frequency shifts, Smoothstep intensity mapping, and RGB chromatic dispersion.
-- **[Adaptive Surface Deduction & 120Hz Fallback](./surface-deduction.en.mdc)** — Pointer velocity sensing, window drag hooks, 0ms mask fallback, and 140ms asymmetric spring recovery.
+- **[Surface 5-Material Taxonomy & Gatekeepers](./surface-taxonomy.en.mdc)** — TxBaseSurface's five modes (refraction, glass, blur, mask and pure), each component's default, and the confirmation gate for switching.
+- **[Refraction Pipeline & Chromatic Dispersion](./refraction-physics.en.mdc)** — Snell's Law, SVG displacement-map filters, Smoothstep intensity mapping, and RGB chromatic dispersion.
+- **[Surface Motion Fallback & Layered Recovery](./surface-deduction.en.mdc)** — The `moving` and `autoDetect` inputs, blur and glass switching to fallbackMode, and refraction's layered fallback and recovery.
 - **[Alpha Noise Masks & Specular Tracking](./noise-and-specular.en.mdc)** — Solving overlay greyness via `mask-composite: intersect` alpha noise and card specular cursor tracking.
 
 ## Color Science and Dark Mode
 
 - **[#141414 Canvas & 3-Tier Elevation](./dark-palette.en.mdc)** — Why not pure `#000000`? Preventing OLED purple smearing, preserving shadows, and the 3-tier dark grey scale.
-- **[Retinal Irradiation & Weight Tuning](./irradiation-tuning.en.mdc)** — Helmholtz optical irradiation illusion, 10%–15% white text expansion, variable font 460/560 tuning, and discrete font fallbacks.
+- **[Retinal Irradiation & Weight Tuning](./irradiation-tuning.en.mdc)** — Helmholtz optical irradiation illusion, perceived expansion of white text on dark, variable font 460/560 tuning, and discrete font fallbacks.
 - **[Bipolar Semantic Tints & WCAG 4.5:1](./color-mix-contrast.en.mdc)** — Resolving dark mode `-light-9` distortion, `color-mix` ink fusion, and WCAG 4.5:1 verified across all themes.
 - **[Light Modes & Hue Sorting](./light-modes.en.mdc)** — Why `plus-lighter` turns grey on light backgrounds, and the dual independent hue ordering pipeline.
 
@@ -43,4 +43,4 @@ This section systematically breaks down the "why" and "how" behind every design 
 ## AI Native Streaming Interfaces
 
 - **[Stream Pacer & Reveal Presets](./stream-pacer.en.mdc)** — The `useStreamPacer` clock smoothing network bursts, Aurora / Blur micro-reveals, and single caret handoffs.
-- **[Twin-Layer Reserve & Non-Blocking Selection](./anti-jitter-reserve.en.mdc)** — Reserve pre-measurement eliminating stream height jitter, and immediate text selection / copying (Cmd+C) contracts.
+- **[Twin-Layer Reserve & Non-Blocking Selection](./anti-jitter-reserve.en.mdc)** — Reserve pre-measurement holding the final height during replays, and immediate text selection / copying (Cmd+C) contracts.

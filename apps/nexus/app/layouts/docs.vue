@@ -9,7 +9,7 @@ const LazyBackToTop = defineAsyncComponent(() => import('~/components/ui/BackToT
 const LazyTuffFooter = defineAsyncComponent(() => import('~/components/TuffFooter.vue'))
 const TuffexDocsHeroBackground = defineAsyncComponent(() => import('~/components/docs/TuffexDocsHeroBackground.vue'))
 const BACK_TO_TOP_MOUNT_SCROLL_Y = 240
-const DOCS_FOOTER_ROOT_MARGIN = '1200px 0px'
+const DOCS_FOOTER_IDLE_TIMEOUT_MS = 2000
 const DOCS_ASIDE_SHELL_MOUNT_DELAY_MS = 2400
 const DOCS_ASIDE_SHELL_IDLE_TIMEOUT_MS = 3600
 const DOCS_OUTLINE_MOUNT_DELAY_MS = 2000
@@ -19,7 +19,6 @@ const TUFFEX_DOCS_BACKGROUND_INTENT_EVENTS = ['scroll', 'pointerdown', 'keydown'
 
 const { t } = useI18n()
 const route = useRoute()
-const docsFooterSentinelRef = ref<HTMLElement | null>(null)
 const sidebarVisible = ref(false)
 const outlineVisible = ref(false)
 const sidebarDrawerMounted = ref(false)
@@ -34,7 +33,8 @@ const docsAssistantContextRequestState = useState<number>('docs-assistant-contex
 const shouldMountDocsFooter = ref(false)
 const shouldMountBackToTop = ref(false)
 const shouldMountTuffexBackground = ref(false)
-let docsFooterObserver: IntersectionObserver | null = null
+let docsFooterIdleId: number | null = null
+let docsFooterFrameId: number | null = null
 let backToTopFrameId: number | null = null
 let docsAsideShellTimer: ReturnType<typeof setTimeout> | null = null
 let docsAsideShellIdleId: number | null = null
@@ -135,36 +135,45 @@ function openDocsAssistantFromPlaceholder() {
   openDocsAssistantFromShell(docsAssistantShellTriggerRef.value)
 }
 
-function clearDocsFooterObserver() {
-  if (docsFooterObserver) {
-    docsFooterObserver.disconnect()
-    docsFooterObserver = null
+function clearDocsFooterSchedule() {
+  if (import.meta.server)
+    return
+
+  if (docsFooterIdleId !== null && 'cancelIdleCallback' in window) {
+    window.cancelIdleCallback(docsFooterIdleId)
+    docsFooterIdleId = null
+  }
+  if (docsFooterFrameId !== null) {
+    window.cancelAnimationFrame(docsFooterFrameId)
+    docsFooterFrameId = null
   }
 }
 
 function mountDocsFooter() {
   shouldMountDocsFooter.value = true
-  clearDocsFooterObserver()
+  clearDocsFooterSchedule()
 }
 
-function bindDocsFooterObserver() {
+// Mounted once the page is idle rather than when it scrolls near: a reader who
+// jumps to the end should not land on a footer that is still appearing.
+function scheduleDocsFooterMount() {
   if (import.meta.server || shouldMountDocsFooter.value)
     return
 
-  const sentinel = docsFooterSentinelRef.value
-  if (!sentinel)
-    return
+  clearDocsFooterSchedule()
 
-  if (!('IntersectionObserver' in window)) {
+  const mount = () => {
+    docsFooterIdleId = null
+    docsFooterFrameId = null
     mountDocsFooter()
+  }
+
+  if (typeof window.requestIdleCallback === 'function') {
+    docsFooterIdleId = window.requestIdleCallback(mount, { timeout: DOCS_FOOTER_IDLE_TIMEOUT_MS })
     return
   }
 
-  docsFooterObserver = new IntersectionObserver((entries) => {
-    if (entries.some(entry => entry.isIntersecting || entry.intersectionRatio > 0))
-      mountDocsFooter()
-  }, { rootMargin: DOCS_FOOTER_ROOT_MARGIN })
-  docsFooterObserver.observe(sentinel)
+  docsFooterFrameId = window.requestAnimationFrame(mount)
 }
 
 function clearBackToTopFrame() {
@@ -376,7 +385,7 @@ watch(shouldShowAsideOutline, (shouldShow) => {
 }, { immediate: true })
 
 onMounted(() => {
-  bindDocsFooterObserver()
+  scheduleDocsFooterMount()
   scheduleBackToTopMountCheck()
   scheduleDocsAsideShellMount()
   scheduleDocsOutlineMount()
@@ -384,7 +393,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  clearDocsFooterObserver()
+  clearDocsFooterSchedule()
   window.removeEventListener('scroll', scheduleBackToTopMountCheck)
   clearBackToTopFrame()
   clearDocsAsideShellSchedule()
@@ -501,7 +510,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
-    <div ref="docsFooterSentinelRef" class="docs-footer-sentinel" aria-hidden="true" />
     <LazyTuffFooter v-if="shouldMountDocsFooter" class="docs-layout-footer" />
     <LazyBackToTop v-if="shouldMountBackToTop" />
     <ClientOnly>

@@ -1055,6 +1055,7 @@ const zhCopy = {
     },
   },
   modal: {
+    close: '关闭',
     permissionTitle: '插件权限确认',
     permissionLead: (name: string) => `插件「${name}」需要以下权限：`,
     unofficial: (name: string) => `插件「${name}」来自非官方来源，确定继续安装吗？`,
@@ -1198,6 +1199,7 @@ const enCopy: typeof zhCopy = {
     },
   },
   modal: {
+    close: 'Close',
     permissionTitle: 'Plugin permission request',
     permissionLead: (name: string) => `“${name}” requires the following permissions:`,
     unofficial: (name: string) => `“${name}” comes from an unofficial source. Proceed with installation?`,
@@ -2941,7 +2943,7 @@ onBeforeUnmount(clearTimers)
           </TxToastPanel>
         </div>
 
-        <TxModal v-model="confirm.open" :title="confirmTitle" width="min(520px, calc(100vw - 32px))" @close="onConfirmDismiss">
+        <TxModal v-model="confirm.open" :title="confirmTitle" :close-label="copy.modal.close" width="min(520px, calc(100vw - 32px))" @close="onConfirmDismiss">
           <div v-if="confirmPlugin" class="store-confirm">
             <div class="store-confirm__plugin">
               <span class="store-glyph is-sm" :style="glyphStyle(confirmPlugin)" aria-hidden="true"><span :class="confirmPlugin.icon" /></span>

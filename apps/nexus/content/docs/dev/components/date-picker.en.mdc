@@ -83,6 +83,12 @@ code: |
 | `open` | - | Fires on open. |
 | `close` | - | Fires on close. |
 
+### CSS Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--tx-date-picker-selected-shade` | `#111827` | Dark end of the gradient on the selected day, month or year in the field calendar, mixed into the primary at 28%. |
+
 ## Overview
 
 - The value is always emitted as `YYYY-MM-DD`; an empty or invalid value starts from local today, clamped to `min` / `max`.

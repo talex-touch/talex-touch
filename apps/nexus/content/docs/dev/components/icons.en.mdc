@@ -42,10 +42,10 @@ code: |
 
 ## The builtin table
 
-`check`, `chevron-down`, `close`, `search`, `user`, `star`, `star-half`, `info`, `check-circle`, `x-circle` and `alert-triangle` ship inside the component, so core affordances render even with no icon collection configured.
+`check`, `chevron-down`, `chevron-right`, `chevron-left`, `arrow-left`, `arrow-up`, `arrow-down`, `plus`, `close`, `search`, `user`, `star`, `star-half`, `info`, `check-circle`, `x-circle` and `alert-triangle` ship inside the component, so core affordances render even with no icon collection configured.
 
 - The table is not a general icon library; use an Iconify class or an explicit source for anything else.
-- Entries are filled silhouettes or open strokes. `chevron-down` is stroked: it is a disclosure affordance at 12–14px, where a filled wedge reads as a heavy blob beside its label.
+- Entries are filled silhouettes or open strokes. `chevron-down` is stroked: it is a disclosure affordance at 12–14px, where a filled wedge reads as a heavy blob beside its label. The other directions and `plus` share its stroke.
 
 ## Color, mask, and `colorful`
 

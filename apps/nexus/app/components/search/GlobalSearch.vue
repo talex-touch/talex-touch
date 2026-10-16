@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { useDebounceFn } from '@vueuse/core'
-import { gsap } from 'gsap'
-import { computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { createSpringEase } from '@talex-touch/tuffex/utils'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { TxCommandPalette } from '@talex-touch/tuffex/command-palette'
 import type { CommandPaletteItem } from '@talex-touch/tuffex/command-palette'
 import { useGlobalSearch } from '~/composables/useGlobalSearch'
@@ -11,22 +10,56 @@ type SearchCommandItem = CommandPaletteItem & {
   to?: string
 }
 
+interface MotionFrame {
+  x: number
+  y: number
+  scale: number
+  opacity: number
+  backdrop: number
+}
+
+// Open: the panel fades in fast while it drifts in from the trigger's side and grows
+// from 96%, settling on the house spring (`createSpringEase` defaults, ~3% overshoot,
+// which on a 4% scale is under a pixel). Close is shorter so Esc reads as immediate.
+const ENTER_MS = 440
+const ENTER_FADE_MS = 140
+const ENTER_SCALE = 0.96
+const ENTER_DRIFT = { ratio: 0.06, max: 20 }
+const BACKDROP_IN_MS = 200
+const EXIT_MS = 160
+const EXIT_SCALE = 0.97
+const EXIT_DRIFT = { ratio: 0.03, max: 8 }
+const BACKDROP_OUT_MS = 180
+const EASE_OUT = 'cubic-bezier(0.33, 1, 0.68, 1)'
+const SPRING_STOPS = 40
+
 const { t } = useI18n()
+const router = useRouter()
 const {
   open,
   query,
   results,
   loading,
+  unavailable,
   anchorRect,
   prefersReducedMotion,
   closeSearch,
   resetSearch,
+  cancelSearch,
+  preloadSearch,
   search,
-  clearSearchAnchor,
 } = useGlobalSearch()
 
-const emptyText = computed(() => (loading.value ? t('search.loading') : t('search.empty')))
-let panelTween: gsap.core.Tween | gsap.core.Timeline | null = null
+const emptyText = computed(() => {
+  if (loading.value)
+    return t('search.loading')
+  return unavailable.value ? t('search.unavailable') : t('search.empty')
+})
+// What the palette renders. It trails `open` on close so the exit can play on the live
+// panel, and starts false so even the first open, which mounts this component, enters.
+const paletteOpen = ref(false)
+let motion: Animation[] = []
+let springEasing: string | null = null
 let scrollLockState: {
   htmlOverflow: string
   bodyPaddingRight: string
@@ -95,31 +128,21 @@ const commands = computed<SearchCommandItem[]>(() => {
   return resultCommands.value.slice(0, 4)
 })
 
-const runSearch = useDebounceFn((value: string) => {
-  void search(value)
-}, 200)
-
 function onQueryUpdate(value: string) {
-  query.value = value
-  if (!value.trim()) {
-    resetSearch()
-    return
-  }
-  loading.value = true
-  runSearch(value)
+  // The palette clears its query once the exit has finished; the reset is ours to do.
+  if (open.value)
+    search(value)
+}
+
+function onPaletteModelUpdate(value: boolean) {
+  if (!value)
+    closeSearch()
 }
 
 function onSelect(item: CommandPaletteItem) {
   const target = (item as SearchCommandItem).to
   if (target)
     navigateTo(target)
-}
-
-function clearPanelTween() {
-  if (!panelTween)
-    return
-  panelTween.kill()
-  panelTween = null
 }
 
 function getPanelElement() {
@@ -169,169 +192,197 @@ function unlockPageScroll() {
   scrollLockState = null
 }
 
-async function runFlipAnimation() {
-  await nextTick()
-  syncSearchLayer()
-  const anchor = anchorRect.value
-  if (!anchor || prefersReducedMotion())
-    return
-  requestAnimationFrame(() => {
-    const panel = getPanelElement()
-    if (!panel)
-      return
-    const panelRect = panel.getBoundingClientRect()
-    if (!panelRect.width || !panelRect.height)
-      return
-    const scaleX = anchor.width / panelRect.width
-    const scaleY = anchor.height / panelRect.height
-    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0)
-      return
-    const anchorCenterX = anchor.left + anchor.width / 2
-    const anchorCenterY = anchor.top + anchor.height / 2
-    const panelCenterX = panelRect.left + panelRect.width / 2
-    const panelCenterY = panelRect.top + panelRect.height / 2
-    const translateX = anchorCenterX - panelCenterX
-    const translateY = anchorCenterY - panelCenterY
-    const panelRadius = getComputedStyle(panel).borderRadius
-    clearPanelTween()
-    gsap.set(panel, {
-      x: translateX,
-      y: translateY,
-      scaleX,
-      scaleY,
-      borderRadius: anchor.radius,
-      opacity: 0.94,
-      transformOrigin: 'center center',
-      willChange: 'transform,border-radius,opacity',
-    })
-    panelTween = gsap.timeline({
-      defaults: {
-        duration: 0.34,
-        ease: 'expo.inOut',
-      },
-      onComplete: () => {
-        gsap.set(panel, { clearProps: 'willChange' })
-        panelTween = null
-      },
-    })
-    const content = panel.querySelectorAll<HTMLElement>('.tx-command-palette__item, .NexusGlobalSearchFooter')
-    panelTween
-      .to(panel, {
-        x: 0,
-        y: 0,
-        scaleX: 1.015,
-        scaleY: 1.015,
-        borderRadius: panelRadius,
-        opacity: 1,
-      })
-      .to(panel, {
-        scaleX: 1,
-        scaleY: 1,
-        duration: 0.12,
-        ease: 'back.out(1.2)',
-      }, '-=0.04')
-      .fromTo(content, {
-        y: 8,
-        opacity: 0,
-      }, {
-        y: 0,
-        opacity: 1,
-        duration: 0.18,
-        stagger: 0.025,
-        ease: 'power2.out',
-      }, '-=0.08')
-  })
+/**
+ * The house spring as a CSS `linear()` easing, so WAAPI can run it on the compositor.
+ * Same fallback as tuffex's `resolveTransition` where `linear()` is unsupported.
+ */
+function resolveSpringEasing() {
+  if (springEasing)
+    return springEasing
+  if (!CSS.supports('transition-timing-function', 'linear(0, 1)')) {
+    springEasing = 'cubic-bezier(0.22, 1, 0.36, 1)'
+    return springEasing
+  }
+  const ease = createSpringEase()
+  const stops = Array.from({ length: SPRING_STOPS + 1 }, (_, index) =>
+    Math.round(ease(index / SPRING_STOPS) * 1e4) / 1e4)
+  springEasing = `linear(${stops.join(', ')})`
+  return springEasing
 }
 
-function runFlipCloseAnimation() {
+/**
+ * A short offset from the panel's resting centre towards the trigger. The panel used to
+ * morph out of the 32px trigger itself, squashing its content to half its aspect ratio;
+ * a hint of direction keeps the link to the button without the distortion.
+ */
+function resolveDrift(panel: HTMLElement, drift: { ratio: number, max: number }) {
   const anchor = anchorRect.value
-  if (!anchor) {
-    clearSearchAnchor()
-    return
+  if (!anchor)
+    return { x: 0, y: 0 }
+  // Offsets ignore transforms, so this is the resting centre even mid-animation.
+  const dx = anchor.left + anchor.width / 2 - (panel.offsetLeft + panel.offsetWidth / 2)
+  const dy = anchor.top + anchor.height / 2 - (panel.offsetTop + panel.offsetHeight / 2)
+  const distance = Math.hypot(dx, dy)
+  if (!distance)
+    return { x: 0, y: 0 }
+  const length = Math.min(drift.max, distance * drift.ratio)
+  return { x: dx / distance * length, y: dy / distance * length }
+}
+
+function readFrame(panel: HTMLElement, overlay: HTMLElement): MotionFrame {
+  const style = getComputedStyle(panel)
+  const [x = 0, y = 0] = style.translate === 'none'
+    ? []
+    : style.translate.split(' ').map(value => Number.parseFloat(value))
+  return {
+    x,
+    y,
+    scale: style.scale === 'none' ? 1 : Number.parseFloat(style.scale),
+    opacity: Number.parseFloat(style.opacity),
+    backdrop: Number.parseFloat(getComputedStyle(overlay).opacity),
   }
-  if (prefersReducedMotion()) {
-    clearSearchAnchor()
+}
+
+function isMoving() {
+  return motion.some(animation => animation.playState === 'running')
+}
+
+function cancelMotion() {
+  for (const animation of motion)
+    animation.cancel()
+  motion = []
+}
+
+/**
+ * Starts from wherever an interrupted exit left the panel, so reopening mid-close turns
+ * around instead of jumping back to the start.
+ */
+function playEnter(panel: HTMLElement, overlay: HTMLElement) {
+  overlay.style.pointerEvents = ''
+  overlay.style.opacity = ''
+  const interrupted = isMoving() ? readFrame(panel, overlay) : null
+  cancelMotion()
+  if (prefersReducedMotion())
     return
-  }
+  const drift = resolveDrift(panel, ENTER_DRIFT)
+  const from = interrupted ?? { x: drift.x, y: drift.y, scale: ENTER_SCALE, opacity: 0, backdrop: 0 }
+  motion = [
+    overlay.animate([{ opacity: from.backdrop }, { opacity: 1 }], { duration: BACKDROP_IN_MS, easing: EASE_OUT }),
+    panel.animate([{ opacity: from.opacity }, { opacity: 1 }], { duration: ENTER_FADE_MS, easing: EASE_OUT }),
+    panel.animate(
+      [{ translate: `${from.x}px ${from.y}px`, scale: from.scale }, { translate: '0px 0px', scale: 1 }],
+      { duration: ENTER_MS, easing: resolveSpringEasing() },
+    ),
+  ]
+}
+
+/**
+ * Resolves once the exit has played, or immediately when there is nothing to play.
+ * `fill: 'forwards'` keeps the panel hidden until the palette removes it.
+ */
+function playExit(): Promise<void> {
   const panel = getPanelElement()
-  if (!panel) {
-    clearSearchAnchor()
-    return
+  const overlay = getOverlayElement()
+  if (!panel || !overlay) {
+    cancelMotion()
+    return Promise.resolve()
   }
-  const panelRect = panel.getBoundingClientRect()
-  if (!panelRect.width || !panelRect.height) {
-    clearSearchAnchor()
-    return
+  const from = readFrame(panel, overlay)
+  cancelMotion()
+  // Let a click land on the page while the backdrop is still fading out.
+  overlay.style.pointerEvents = 'none'
+  if (prefersReducedMotion()) {
+    overlay.style.opacity = '0'
+    return Promise.resolve()
   }
-  const scaleX = anchor.width / panelRect.width
-  const scaleY = anchor.height / panelRect.height
-  if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) {
-    clearSearchAnchor()
+  const drift = resolveDrift(panel, EXIT_DRIFT)
+  const options: KeyframeAnimationOptions = { duration: EXIT_MS, easing: EASE_OUT, fill: 'forwards' }
+  motion = [
+    overlay.animate([{ opacity: from.backdrop }, { opacity: 0 }], { ...options, duration: BACKDROP_OUT_MS }),
+    panel.animate([{ opacity: from.opacity }, { opacity: 0 }], options),
+    panel.animate(
+      [{ translate: `${from.x}px ${from.y}px`, scale: from.scale }, { translate: `${drift.x}px ${drift.y}px`, scale: EXIT_SCALE }],
+      options,
+    ),
+  ]
+  return Promise.all(motion.map(animation => animation.finished)).then(() => undefined)
+}
+
+async function show() {
+  lockPageScroll()
+  preloadSearch()
+  paletteOpen.value = true
+  await nextTick()
+  const panel = getPanelElement()
+  const overlay = getOverlayElement()
+  if (!open.value || !panel || !overlay)
     return
-  }
-  const anchorCenterX = anchor.left + anchor.width / 2
-  const anchorCenterY = anchor.top + anchor.height / 2
-  const panelCenterX = panelRect.left + panelRect.width / 2
-  const panelCenterY = panelRect.top + panelRect.height / 2
-  const translateX = anchorCenterX - panelCenterX
-  const translateY = anchorCenterY - panelCenterY
-  const panelRadius = getComputedStyle(panel).borderRadius
-  clearPanelTween()
-  gsap.set(panel, {
-    x: 0,
-    y: 0,
-    scaleX: 1,
-    scaleY: 1,
-    borderRadius: panelRadius,
-    opacity: 1,
-    transformOrigin: 'center center',
-    willChange: 'transform,border-radius,opacity',
-  })
-  panelTween = gsap.to(panel, {
-    x: translateX,
-    y: translateY,
-    scaleX,
-    scaleY,
-    borderRadius: anchor.radius,
-    opacity: 0.92,
-    duration: 0.28,
-    ease: 'expo.inOut',
-    onComplete: () => {
-      gsap.set(panel, { clearProps: 'willChange' })
-      panelTween = null
-      clearSearchAnchor()
-    },
+  syncSearchLayer()
+  playEnter(panel, overlay)
+  // A reopen during the exit keeps the same palette, which only focuses on a fresh open.
+  if (!overlay.contains(document.activeElement))
+    overlay.querySelector<HTMLInputElement>('.tx-command-palette__input')?.focus()
+}
+
+function hide() {
+  unlockPageScroll()
+  cancelSearch()
+  if (!paletteOpen.value)
+    return
+  playExit().then(() => {
+    if (open.value)
+      return
+    // The finished animations go with the overlay; cancelling them here would flash it.
+    motion = []
+    paletteOpen.value = false
+    resetSearch()
+  }, () => {
+    // Cancelled by a reopen, which now owns the panel.
   })
 }
 
-// app.vue only mounts this component once `open` is already true, so without `immediate`
-// the lock never ran and the page kept scrolling behind the palette.
 watch(open, (value) => {
-  if (value) {
-    lockPageScroll()
-    return
-  }
-  unlockPageScroll()
-  if (!value)
-    resetSearch()
-}, { immediate: true })
+  if (value)
+    void show()
+  else
+    hide()
+})
+
+// Closes as a navigation starts rather than when it lands. One already under way when the search
+// opened, from a link clicked just before the trigger, lands after it, and closing then undid the
+// open the reader had only just asked for.
+const removeNavigationGuard = router.beforeEach(() => {
+  if (open.value)
+    closeSearch()
+})
+
+// Mounted by an open, this shows straight away rather than from onMounted, which waits for the
+// whole page when the open came while it was still loading. Mounted idle, it fetches the index
+// now, so the first search does not wait for it: over a slow link that took seconds.
+if (open.value)
+  void show()
+else
+  preloadSearch()
 
 onBeforeUnmount(() => {
+  removeNavigationGuard()
+  cancelMotion()
+  cancelSearch()
   unlockPageScroll()
 })
 </script>
 
 <template>
   <TxCommandPalette
-    v-model="open"
+    :model-value="paletteOpen"
+    :query="query"
     :commands="commands"
     :placeholder="t('search.placeholder')"
     :empty-text="emptyText"
     overlay-class="NexusGlobalSearchOverlay"
     panel-class="NexusGlobalSearchPanel"
     :max-height="195"
-    @open="runFlipAnimation"
-    @close="runFlipCloseAnimation"
+    @update:model-value="onPaletteModelUpdate"
     @update:query="onQueryUpdate"
     @select="onSelect"
   >
@@ -383,12 +434,25 @@ onBeforeUnmount(() => {
   touch-action: none;
 }
 
+// The backdrop and panel are animated with WAAPI in the script. The palette's own CSS
+// fade would compete with that (a running CSS transition outranks an animation), so it
+// is switched off here: the classes still come and go, but change nothing.
+:global(.NexusGlobalSearchOverlay.tx-command-palette__overlay.tx-command-palette-enter-active),
+:global(.NexusGlobalSearchOverlay.tx-command-palette__overlay.tx-command-palette-leave-active) {
+  transition: none;
+}
+
+:global(.NexusGlobalSearchOverlay.tx-command-palette__overlay.tx-command-palette-enter-from),
+:global(.NexusGlobalSearchOverlay.tx-command-palette__overlay.tx-command-palette-leave-to) {
+  opacity: 1;
+}
+
 :global(.NexusGlobalSearchPanel.tx-command-palette__panel) {
   // The panel reserves 30vh below itself, which pushes the flex-centred box up by
   // half of that. Resting top therefore lands on `50vh - panelHeight / 2 - 15vh`,
-  // i.e. the optical centre rather than the geometric one. The FLIP tween in
-  // `runFlipAnimation` animates x/y back to 0, so this stays the animation's end
-  // position without any JS coordinate maths.
+  // i.e. the optical centre rather than the geometric one. The open and close motion
+  // only animates `translate` and `scale`, which settle back to none, so this stays
+  // the resting position without any JS coordinate maths.
   margin-bottom: 30vh;
   position: relative;
   z-index: var(--nexus-search-layer, 1);
@@ -416,7 +480,10 @@ onBeforeUnmount(() => {
 }
 
 :global(.NexusGlobalSearchPanel .tx-command-palette__list) {
-  min-height: 99px;
+  // As tall as its cap, so hotspots, one hit and the empty state all give the panel
+  // the same height. The panel is centred, and every change in height used to move
+  // the input up or down by half of it while the user was typing.
+  min-height: var(--tx-command-palette-max);
   padding: 10px;
   gap: 5px;
 }
@@ -462,6 +529,7 @@ onBeforeUnmount(() => {
 }
 
 :global(.NexusGlobalSearchPanel .tx-command-palette__empty) {
+  flex: 1;
   min-height: 75px;
   display: flex;
   align-items: center;

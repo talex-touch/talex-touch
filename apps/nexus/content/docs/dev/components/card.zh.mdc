@@ -234,7 +234,7 @@ code: |
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `variant` | `'solid' \| 'dashed' \| 'plain'` | `'solid'` | 边框形态；`plain` 无边框、无悬停反馈。 |
-| `background` | `'pure' \| 'blur' \| 'glass' \| 'refraction' \| 'mask'` | `'pure'` | 表面材质。 |
+| `background` | `'pure' \| 'blur' \| 'glass' \| 'refraction' \| 'mask'` | `'refraction'` | 表面材质。 |
 | `shadow` | `'none' \| 'soft' \| 'medium'` | `'none'` | 阴影强度。 |
 | `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | 内边距预设：`10` / `12` / `16` px。 |
 | `radius` | `number` | `18` | 圆角（px）。 |
@@ -253,8 +253,8 @@ code: |
 | `refractionLightFollowMouse` | `boolean` | `false` | 高光锚点跟随指针。 |
 | `refractionLightFollowIntensity` | `number` | `0.45` | 跟随权重（0–1），影响色散角度与强度。 |
 | `refractionLightSpring` | `boolean` | `true` | 光源跟随使用弹簧过渡。 |
-| `refractionLightSpringStiffness` | `number` | `0.18` | 光源弹簧刚度，收敛到 `0.01–0.55`。 |
-| `refractionLightSpringDamping` | `number` | `0.84` | 光源弹簧阻尼，收敛到 `0.55–0.99`。 |
+| `refractionLightSpringStiffness` | `number` | `0.15` | 光源弹簧刚度，收敛到 `0.01–0.55`。 |
+| `refractionLightSpringDamping` | `number` | `0.6` | 光源弹簧阻尼，收敛到 `0.55–0.99`。 |
 | `flowLight` | `'corners' \| 'rim' \| 'aurora' \| false` | - | 表面上的流光底；不传或 `false` 即关闭。 |
 | `flowLightIntensity` | `number` | `1` | 流光底强度，乘到主题透明度上。 |
 | `clickable` | `boolean` | `false` | 启用悬停与按压反馈（缩至 `0.985`），并派发 `click`。 |
@@ -309,7 +309,8 @@ code: |
 
 | 变量 | 写入方 | 用途 |
 |------|--------|------|
-| `--tx-card-radius` | `radius` | 根节点、表面、封面与加载层的圆角。 |
+| `--tx-card-radius` | `radius` | 根节点的圆角。表面、封面与加载层在边框以内，取它减去 `--tx-card-border-width`，与根节点同心。 |
+| `--tx-card-border-width` | `variant` | 边框宽度：`solid`、`dashed` 为 1px，`plain` 为 0；不要手动设置。 |
 | `--tx-card-padding` | `padding` 或 `size` | 内边距与封面的负外边距。 |
 | `--tx-card-dx` / `--tx-card-dy` | 惯性动效 | 根节点位移；不要手动设置。 |
 | `--tx-card-fake-background` | 调用方 / 主题 | `mask` 与折射降级表面的底色。 |

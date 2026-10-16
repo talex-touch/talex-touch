@@ -24,29 +24,33 @@ description: 为什么标准 border-radius 圆弧倒角在高端界面中显得�
 
 ## 超椭圆方程与 Apple 平滑圆角
 
-Apple 从 iOS 7 起采用超椭圆（Lamé 曲线）替代标准圆弧：
+Apple 从 iOS 7 起把应用图标换成「连续圆角」，这种外形常被近似为超椭圆（Lamé 曲线）：
 $$\left| \frac{x}{a} \right|^n + \left| \frac{y}{b} \right|^n = 1 \quad (n \approx 4 \sim 5)$$
-通过在直线与圆弧之间引入平滑爬升的过渡段（Clothoid / Euler 螺线），让交界处的曲率变化率为零。
+$n > 2$ 时，超椭圆与直线相接处的曲率为 0，曲率接得上（$G^2$）；$n > 3$ 时，那里的曲率变化率也为 0，曲率从 0 平缓爬升到 45° 方向的峰值。
+
+:::TuffDemoWrapper{demo="ConceptCurvatureCombDemo"}
+:::
 
 ## TuffEx 的工程实现方案
 
-在 Web 与 Electron 体系中，TuffEx 采用渐进增强方式实现 G2 平滑：
+TuffEx 用 CSS `corner-shape` 画超椭圆圆角：`border-radius` 决定拐角占多大，`superellipse(K)` 的指数 $n = 2^K$。`tx-squircle` 把圆角放大到 $(1 + s) \cdot R$，再取让 45° 方向切入深度与半径 R 的圆弧相同的指数。默认 $s = 0.6$，得到 $1.6R$ 与 `superellipse(1.777)`（$n \approx 3.43$）：
 
 :::TuffCodeBlock{lang="scss"}
 ---
 code: |
-  @mixin tx-squircle($radius: 16px) {
-    @supports (corner-shape: squircle) {
-      border-radius: $radius;
-      corner-shape: squircle;
-    }
-    @supports not (corner-shape: squircle) {
-      border-radius: $radius;
-      // 采用精密平滑贝塞尔曲线或 SVG Mask 赋予超椭圆外形
-      clip-path: url("data:image/svg+xml,...");
+  // packages/tuffex/packages/components/style/mixins.scss
+  @mixin tx-squircle($radius: 16px, $smoothness: $tx-squircle-smoothness, $inset: 0) {
+    border-radius: tx-squircle-inset($radius, $inset);
+    @supports (corner-shape: superellipse(2)) {
+      border-radius: tx-squircle-inset(tx-squircle-radius($radius, $smoothness), $inset);
+      corner-shape: superellipse(#{tx-squircle-exponent($smoothness)});
     }
   }
 ---
 :::
 
-在大尺寸悬浮卡片和 CoreBox 视窗上，G2 连续曲率消除了四周生硬的折角，使琉光折射边缘呈现自然的浑然一体感。
+- **回退**：不支持 `corner-shape` 的浏览器（Safari、Firefox）保留普通圆角。TuffEx 不用 SVG 遮罩补形：遮罩会剪掉外侧阴影，还让内部的 `backdrop-filter` 取不到背景，默认的琉光材质会失效。
+- **令牌与工具类**：拿不到 mixin 的代码读 `--tx-corner-smooth-scale` 与 `--tx-corner-smooth-shape`；模板里用 `.tx-corner-smooth-sm`、`-md`、`-lg`（8 / 16 / 24px）。
+- **子层**：用 `border-radius: inherit` 复制外形的子层要同时写 `corner-shape: inherit`，这个属性不会继承。在边框或内边距以内的子层不能直接继承，要给 `tx-squircle` 传 `$inset`，半径减去这段距离，才与宿主同心。
+
+TxCard、TxModal、TxCommandPalette、TxFlipOverlay 与各类 Dialog 已用上平滑圆角，CoreBox 在「圆角」外观下也是，琉光折射的边缘沿着同一条连续曲线走。

@@ -15,6 +15,8 @@ const labels = computed(() => (locale.value === 'zh'
       confirmTitle: '确认操作',
       confirmHint: 'Tab 留在确认框内；Escape 只关闭确认框，抽屉保持打开。',
       cancel: '取消',
+      closeDrawer: '关闭抽屉',
+      close: '关闭',
     }
   : {
       trigger: 'Open Drawer',
@@ -25,6 +27,8 @@ const labels = computed(() => (locale.value === 'zh'
       confirmTitle: 'Confirm action',
       confirmHint: 'Tab stays in this dialog; Escape closes only this dialog and leaves the drawer open.',
       cancel: 'Cancel',
+      closeDrawer: 'Close drawer',
+      close: 'Close',
     }))
 </script>
 
@@ -32,14 +36,14 @@ const labels = computed(() => (locale.value === 'zh'
   <TxButton @click="visible1 = true">
     {{ labels.trigger }}
   </TxButton>
-  <TxDrawer v-model:visible="visible1" :title="labels.title">
+  <TxDrawer v-model:visible="visible1" :title="labels.title" :close-label="labels.closeDrawer">
     <p>{{ labels.body1 }}</p>
     <p>{{ labels.body2 }}</p>
     <TxButton @click="confirmVisible = true">
 {{ labels.confirm }}
 </TxButton>
   </TxDrawer>
-  <TxModal v-model="confirmVisible" :title="labels.confirmTitle">
+  <TxModal v-model="confirmVisible" :title="labels.confirmTitle" :close-label="labels.close">
     <div>{{ labels.confirmHint }}</div>
     <template #footer>
       <TxButton @click="confirmVisible = false">

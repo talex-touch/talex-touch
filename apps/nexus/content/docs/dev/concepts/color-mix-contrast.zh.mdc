@@ -21,14 +21,19 @@ TuffEx 的解决方案是：**语义文字墨水绝不直接取用纯色相，�
 :::TuffCodeBlock{lang="scss"}
 ---
 code: |
-  // TuffEx 对比度守恒混色公式
-  color: color-mix(
-    in srgb, 
-    var(--tx-color-danger, #f56c6c) 55%, 
+  // TxModeChip 的墨水：色相按占比混进主文字色
+  --tx-mode-chip-ink: color-mix(
+    in srgb,
+    var(--tx-color-danger, #f56c6c) 55%, // is-danger
     var(--tx-text-color-primary, #303133)
   );
+  // is-success：var(--tx-color-success, #67c23a) 45%
+  // is-warning：var(--tx-color-warning, #e6a23c) 45%
+  // is-info：   var(--tx-color-primary, #409eff) 50%
 ---
 :::
+
+占比按色相分开定：危险 55%，成功与警告 45%，信息 50%。信息色取主色 `--tx-color-primary`，因为 `--tx-color-info` 是灰色，看起来会像 muted 弱化态。
 
 - 在浅色模式下，主墨水为深灰色，混色后文字自动向下压暗，保证在浅色背景上足够清晰。
 - 在暗色模式下，主墨水为近白色，混色后文字自动向上提亮，保证在深色底板上发光通透。
@@ -39,10 +44,13 @@ code: |
 
 | 语义色系 | 传统纯色相对比度 | TuffEx color-mix 实测对比度 | 达标状态 |
 |---|---|---|---|
-| **Danger (危险)** | 2.61:1（模糊不达标） | **4.78:1** | **PASS（完全合规）** |
-| **Success (成功)** | 2.08:1（发灰难以识别） | **4.58:1** | **PASS（完全合规）** |
-| **Warning (警告)** | 2.03:1（黄褐色脏污） | **4.62:1** | **PASS（完全合规）** |
-| **Info / Primary** | 2.53:1（反差微弱） | **4.81:1** | **PASS（完全合规）** |
+| **Danger (危险)** | 2.61:1（模糊不达标） | **5.07:1** | **PASS（完全合规）** |
+| **Success (成功)** | 2.08:1（发灰难以识别） | **5.18:1** | **PASS（完全合规）** |
+| **Warning (警告)** | 2.03:1（黄褐色脏污） | **5.11:1** | **PASS（完全合规）** |
+| **Info / Primary** | 2.53:1（反差微弱） | **5.32:1** | **PASS（完全合规）** |
+
+:::TuffDemoWrapper{demo="ConceptColorMixContrastDemo"}
+:::
 
 ## 为什么禁用纯色相传递状态
 

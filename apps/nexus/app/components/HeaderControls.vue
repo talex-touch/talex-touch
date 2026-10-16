@@ -23,9 +23,9 @@ const { summonSearch } = useGlobalSearchState()
 const searchButtonLabel = computed(() => t('search.open'))
 const searchButtonAriaLabel = computed(() => t('search.openAria'))
 
-async function onSearchClick(event: MouseEvent) {
+function onSearchClick(event: MouseEvent) {
   const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
-  await summonSearch(target)
+  summonSearch(target)
 }
 </script>
 

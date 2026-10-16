@@ -36,7 +36,7 @@ Focus rings appear on `:focus-visible` only: a mouse click leaves no ring, keybo
 
 ## Contrast
 
-The high-contrast palette raises text and border contrast in light and dark, and follows the OS through `@media (prefers-contrast: more)`. Selectors that force it on or opt out are in [Theming](./theming.en.mdc).
+The high-contrast palette raises text and border contrast in light and dark, and material panels paint an opaque fill instead of blurring the page behind them; it follows the OS through `@media (prefers-contrast: more)`. Selectors that force it on or opt out, and what changes per component, are in [Theming](./theming.en.mdc).
 
 Token pairs that are easy to get wrong (a tinted badge on its own tint, a version pill on a dark page) carry their measured ratio in a comment beside the declaration.
 

@@ -1,9 +1,9 @@
 ---
-title: Surface 8-Material Taxonomy & Gatekeepers
-description: Why professional desktop interfaces require physical materiality; detailed taxonomy across Refraction, Glass, Acrylic, Mica, and explicit confirmation gatekeepers.
+title: Surface 5-Material Taxonomy & Gatekeepers
+description: Why professional desktop interfaces require physical materiality; the five TxBaseSurface modes (refraction, glass, blur, mask and pure), each component's default, and the confirmation gate for switching.
 ---
 
-# Surface 8-Material Taxonomy & Gatekeepers
+# Surface 5-Material Taxonomy & Gatekeepers
 
 Flat design eliminated spatial depth, while early skeuomorphism created visual clutter. Tuff introduces "sub-surface materiality" to establish lightweight yet grounded spatial order.
 
@@ -14,28 +14,30 @@ Physical materiality is an intuitive cognitive anchor, not decorative garnish:
 - **Depth Hierarchy**: Varying refractive indexes and blur radii immediately communicate focal boundaries.
 - **Cognitive Relief**: Translucent surfaces relieve visual tension compared to monolithic solid blocks.
 
-## The 8-Material Physical Matrix
+## The 5-Material Physical Matrix
 
-| Surface Mode | Rendering Pipeline | Physical Metaphor | Typical Target |
+`TxBaseSurface` has five values of `mode` (`BaseSurfaceMode`), each built from a few layers: the glass layer (`TxGlassSurface`) for `glass` and `refraction`, a backdrop-filter layer for `blur` and `refraction`, a tint layer for `mask`, and a refraction rim on `refraction` alone.
+
+| Surface Mode | Rendering Pipeline (Default Parameters) | Physical Metaphor | Default In |
 |---|---|---|---|
-| `refraction` (Default) | SVG Displacement Map + RGB Dispersion | Crystalline Prism | CoreBox main window, cards, dialogs |
-| `glass` | Backdrop Filter Blur + Specular Inset Ring | Frosted Glass | Ephemeral menus, floating action bars |
-| `acrylic` | Multi-stage Blur + Noise Scatter | Diffuse Acrylic | Sidebars, utility drawers |
-| `mica` | Harmonized Wallpaper Sampling | Dynamic Mica | Root window foundation (zero GPU hit) |
-| `mask` | Monochrome Translucent Alpha Mask | Ink Film | Rapid motion fallback, dense table rows |
-| `blur` | Native CSS `backdrop-filter: blur(20px)` | Basic Frost | Low-tier GPU fallback environments |
-| `flat` | Solid Monolithic Fill | Dense Polymer | High-contrast accessibility modes |
-| `plain` | Zero Style Passthrough | Empty Space | Structural layout wrapper |
+| `refraction` | The glass layer, with a backdrop blur-and-saturation layer and a 1px refraction rim over it | Crystalline Prism | Every component with a surface layer: TxBaseSurface, TxCard, TxFlipOverlay, and the overlay panels TxPopover, TxTooltip, TxDropdownMenu and TxContextMenu (and their submenus), TxSelect, TxSearchSelect |
+| `glass` | Glass layer: an SVG displacement map shifts R, G and B apart, then `saturate(1.8)`; Safari and Firefox fall back to a `backdrop-filter` blur | Prism Glass | No component's default |
+| `blur` | `backdrop-filter: blur(10px) saturate(1.5)` under a 10% tint of the overlay colour | Basic Frost | No component's default |
+| `mask` | Translucent tint at 0.75 opacity, no blur | Ink Film | No component's default; what `blur` and `glass` fall back to while they move |
+| `pure` | Opaque fill (`--tx-fill-color-lighter`); nothing shows through | Dense Polymer | No component's default |
 
-## The Absolute Rule: Default to Refraction
+:::TuffDemoWrapper{demo="ConceptSurfaceModesDemo"}
+:::
 
-In the TuffEx component family, **every container component featuring a surface layer must strictly default to `refraction`**.
+## The Design Rule: Default to Refraction
 
-This establishes the visual signature of Tuff. Whether in CoreBox, modals, drawers, or cards, refraction delivers a unified, refractive aesthetic across the desktop surface.
+TuffEx's design rules say that a container with a surface layer defaults to `refraction`, so that the whole system shares one visual signature instead of each component choosing its own.
+
+The component defaults follow the rule: `TxBaseSurface`'s `mode`, `TxCard`'s `background`, `TxFlipOverlay`'s `surface`, and the `panelBackground` of the pop-up panels in the table above (which all render through `TxBaseAnchor`) are all `refraction`. Dialogs and drawers such as `TxModal` and `TxDrawer` do not go through `TxBaseSurface` and have no mode to choose.
 
 ## Explicit Confirmation Gatekeeper for Mode Switching
 
-If a specialized scenario demands switching `surface` from `refraction` to another material (such as `flat` or `glass`):
+If a specialized scenario demands switching the material (`mode`, `background`, `surface` or `panelBackground`) from `refraction` to another one (such as `pure`, `mask`, `blur` or `glass`):
 - **Explicit manual user confirmation is mandatory**!
 - Neither AI coding agents nor engineers may arbitrarily override the default material.
 - This gatekeeper preserves design system integrity across distributed teams and automated workflows.

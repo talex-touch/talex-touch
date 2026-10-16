@@ -74,6 +74,12 @@ code: |
 | `result` | `{ toolCall }` | Result surface for the host's own rendering; replaces `output` when provided. |
 | `icon` | `{ status }` | Replaces the status icon. |
 
+### CSS Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--tx-tool-call-card-log-color` | `#d6e2f0` | Text colour of the log area. |
+
 ## Overview
 
 - The body follows `status`: `running` shows `logs`, `done` shows the `result` slot (falling back to `output`), and `error` shows `error` with a retry button; `input` shows whenever it is set.

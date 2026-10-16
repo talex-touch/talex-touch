@@ -1,42 +1,47 @@
 ---
-title: Adaptive Surface Deduction & 120Hz Fallback
-description: Pointer velocity sensing, window drag hooks, 0ms mask fallback, and 140ms asymmetric spring recovery to prevent frame drops.
+title: Surface Motion Fallback & Layered Recovery
+description: "How TxBaseSurface degrades in motion: the moving and autoDetect inputs, blur and glass switching to fallbackMode, and refraction's layered fallback and recovery."
 ---
 
-# Adaptive Surface Deduction & 120Hz Fallback
+# Surface Motion Fallback & Layered Recovery
 
-Refraction delivers crystalline aesthetics, but during 120Hz (ProMotion) window dragging, heavy displacement shaders must gracefully degrade to guarantee zero dropped frames.
+Refraction and backdrop blur both sample what lies behind them through `backdrop-filter`. When the surface moves with its element, the sampling lags behind the element's position, and the filter layers drag a misaligned patch of backdrop along. `TxBaseSurface` therefore degrades while it moves and recovers once it stops.
 
-## Why Runtime Auto Deduction is Essential
+## Where the Motion Signal Comes From
 
-Client runtimes exhibit extreme volatility:
-- The user may suddenly drag a window across monitors at high velocity.
-- The operating system may throttle clocks under Low Power Mode.
-- Integrated GPUs may hit memory bandwidth bottlenecks during rapid renders.
+`TxBaseSurface` measures no pointer speed and listens for no window drags or frame timings. It takes exactly two inputs:
+1. **The `moving` prop**: set to `true` by the host component while the host itself moves. In TuffEx, `TxBaseAnchor`'s pop-up panels set it during some of their open and close animations (`surfaceMotionAdaptation` defaults to `auto`), `TxFlipOverlay` sets it during its flip, and `TxCard` sets it during its inertial (`inertial`) follow motion.
+2. **`autoDetect`** (off by default): when on, the component listens on the surface element and every ancestor for `transitionstart`, `transitionend` and `transitioncancel` on `transform` / `translate`, and a `MutationObserver` watches their inline `style`: any of them carrying an inline `transform` counts as motion, and motion ends once none does.
 
-Forcing developers to sprinkle manual checks like `if (isDragging)` across views invites bugs. TuffEx abstracts this into the `autoDetect` perception engine.
+A host that drives `moving` from pointer speed has to debounce it itself. The figure below is such a host: speed above $1.2\text{px/ms}$ sets `moving` at once, and it clears only after 140ms below the threshold.
 
-## The autoDetect Sensor Matrix
+## Fast Fallback, Layered Recovery
 
-The system continuously tracks runtime physical signals:
-1. **Pointer Velocity Sensing**: Samples positions $\vec{s}(t)$ to compute instantaneous velocity $|\vec{v}| = \frac{\|\Delta \vec{s}\|}{\Delta t}$. Sustained speeds exceeding $1.2\text{px/ms}$ trigger the motion state.
-2. **Window Move / Resize Events**: Hooks Electron main-process native window movement events, dispatching immediate fallback signals.
-3. **Frame Budget Probes**: Monitors composite duration; frames exceeding 8ms trigger lightweight fallbacks.
+`blur` and `glass` switch the whole material:
+- **Fallback**: as soon as `moving` turns `true`, the rendered mode becomes `fallbackMode`. The default is `mask`, with the tint at `fallbackMaskOpacity` (0.95 by default on `TxBaseSurface`; `TxCard` passes 0.26); `pure` is the other choice.
+- **Recovery**: after motion ends the fallback holds for `max(transitionDuration, settleDelay)`, by default `max(299, 150)` = 299ms, then the original material returns.
 
-## Instant 0ms Fallback & 140ms Asymmetric Recovery
+`refraction` keeps its mode and degrades layer by layer instead:
+- **Fallback**: the glass and filter layers fade out over 140ms, a translucent cover rises to 0.55 over 180ms, the refraction parameters' blend drops to 0.28, and the refraction rim hides at once.
+- **Recovery**: it starts the moment motion ends, with no waiting period. The parameters are back in 182ms; the cover holds for 60ms, then clears over 227ms and is gone at 287ms; the glass and filter layers fade back over 220ms after an 80ms delay; 60ms after the recovery ends, the rim fades back over 220ms. Motion during the recovery goes straight back to the fallback.
 
-TuffEx applies an **asymmetric clock transition**:
+`pure` and `mask` have no filter layers and do nothing in motion.
 
-- **Fallback (0ms Instantaneous)**: As soon as rapid motion is detected, heavy shaders drop to an ultra-lightweight monochrome `mask` within one frame. GPU load drops immediately, sustaining full 120Hz tracking.
-- **Recovery (140ms Damped Hysteresis)**: When motion ceases, the engine does not switch back immediately (which would cause chatter if pointer jitter occurs). It waits 140ms to confirm stability, then smoothly restores refraction.
+:::TuffDemoWrapper{demo="ConceptSurfaceDeductionDemo"}
+:::
 
 ## State Machine Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Refraction_Active: Window resting (Default refraction)
-    Refraction_Active --> Mask_Fallback: Drag initiated / Velocity > 1.2px/ms (0ms instant)
-    Mask_Fallback --> Refraction_Active: Motion stopped for 140ms (Asymmetric spring restore)
-    Refraction_Active --> Blur_Degraded: Low Power Mode / GPU probe timeout
+    [*] --> Refraction_Active: mode = refraction
+    Refraction_Active --> Layered_Fallback: moving = true (at once)
+    Layered_Fallback --> Refraction_Recovering: moving = false
+    Refraction_Recovering --> Layered_Fallback: Motion during the recovery
+    Refraction_Recovering --> Refraction_Active: After 287ms (the rim fades back 60 + 220ms later)
+    [*] --> Blur_Glass_Active: mode = blur or glass
+    Blur_Glass_Active --> Fallback_Mode: moving = true (switches to fallbackMode at once)
+    Fallback_Mode --> Settling: moving = false
+    Settling --> Blur_Glass_Active: After 299ms
 ```
-This architecture harmonizes high-fidelity material simulation with unflinching desktop responsiveness.
+So a moving surface never drags a misaligned backdrop along, and it returns to full refraction once it stops.

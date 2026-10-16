@@ -1,6 +1,6 @@
 ---
 title: Alpha Noise Masks & Specular Tracking
-description: Overcoming dirty greys from overlay blending via mask-composite: intersect, and generating physical card cursor specular reflections.
+description: "Overcoming dirty greys from overlay blending via mask-composite: intersect, and the spring that lets TxCard's refraction light follow the pointer."
 ---
 
 # Alpha Noise Masks & Specular Tracking
@@ -25,26 +25,40 @@ code: |
     .tx-status-hint__wash {
       background-color: var(--tx-status-hint-accent, #67c23a);
       // Mask image intersects linear wash and fractal noise
-      mask-image: 
-        linear-gradient(to right, rgb(0 0 0 / var(--tx-wash-strength, 0.26)), transparent), 
-        url("data:image/svg+xml,..."); // Fractal noise SVG
+      mask-image:
+        linear-gradient(
+          to right,
+          rgb(0 0 0 / var(--tx-status-hint-wash-strength, 0.26)),
+          rgb(0 0 0 / calc(var(--tx-status-hint-wash-strength, 0.26) * 0.45)) 38%,
+          transparent
+        ),
+        $grain; // A 140px feTurbulence fractal-noise SVG
+      mask-size: 100% 100%, 140px 140px;
+      mask-repeat: no-repeat, repeat;
       mask-composite: intersect;
     }
   }
 ---
 :::
 
-The noise governs purely "how much light passes through"; the underlying canvas color stays completely clean.
+The noise governs purely "how much light passes through"; the underlying canvas color stays completely clean. The noise alpha averages about 0.6, so the 0.26 strength at the leading edge comes to roughly 16% in light themes; dark themes take 0.2, because the same tint reads louder on a dark page.
+
+:::TuffDemoWrapper{demo="ConceptNoiseMaskDemo"}
+:::
 
 ## Card Specular Light Cursor Tracking
 
-In `TxCard` and interactive elements, hovering moves a faint radial specular highlight across the card surface:
+`TxCard`'s light follow is off by default and works only with `background="refraction"` and `refraction-light-follow-mouse` turned on:
 
-- **Normalized Coordinates**: Moving the pointer updates normalized CSS custom properties (`--tx-card-light-x`, `--tx-card-light-y`).
-- **Subtle Ambient Alpha**: Specular opacity rests around `0.06`, casting a soft sheen across dark surfaces without competing with typography.
+- **Normalized Coordinates**: as the pointer moves over the card, the component converts its position to 0–1 coordinates within the card and uses them as the light's target; when the pointer leaves, the target returns to the centre (0.5, 0.5).
+- **Moving the Refraction's Light Point**: the light point goes through `TxBaseSurface`'s `refraction-light-x/y` into `--tx-surface-refraction-light-x/y`, which places several radial glows on the refraction's filter and tint layers, one of them at the mirrored point in the opposite corner. The component adds no separate white highlight.
+- **Strength and Angle Follow the Pointer**: the farther the light is from the centre, the more refraction strength it adds, up to 16 × `refraction-light-follow-intensity` (0.45 by default, so at most +7.2); the refraction angle is interpolated toward the pointer by the same factor.
 
-## Damped Smoothing & Normal Map Illusion
+## Spring Smoothing
 
-To prevent the highlight from jittering during rapid pointer travel, coordinates pass through an easing filter:
-$$\vec{P}_{\text{render}}(t) = \vec{P}_{\text{render}}(t-1) + \alpha \cdot (\vec{P}_{\text{cursor}}(t) - \vec{P}_{\text{render}}(t-1))$$
-As the radial highlight glances off the 1px card boundary, it creates the optical illusion of physical bevel refraction (Normal Map Illusion), heightening spatial depth.
+To keep the light from jumping mechanically when the pointer moves fast, the light point does not jump to the target; a spring integrated every frame carries it there:
+$$v \leftarrow \left(v + k\,(P_{\text{target}} - P)\,\Delta\right) c^{\Delta}, \qquad P \leftarrow \operatorname{clamp}(P + v\,\Delta,\ 0,\ 1)$$
+k is `refraction-light-spring-stiffness` (0.15 by default, clamped to 0.01–0.55), c is `refraction-light-spring-damping` (0.6 by default, clamped to 0.55–0.99), and Δ is the frame interval divided by 16.67ms (clamped to 0.1–2, and 1 on the first frame). Once both the remaining distance and the velocity are below 0.002 the light counts as settled and the loop stops. With `refraction-light-spring` off, the light point jumps straight to the target. Worked out at 60Hz, a jump at the defaults swings past the target by only about 3% and stays within 5% after about 130ms. The position step takes Δ too, so on a 120Hz or 144Hz display the light moves much as it does at 60Hz.
+
+:::TuffDemoWrapper{demo="ConceptSpecularLightDemo"}
+:::

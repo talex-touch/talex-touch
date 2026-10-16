@@ -223,7 +223,7 @@ The chart reuses ECharts' default timings (kumo pins `echarts ^6.0.0`):
 
 - First render: lines/areas reveal left to right through a clip, 1000ms `easings.linear`; bars grow out of the base axis (y lerps from `baseY` to the target, height 0 → target) and scatter symbols scale 0 → radius while fading in, all 1000ms cubicInOut.
 - Data updates: geometry morphs over 500ms cubicInOut.
-- State switches (emphasis / blur): 300ms cubicOut.
+- State switches (emphasis / blur): applied on the frame the pointer arrives, not over ECharts' 300ms cubicOut (TuffEx's hover rule).
 - `animationThreshold` 2000: a series with more points than that renders its final geometry with no animation.
 - Tooltip: closing waits 100ms, then fades out over 200ms and removes the DOM, so brief pointer excursions do not flicker; the position travels via `transform: translate3d()` and lets the browser interpolate the 400ms move (`cubic-bezier(0.23, 1, 0.32, 1)`); pointer tracking is throttled to 50ms, taking one leading and one trailing sample.
 - The plot outside the brush selection dims while dragging and restores on release — see the single `<mask>` above.

@@ -50,7 +50,7 @@ code: |
 :::
 
 ### Fake Mode
-`fake` paints the background on a pseudo-element, matching the existing `.fake-background` layering; slot content sits above it naturally.
+`fake` paints the background on a pseudo-element, matching the existing `.fake-background` layering; slot content sits above it naturally. Under `pure` that base is opaque and under `mask` it follows the mask opacity; under `blur`, `glass` and `refraction` it sits beneath the material at `opacity`, so the page behind still shows through to be blurred and refracted.
 :::TuffDemoWrapper{demo="BaseSurfaceFakeDemo" code-lang="vue"}
 ---
 code: |
@@ -135,10 +135,10 @@ code: |
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `mode` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction'` | `'pure'` | Surface mode: solid, mask, filter, glass, or refraction. |
+| `mode` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction'` | `'refraction'` | Surface mode: solid, mask, filter, glass, or refraction. |
 | `radius` | `string \| number` | - | Corner radius; inherits from the parent when unset. |
 | `color` | `string` | - | Base color for the solid or mask layer. |
-| `opacity` | `number` | `0.75` | Opacity in `mask` mode (0–1). |
+| `opacity` | `number` | `0.75` | Opacity in `mask` mode (0–1); in fake mode, also the opacity of the base colour under the `blur` / `glass` / `refraction` material. |
 | `fallbackMaskOpacity` | `number` | - | Opacity when degraded to `mask` (0–1). |
 | `blur` | `number` | `10` | Filter-layer blur radius in px. |
 | `filterSaturation` | `number` | `1.5` | Filter-layer saturation. |
@@ -195,7 +195,7 @@ code: |
 | `--tx-surface-refraction-strength` | `refractionStrength` model | Optical strength blended across rest, motion, and recovery. |
 | `--tx-surface-fake-index` | `fakeIndex` prop | z-index of the pseudo-element layer. |
 | `--tx-surface-fake-bg` | `color` prop or theme fallback | Background color of the pseudo-element. |
-| `--tx-surface-fake-opacity` | mask opacity model | Opacity of the pseudo-element. |
+| `--tx-surface-fake-opacity` | 1 under `pure`, the mask opacity under `mask`, `opacity` otherwise | Opacity of the pseudo-element. |
 | `--tx-surface-mask-opacity-percent` | mask opacity model | Mask opacity as a percentage (internal; do not override). |
 | `--tx-surface-motion-cover-opacity` | motion state model | Opacity of the refraction motion cover (internal). |
 | `--tx-surface-refraction-edge-opacity` | optics model | Opacity of the refraction edge highlight (internal). |
@@ -211,6 +211,7 @@ code: |
 - `refraction` keeps its mode in motion: the glass / blur layers that lose their sampling fade out, a translucent motion cover holds the weight, and both cross-fade back on settle.
 - Passing any of `refractionStrength`, `refractionAngle`, or `refractionProfile` switches to the derived refraction model; unset ones fall back to `62` / `-24` / `'filmic'`.
 - `autoDetect` watches `style` changes on the root and its ancestors plus `transitionstart` / `transitionend` / `transitioncancel`, and removes its listeners on unmount.
+- Under high contrast (triggers in [Theming](./theming.en.mdc)), every mode paints only the opaque root background, like `pure`: the glass, blur, mask, motion-cover and refraction-edge layers don't render, and the `fake` base shows at full opacity.
 
 ## Technologies
 
