@@ -378,4 +378,22 @@ describe('txButton', () => {
       vi.useRealTimers()
     }
   })
+  it('does not set inline style height when loading changes', async () => {
+    const wrapper = mount(Button, {
+      props: {
+        loading: false,
+      },
+      slots: {
+        default: 'Check Updates',
+      },
+    })
+
+    await wrapper.setProps({ loading: true })
+    await wrapper.vm.$nextTick()
+    await wrapper.setProps({ loading: false })
+    await wrapper.vm.$nextTick()
+
+    const style = wrapper.attributes('style') ?? ''
+    expect(style).not.toMatch(/height:\s*\d+px/)
+  })
 })
