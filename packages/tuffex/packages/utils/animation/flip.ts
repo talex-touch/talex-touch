@@ -61,9 +61,13 @@ export function useFlip(targetRef: Ref<HTMLElement | null>, opts: FlipOptions = 
       el.style.transitionProperty = ''
       el.style.transitionDuration = '0ms'
       el.style.transitionTimingFunction = ''
-      el.style.width = `${freezeRect.width}px`
-      el.style.height = `${freezeRect.height}px`
-      el.offsetWidth
+      const shouldWidth = toValue(opt.size?.width) ?? true
+      const shouldHeight = toValue(opt.size?.height) ?? true
+      if (shouldWidth)
+        el.style.width = `${freezeRect.width}px`
+      if (shouldHeight)
+        el.style.height = `${freezeRect.height}px`
+      void el.offsetWidth
     }
 
     running.value = false
@@ -178,6 +182,10 @@ export function useFlip(targetRef: Ref<HTMLElement | null>, opts: FlipOptions = 
       props.push('height')
 
     if (props.length === 0) {
+      if (shouldWidth && prevWidth)
+        el.style.width = prevWidth
+      if (shouldHeight && prevHeight)
+        el.style.height = prevHeight
       opt.onAfter()
       running.value = false
       return
