@@ -1265,6 +1265,22 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
       return
     }
 
+    if (active.phase === 'awaiting-health' || active.phase === 'handoff-started') {
+      try {
+        await this.installCoordinator?.confirmStartupHealth()
+        return
+      } catch (error) {
+        updateLog.error('Failed to confirm startup health during lifecycle restore', { error })
+        await this.failLifecycle(
+          active,
+          'UPDATE_HEALTH_CHECK_FAILED',
+          error instanceof Error ? error.message : 'Startup health check failed',
+          true
+        )
+        return
+      }
+    }
+
     if (active.currentVersion && active.currentVersion !== this.currentVersion) {
       await this.failLifecycle(
         active,
