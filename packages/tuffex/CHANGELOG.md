@@ -4,7 +4,7 @@
 
 ### 📦 组件变动 (Components)
 
-- **更新组件**: `alert`, `attachment-tray`, `dialog`, `drawer`, `fine-tune-card`, `image-gallery`, `markdown-editor`, `modal`, `stream-markdown`, `thinking-orb`, `toast`
+- **更新组件**: `alert`, `attachment-tray`, `base-surface`, `dialog`, `drawer`, `fine-tune-card`, `image-gallery`, `markdown-editor`, `modal`, `stream-element`, `stream-markdown`, `stream-text`, `thinking-orb`, `toast`
 
 ### ✨ 组件增强
 
@@ -14,6 +14,11 @@
 - `TxModal` 新增 `closeLabel`：头部关闭按钮的可访问名称，默认 `'Close'`，此前写死为英文；`TModal` 同步转发。
 - 此前写死为英文的图标按钮名称改为可传入的 props，默认值与此前一致：`TxDrawer` 新增 `closeLabel`（默认 `'Close drawer'`）；`TxAlert` 与 `TxBottomDialog` 新增 `closeLabel`（默认 `'Close'`）；`TxToastHost` 新增 `ariaLabel`（通知区域名称，默认 `'Notifications'`）与 `closeLabel`（每条通知的关闭按钮，默认 `'Dismiss notification'`）；`TxMermaidBlock` 新增 `zoomLabel`、`previewLabel`、`closeLabel`、`errorText`，以及渲染失败后源码复制按钮的 `copyLabel` / `copiedLabel`；`TxCodeBlock` 新增复制按钮的 `copyLabel` / `copiedLabel`（默认 `'Copy'` / `'Copied'`）与预览框名称的 `frameLabelFormatter`（默认 `` (lang) => `${lang} preview` ``）；`TxStreamMarkdown` 新增 `codePreviewText`、`codeSourceText`、`codeFrameLabelFormatter`、`copyCodeText`、`copiedCodeText`、`diagramZoomLabel`、`diagramPreviewLabel`、`diagramCloseLabel`、`diagramErrorText`，只转发给内置的 `TxCodeBlock` 与 `TxMermaidBlock`，自定义渲染器仍只收到 `StreamMarkdownBlockContext`；`TxFineTuneCard` 新增 `layoutLabels`，按 `row` / `col` / `grid` 覆盖三个布局选项的名称，未给的沿用 `'<layout> layout'`；另新增 `valueLabelFormatter`，由标签生成四个数值框的 `aria-label`（默认 `` (label) => `${label} value` ``）。
 - 重写 `TxMarkdownEditor`：所见即所得改为按块渲染，光标进入加粗、链接、行内公式等格式时露出 Markdown 标记，可直接编辑；源码模式由 `<textarea>` 改为按需加载的 CodeMirror 6；三种模式共用同一份文档与撤销历史。新增 props：`math`（`$…$` / `$$…$$` 经 KaTeX 渲染）、`emoji`（`:shortcode:` 渲染、`:` 补全与表情选择器）、`highlight`（`==text==` 与五色高亮笔）、`callouts`（GitHub 式 `[!NOTE]` 等提示块）、`slash`（段首 `/` 打开块菜单）、`bubble`（选中文字浮出格式条）与 `statusBar`（字数、字符数与协同者），均默认开启；`codeTheme`（代码块语法高亮预设 `github` / `one` / `vitesse` / `catppuccin` / `solarized`，随编辑器明暗切换，默认 `github`，`none` 关闭）；`ai`（格式条里的 AI 改写，可流式返回，查看逐词改动后替换、插入到下方、重试或放弃）、`comments`（评论线程，锚点随本地与远端编辑移动，原文被删时显示为已脱离；`user` 为本地作者，也是协同者看到的身份）与 `collaboration`（多人协同的变更集传输接口：编辑器只产出和应用变更集，并发变换交给适配器），不传则不启用；`uploadImage`（粘贴、拖入或选择的图片先以带进度的占位插入，完成后换成返回的地址，删除占位即中止上传），不传时图片按钮改为填写地址；`labels` 覆盖全部界面文字。未传 `linkPrompt` 时使用内置的链接输入框，此前链接按钮不起作用。新增事件 `update:comments`、`comment-create`、`comment-reply`、`comment-resolve`、`comment-delete`、`upload-error`、`ai-error`；暴露方法新增 `getSelection`、`setSelection`、`insert`，`setValue` 改为同步，并作为一次编辑发给协同者。工具栏新增 `highlight`、`taskList`、`image`、`table`、`codeBlock`、`math`、`divider`、`emoji`，原有键名不变。任务列表的勾选框改用 `TxCheckbox` 的外观与勾选动效，只有被点击的那个框播放动画，可编辑时在预览模式下也能点击切换。新增导出 `MARKDOWN_EDITOR_DEFAULT_LABELS`、`MARKDOWN_EDITOR_HIGHLIGHT_COLORS`、`MARKDOWN_EDITOR_CALLOUT_TYPES`、`MARKDOWN_EDITOR_CODE_THEMES`、`MARKDOWN_EDITOR_AI_ACTIONS`，变更集工具 `applyMarkdownChanges`、`composeMarkdownChanges`、`mapMarkdownPosition`、`transformMarkdownChanges`，以及配套类型。
+- `TxBaseSurface` 新增 `systemBackdrop`（默认 `false`）：表面铺在窗口自身的系统材质上时打开，例如透明 Electron 窗口的 vibrancy 或 Mica。页面里的 `backdrop-filter` 采不到这层材质，只会把表面自己的底色再采一遍叠上去，桌面透不上来；打开后玻璃层不渲染，滤镜层的 `backdrop-filter` 置为 `none`、只留着色，模糊交给系统，底色、遮罩、流光与描边照常绘制。表面不再采样页面，`moving` 与 `autoDetect` 随之失效。
+- `TxModal` 的面板改由 `TxBaseSurface` 绘制，默认 `refraction` 材质。新增 `surface`（默认 `'refraction'`，不认识的值按 `refraction` 处理）、`surfaceColor`（材质下垫的底色，默认跟随主题）与 `surfaceOpacity`（这层底色的不透明度，`mask` 下默认 0.96，其余材质 0.5）。遮罩的变暗与模糊移到遮罩层自己的伪元素上，面板的材质采到的是页面而不是遮罩；面板的阴影与内描边也移到伪元素上。开合时面板只缩放、不整体淡入淡出：头部、正文、底栏、阴影与描边、材质的各层各自淡入淡出，带背景滤镜的材质从第一帧到最后一帧都采着页面；不带背景滤镜的材质与高对比度下的材质整体淡入淡出。新增减少动态效果的处理：`prefers-reduced-motion: reduce` 时面板原地淡入淡出，不缩放、不位移。
+- `TxDrawer` 的面板改由 `TxBaseSurface` 绘制，默认 `refraction` 材质。新增 `surface`、`surfaceColor`（默认 `var(--tx-drawer-panel-background)`）与 `surfaceOpacity`（`mask` 下默认 0.96，其余材质 0.5）。`panelTransparent` 不再给面板另加 18px 模糊，改为把这层底色调薄到 0.78 与 0.3；内部变量 `--tx-drawer-panel-background-transparent` 随之移除。面板滑入滑出期间表面按 `moving` 处理，滑动结束后恢复；中途反向滑动时同样成立。
+- `TxStreamText` 与 `TxStreamElement` 写完的文字按 `text-wrap-style: pretty` 断行，段末不再只剩一两个词；仍在写入的那段保持 `auto`，每到一个词不重算整段断行。宿主设置的 `nowrap` 不受影响。
+- 基础样式的工具类 `.tx-help-text` 补上 `text-wrap: pretty`，与 `.tx-prose p`、`.tx-description` 一致：文档此前已写明，样式缺了这一条。
 
 ### 🐛 组件修复
 
