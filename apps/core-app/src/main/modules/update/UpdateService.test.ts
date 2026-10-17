@@ -747,6 +747,44 @@ describe('UpdateServiceModule facade', () => {
       await service.onDestroy()
     }
   })
+  it('confirms startup health instead of failing when restoring an awaiting-health attempt', async () => {
+    const service = await createService()
+    const internal = service as unknown as {
+      restoreLifecycleState: () => Promise<void>
+      installCoordinator: {
+        initialize: () => Promise<void>
+        confirmStartupHealth: () => Promise<void>
+      }
+    }
+    const initSpy = vi.spyOn(internal.installCoordinator, 'initialize').mockResolvedValue(undefined)
+    const confirmSpy = vi
+      .spyOn(internal.installCoordinator, 'confirmStartupHealth')
+      .mockResolvedValue(undefined)
+
+    const created = await mocks.lifecycleRepository.createChecking({
+      id: 'attempt-awaiting-health',
+      currentVersion: '0.9.0',
+      channel: AppPreviewChannel.RELEASE,
+      installOnNormalQuit: true,
+      now: 100
+    })
+    await mocks.lifecycleRepository.transition({
+      attemptId: created.attemptId,
+      to: 'awaiting-health',
+      patch: { targetVersion: '1.0.0', releaseTag: 'v1.0.0' }
+    })
+
+    try {
+      await internal.restoreLifecycleState()
+      expect(confirmSpy).toHaveBeenCalled()
+      expect(initSpy).toHaveBeenCalled()
+      const latest = await mocks.lifecycleRepository.getLatest()
+      expect(latest?.error).toBeNull()
+      expect(latest?.phase).toBe('awaiting-health')
+    } finally {
+      await service.onDestroy()
+    }
+  })
 
   it('restores and fails an obsolete available attempt whose version is no longer a candidate', async () => {
     const service = await createService()

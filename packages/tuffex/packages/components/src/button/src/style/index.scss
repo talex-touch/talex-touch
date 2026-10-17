@@ -22,6 +22,7 @@
   min-width: 80px;
   --tx-button-height: 32px;
   height: var(--tx-button-height);
+  min-height: var(--tx-button-height);
 
   user-select: none;
   /*
