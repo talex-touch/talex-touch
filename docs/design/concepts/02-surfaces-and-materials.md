@@ -28,7 +28,7 @@ TuffEx 提出的**“次表面材质学”（Sub-surface Materiality）**，借�
 
 ### 5.2 默认材质一律为 `refraction` 的严肃铁律
 
-在 TuffEx 体系中，**带材质层的容器默认材质一律为 `refraction`（琉光/折射）**。组件的默认值都照这条规则取：`TxBaseSurface` 的 `mode`、`TxCard` 的 `background`、`TxFlipOverlay`、`TxModal` 与 `TxDrawer` 的 `surface`，以及 `TxPopover`、`TxTooltip`、`TxDropdownMenu` 与 `TxContextMenu`（及各自的子菜单）、`TxSelect`、`TxSearchSelect` 这些弹出面板的 `panelBackground`（它们都经 `TxBaseAnchor` 渲染）。`TxCommandPalette`、`TxPopperDialog`、`TxBlowDialog`、`TxBottomDialog` 与 `TxTouchTip` 这几种对话框目前不经过 `TxBaseSurface`，没有材质可选。
+在 TuffEx 体系中，**带材质层的容器默认材质一律为 `refraction`（琉光/折射）**。组件的默认值都照这条规则取：`TxBaseSurface` 的 `mode`、`TxCard` 的 `background`、`TxFlipOverlay`、`TxModal`、`TxDrawer`、`TxCommandPalette` 与 `TxPopperDialog`、`TxBlowDialog`、`TxBottomDialog`、`TxTouchTip` 几种对话框的 `surface`，以及 `TxPopover`、`TxTooltip`、`TxDropdownMenu` 与 `TxContextMenu`（及各自的子菜单）、`TxSelect`、`TxSearchSelect` 这些弹出面板的 `panelBackground`（它们都经 `TxBaseAnchor` 渲染）。
 
 core-app 的 CoreBox 同样铺 `refraction`，但它是透明窗口，模糊来自窗口自身的系统材质（macOS 的 vibrancy、Windows 的 Mica）。页面里的 `backdrop-filter` 采不到这层材质，只会把表面自己的底色再采一遍、叠在原底色上，直到它不再透明；所以 CoreBox 的表面开着 `systemBackdrop`：不跑任何 `backdrop-filter`，模糊交给系统，表面只铺底色、光与描边。
 

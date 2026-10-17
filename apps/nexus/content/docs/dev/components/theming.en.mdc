@@ -128,7 +128,7 @@ Under high contrast, components stop letting the page through:
 
 | Part | Under high contrast |
 |------|---------------------|
-| Material panels: every `TxBaseSurface` mode but `plain` (Card, BaseAnchor panels and the rest build on it; `plain` paints no material and gets no fill in high contrast either), GlassSurface, Toast, NavBar, TabBar, Picker, PopperDialog, TouchTip, Slider, the RadioGroup indicator, the ProgressBar mask, StatCard, Drawer's transparent panel, MotionTransition's glass curtain | An opaque fill; no blur, no refraction, no rim light |
+| Material panels: every `TxBaseSurface` mode but `plain` (Card, BaseAnchor panels, the command palette, the dialogs and the rest build on it; `plain` paints no material and gets no fill in high contrast either), GlassSurface, Toast, NavBar, TabBar, Picker, Slider, the RadioGroup indicator, the ProgressBar mask, StatCard, Drawer's transparent panel, MotionTransition's glass curtain | An opaque fill; no blur, no refraction, no rim light |
 | Scrims: Modal, Drawer, BlowDialog | Keep their dimming, lose the frost |
 | Layers over content: LoadingOverlay, the Card and DataTable loading veils, ImageUploader's remove button | Opaque, hiding what's under them |
 | Decoration: FlowLight, the GlowText shine, GradualBlur | Hidden |

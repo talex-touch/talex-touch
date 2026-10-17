@@ -128,7 +128,7 @@ code: |
 
 | 部件 | 高对比度下 |
 |------|-----------|
-| 材质面板：`TxBaseSurface` 除 `plain` 外的所有模式（Card、BaseAnchor 浮层等都基于它；`plain` 本来不画材质，高对比度下也不加底色）、GlassSurface、Toast、NavBar、TabBar、Picker、PopperDialog、TouchTip、Slider、RadioGroup 指示块、ProgressBar 遮罩、StatCard、Drawer 的透明面板、MotionTransition 的玻璃幕 | 不透明底色，不模糊、不折射、没有边缘高光 |
+| 材质面板：`TxBaseSurface` 除 `plain` 外的所有模式（Card、BaseAnchor 浮层、命令面板与各类对话框等都基于它；`plain` 本来不画材质，高对比度下也不加底色）、GlassSurface、Toast、NavBar、TabBar、Picker、Slider、RadioGroup 指示块、ProgressBar 遮罩、StatCard、Drawer 的透明面板、MotionTransition 的玻璃幕 | 不透明底色，不模糊、不折射、没有边缘高光 |
 | 遮罩：Modal、Drawer、BlowDialog | 保留压暗，去掉磨砂 |
 | 盖在内容上的层：LoadingOverlay、Card 与 DataTable 的加载层、ImageUploader 的删除按钮 | 不透明，遮住下面的内容 |
 | 装饰：FlowLight、GlowText 的扫光、GradualBlur | 隐藏 |

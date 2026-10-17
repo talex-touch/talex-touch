@@ -38,7 +38,7 @@ description: 为什么专业桌面界面需要物理材质？解析 refraction�
 
 这是整个系统的统一视觉灵魂。无论是详情卡片、翻转浮层、模态框与抽屉，还是弹出层、下拉与右键菜单、选择器面板，都必须保持高阶的晶莹折射质感，绝不允许各自为政。
 
-组件的默认值都照这条铁律取 `refraction`：`TxBaseSurface` 的 `mode`、`TxCard` 的 `background`、`TxFlipOverlay`、`TxModal` 与 `TxDrawer` 的 `surface`，以及 `TxPopover`、`TxTooltip`、`TxDropdownMenu` 与 `TxContextMenu`（及各自的子菜单）、`TxSelect`、`TxSearchSelect` 的 `panelBackground`（它们都经 `TxBaseAnchor` 渲染）。`TxCommandPalette`、`TxPopperDialog`、`TxBlowDialog`、`TxBottomDialog` 与 `TxTouchTip` 这几种对话框目前不经过 `TxBaseSurface`，没有材质可选。
+组件的默认值都照这条铁律取 `refraction`：`TxBaseSurface` 的 `mode`、`TxCard` 的 `background`、`TxFlipOverlay`、`TxModal`、`TxDrawer`、`TxCommandPalette` 与 `TxPopperDialog`、`TxBlowDialog`、`TxBottomDialog`、`TxTouchTip` 几种对话框的 `surface`，以及 `TxPopover`、`TxTooltip`、`TxDropdownMenu` 与 `TxContextMenu`（及各自的子菜单）、`TxSelect`、`TxSearchSelect` 的 `panelBackground`（它们都经 `TxBaseAnchor` 渲染）。
 
 core-app 的 CoreBox 同样铺 `refraction`，但它是透明窗口，模糊来自窗口自身的系统材质（macOS 的 vibrancy、Windows 的 Mica）。页面里的 `backdrop-filter` 采不到这层材质，只会把表面自己的底色再采一遍、叠在原底色上，直到它不再透明；所以 CoreBox 的表面开着 `systemBackdrop`：不跑任何 `backdrop-filter`，模糊交给系统，表面只铺底色、光与描边（见 [BaseSurface](/docs/dev/components/base-surface)）。
 

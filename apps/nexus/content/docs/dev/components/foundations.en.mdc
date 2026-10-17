@@ -41,7 +41,7 @@ Single-line text containers set their vertical padding to **0.6–0.75x** the ho
 
 ### The Default to Refraction Mandate
 
-All components featuring a surface layer **must strictly default to `refraction`**: `TxBaseSurface`'s `mode`, `TxCard`'s `background`, the `surface` of `TxFlipOverlay`, `TxModal` and `TxDrawer`, and the `panelBackground` of the pop-up panels rendered through `TxBaseAnchor` (`TxPopover`, `TxTooltip`, dropdown and context menus, `TxSelect`, `TxSearchSelect`). The dialogs `TxCommandPalette`, `TxPopperDialog`, `TxBlowDialog`, `TxBottomDialog` and `TxTouchTip` do not go through `TxBaseSurface` yet and have no material to choose.
+All components featuring a surface layer **must strictly default to `refraction`**: `TxBaseSurface`'s `mode`, `TxCard`'s `background`, the `surface` of `TxFlipOverlay`, `TxModal`, `TxDrawer`, `TxCommandPalette` and the dialogs `TxPopperDialog`, `TxBlowDialog`, `TxBottomDialog` and `TxTouchTip`, and the `panelBackground` of the pop-up panels rendered through `TxBaseAnchor` (`TxPopover`, `TxTooltip`, dropdown and context menus, `TxSelect`, `TxSearchSelect`).
 Switching to another material (such as `flat`, `mask` or `glass`) **mandates explicit manual user confirmation**; the fallback a surface takes in motion and `autoDetect`'s temporary degradation leave the declared material alone and are not switches. See [Surface 8-Material Taxonomy & Gatekeepers](/docs/dev/concepts/surface-taxonomy).
 
 ### Snell's Refraction & RGB Dispersion Pipeline

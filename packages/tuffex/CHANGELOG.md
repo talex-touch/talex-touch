@@ -4,7 +4,7 @@
 
 ### 📦 组件变动 (Components)
 
-- **更新组件**: `alert`, `attachment-tray`, `base-surface`, `dialog`, `drawer`, `fine-tune-card`, `image-gallery`, `markdown-editor`, `modal`, `stream-element`, `stream-markdown`, `stream-text`, `thinking-orb`, `toast`
+- **更新组件**: `alert`, `attachment-tray`, `base-surface`, `command-palette`, `dialog`, `drawer`, `fine-tune-card`, `image-gallery`, `markdown-editor`, `modal`, `stream-element`, `stream-markdown`, `stream-text`, `thinking-orb`, `toast`
 
 ### ✨ 组件增强
 
@@ -17,11 +17,13 @@
 - `TxBaseSurface` 新增 `systemBackdrop`（默认 `false`）：表面铺在窗口自身的系统材质上时打开，例如透明 Electron 窗口的 vibrancy 或 Mica。页面里的 `backdrop-filter` 采不到这层材质，只会把表面自己的底色再采一遍叠上去，桌面透不上来；打开后玻璃层不渲染，滤镜层的 `backdrop-filter` 置为 `none`、只留着色，模糊交给系统，底色、遮罩、流光与描边照常绘制。表面不再采样页面，`moving` 与 `autoDetect` 随之失效。
 - `TxModal` 的面板改由 `TxBaseSurface` 绘制，默认 `refraction` 材质。新增 `surface`（默认 `'refraction'`，不认识的值按 `refraction` 处理）、`surfaceColor`（材质下垫的底色，默认跟随主题）与 `surfaceOpacity`（这层底色的不透明度，`mask` 下默认 0.96，其余材质 0.5）。遮罩的变暗与模糊移到遮罩层自己的伪元素上，面板的材质采到的是页面而不是遮罩；面板的阴影与内描边也移到伪元素上。开合时面板只缩放、不整体淡入淡出：头部、正文、底栏、阴影与描边、材质的各层各自淡入淡出，带背景滤镜的材质从第一帧到最后一帧都采着页面；不带背景滤镜的材质与高对比度下的材质整体淡入淡出。新增减少动态效果的处理：`prefers-reduced-motion: reduce` 时面板原地淡入淡出，不缩放、不位移。
 - `TxDrawer` 的面板改由 `TxBaseSurface` 绘制，默认 `refraction` 材质。新增 `surface`、`surfaceColor`（默认 `var(--tx-drawer-panel-background)`）与 `surfaceOpacity`（`mask` 下默认 0.96，其余材质 0.5）。`panelTransparent` 不再给面板另加 18px 模糊，改为把这层底色调薄到 0.78 与 0.3；内部变量 `--tx-drawer-panel-background-transparent` 随之移除。面板滑入滑出期间表面按 `moving` 处理，滑动结束后恢复；中途反向滑动时同样成立。
+- `TxCommandPalette` 与 `TxPopperDialog`、`TxBlowDialog`、`TxBottomDialog`、`TxTouchTip` 的面板改由 `TxBaseSurface` 绘制，默认 `refraction` 材质，新增 `surface`、`surfaceColor` 与 `surfaceOpacity`，取值与默认值同 `TxModal`；四种对话框共用的这组 props 导出为 `DialogSurfaceProps` 类型。`TxPopperDialog` 与 `TxTouchTip` 原先在面板上自带的背景模糊，以及 `TxCommandPalette`、`TxBlowDialog` 与 `TxBottomDialog` 原先的实色底随之移除。遮罩的变暗（`TxBlowDialog` 还有模糊）移到遮罩层自己的伪元素上，面板的阴影与描边也移到伪元素上。开合时面板只位移、缩放，不整体淡入淡出：内容、阴影与描边、材质的各层各自淡入淡出，与 `TxModal` 相同。`TxCommandPalette` 的搜索框、列表与 `footer` 插槽包进新的 `.tx-command-palette__body`，由它裁切圆角；遮罩的变暗在 `.tx-command-palette__overlay::before`，描边与阴影在 `.tx-command-palette__panel::after`，经 `overlayClass` / `panelClass` 改这些样式时改对应的伪元素，面板底色改用 `surfaceColor`。`TxPopperDialog`、`TxBlowDialog` 与 `TxTouchTip` 新增减少动态效果的处理：`prefers-reduced-motion: reduce` 时面板原地淡入淡出，不缩放；`TxBlowDialog` 对 `#app` 的放大与变淡不受影响。
 - `TxStreamText` 与 `TxStreamElement` 写完的文字按 `text-wrap-style: pretty` 断行，段末不再只剩一两个词；仍在写入的那段保持 `auto`，每到一个词不重算整段断行。宿主设置的 `nowrap` 不受影响。
 - 基础样式的工具类 `.tx-help-text` 补上 `text-wrap: pretty`，与 `.tx-prose p`、`.tx-description` 一致：文档此前已写明，样式缺了这一条。
 
 ### 🐛 组件修复
 
+- `TxTouchTip` 关闭时的放大淡出此前没有过渡，面板在 60 ms 后直接消失；现在在 220 ms 内放大并淡出。
 - `TxStreamMarkdown` 中行内出现的 `$$`（如 shell 的 `$$`、`$$x$$`）不再被当作公式块的起点：此前 marked 在该处截断段落，块规则不匹配时用换行拼回，在 `breaks: true` 下变成 `<br>`，`$$` 前的空格也被吞掉；现在只在行首查找公式块。
 - `TxAttachmentTray` 的缩略图自行固定 `img` 的外边距与尺寸，放进带排版样式的文章（如 `.prose`）里不再下移；内置预览器的样式此前写在托盘选择器之下，`TxModal` 传送到 `<body>` 后从未生效，现已生效。
 
