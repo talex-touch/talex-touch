@@ -342,8 +342,11 @@ $grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width=
       display: none;
     }
 
+    // A host fades the solid surface whole, so the backdrop takes no fade of its own: the two
+    // would compound.
     &.tx-base-surface--fake:not(.tx-base-surface--plain)::before {
       opacity: 1;
+      animation: none;
     }
   }
 }
