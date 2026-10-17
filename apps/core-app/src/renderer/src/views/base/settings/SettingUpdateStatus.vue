@@ -140,4 +140,9 @@ function handleAction(): void {
 .update-status__progress {
   margin-top: 6px;
 }
+
+.update-status :deep(.tx-button) {
+  min-height: var(--tx-button-height, 32px);
+  flex-shrink: 0;
+}
 </style>
