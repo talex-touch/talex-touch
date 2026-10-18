@@ -4,6 +4,30 @@
   "verificationCommand": "corepack pnpm privacy:inventory:verify",
   "entries": [
     {
+      "id": "browser-connections",
+      "classification": "behavioral-metadata",
+      "owner": "BrowserConnectionModule/BrowserConnectionManager",
+      "storageLocations": [
+        "main SQLite app_config_entries: browser-connections (per-profile public approval keys, bookmark snapshots and durable mutation outbox)",
+        "Chrome extension IndexedDB: non-extractable P-256 signing key and operation outcome journal",
+        "explicitly installed canonical app-root/browser-connector: native helper, public host manifest and one atomically published endpoint descriptor containing loopback address plus public server SPKI",
+        "Main memory only: ephemeral P-256 server signing key, regenerated per manager lifetime and released on module disposal"
+      ],
+      "writers": ["exact main-window/main-frame BrowserConnectionEvents", "mutually challenge-authenticated deterministic Chrome extension and ephemeral Main server"],
+      "readers": ["owner-authorized BrowserConnectionSdk", "Main-only outbox dispatcher"],
+      "exportPolicy": "local-only; excluded from cloud sync allowlist, generic renderer storage and portable exports; public approval keys never exposed to renderer",
+      "deletionPolicy": "disconnect revokes approval and deletes that profile snapshot/outbox; disabling browserWorkspace or pausing disconnects sockets without deleting queued work; app-data reset removes Main state",
+      "retentionPolicy": "up to 16 approved profiles, 1000 queued/conflicted operations per profile and 100000 combined snapshot nodes with a 32MiB per-snapshot bound; Chrome tab IDs are ephemeral and not persisted; pairing codes expire after two minutes",
+      "rendererExposure": "profile labels, bookmark/tab metadata, queue/conflict summaries and transient one-use pairing code only to the exact live Main renderer frame; no cookie/password/history/identity collection or private signing keys",
+      "portable": false,
+      "migrationStatus": "additive SQLite host-only config key; explicit per-user platform host registration; no Chrome profile file access",
+      "evidence": [
+        "apps/core-app/src/main/modules/browser-connection/manager.ts#symbol=BrowserConnectionManager",
+        "apps/core-app/src/main/modules/browser-connection/handlers.ts#symbol=registerBrowserConnectionHandlers",
+        "apps/core-app/src/main/modules/browser-connection/installer.ts#symbol=BrowserBridgeInstaller"
+      ]
+    },
+    {
       "id": "browser-workspace",
       "classification": "behavioral-metadata",
       "owner": "BrowserModule/BrowserWorkspaceManager",

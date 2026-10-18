@@ -11,6 +11,7 @@ const {
 const { OFFICIAL_PLUGIN_BUILD_TARGETS } = require('../lib/touch-translation-runtime-sync')
 const { createPackagedBuildAttestation } = require('./build-attestation')
 const { verifyMacUpdateHelper } = require('./native-addons')
+const { verifyBrowserConnectorAssets } = require('./browser-connector')
 const {
   verifyPackagedBundle: verifyPackagedPiDesktopReuseLegal
 } = require('../legal/pi-desktop-reuse-legal.cjs')
@@ -262,7 +263,7 @@ function verifyPackagedNativeAddons(context, options = {}) {
 
   const message =
     `[afterPack] Packaged native addons missing from ${path.join(nativePackageRoot, 'build', 'Release')}: ` +
-    `${missing.join(', ')}. Build them with the native package rebuild, build:audio, build:translation, and build:update scripts.`
+    `${missing.join(', ')}. Build them with the native package rebuild, build:audio, build:browser-bridge, build:translation, and build:update scripts.`
   if (strict) {
     throw new Error(message)
   }
@@ -411,6 +412,7 @@ module.exports = async function afterPack(context) {
   if (!resourcesDir) {
     throw new Error('[afterPack] Cannot locate packaged resources for build attestation')
   }
+  verifyBrowserConnectorAssets(path.join(resourcesDir, 'resources', 'browser-connector'))
   const legal = verifyPackagedPiDesktopReuseLegal({
     appRoot: context.packager.projectDir,
     resourcesDir

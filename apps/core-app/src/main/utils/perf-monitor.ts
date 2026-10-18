@@ -3,6 +3,7 @@ import type { Primitive } from './logger'
 import { performance } from 'node:perf_hooks'
 import { formatPayloadPreview } from '@talex-touch/utils/common/utils/payload-preview'
 import { PollingService } from '@talex-touch/utils/common/utils/polling'
+import { BROWSER_CONNECTION_EVENT_PREFIX } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
 import { ipcMain, powerMonitor } from 'electron'
 import { getSentryService } from '../modules/sentry/sentry-service'
 import { createLogger, formatDuration } from './logger'
@@ -585,7 +586,18 @@ export class PerfMonitor {
     ipcPerfLog.warn(`No handler for ${eventName}`, { meta: toLogMeta(meta) })
   }
 
-  recordRendererReport(report: RendererPerfReport): void {
+  recordRendererReport(input: RendererPerfReport): void {
+    const privateBrowserEvent =
+      typeof input.eventName === 'string' &&
+      input.eventName.startsWith(BROWSER_CONNECTION_EVENT_PREFIX)
+    const report = privateBrowserEvent
+      ? {
+          ...input,
+          payloadPreview: '[browser connection metadata redacted]',
+          meta: undefined,
+          stack: undefined
+        }
+      : input
     const payloadPreview =
       report.payloadPreview === undefined
         ? undefined

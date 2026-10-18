@@ -5,9 +5,9 @@
  *
  * Pass 1 goes through `pnpm -r --no-bail --filter ... exec eslint`, so each
  * workspace lints with the dependency versions it actually resolves.
- * Pass 2 covers the directories that are not workspaces -- `scripts/` plus the
- * plugins kept out of the root filter brace list -- resolving eslint through
- * `pnpm exec` so the command works from a plain `node scripts/lint.mjs` too.
+ * Pass 2 covers the directories that are not workspaces -- `scripts/`, the
+ * browser connector source, plus plugins kept out of the root filter brace list --
+ * resolving eslint through `pnpm exec` so a plain `node scripts/lint.mjs` works too.
  *
  * The `&&` between the two passes is preserved: a failure in pass 1 skips pass 2
  * and its exit code is the one that surfaces, so CI still fails where it did.
@@ -94,6 +94,7 @@ const commands = [
     'eslint',
     ...eslintFlags,
     `scripts/${SCRIPT_LINT_EXTENSIONS}`,
+    `apps/browser-connector/${SCRIPT_LINT_EXTENSIONS}`,
     `plugins/{${EXPLICIT_PLUGIN_DIRS.join(',')}}/${VUE_LINT_EXTENSIONS}`,
   ],
 ]

@@ -54,6 +54,22 @@ export interface BrowserBookmarkConflict {
   title: string
   reason: string
 }
+export interface ChromeCookieRecord {
+  name: string
+  value: string
+  domain: string
+  path: string
+  secure: boolean
+  httpOnly: boolean
+  sameSite: 'no_restriction' | 'lax' | 'strict' | 'unspecified'
+  expirationDate?: number
+  storeId?: string
+}
+export interface ChromeCookieFilter {
+  domain?: string
+  domains?: string[]
+  url?: string
+}
 export interface BrowserConnectedProfile {
   id: string
   label: string
@@ -118,6 +134,13 @@ export type BrowserConnectionClientMessage =
       reason?: string
     }
   | { type: 'tab-result'; requestId: string; ok: boolean; error?: string }
+  | {
+      type: 'cookies-result'
+      requestId: string
+      ok: boolean
+      cookies?: ChromeCookieRecord[]
+      error?: string
+    }
   | { type: 'error'; error: string }
 export type BrowserConnectionServerMessage =
   /** Injected by the trusted native helper, never emitted by the TCP server. */
@@ -128,6 +151,7 @@ export type BrowserConnectionServerMessage =
   | { type: 'bookmark'; operation: BrowserBookmarkOperation }
   | { type: 'tab'; requestId: string; command: BrowserChromeTabCommand }
   | { type: 'refresh' }
+  | { type: 'cookies'; requestId: string; filter: ChromeCookieFilter }
   | { type: 'error'; error: string }
 
 const api = defineEvent(BROWSER_CONNECTION_DOMAIN).module('profiles')
@@ -151,6 +175,15 @@ export const BrowserConnectionEvents = {
     >(),
   tab: api.event('tab').define<{ profileId: string; command: BrowserChromeTabCommand }, BrowserConnectionState>(),
   refresh: api.event('refresh').define<{ profileId: string }, BrowserConnectionState>(),
+  getCookies: api
+    .event('get-cookies')
+    .define<{ profileId: string; filter: ChromeCookieFilter }, { cookies: ChromeCookieRecord[] }>(),
+  importCookies: api
+    .event('import-cookies')
+    .define<
+      { profileId: string; filter: ChromeCookieFilter; confirmationPassword?: string },
+      { importedCount: number; domains: string[] }
+    >(),
   changed: defineEvent('browser-connection').module('push').event('changed').define<BrowserConnectionState, void>(),
   tabsChanged: defineEvent('browser-connection')
     .module('push')
@@ -175,6 +208,18 @@ export function createBrowserConnectionSdk(transport: Pick<ITuffTransport, 'send
     tab: (profileId: string, command: BrowserChromeTabCommand) =>
       transport.send(BrowserConnectionEvents.tab, { profileId, command }),
     refresh: (profileId: string) => transport.send(BrowserConnectionEvents.refresh, { profileId }),
+    getCookies: (profileId: string, filter: ChromeCookieFilter) =>
+      transport.send(BrowserConnectionEvents.getCookies, { profileId, filter }),
+    importCookies: (
+      profileId: string,
+      filter: ChromeCookieFilter,
+      confirmationPassword?: string
+    ) =>
+      transport.send(BrowserConnectionEvents.importCookies, {
+        profileId,
+        filter,
+        confirmationPassword
+      }),
     onChanged: (listener: (state: BrowserConnectionState) => void) =>
       transport.on(BrowserConnectionEvents.changed, listener),
     onTabsChanged: (listener: (change: BrowserConnectionTabsChanged) => void) =>

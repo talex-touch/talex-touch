@@ -21,6 +21,7 @@ import { BaseModule } from '../abstract-base-module'
 import { databaseModule } from '../database'
 import {
   BROWSER_WORKSPACE_STORAGE_KEY,
+  BROWSER_CONNECTIONS_STORAGE_KEY,
   mainStorageRegistry,
   omitMainOwnedAuthSettings,
   preserveMainOwnedAuthSettings,
@@ -440,7 +441,8 @@ export class StorageModule extends BaseModule {
   }
 
   private projectConfigForRenderer(name: string, value: object): object {
-    if (name === BROWSER_WORKSPACE_STORAGE_KEY) return {}
+    if (name === BROWSER_WORKSPACE_STORAGE_KEY || name === BROWSER_CONNECTIONS_STORAGE_KEY)
+      return {}
     if (name === StorageList.APP_SETTING) {
       return omitMainOwnedAuthSettings(value)
     }
@@ -515,7 +517,11 @@ export class StorageModule extends BaseModule {
         if (!request?.key || typeof request.key !== 'string') {
           return
         }
-        if (request.key === BROWSER_WORKSPACE_STORAGE_KEY) throw new Error('BROWSER_HOST_ONLY')
+        if (
+          request.key === BROWSER_WORKSPACE_STORAGE_KEY ||
+          request.key === BROWSER_CONNECTIONS_STORAGE_KEY
+        )
+          throw new Error('BROWSER_HOST_ONLY')
         if (this.containsProviderCredential(request.key, request.value)) {
           storageLog.warn('Rejected plaintext credential in Intelligence config storage set')
           return
@@ -536,7 +542,11 @@ export class StorageModule extends BaseModule {
         if (!request?.key || typeof request.key !== 'string') {
           return { success: false, version: 0, reason: 'invalid-key' }
         }
-        if (request.key === BROWSER_WORKSPACE_STORAGE_KEY) throw new Error('BROWSER_HOST_ONLY')
+        if (
+          request.key === BROWSER_WORKSPACE_STORAGE_KEY ||
+          request.key === BROWSER_CONNECTIONS_STORAGE_KEY
+        )
+          throw new Error('BROWSER_HOST_ONLY')
         const payload = this.preserveMainOwnedAppSettingsFromRenderer(
           request.key,
           typeof request.content === 'string' ? request.content : request.value
@@ -612,7 +622,11 @@ export class StorageModule extends BaseModule {
         if (!request?.key || typeof request.key !== 'string') {
           return
         }
-        if (request.key === BROWSER_WORKSPACE_STORAGE_KEY) throw new Error('BROWSER_HOST_ONLY')
+        if (
+          request.key === BROWSER_WORKSPACE_STORAGE_KEY ||
+          request.key === BROWSER_CONNECTIONS_STORAGE_KEY
+        )
+          throw new Error('BROWSER_HOST_ONLY')
         if (request.key === StorageList.APP_SETTING) {
           return
         }

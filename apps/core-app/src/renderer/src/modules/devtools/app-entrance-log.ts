@@ -9,7 +9,6 @@ export type AppEntranceMode =
   | 'DivisionBox'
   | 'AssistantVoiceDock'
   | 'ScreenshotOverlay'
-  | 'ScreenshotEditor'
 
 type LogDetails = Record<string, unknown>
 
@@ -36,8 +35,6 @@ function getModeStyle(mode: AppEntranceMode): string {
       return 'background:#22d3ee;color:#083344;'
     case 'ScreenshotOverlay':
       return 'background:#0f766e;color:#ccfbf1;'
-    case 'ScreenshotEditor':
-      return 'background:#334155;color:#f8fafc;'
     case 'MainApp':
     default:
       return 'background:#22c55e;color:#052e16;'

@@ -117,6 +117,9 @@ jobs:
           pnpm -C packages/tuff-native run build:audio &&
           pnpm -C packages/tuff-native run verify:audio-production
 
+      - name: Build Chrome Native Messaging host
+        run: node packages/tuff-native/scripts/build-browser-bridge.js
+
       - name: Build deterministic screenshot addon
         env:
           TUFF_SCREENSHOT_PROTOCOL_TEST_BACKEND: '1'

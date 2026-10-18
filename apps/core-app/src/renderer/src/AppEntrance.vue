@@ -17,9 +17,6 @@ const VoiceDock = defineAsyncComponent(() => import('./views/assistant/VoiceDock
 const ScreenshotOverlay = defineAsyncComponent(
   () => import('./views/screenshot/ScreenshotOverlay.vue')
 )
-const ScreenshotEditorShell = defineAsyncComponent(
-  () => import('./views/screenshot/ScreenshotEditorShell.vue')
-)
 
 const props = defineProps<{
   onReady: () => Promise<void>
@@ -68,10 +65,7 @@ watchEffect(() => {
   const mode = appEntranceMode.value
   document.body.classList.toggle('core-box', mode === 'CoreBox' || mode === 'DivisionBox')
   document.body.classList.toggle('division-box', mode === 'DivisionBox')
-  document.body.classList.toggle(
-    'screenshot-surface',
-    mode === 'ScreenshotOverlay' || mode === 'ScreenshotEditor'
-  )
+  document.body.classList.toggle('screenshot-surface', mode === 'ScreenshotOverlay')
 })
 </script>
 
@@ -96,9 +90,6 @@ watchEffect(() => {
     </template>
     <template v-else-if="appEntranceMode === 'ScreenshotOverlay'">
       <ScreenshotOverlay />
-    </template>
-    <template v-else-if="appEntranceMode === 'ScreenshotEditor'">
-      <ScreenshotEditorShell />
     </template>
     <template v-else-if="appEntranceMode === 'OmniPanel'">
       <OmniPanel />

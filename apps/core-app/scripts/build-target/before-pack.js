@@ -2,12 +2,16 @@ const { execFileSync } = require('node:child_process')
 const path = require('node:path')
 const { nativeAddonReleaseDir, verifyMacUpdateHelper } = require('./native-addons')
 const { verifyBundle } = require('../legal/pi-desktop-reuse-legal.cjs')
+const { verifyBrowserConnectorAssets } = require('./browser-connector')
 
 /**
  * Packaging cannot bypass the LGPL delivery: the legal bundle must belong to the out/ build
  * being packed, so a direct `electron-builder` run without a fresh electron-vite build fails.
  */
 module.exports = async function beforePack(context) {
+  verifyBrowserConnectorAssets(
+    path.join(context.packager.projectDir, 'resources', 'browser-connector')
+  )
   if (context.electronPlatformName === 'darwin') {
     const releaseDir = nativeAddonReleaseDir(context.packager.projectDir)
     execFileSync(

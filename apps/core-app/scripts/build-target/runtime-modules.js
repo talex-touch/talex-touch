@@ -108,6 +108,9 @@ function requiredNativeAddonNames(target) {
   if (target === 'win' || target === 'win32') {
     names.push('tuff_native_everything.node')
   }
+  names.push(
+    target === 'win' || target === 'win32' ? 'tuff-browser-bridge.exe' : 'tuff-browser-bridge'
+  )
   return names
 }
 

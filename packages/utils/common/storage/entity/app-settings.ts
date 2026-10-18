@@ -234,10 +234,11 @@ const _appSettingOriginData = {
     settings: 0,
   },
   betaFeatures: {
-    screenshot: false,
+    screenshot: true,
     voiceDictation: false,
     voiceQuickEdit: false,
     omniPanel: false,
+    browserWorkspace: false,
   },
   omniPanel: {
     enableShortcut: false,
@@ -579,6 +580,8 @@ const _appSettingOriginData = {
      * are pruned when the project list loads.
      */
     expandedProjectIds: [] as string[],
+    /** Browser-only plugin shortcuts. null uses first-use defaults; [] explicitly pins none. */
+    browserPluginPins: null as string[] | null,
   },
   setup: {
     fileAccess: false,

@@ -1,6 +1,7 @@
 <script lang="ts" name="SettingGeneralPage" setup>
 import { useI18n } from 'vue-i18n'
 import SettingsPage from '~/components/settings/SettingsPage.vue'
+import SettingBetaFeatures from '../SettingBetaFeatures.vue'
 import SettingSentry from '../SettingSentry.vue'
 import SettingSetup from '../SettingSetup.vue'
 
@@ -10,6 +11,7 @@ const { t } = useI18n()
 <template>
   <SettingsPage :title="t('settingsNav.category.general')">
     <SettingSetup />
+    <SettingBetaFeatures />
     <!--
       Telemetry consent lives on a default-visible page on purpose. The previous group was only
       reachable behind the advanced flag and was then deleted outright in the app-shell-v2 rewrite

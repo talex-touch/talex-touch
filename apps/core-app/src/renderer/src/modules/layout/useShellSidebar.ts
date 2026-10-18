@@ -41,7 +41,8 @@ function persistState(state: SidebarLayoutState): void {
     appSetting.shell = {
       sidebarWidth: SIDEBAR_EXPANDED_DEFAULT,
       sidebarCollapsed: false,
-      expandedProjectIds: []
+      expandedProjectIds: [],
+      browserPluginPins: null
     }
   }
 

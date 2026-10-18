@@ -10,6 +10,8 @@ const PREVIEW_GRANT_LIMIT = 256
 interface PreviewGrantRecord {
   path: string
   expiresAt: number
+  /** Whether the holder may read the bytes back cross-origin (canvas/fetch), not just display. */
+  readback: boolean
 }
 
 export interface TfilePreviewGrant {
@@ -45,10 +47,7 @@ export function hasTfilePreviewGrant(rawUrl: string): boolean {
   return readGrantToken(rawUrl) !== null
 }
 
-export function issueTfilePreviewGrant(
-  filePath: string,
-  now: number = Date.now()
-): TfilePreviewGrant {
+function issueGrant(filePath: string, now: number, readback: boolean): TfilePreviewGrant {
   const normalizedPath = normalizeGrantedPath(filePath)
   if (!normalizedPath) throw new Error('TFILE_PREVIEW_PATH_INVALID')
 
@@ -61,11 +60,37 @@ export function issueTfilePreviewGrant(
 
   const token = `preview_${randomBytes(24).toString('base64url')}`
   const expiresAt = now + PREVIEW_GRANT_TTL_MS
-  grants.set(token, { path: normalizedPath, expiresAt })
+  grants.set(token, { path: normalizedPath, expiresAt, readback })
 
   const tfileUrl = new URL(toTfileUrl(normalizedPath))
   tfileUrl.searchParams.set(PREVIEW_GRANT_QUERY_KEY, token)
   return { tfileUrl: tfileUrl.toString(), expiresAt }
+}
+
+export function issueTfilePreviewGrant(
+  filePath: string,
+  now: number = Date.now()
+): TfilePreviewGrant {
+  return issueGrant(filePath, now, false)
+}
+
+/**
+ * A preview grant whose response is CORS-readable, so an app renderer can draw it into a canvas
+ * and export pixels. The unguessable, short-lived token is the authorization; ordinary `tfile`
+ * responses stay opaque to cross-origin readers.
+ */
+export function issueTfileReadbackGrant(
+  filePath: string,
+  now: number = Date.now()
+): TfilePreviewGrant {
+  return issueGrant(filePath, now, true)
+}
+
+/** True only for an unexpired readback grant; call after the grant has been authorized. */
+export function isTfileReadbackGrant(rawUrl: string, now: number = Date.now()): boolean {
+  const token = readGrantToken(rawUrl)
+  const grant = token ? grants.get(token) : undefined
+  return grant !== undefined && grant.readback && grant.expiresAt > now
 }
 
 export function isTfilePreviewGrantAuthorized(

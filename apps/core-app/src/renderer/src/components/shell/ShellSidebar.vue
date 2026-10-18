@@ -9,6 +9,7 @@ import { useShellSidebar } from '~/modules/layout/useShellSidebar'
 import { groupedSettingNavigation } from '~/modules/settings/categories'
 import { useCoreBoxShortcut } from '~/modules/shortcuts/useCoreBoxShortcut'
 import { appSetting } from '~/modules/storage/app-storage'
+import { isBetaFeatureEnabled } from '../../../../shared/beta-features'
 import { useEnv } from '~/modules/hooks/env-hooks'
 import { useProjectStore } from '~/stores/projects'
 import MetaHintBadge from './MetaHintBadge.vue'
@@ -31,6 +32,8 @@ const { packageJson } = useEnv()
 const { collapsed, isDragging, startDrag } = useShellSidebar()
 const { enterPickedProjectConversation } = useConversationEntry()
 const { effectiveLabel: coreBoxShortcutLabel } = useCoreBoxShortcut()
+
+const browserEnabled = computed(() => isBetaFeatureEnabled(appSetting, 'browserWorkspace'))
 
 /**
  * A width transition is off while the grip is held so the edge stays under the pointer. Snapping
@@ -145,7 +148,12 @@ onMounted(() => {
         />
 
         <nav class="ShellSidebar-Nav">
-          <ShellNavItem icon="i-ri-global-line" :label="t('shell.browser')" to="/browser" />
+          <ShellNavItem
+            v-if="browserEnabled"
+            icon="i-ri-global-line"
+            :label="t('shell.browser')"
+            to="/browser"
+          />
           <!--
             Expanded, New Project is the + on the Projects section title. The rail hides that whole
             list, so without this row the action would have no button there at all.

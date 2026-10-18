@@ -112,6 +112,9 @@ jobs:
           pnpm -C packages/tuff-native run build:screenshot &&
           pnpm -C packages/tuff-native run verify:screenshot-production
 
+      - name: Build Chrome Native Messaging host
+        run: node packages/tuff-native/scripts/build-browser-bridge.js
+
       - name: Build unpacked Windows snapshot
         env:
           BUILD_PUBLISH: never

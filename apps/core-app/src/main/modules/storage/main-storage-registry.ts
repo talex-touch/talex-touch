@@ -28,6 +28,7 @@ import { DEFAULT_MCP_HOST_SETTINGS, normalizeMcpHostSettings } from '../mcp-host
 
 // Browser history is local-only and accessible solely through the owner-authorized browser SDK.
 export const BROWSER_WORKSPACE_STORAGE_KEY = 'browser-workspace'
+export const BROWSER_CONNECTIONS_STORAGE_KEY = 'browser-connections'
 
 export const AUTH_REAUTHENTICATION_REQUIRED_FIELD = 'requiresReauthenticationOnNextStartup'
 /**

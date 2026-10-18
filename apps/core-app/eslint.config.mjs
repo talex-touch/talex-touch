@@ -125,7 +125,16 @@ const rendererRuntimeRestrictedSyntax = [
 ]
 
 export default tseslint.config(
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'resources/bundled-plugins/**', 'tuff/**'] },
+  {
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      '**/out',
+      'resources/bundled-plugins/**',
+      'resources/browser-connector/**',
+      'tuff/**'
+    ]
+  },
   tseslint.configs.recommended,
   eslintPluginVue.configs['flat/recommended'],
   {

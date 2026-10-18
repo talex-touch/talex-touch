@@ -11,7 +11,11 @@ import {
   normalizeDarwinUsersPath
 } from '../../utils/local-file-policy'
 import { createLogger } from '../../utils/logger'
-import { hasTfilePreviewGrant, isTfilePreviewGrantAuthorized } from './tfile-preview-grant'
+import {
+  hasTfilePreviewGrant,
+  isTfilePreviewGrantAuthorized,
+  isTfileReadbackGrant
+} from './tfile-preview-grant'
 
 /**
  * Deduplicate error logs -- only log each failing path once, up to a bound.
@@ -169,7 +173,15 @@ export function registerTfileProtocolForSession(
     const fileUrl = url.pathToFileURL(normalizedPath).toString()
 
     try {
-      return await net.fetch(fileUrl, { bypassCustomProtocolHandlers: true })
+      const response = await net.fetch(fileUrl, { bypassCustomProtocolHandlers: true })
+      if (!previewGrantAuthorized || !isTfileReadbackGrant(request.url)) return response
+      const headers = new Headers(response.headers)
+      headers.set('Access-Control-Allow-Origin', '*')
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      })
     } catch (error) {
       if (shouldLogPathOnce(normalizedPath)) {
         fileProtocolLog.error('tfile request error', {

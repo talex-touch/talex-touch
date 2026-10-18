@@ -40,6 +40,7 @@ const REQUIRED_IDS = new Set([
   'machine-seed',
   'clipboard-history',
   'browser-workspace',
+  'browser-connections',
   'voice-insights',
   'ocr-history-and-assets',
   'search-history-and-usage',

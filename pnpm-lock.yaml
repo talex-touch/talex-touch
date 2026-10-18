@@ -848,6 +848,12 @@ importers:
         specifier: catalog:dev
         version: 4.107.1(@cloudflare/workers-types@4.20260702.1)(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
+  apps/screenshot-acceptance:
+    devDependencies:
+      electron:
+        specifier: ^41.10.6
+        version: 41.10.7(supports-color@10.2.2)
+
   apps/tuff-analyse:
     dependencies:
       '@talex-touch/tuffex':

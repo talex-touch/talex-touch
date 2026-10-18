@@ -27,6 +27,7 @@ import {
   settingCategoryChildren
 } from '~/modules/settings/categories'
 import { appSetting } from '~/modules/storage/app-storage'
+import { isBetaFeatureEnabled, type BetaFeature } from '../../../shared/beta-features'
 
 const ROUTE_NAVIGATE_WARN_MS = 200
 const ROUTE_RENDER_WARN_MS = 350
@@ -215,7 +216,12 @@ const routes: RouteRecordRaw[] = [
       '/browser',
       () => import('../views/base/browser/BrowserPage.vue')
     ),
-    meta: { index: 0, keepAlive: true, keepAliveKey: 'browser-workspace' }
+    meta: {
+      index: 0,
+      keepAlive: true,
+      keepAliveKey: 'browser-workspace',
+      betaFeature: 'browserWorkspace'
+    }
   },
   {
     path: APP_SURFACE_ROUTES.home,
@@ -422,6 +428,17 @@ router.beforeEach((to, _from, next) => {
 router.beforeEach((to, _from, next) => {
   if (to.meta?.requiresDashboard && !appSetting.dashboard.enable) {
     next('/home')
+  } else {
+    next()
+  }
+})
+
+router.beforeEach((to, _from, next) => {
+  if (
+    to.meta?.betaFeature &&
+    !isBetaFeatureEnabled(appSetting, to.meta.betaFeature as BetaFeature)
+  ) {
+    next(APP_SURFACE_ROUTES.home)
   } else {
     next()
   }
