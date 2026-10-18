@@ -20,6 +20,10 @@
 - [ ] CoreApp：「智能 · 模型渠道」设置页（`IntelligenceChannelsPage` 的 `useKeyboardNavigation`）在 document 上挂了 keydown，会对 Space 和方向键调用 `preventDefault`。页面被 KeepAlive 缓存后监听不会卸载，切到别的页面后 Space 不能激活按钮、方向键也失效，要整页重载才恢复。模型弹层的设置键会直接进入这个页面。（来源：2026-10-06 composer 改版验收）
 - [ ] TuffEx：高对比主题下，获得焦点的 TxSearchInput 同时显示圆角外框和输入元素自身的矩形焦点框，形成双重焦点框。（来源：2026-10-06 composer 改版验收）
 - [ ] Composer：从有历史的对话里选 Agent profile 时，`selectAgentProfile`（`HomePage.vue`）会先把 profileId 写进源对话会话（mode 仍为 chat），再 fork。这是因为 Main 的 fork 只替换 mode；结果是源会话留下持久化的副作用，而且这段逻辑没有单测。（来源：2026-10-06 composer 改版验收）
+- [ ] CoreApp / TuffEx：UnoCSS 白名单打包了整个目录图标的 CSS（`ICON_CATALOG_CLASSES` 188 个图标），导致 CSS 体积多出 183.9 KiB。优化方案为：在展示供应商图标的地方（`IntelligenceProviderHeader.vue`、`ProviderList.vue`、`IntelligenceItem.vue` 等叶子组件）局部启用 `provideIconPickerGlyphs()` 或动态 `classGlyph` 解码，随后将白名单从 `apps/core-app/uno.config.ts` 彻底剥离。**注意严禁在应用根全局挂载 classGlyph**，否则全局界面图标在首屏冷启时会发生闪烁。（来源：2026-10-17 图标选择器扩容与琉光材质验收）
+- [ ] CoreApp：对话框组件统一收敛。core-app 历史自研的 4 个对话框副本（`TBlowDialog`、`TBottomDialog`、`TPopperDialog`、`TouchTip`）与 `dialog-mention.ts` 及独立单测深度耦合，待 PR #2120（全量琉光材质铺设）合并后，单开专项重构分支做生命周期平迁，收敛至 TuffEx 统一组件。（来源：2026-10-17 #2120 旁路问题审计）
+- [ ] TuffEx / PR #2120：琉光材质与旁路问题收口（工区 `/private/tmp/tuff-side-issues-1017`，分支 `task/feat/refraction-surfaces-and-concept-docs`，共 31 文件）。已修复 BottomDialog 150ms 截断闪退、TxFlatRadio 高对比度/强制颜色选中态隐形、TxBlowDialog/TBlowDialog 安全移除样式、TxModal/TxDrawer 焦点环与防视口跳动、refractionRenderer="css" 毛玻璃降级、着色模式抽屉跑偏等 10+ 项旁路问题，当前 120 项单测与体积门禁通过，等待 review 与合入。（来源：2026-10-17 PR #2120 旁路问题收口）
+- [ ] TuffEx / CoreApp：TxIconPicker 模块化与图标分块资产合入（工区 `/private/tmp/tuff-icon-picker-1017`，包含 `catalog-ai.ts`、`catalog-brand.ts`、`catalog-emoji.ts`、`glyphs.ts` 与分块脚本生成逻辑）。待与 CoreApp 局部 classGlyph 方案联调验收后完成分支归宿与提交。（来源：2026-10-17 图标选择器扩容验收）
 
 ## B. 插件与 View 生态
 
