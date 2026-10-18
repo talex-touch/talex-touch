@@ -9,7 +9,7 @@
 - [x] Transport Wave A：legacy alias registry、legacy hit evidence 与双监听关闭条件。（承接：[Transport Legacy Cutover Evidence](https://github.com/talex-touch/tuff/blob/0ca5b37b8c4a8e177b6dc0ac06f30e51c5ea748e/.trellis/tasks/archive/2026-07/07-17-transport-legacy-cutover-evidence/prd.md)，已归档任务记录）
 - [ ] AI Wave B：`retired-ai-app` 存量 typecheck/lint 债务逐批清理。
 - [ ] AI Wave B：SSE 断线、鉴权与渠道矩阵集成回归补齐。
-- [ ] SRP Wave C：`plugin-module`、`search-core`、`file-provider` 大文件职责拆分。
+- [ ] SRP Wave C：`plugin-module`、`search-core`、`file-provider` 大文件职责拆分。`file-provider.ts`（4,073 行）已完成深度架构审计与演进方案设计（见 [`file-provider-architecture-refactoring-analysis-2026-10-18.md`](../engineering/reports/file-provider-architecture-refactoring-analysis-2026-10-18.md)）：归因为已抽离子服务但宿主仍兼任 4 种角色及 560 行构造器胶水；确立 4 角色解耦模型（SearchProvider 瘦门面、IndexedSource 管道后端、IndexCoordinator 控制面、ServiceContainer 装配工厂）及 4 步无破坏演进路径。
 - [x] Runtime Safety：动态执行边界治理已闭环（2026-10-18）。C1 已彻底剥离 mathjs 死依赖；CoreBox 算式采用手写有限深度 SafeMathParser（无 eval/Function，限深 32、限长 240），单位换算采用纯静态代数算子字典；widget runtime sandbox 采用严格 CSP、词法 AST 阻断、原型与构造器 Proxy 封禁。
 - [ ] Storage：配置域 SQLite SoT 迁移与 fallback 回归补齐。
 - [ ] Quality：`quality:release` 被既有 lint debt 阻断的项分批清退或显式降权。
