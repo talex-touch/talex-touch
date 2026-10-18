@@ -67,7 +67,18 @@ function createHarness() {
     bookmark: vi.fn(async () => state),
     resolveConflict: vi.fn(async () => state),
     tab: vi.fn(async () => state),
-    refresh: vi.fn(async () => state)
+    refresh: vi.fn(async () => state),
+    getCookies: vi.fn(async () => [
+      {
+        name: 'session',
+        value: '123',
+        domain: 'example.com',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'lax' as const
+      }
+    ])
   }
   const installer = {
     install: vi.fn(async () => state.installation),
@@ -91,6 +102,32 @@ describe('browser connection renderer sender authority', () => {
       harness.transport.dispatch(BrowserConnectionEvents.getState, undefined, harness.context)
     ).resolves.toBe(state)
     expect(harness.manager.getState).toHaveBeenCalledTimes(1)
+    harness.unregister()
+  })
+
+  it('routes getCookies and importCookies from authenticated owner', async () => {
+    const harness = createHarness()
+    const filter = { domain: 'example.com' }
+    await expect(
+      harness.transport.dispatch(
+        BrowserConnectionEvents.getCookies,
+        { profileId: 'p1', filter },
+        harness.context
+      )
+    ).resolves.toEqual({
+      cookies: [
+        {
+          name: 'session',
+          value: '123',
+          domain: 'example.com',
+          path: '/',
+          secure: true,
+          httpOnly: true,
+          sameSite: 'lax'
+        }
+      ]
+    })
+    expect(harness.manager.getCookies).toHaveBeenCalledWith('p1', filter)
     harness.unregister()
   })
 

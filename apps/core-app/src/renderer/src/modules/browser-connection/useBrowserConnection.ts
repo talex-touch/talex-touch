@@ -4,7 +4,8 @@ import type {
   BrowserConnectedProfile,
   BrowserConnectionState,
   BrowserConnectionTabsChanged,
-  ChromeBookmarkNode
+  ChromeBookmarkNode,
+  ChromeCookieFilter
 } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
 import { createBrowserConnectionSdk } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
 import { useTuffTransport } from '@talex-touch/utils/transport'
@@ -243,6 +244,31 @@ export function useBrowserConnection() {
     tab: (profileId: string, command: BrowserChromeTabCommand) =>
       run(`tab:${profileId}:${'id' in command ? command.id : 'new'}`, () =>
         sdk.tab(profileId, command)
-      )
+      ),
+    getCookies: async (profileId: string, filter: ChromeCookieFilter) => {
+      const key = `cookies:${profileId}`
+      if (busy.has(key)) throw new Error('BROWSER_ACTION_PENDING')
+      busy.add(key)
+      try {
+        const res = await sdk.getCookies(profileId, filter)
+        return res.cookies
+      } finally {
+        busy.delete(key)
+      }
+    },
+    importCookies: async (
+      profileId: string,
+      filter: ChromeCookieFilter,
+      confirmationPassword?: string
+    ) => {
+      const key = `import-cookies:${profileId}`
+      if (busy.has(key)) throw new Error('BROWSER_ACTION_PENDING')
+      busy.add(key)
+      try {
+        return await sdk.importCookies(profileId, filter, confirmationPassword)
+      } finally {
+        busy.delete(key)
+      }
+    }
   }
 }

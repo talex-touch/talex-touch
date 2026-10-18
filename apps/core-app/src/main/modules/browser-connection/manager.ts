@@ -7,6 +7,8 @@ import type {
   BrowserConnectionState,
   BrowserConnectionTabsChanged,
   ChromeBookmarkNode,
+  ChromeCookieFilter,
+  ChromeCookieRecord,
   ChromeTab
 } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
 import type { JsonWebKey as NodeJsonWebKey, KeyObject } from 'node:crypto'
@@ -34,6 +36,8 @@ import {
   validateBookmarkCommand,
   validateBookmarkNode,
   validateChromeTab,
+  validateCookieFilter,
+  validateCookieRecord,
   validateTabCommand,
   validateTree
 } from './policy'
@@ -112,6 +116,12 @@ interface TabRequest {
   reject: (error: Error) => void
   timer: NodeJS.Timeout
 }
+interface CookieRequest {
+  connection: Connection
+  resolve: (cookies: ChromeCookieRecord[]) => void
+  reject: (error: Error) => void
+  timer: NodeJS.Timeout
+}
 function blank(): BrowserConnectionDocument {
   return { version: 1, revision: 0, activeProfileId: null, profiles: [] }
 }
@@ -132,6 +142,7 @@ export class BrowserConnectionManager {
   private connections = new Set<Connection>()
   private online = new Map<string, Connection>()
   private requests = new Map<string, TabRequest>()
+  private cookieRequests = new Map<string, CookieRequest>()
   private pairing: { code: string; expiresAt: number } | null = null
   private pairingTimer: NodeJS.Timeout | undefined
   private disposed = false
@@ -475,6 +486,36 @@ export class BrowserConnectionManager {
       return this.getState()
     })
   }
+  async getCookies(id: string, input: ChromeCookieFilter): Promise<ChromeCookieRecord[]> {
+    const filter = validateCookieFilter(input)
+    const requestId = randomUUID()
+    let completion!: Promise<ChromeCookieRecord[]>
+    await this.enqueue(() => {
+      this.assertEnabled()
+      this.profile(id)
+      const connection = this.online.get(id)
+      if (!connection || connection.closed) throw new Error('BROWSER_PROFILE_OFFLINE')
+      completion = new Promise<ChromeCookieRecord[]>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this.cookieRequests.delete(requestId)
+          reject(new Error('BROWSER_COOKIES_RESULT_TIMEOUT'))
+        }, 30_000)
+        timer.unref?.()
+        this.cookieRequests.set(requestId, { connection, resolve, reject, timer })
+      })
+      try {
+        connection.peer.send({ type: 'cookies', requestId, filter })
+      } catch (error) {
+        const request = this.cookieRequests.get(requestId)
+        if (request) {
+          clearTimeout(request.timer)
+          this.cookieRequests.delete(requestId)
+          request.reject(error instanceof Error ? error : new Error('BROWSER_SEND_FAILED'))
+        }
+      }
+    })
+    return completion
+  }
   openConnection(peer: BrowserConnectionPeer): BrowserConnectionSession {
     if (this.disposed || this.connections.size >= 16) {
       peer.close()
@@ -556,6 +597,13 @@ export class BrowserConnectionManager {
         clearTimeout(request.timer)
         this.requests.delete(id)
         request.reject(new Error('BROWSER_TAB_RESULT_UNKNOWN'))
+      }
+    }
+    for (const [id, request] of this.cookieRequests) {
+      if (request.connection === connection) {
+        clearTimeout(request.timer)
+        this.cookieRequests.delete(id)
+        request.reject(new Error('BROWSER_COOKIES_RESULT_ABORTED'))
       }
     }
     connection.peer.close()
@@ -835,6 +883,25 @@ export class BrowserConnectionManager {
         request.reject(
           new Error(message.error === undefined ? 'BROWSER_TAB_FAILED' : text(message.error, 1024))
         )
+      return
+    }
+    if (message.type === 'cookies-result') {
+      const request = this.cookieRequests.get(identifier(message.requestId))
+      if (!request || request.connection !== connection || typeof message.ok !== 'boolean')
+        throw new Error('BROWSER_COOKIES_RESULT_STALE')
+      clearTimeout(request.timer)
+      this.cookieRequests.delete(message.requestId as string)
+      if (message.ok) {
+        const rawCookies = Array.isArray(message.cookies) ? message.cookies : []
+        const validated = rawCookies.map(validateCookieRecord)
+        request.resolve(validated)
+      } else {
+        request.reject(
+          new Error(
+            message.error === undefined ? 'BROWSER_COOKIES_FAILED' : text(message.error, 1024)
+          )
+        )
+      }
       return
     }
     if (message.type === 'snapshot-error' || message.type === 'error') {

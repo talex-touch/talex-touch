@@ -77,7 +77,7 @@ watchEffect(() => {
         appEntranceMode !== 'DivisionBox' &&
         appEntranceMode !== 'ScreenshotOverlay'
       "
-      position="bottom-left"
+      position="top-right"
       :theme="resolvedTheme"
       rich-colors
     />

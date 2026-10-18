@@ -1,9 +1,11 @@
 import type { BrowserWindow } from 'electron'
+import { session } from 'electron'
 import type { ITuffTransportMain } from '@talex-touch/utils/transport/main'
 import type { BrowserConnectionManager } from './manager'
 import type { BrowserBridgeInstaller } from './installer'
 import { BrowserConnectionEvents as events } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
 import { assertBrowserOwner } from '../browser/policy'
+import { TUFF_BROWSER_PARTITION } from '../browser'
 
 export function registerBrowserConnectionHandlers(
   transport: ITuffTransportMain,
@@ -59,6 +61,51 @@ export function registerBrowserConnectionHandlers(
     transport.on(events.refresh, (payload, context) => {
       assertBrowserOwner(context, owner)
       return manager.refresh(payload?.profileId)
+    }),
+    transport.on(events.getCookies, async (payload, context) => {
+      assertBrowserOwner(context, owner)
+      const cookies = await manager.getCookies(payload?.profileId, payload?.filter)
+      return { cookies }
+    }),
+    transport.on(events.importCookies, async (payload, context) => {
+      assertBrowserOwner(context, owner)
+      const cookies = await manager.getCookies(payload?.profileId, payload?.filter)
+      const browserSession = session.fromPartition(TUFF_BROWSER_PARTITION)
+      let importedCount = 0
+      const domainSet = new Set<string>()
+      for (const cookie of cookies) {
+        const domainClean = cookie.domain.replace(/^\./, '')
+        const scheme = cookie.secure ? 'https' : 'http'
+        const pathClean = cookie.path.startsWith('/') ? cookie.path : `/${cookie.path}`
+        const url = `${scheme}://${domainClean}${pathClean}`
+        try {
+          await browserSession.cookies.set({
+            url,
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain,
+            path: cookie.path,
+            secure: cookie.secure,
+            httpOnly: cookie.httpOnly,
+            sameSite:
+              cookie.sameSite === 'no_restriction'
+                ? 'no_restriction'
+                : cookie.sameSite === 'strict'
+                  ? 'strict'
+                  : 'lax',
+            expirationDate: cookie.expirationDate
+          })
+          importedCount += 1
+          domainSet.add(domainClean)
+        } catch {
+          // ignore invalid single cookie
+        }
+      }
+      await browserSession.cookies.flushStore().catch(() => {})
+      return {
+        importedCount,
+        domains: Array.from(domainSet)
+      }
     })
   ]
   return () => {

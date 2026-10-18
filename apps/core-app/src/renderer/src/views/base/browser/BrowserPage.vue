@@ -24,25 +24,24 @@ import {
   shallowRef,
   watch
 } from 'vue'
+import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import MetaHintBadge from '~/components/shell/MetaHintBadge.vue'
 import ShellAccountAvatar from '~/components/shell/ShellAccountAvatar.vue'
 import {
   isOpenableBrowserUrl,
   useBrowserConnection
 } from '~/modules/browser-connection/useBrowserConnection'
-import { useConversationEntry } from '~/modules/conversation/useConversationEntry'
 import HomePage from '../home/HomePage.vue'
 import BrowserPluginToolbar from './BrowserPluginToolbar.vue'
 import ChromeBookmarkDialog from './ChromeBookmarkDialog.vue'
 import ChromeLibraryPanel from './ChromeLibraryPanel.vue'
+import ChromeCookieDialog from './ChromeCookieDialog.vue'
 import type { BrowserTabMenuAction } from './tab-actions'
 import { runBrowserTabAction } from './tab-actions'
 
 const { t, locale } = useI18n()
 const route = useRoute()
-const { enterConversation } = useConversationEntry()
 const sdk = createBrowserSdk(useTuffTransport())
 const state = shallowRef<BrowserWorkspaceState | null>(null)
 const error = ref('')
@@ -65,7 +64,85 @@ const pluginToolbarOpen = ref(false)
 // account dialog) and the "save to Chrome" form. Both report synchronously so the guest hides first.
 const accountOpen = ref(false)
 const chromeSaveOpen = ref(false)
-const { activeProfile: chromeProfile } = useBrowserConnection()
+const cookieDialogOpen = ref(false)
+const syncingCookies = ref(false)
+const {
+  activeProfile: chromeProfile,
+  importCookies: importChromeCookies,
+  describeError: describeChromeError
+} = useBrowserConnection()
+const isChromeConnected = computed(() => chromeProfile.value?.status === 'connected')
+const currentDomain = computed(() => {
+  const url = activeTab.value?.url
+  if (!url) return ''
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+})
+const canSyncCookies = computed(() => {
+  const url = activeTab.value?.url
+  if (!url || !isOpenableBrowserUrl(url)) return false
+  return url.startsWith('http://') || url.startsWith('https://')
+})
+async function syncCurrentCookies(): Promise<void> {
+  const profile = chromeProfile.value
+  const url = activeTab.value?.url
+  if (!profile || !url || syncingCookies.value) return
+  if (!isChromeConnected.value) {
+    toast.warning(t('browser.cookies.chromeOfflineHint'))
+    cookieDialogOpen.value = true
+    return
+  }
+  syncingCookies.value = true
+  try {
+    const domain = currentDomain.value
+    const result = await importChromeCookies(profile.id, { url, domain })
+    if (result.importedCount > 0) {
+      toast.success(t('browser.syncCookiesSuccess', { count: result.importedCount, domain }))
+      await runActive('reload')
+    } else {
+      toast.info(t('browser.syncCookiesEmpty', { domain }))
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    toast.error(t('browser.syncCookiesFailed', { error: describeChromeError(message) }))
+  } finally {
+    syncingCookies.value = false
+  }
+}
+function onCookieSyncSuccess(count: number, domain: string): void {
+  toast.success(t('browser.syncCookiesSuccess', { count, domain }))
+  void runActive('reload')
+}
+const AUTO_SYNC_STORAGE_KEY = 'tuff-browser-cookie-auto-sync-sites'
+watch(
+  () => [
+    activeTab.value?.url,
+    chromeProfile.value?.id,
+    activeTab.value?.loading,
+    isChromeConnected.value
+  ],
+  async ([newUrl, profileId, loading, connected]) => {
+    if (!onRoute.value || loading || !newUrl || !profileId || !connected) return
+    if (!canSyncCookies.value) return
+    const domain = currentDomain.value
+    if (!domain) return
+    try {
+      const raw = localStorage.getItem(AUTO_SYNC_STORAGE_KEY)
+      const sites: string[] = raw ? JSON.parse(raw) : []
+      if (!sites.includes(domain)) return
+      const res = await importChromeCookies(profileId as string, { url: newUrl as string, domain })
+      if (res && res.importedCount > 0) {
+        toast.success(t('browser.syncCookiesSuccess', { count: res.importedCount, domain }))
+        await runActive('reload')
+      }
+    } catch {
+      // silent background auto-sync failure
+    }
+  }
+)
 const tabMenuIndex = computed(
   () => state.value?.tabs.findIndex((tab) => tab.id === tabMenuTargetId.value) ?? -1
 )
@@ -660,17 +737,6 @@ onBeforeUnmount(() => {
           class="pointer-events-none absolute inset-y-1 left-0 w-0.5 bg-[var(--tx-color-primary)]"
         />
       </div>
-      <TxButton
-        icon="i-ri-add-line"
-        variant="ghost"
-        size="sm"
-        class="flex-none"
-        style="-webkit-app-region: no-drag"
-        @click="enterConversation(null)"
-      >
-        {{ t('shell.newChat') }}
-        <MetaHintBadge command="new-chat" />
-      </TxButton>
       <div
         class="shell-chrome-safe-inline-end flex flex-none items-center gap-0.5"
         style="-webkit-app-region: no-drag"
@@ -736,6 +802,30 @@ onBeforeUnmount(() => {
         :disabled="!canSaveToChrome"
         @click="chromeSaveOpen = true"
       />
+      <div
+        v-if="canSyncCookies"
+        class="flex items-center gap-0.5 rounded-lg bg-[var(--tx-fill-color-light)] px-1 py-0.5"
+      >
+        <TxIconButton
+          icon="i-ri-key-line"
+          size="sm"
+          :label="
+            isChromeConnected
+              ? t('browser.syncCookiesFromChrome', { profile: chromeProfile?.label })
+              : t('browser.syncCookiesUnavailable')
+          "
+          :loading="syncingCookies"
+          @click="syncCurrentCookies"
+        />
+        <button
+          type="button"
+          class="flex h-6 w-5 items-center justify-center rounded text-xs text-[var(--tx-text-color-secondary)] hover:text-[var(--tx-text-color-primary)] cursor-pointer"
+          :title="t('browser.cookies.modalTitle')"
+          @click="cookieDialogOpen = true"
+        >
+          <span class="i-ri-more-2-line text-xs" />
+        </button>
+      </div>
       <TxIconButton
         icon="i-ri-layout-right-line"
         :label="t('browser.library')"
@@ -987,6 +1077,12 @@ onBeforeUnmount(() => {
       mode="save-page"
       :profile="chromeProfile"
       :page="currentPage"
+    />
+    <ChromeCookieDialog
+      v-model="cookieDialogOpen"
+      :url="activeTab?.url ?? ''"
+      :domain="currentDomain"
+      @sync-success="onCookieSyncSuccess"
     />
   </section>
 </template>

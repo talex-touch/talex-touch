@@ -178,6 +178,29 @@ function tabRequest(messages: unknown[]): string {
   if (typeof requestId !== 'string') throw new Error('invalid tab request')
   return requestId
 }
+function cookieRequest(messages: unknown[]): { requestId: string; filter: unknown } {
+  const message = [...messages].reverse().find((candidate) => {
+    if (
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate) ||
+      !('type' in candidate)
+    )
+      return false
+    return candidate.type === 'cookies'
+  })
+  if (
+    !message ||
+    typeof message !== 'object' ||
+    Array.isArray(message) ||
+    !('requestId' in message) ||
+    !('filter' in message)
+  )
+    throw new Error('missing cookie request')
+  const requestId = message.requestId
+  if (typeof requestId !== 'string') throw new Error('invalid cookie request')
+  return { requestId, filter: message.filter }
+}
 
 async function waitForTabRequest(messages: unknown[]): Promise<string> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -1088,6 +1111,45 @@ describe('browser connection boundary regressions', () => {
     await expect(harness.manager.tab(profile.id, { kind: 'activate', id: 2 })).rejects.toThrow(
       'BROWSER_PROFILE_OFFLINE'
     )
+    await harness.manager.dispose()
+  })
+
+  it('routes getCookies and receives cookies-result from active connection', async () => {
+    const harness = createHarness()
+    const profile = profileKey('cookies-test')
+    const connected = await pairAndConnect(harness, profile, { bookmarks: [] })
+    const promise = harness.manager.getCookies(profile.id, { domain: 'example.com' })
+    await Promise.resolve()
+    const req = cookieRequest(connected.messages)
+    expect(req.filter).toEqual({ domain: 'example.com' })
+    await connected.session.receive({
+      type: 'cookies-result',
+      requestId: req.requestId,
+      ok: true,
+      cookies: [
+        {
+          name: 'session_token',
+          value: 'secret123',
+          domain: 'example.com',
+          path: '/',
+          secure: true,
+          httpOnly: true,
+          sameSite: 'lax'
+        }
+      ]
+    })
+    const cookies = await promise
+    expect(cookies).toEqual([
+      {
+        name: 'session_token',
+        value: 'secret123',
+        domain: 'example.com',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'lax'
+      }
+    ])
     await harness.manager.dispose()
   })
 })

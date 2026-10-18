@@ -37,7 +37,78 @@ const props = defineProps<{
 const { t } = useI18n()
 const connection = useBrowserConnection()
 const { state, activeProfile, busy, describeError, sdk } = connection
-const view = ref<'bookmarks' | 'tabs'>('bookmarks')
+const view = ref<'bookmarks' | 'tabs' | 'cookies'>('bookmarks')
+
+const PRESET_DOMAINS = [
+  { label: 'GitHub', domain: 'github.com', icon: 'i-simple-icons-github' },
+  { label: 'Linux.do', domain: 'linux.do', icon: 'i-ri-terminal-box-line' },
+  { label: 'Notion', domain: 'notion.so', icon: 'i-simple-icons-notion' },
+  { label: 'Google', domain: 'google.com', icon: 'i-simple-icons-google' },
+  { label: '知乎', domain: 'zhihu.com', icon: 'i-simple-icons-zhihu' },
+  { label: '哔哩哔哩', domain: 'bilibili.com', icon: 'i-simple-icons-bilibili' },
+  { label: 'Figma', domain: 'figma.com', icon: 'i-simple-icons-figma' }
+]
+
+const selectedDomains = ref<string[]>(['github.com', 'linux.do'])
+const customDomainInput = ref('')
+const confirmationPassword = ref('')
+const cookieImportResult = ref<{ count: number; domains: string[] } | null>(null)
+const cookieImportError = ref('')
+const cookieImporting = ref(false)
+
+function toggleDomain(domain: string) {
+  if (selectedDomains.value.includes(domain)) {
+    selectedDomains.value = selectedDomains.value.filter((d) => d !== domain)
+  } else {
+    selectedDomains.value.push(domain)
+  }
+}
+
+function selectAllPresets() {
+  selectedDomains.value = Array.from(
+    new Set([...selectedDomains.value, ...PRESET_DOMAINS.map((p) => p.domain)])
+  )
+}
+
+function clearSelectedDomains() {
+  selectedDomains.value = []
+}
+
+function addCustomDomain() {
+  const trimmed = customDomainInput.value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+  if (trimmed && !selectedDomains.value.includes(trimmed)) {
+    selectedDomains.value.push(trimmed)
+  }
+  customDomainInput.value = ''
+}
+
+function removeDomain(domain: string) {
+  selectedDomains.value = selectedDomains.value.filter((d) => d !== domain)
+}
+
+async function runBatchImportCookies() {
+  if (!profile.value || selectedDomains.value.length === 0 || cookieImporting.value) return
+  cookieImporting.value = true
+  cookieImportError.value = ''
+  cookieImportResult.value = null
+  try {
+    const res = await connection.importCookies(
+      profile.value.id,
+      { domains: selectedDomains.value },
+      confirmationPassword.value || undefined
+    )
+    cookieImportResult.value = { count: res.importedCount, domains: res.domains }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    cookieImportError.value = describeError(msg)
+  } finally {
+    cookieImporting.value = false
+  }
+}
 const folderId = ref<string | null>(null)
 const error = ref('')
 const dialogOpen = ref(false)
@@ -363,6 +434,14 @@ watch(
           @click="view = 'tabs'"
           >{{ t('chromeLibrary.tabs', { count: profile.tabs.length }) }}</TxButton
         >
+        <TxButton
+          :variant="view === 'cookies' ? 'flat' : 'ghost'"
+          size="sm"
+          :aria-pressed="view === 'cookies'"
+          icon="i-ri-key-line"
+          @click="view = 'cookies'"
+          >{{ t('chromeLibrary.cookies.title') }}</TxButton
+        >
       </div>
 
       <template v-if="view === 'bookmarks'">
@@ -520,7 +599,7 @@ watch(
         </TxVirtualList>
       </template>
 
-      <template v-else>
+      <template v-else-if="view === 'tabs'">
         <div class="flex flex-wrap items-center gap-2">
           <TxButton
             variant="flat"
@@ -637,6 +716,156 @@ watch(
             </div>
           </template>
         </TxVirtualList>
+      </template>
+      <template v-else-if="view === 'cookies'">
+        <div
+          class="flex flex-col gap-4 rounded-xl border border-[var(--tx-border-color-light)] bg-[var(--tx-fill-color-light)] p-5"
+        >
+          <div class="flex items-start gap-3">
+            <span
+              class="i-ri-shield-keyhole-line mt-0.5 text-xl text-[var(--tx-color-primary)]"
+              aria-hidden="true"
+            />
+            <div class="flex-1 min-w-0">
+              <h4 class="m-0 text-sm font-semibold">{{ t('chromeLibrary.cookies.title') }}</h4>
+              <p class="m-0 mt-1 text-xs text-[var(--tx-text-color-secondary)] leading-relaxed">
+                {{ t('chromeLibrary.cookies.subtitle') }}
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-[var(--tx-text-color-primary)]">{{
+                t('chromeLibrary.cookies.quickSelect')
+              }}</span>
+              <div class="flex gap-2">
+                <TxButton variant="ghost" size="sm" @click="selectAllPresets">{{
+                  t('chromeLibrary.cookies.selectAll')
+                }}</TxButton>
+                <TxButton variant="ghost" size="sm" @click="clearSelectedDomains">{{
+                  t('chromeLibrary.cookies.clearAll')
+                }}</TxButton>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="site in PRESET_DOMAINS"
+                :key="site.domain"
+                type="button"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer"
+                :class="
+                  selectedDomains.includes(site.domain)
+                    ? 'border-[var(--tx-color-primary)] bg-[var(--tx-color-primary-light-9)] text-[var(--tx-color-primary)] font-medium'
+                    : 'border-[var(--tx-border-color-light)] bg-[var(--tx-bg-color)] text-[var(--tx-text-color-regular)] hover:border-[var(--tx-border-color)]'
+                "
+                @click="toggleDomain(site.domain)"
+              >
+                <span :class="site.icon" class="text-sm" aria-hidden="true" />
+                <span>{{ site.label }}</span>
+                <span class="text-[10px] text-[var(--tx-text-color-secondary)]"
+                  >({{ site.domain }})</span
+                >
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-[var(--tx-text-color-primary)]">{{
+              t('chromeLibrary.cookies.customDomain')
+            }}</label>
+            <div class="flex gap-2">
+              <TxInput
+                v-model="customDomainInput"
+                class="flex-1"
+                size="sm"
+                :placeholder="t('chromeLibrary.cookies.customDomainPlaceholder')"
+                @keydown.enter.prevent="addCustomDomain"
+              />
+              <TxButton
+                variant="flat"
+                size="sm"
+                icon="i-ri-add-line"
+                :disabled="!customDomainInput.trim()"
+                @click="addCustomDomain"
+              >
+                {{ t('chromeLibrary.cookies.addDomain') }}
+              </TxButton>
+            </div>
+          </div>
+
+          <div v-if="selectedDomains.length" class="flex flex-col gap-1.5">
+            <span class="text-xs text-[var(--tx-text-color-secondary)]">
+              {{ t('chromeLibrary.cookies.selectedDomains', { count: selectedDomains.length }) }}
+            </span>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="dom in selectedDomains"
+                :key="dom"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--tx-bg-color)] border border-[var(--tx-border-color-light)] text-xs text-[var(--tx-text-color-primary)]"
+              >
+                {{ dom }}
+                <button
+                  type="button"
+                  class="ml-0.5 text-[var(--tx-text-color-secondary)] hover:text-[var(--tx-color-danger)] transition-colors cursor-pointer"
+                  :aria-label="`移除 ${dom}`"
+                  @click="removeDomain(dom)"
+                >
+                  <span class="i-ri-close-line text-xs" />
+                </button>
+              </span>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-[var(--tx-text-color-primary)]">{{
+              t('chromeLibrary.cookies.passwordLabel')
+            }}</label>
+            <TxInput
+              v-model="confirmationPassword"
+              type="password"
+              size="sm"
+              :placeholder="t('chromeLibrary.cookies.passwordPlaceholder')"
+            />
+          </div>
+
+          <div class="flex flex-col gap-2 pt-2 border-t border-[var(--tx-border-color-light)]">
+            <div class="flex items-center justify-between">
+              <TxButton
+                variant="primary"
+                size="md"
+                icon="i-ri-download-cloud-line"
+                :disabled="!selectedDomains.length || !connected"
+                :loading="cookieImporting"
+                @click="runBatchImportCookies"
+              >
+                {{ t('chromeLibrary.cookies.importAction') }}
+              </TxButton>
+              <p class="m-0 text-xs text-[var(--tx-text-color-secondary)]">
+                {{ t('chromeLibrary.cookies.tip') }}
+              </p>
+            </div>
+
+            <p v-if="cookieImportError" class="m-0 text-xs text-[var(--tx-color-danger)]">
+              {{ t('chromeLibrary.cookies.importFailed', { error: cookieImportError }) }}
+            </p>
+            <div
+              v-else-if="cookieImportResult"
+              class="flex flex-col gap-1 rounded-lg bg-[var(--tx-color-success-light-9)] p-3 border border-[var(--tx-color-success-light-7)]"
+            >
+              <p class="m-0 text-xs text-[var(--tx-color-success)] font-medium">
+                {{
+                  cookieImportResult.count > 0
+                    ? t('chromeLibrary.cookies.importSuccess', {
+                        count: cookieImportResult.count,
+                        domains: cookieImportResult.domains.join(', ')
+                      })
+                    : t('chromeLibrary.cookies.importEmpty')
+                }}
+              </p>
+            </div>
+          </div>
+        </div>
       </template>
 
       <ChromeBookmarkDialog

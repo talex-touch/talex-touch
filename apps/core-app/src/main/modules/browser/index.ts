@@ -1,7 +1,6 @@
 import type { ModuleInitContext } from '@talex-touch/utils'
 import type { Event as ElectronEvent, Session } from 'electron'
 import type { TalexEvents } from '../../core/eventbus/touch-event'
-import { randomUUID } from 'node:crypto'
 import { BrowserEvents } from '@talex-touch/utils/transport/sdk/domains/browser'
 import { app, session, WebContentsView } from 'electron'
 import { resolveMainRuntime } from '../../core/runtime-accessor'
@@ -16,6 +15,7 @@ import { BrowserWorkspaceManager } from './workspace-manager'
 
 // Local-only: intentionally absent from sync's explicit SYNC_STORAGE_KEYS allowlist.
 export { BROWSER_WORKSPACE_STORAGE_KEY } from '../storage/main-storage-registry'
+export const TUFF_BROWSER_PARTITION = 'persist:tuff-browser'
 
 /** A fresh, unprivileged session never inherits application protocols, storage or permissions. */
 export function secureBrowserSession(browserSession: Session): () => void {
@@ -53,9 +53,9 @@ export class BrowserModule extends BaseModule<TalexEvents> {
     if (!owner || owner.isDestroyed()) throw new Error('BROWSER_MAIN_WINDOW_UNAVAILABLE')
     if (resolveAppConfigBackend() !== 'sqlite') throw new Error('BROWSER_SQLITE_REQUIRED')
     const storage = useMainStorage()
-    // Non-persistent, independent browsing session. Saved pages are in the existing SQLite config;
-    // web cookies and permissions never enter the application session or config/sync payloads.
-    const browserSession = session.fromPartition(`tuff-browser-${randomUUID()}`)
+    // Dedicated persistent browsing partition. Saved pages are in the existing SQLite config;
+    // web cookies and permissions stay in this partition and never enter the application session.
+    const browserSession = session.fromPartition(TUFF_BROWSER_PARTITION)
     this.disposers.push(secureBrowserSession(browserSession))
     const manager = new BrowserWorkspaceManager(
       {
