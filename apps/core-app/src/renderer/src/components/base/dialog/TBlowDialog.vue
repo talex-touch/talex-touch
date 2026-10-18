@@ -113,7 +113,9 @@ async function destroy(): Promise<void> {
   // Clear applied styles
   const app = document.getElementById('app')
   if (app) {
-    app.style.cssText = ''
+    app.style.removeProperty('transition')
+    app.style.removeProperty('opacity')
+    app.style.removeProperty('transform')
   }
 
   props.close()

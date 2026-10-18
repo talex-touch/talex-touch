@@ -130,11 +130,6 @@ export default defineConfig({
     // cell in the picker grid draws an empty box. Spread from the module so a row added there
     // cannot ship invisible.
     ...ICON_CATALOG_CLASSES,
-    // The picker's own chrome glyphs, named in its SFC but inside `packages/tuffex`, which is
-    // outside this app's content roots.
-    'i-ri-image-add-line',
-    'i-ri-folder-image-line',
-    'i-ri-search-line',
     // The MainWindow command catalog (`modules/shortcuts/main-window-command-catalog.ts`) — the
     // rows ⌘/ lists and the badge on each control. A row is rendered by v-for, so no template names
     // its icon; without these the whole palette draws empty boxes. Derived from the catalog so a
