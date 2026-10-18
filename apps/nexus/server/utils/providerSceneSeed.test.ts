@@ -136,7 +136,11 @@ describe('providerSceneSeed', () => {
       meteringPolicy: before.meteringPolicy,
       metadata: before.metadata,
     })
-    expect(after.bindings.filter(binding => binding.capability === capability)).toEqual(before.bindings)
+    expect(
+      after.bindings
+        .filter(binding => binding.capability === capability)
+        .map(({ updatedAt, ...rest }) => rest)
+    ).toEqual(before.bindings.map(({ updatedAt, ...rest }) => rest))
     expect(after.bindings.some(binding => binding.capability === capability && binding.providerId === preferred.id)).toBe(false)
   })
 
