@@ -1858,6 +1858,7 @@ const branchSequence = createLatestOnly()
 async function branchTo(request: {
   messageId?: string
   mode?: ConversationWorkspaceMode
+  profileId?: string
 }): Promise<void> {
   const origin = conversationId.value
   if (!origin || branching.value) return
@@ -1917,10 +1918,9 @@ function selectProfile(profileId: string): void {
 /**
  * The mode menu lists profiles, not modes: picking one is picking Agent mode with that profile. Within
  * Agent it is a profile change; from Chat it is a mode change, which a thread with history takes as a
- * branch. Main's fork copies the thread's settings and replaces only the mode, so the profile the
- * branch should run as is written to this thread first — inert here while it stays in Chat.
+ * branch. Main applies the requested profile only to the child, leaving this thread unchanged.
  */
-async function selectAgentProfile(profileId: string): Promise<void> {
+function selectAgentProfile(profileId: string): void {
   const current = workspace.settings.value
   if (current.mode === 'agent') {
     if (current.profileId !== profileId) selectProfile(profileId)
@@ -1935,12 +1935,7 @@ async function selectAgentProfile(profileId: string): Promise<void> {
     void workspace.configure({ mode: 'agent', profileId })
     return
   }
-  if (current.profileId !== profileId) {
-    await workspace.configure({ profileId })
-    // A refused write was already reported; branching now would run the profile the thread had.
-    if (workspace.settings.value.profileId !== profileId) return
-  }
-  void branchTo({ mode: 'agent' })
+  void branchTo({ mode: 'agent', profileId })
 }
 
 /** The waiting run's profile by name, when the list has it; the card falls back to its id. */

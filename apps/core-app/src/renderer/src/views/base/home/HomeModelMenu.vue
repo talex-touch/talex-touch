@@ -686,6 +686,8 @@ onBeforeUnmount(() => {
                   type="button"
                   role="tab"
                   data-home-model-rail-item
+                  :data-provider-id="entry.providerId"
+                  :data-source="entry.channel"
                   :title="entry.heading"
                   :aria-selected="effectiveRail === entry.key"
                   :tabindex="effectiveRail === entry.key ? 0 : -1"
@@ -756,6 +758,8 @@ onBeforeUnmount(() => {
                 type="button"
                 role="option"
                 data-home-model-option
+                :data-provider-id="row.choice.providerId"
+                :data-model="row.choice.model"
                 :aria-selected="isSelected(row.choice)"
                 :tabindex="listTabIndex(row.choice)"
                 :title="row.choice.model"

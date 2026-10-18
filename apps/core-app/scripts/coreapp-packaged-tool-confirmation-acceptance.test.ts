@@ -69,6 +69,7 @@ afterEach(async () => {
   )
   document.body.replaceChildren()
   Reflect.deleteProperty(document, 'elementFromPoint')
+  Reflect.deleteProperty(window, 'touchChannel')
   vi.restoreAllMocks()
 })
 
@@ -314,48 +315,69 @@ function domBackedCdpSend() {
 }
 
 function controlledSubmitSend(
-  readSubmitReady: () => boolean,
+  submitReady: boolean | { afterMs: number },
   options: {
-    reviewModeActive?: boolean | (() => boolean)
     gatewayReady?: boolean | (() => boolean)
+    initialMode?: 'off' | 'review' | 'full'
+    modeOnInput?: 'off' | 'review' | 'full'
+    modeBeforeClick?: 'off' | 'review' | 'full'
   } = {}
 ) {
-  return vi.fn(async (method, params) => {
-    if (method === 'Page.bringToFront') return {}
-    const expression = typeof params?.expression === 'string' ? params.expression : ''
-    if (expression.includes('window.focus(); return true')) return cdpValue(true)
-    if (expression === 'document.hidden === false') return cdpValue(true)
-    if (expression.includes('agent-tools:api:get-state')) {
+  document.body.innerHTML = `
+    <main class="HomePage">
+      <button class="HomePermissionMenu-Chip" data-mode="${options.initialMode ?? 'review'}" type="button">
+        Permission
+      </button>
+      <textarea class="HomePage-Input"></textarea>
+      <button class="ComposerSendIsland" data-state="disabled" type="button">Send</button>
+    </main>
+  `
+  vi.spyOn(window, 'focus').mockImplementation(() => {})
+  const permission = document.querySelector<HTMLButtonElement>('.HomePermissionMenu-Chip')!
+  const input = document.querySelector<HTMLTextAreaElement>('.HomePage-Input')!
+  const submit = document.querySelector<HTMLButtonElement>('.ComposerSendIsland')!
+  if (submitReady === true) submit.dataset.state = 'ready'
+  if (typeof submitReady === 'object') {
+    setTimeout(() => {
+      submit.dataset.state = 'ready'
+    }, submitReady.afterMs)
+  }
+  let gatewayReads = 0
+  const gateway = {
+    send: vi.fn(async () => {
+      gatewayReads += 1
+      if (options.modeBeforeClick && gatewayReads === 2) {
+        permission.dataset.mode = options.modeBeforeClick
+      }
       const ready =
         typeof options.gatewayReady === 'function'
           ? options.gatewayReady()
           : (options.gatewayReady ?? true)
-      return cdpValue({
+      return {
         enabled: true,
         mode: 'review',
         ready,
         tools: ready ? [TOOL_ID] : []
-      })
-    }
-    if (expression.includes("HomePermissionMenu-Pill')?.classList.contains('is-info')")) {
-      return cdpValue(
-        typeof options.reviewModeActive === 'function'
-          ? options.reviewModeActive()
-          : (options.reviewModeActive ?? true)
-      )
-    }
-    if (expression.includes("input.dispatchEvent(new InputEvent('input'")) return cdpValue(true)
-    if (expression.includes('return !(') && expression.includes('button.dataset.state')) {
-      return cdpValue(readSubmitReady())
-    }
-    if (expression.includes('button.click()')) {
-      const active =
-        typeof options.reviewModeActive === 'function'
-          ? options.reviewModeActive()
-          : (options.reviewModeActive ?? true)
-      return cdpValue(active ? 'submitted' : 'review-mode-inactive')
-    }
-    throw new Error(`Unexpected CDP expression: ${expression}`)
+      }
+    })
+  }
+  Object.defineProperty(window, 'touchChannel', {
+    configurable: true,
+    value: gateway
+  })
+  input.addEventListener('input', () => {
+    if (options.modeOnInput) permission.dataset.mode = options.modeOnInput
+  })
+  submit.addEventListener('click', () => {
+    submit.dataset.submitted = 'true'
+  })
+
+  return vi.fn<CdpSend>(async (method, params) => {
+    if (method === 'Page.bringToFront') return {}
+    if (method !== 'Runtime.evaluate') throw new Error(`Unexpected CDP method: ${method}`)
+    const expression = String(params?.expression)
+    const value = await new Function('window', `return (${expression})`)(window)
+    return cdpValue(value)
   })
 }
 
@@ -534,17 +556,18 @@ describe('packaged tool confirmation acceptance contracts', () => {
   it('waits for Vue to enable the controlled turn submit button before clicking', async () => {
     vi.useFakeTimers()
     try {
-      let attempts = 0
-      const send = controlledSubmitSend(() => {
-        attempts += 1
-        return attempts >= 3
-      })
+      const send = controlledSubmitSend({ afterMs: 300 })
 
       const pending = submitControlledTurn(send)
       await vi.advanceTimersByTimeAsync(400)
 
       await expect(pending).resolves.toBeUndefined()
-      expect(attempts).toBe(3)
+      expect(document.querySelector<HTMLTextAreaElement>('.HomePage-Input')?.value).toBe(
+        CONTROLLED_TURN_PROMPT
+      )
+      expect(
+        document.querySelector<HTMLButtonElement>('.ComposerSendIsland')?.dataset.submitted
+      ).toBe('true')
     } finally {
       vi.useRealTimers()
     }
@@ -553,53 +576,82 @@ describe('packaged tool confirmation acceptance contracts', () => {
   it('fails with a stable code when the controlled turn submit button stays disabled', async () => {
     vi.useFakeTimers()
     try {
-      const pending = expect(
-        submitControlledTurn(controlledSubmitSend(() => false))
-      ).rejects.toThrow('CONTROLLED_TURN_NOT_SUBMITTED')
+      const pending = expect(submitControlledTurn(controlledSubmitSend(false))).rejects.toThrow(
+        'CONTROLLED_TURN_NOT_SUBMITTED'
+      )
 
       await vi.advanceTimersByTimeAsync(8_100)
       await pending
+      expect(
+        document.querySelector<HTMLButtonElement>('.ComposerSendIsland')?.dataset.submitted
+      ).toBeUndefined()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('fails before editing the turn when review mode has rolled back', async () => {
-    const send = controlledSubmitSend(() => true, { reviewModeActive: false })
+  it('rejects before editing when review mode has already rolled back', async () => {
+    const send = controlledSubmitSend(true, { initialMode: 'off' })
 
     await expect(submitControlledTurn(send)).rejects.toThrow('REVIEW_MODE_ROLLED_BACK')
+    expect(document.querySelector<HTMLTextAreaElement>('.HomePage-Input')?.value).toBe('')
     expect(
-      send.mock.calls.some(([, params]) =>
-        String(params?.expression).includes("input.dispatchEvent(new InputEvent('input'")
-      )
-    ).toBe(false)
+      document.querySelector<HTMLButtonElement>('.ComposerSendIsland')?.dataset.submitted
+    ).toBeUndefined()
+  })
+
+  for (const mode of ['off', 'full'] as const) {
+    it(`rejects ${mode} mode even when the send button has no danger styling`, async () => {
+      const send = controlledSubmitSend(true, { initialMode: mode })
+      const submit = document.querySelector<HTMLButtonElement>('.ComposerSendIsland')!
+
+      expect(submit.classList.contains('is-danger')).toBe(false)
+      await expect(submitControlledTurn(send)).rejects.toThrow('REVIEW_MODE_ROLLED_BACK')
+      expect(document.querySelector<HTMLTextAreaElement>('.HomePage-Input')?.value).toBe('')
+      expect(submit.dataset.submitted).toBeUndefined()
+    })
+  }
+
+  it('rejects when review mode changes while the input is being updated', async () => {
+    const send = controlledSubmitSend(true, { modeOnInput: 'off' })
+    const input = document.querySelector<HTMLTextAreaElement>('.HomePage-Input')!
+    const submit = document.querySelector<HTMLButtonElement>('.ComposerSendIsland')!
+
+    await expect(submitControlledTurn(send)).rejects.toThrow('REVIEW_MODE_ROLLED_BACK')
+    expect(input.value).toBe(CONTROLLED_TURN_PROMPT)
+    expect(submit.dataset.submitted).toBeUndefined()
+  })
+
+  it('rejects without editing or sending when the review gateway is not ready', async () => {
+    const send = controlledSubmitSend(true, { gatewayReady: false })
+    const input = document.querySelector<HTMLTextAreaElement>('.HomePage-Input')!
+    const submit = document.querySelector<HTMLButtonElement>('.ComposerSendIsland')!
+
+    await expect(submitControlledTurn(send)).rejects.toThrow('REVIEW_MODE_GATEWAY_NOT_READY')
+    expect(input.value).toBe('')
+    expect(submit.dataset.submitted).toBeUndefined()
   })
 
   it('does not click when main becomes unready while the turn waits', async () => {
     let stateReads = 0
-    const send = controlledSubmitSend(() => true, {
+    const send = controlledSubmitSend(true, {
       gatewayReady: () => {
         stateReads += 1
         return stateReads === 1
       }
     })
+    const submit = document.querySelector<HTMLButtonElement>('.ComposerSendIsland')!
 
     await expect(submitControlledTurn(send)).rejects.toThrow('REVIEW_MODE_GATEWAY_NOT_READY')
-    expect(
-      send.mock.calls.some(([, params]) => String(params?.expression).includes('button.click()'))
-    ).toBe(false)
+    expect(submit.dataset.submitted).toBeUndefined()
   })
 
   it('does not click when review mode rolls back after the button becomes ready', async () => {
-    let uiReads = 0
-    const send = controlledSubmitSend(() => true, {
-      reviewModeActive: () => {
-        uiReads += 1
-        return uiReads === 1
-      }
-    })
+    const send = controlledSubmitSend(true, { modeBeforeClick: 'off' })
+    const submit = document.querySelector<HTMLButtonElement>('.ComposerSendIsland')!
 
     await expect(submitControlledTurn(send)).rejects.toThrow('REVIEW_MODE_ROLLED_BACK')
+    expect(submit.dataset.submitted).toBeUndefined()
   })
 
   it('isolates launch state and removes inherited runtime or credential pollution', () => {

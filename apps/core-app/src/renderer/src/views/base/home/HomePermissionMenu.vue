@@ -116,6 +116,7 @@ watch(open, (isOpen) => {
         <!-- Folds to the shield alone in a narrow toolbar; the full state stays in the name. -->
         <ComposerChip
           class="HomePermissionMenu-Chip"
+          :data-mode="props.mode"
           :danger="props.mode === 'full'"
           :icon="chipIcon"
           :label="chipLabel"
@@ -260,8 +261,14 @@ watch(open, (isOpen) => {
   min-width: 0;
 }
 
+/*
+ * 11px ink on the armed row's `--shell-danger-soft`. Plain `--shell-danger` reads 4.1:1 there in
+ * the dark theme (4.6:1 light), under AA's 4.5:1 for small text, so the hue is pulled a quarter
+ * of the way toward `--shell-text-primary`: still the danger red, and every theme's text ink
+ * points away from its own surface, so the mix only ever gains contrast (dark ≈5.5:1, light ≈6.4:1).
+ */
 .HomePermissionMenu-ArmHint {
-  color: var(--shell-danger);
+  color: color-mix(in srgb, var(--shell-danger) 75%, var(--shell-text-primary));
   font-size: var(--shell-fs-caption);
   line-height: 1.45;
 }

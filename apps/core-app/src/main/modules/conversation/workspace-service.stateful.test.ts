@@ -436,6 +436,57 @@ describe('ConversationWorkspaceService persisted queue authority', () => {
 })
 
 describe('ConversationWorkspaceService fork ownership', () => {
+  it('forking historical chat with an agent profile override changes only the child settings', async () => {
+    await completedParent()
+    const parentSettings = { ...settings, profileId: 'parent-profile' }
+    await service.configure('parent', parentSettings)
+    const parentBefore = await service.get('parent')
+    const before = await snapshot()
+
+    const child = await service.fork({
+      conversationId: 'parent',
+      messageId: 'assistant-first',
+      mode: 'agent',
+      profileId: 'child-profile'
+    })
+
+    expect(child.settings).toEqual({
+      ...parentSettings,
+      mode: 'agent',
+      profileId: 'child-profile'
+    })
+    const after = await snapshot()
+    const childWorkspace = after.workspaces.find(
+      (row) => row.conversation_id === child.conversationId
+    )!
+    expect(JSON.parse(String(childWorkspace.settings_json))).toEqual(child.settings)
+    expect(await service.get('parent')).toEqual(parentBefore)
+    expect(after.workspaces.filter((row) => row.conversation_id === 'parent')).toEqual(
+      before.workspaces
+    )
+    expect(after.messages.filter((row) => row.conversation_id === 'parent')).toEqual(
+      before.messages
+    )
+    expect(after.conversations.filter((row) => row.id === 'parent')).toEqual(before.conversations)
+  })
+
+  it('rejecting a profile override at a user-message anchor leaves all parent state intact and creates no child', async () => {
+    await completedParent()
+    await service.configure('parent', { ...settings, profileId: 'parent-profile' })
+    const before = await snapshot()
+
+    await expect(
+      service.fork({
+        conversationId: 'parent',
+        messageId: 'user-first',
+        mode: 'agent',
+        profileId: 'child-profile'
+      })
+    ).rejects.toThrow('WORKSPACE_FORK_ANCHOR_INVALID')
+
+    expect(await snapshot()).toEqual(before)
+  })
+
   it('remaps messages, tools, turns and attachments coherently; child mutation/deletion never changes its parent or original file', async () => {
     const original = join(root, 'original.png')
     await writeFile(original, 'hello')
