@@ -10,6 +10,7 @@ const {
 } = require('./runtime-modules')
 const { OFFICIAL_PLUGIN_BUILD_TARGETS } = require('../lib/touch-translation-runtime-sync')
 const { createPackagedBuildAttestation } = require('./build-attestation')
+const { verifyMacUpdateHelper } = require('./native-addons')
 const {
   verifyPackagedBundle: verifyPackagedPiDesktopReuseLegal
 } = require('../legal/pi-desktop-reuse-legal.cjs')
@@ -241,6 +242,9 @@ function verifyPackagedNativeAddons(context, options = {}) {
   }
 
   const nativePackageRoot = path.join(resourcesDir, 'node_modules', '@talex-touch', 'tuff-native')
+  if (context.electronPlatformName === 'darwin') {
+    verifyMacUpdateHelper(path.join(nativePackageRoot, 'build', 'Release'))
+  }
   const addonNames = requiredNativeAddonNames(context.electronPlatformName)
   const missing = addonNames.filter(
     (addonName) => !fs.existsSync(path.join(nativePackageRoot, 'build', 'Release', addonName))
@@ -258,7 +262,7 @@ function verifyPackagedNativeAddons(context, options = {}) {
 
   const message =
     `[afterPack] Packaged native addons missing from ${path.join(nativePackageRoot, 'build', 'Release')}: ` +
-    `${missing.join(', ')}. Build them with the native package rebuild, build:audio, and build:translation scripts.`
+    `${missing.join(', ')}. Build them with the native package rebuild, build:audio, build:translation, and build:update scripts.`
   if (strict) {
     throw new Error(message)
   }

@@ -143,7 +143,11 @@ async function createPackagedNativeAddonFixture(
   await fs.mkdir(releaseDir, { recursive: true })
   await Promise.all([
     fs.writeFile(path.join(resourcesDir, 'app.asar'), 'fixture'),
-    ...addonNames.map((addonName) => fs.writeFile(path.join(releaseDir, addonName), 'fixture'))
+    ...addonNames.map((addonName) =>
+      fs.writeFile(path.join(releaseDir, addonName), 'fixture', {
+        mode: addonName.startsWith('tuff-native-') ? 0o755 : 0o644
+      })
+    )
   ])
 
   return { appOutDir, releaseDir, resourcesDir }
@@ -287,7 +291,8 @@ describe('verifyPackagedNativeAddons', () => {
     const { appOutDir, releaseDir } = await createPackagedNativeAddonFixture([
       'tuff_native_ocr.node',
       'tuff_native_audio.node',
-      'tuff-native-translation'
+      'tuff-native-translation',
+      'tuff-native-update'
     ])
     await fs.rm(path.join(releaseDir, 'tuff_native_audio.node'))
 
@@ -301,6 +306,7 @@ describe('verifyPackagedNativeAddons', () => {
     const { appOutDir, releaseDir } = await createPackagedNativeAddonFixture([
       'tuff_native_ocr.node',
       'tuff_native_audio.node',
+      'tuff-native-update',
       helperName
     ])
     const context = { appOutDir, electronPlatformName: 'darwin' }
@@ -318,7 +324,8 @@ describe('verifyPackagedNativeAddons', () => {
   it('only warns for a non-strict package that lost the audio addon', async () => {
     const { appOutDir, releaseDir } = await createPackagedNativeAddonFixture([
       'tuff_native_ocr.node',
-      'tuff_native_audio.node'
+      'tuff_native_audio.node',
+      'tuff-native-update'
     ])
     await fs.rm(path.join(releaseDir, 'tuff_native_audio.node'))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -343,6 +350,32 @@ describe('verifyPackagedNativeAddons', () => {
       verifyPackagedNativeAddons({ appOutDir, electronPlatformName: 'win32' }, { strict: true })
     ).toThrow(/Packaged native addons missing from .*: tuff_native_everything\.node\./)
   })
+
+  it
+    .skipIf(process.platform === 'win32')
+    .each(['missing', 'non-executable', 'directory', 'symlink'] as const)(
+    'rejects a %s atomic-update helper even when strict native addon verification is disabled',
+    async (failure) => {
+      const { appOutDir, releaseDir } = await createPackagedNativeAddonFixture([
+        'tuff_native_ocr.node',
+        'tuff_native_audio.node',
+        'tuff-native-translation',
+        'tuff-native-update'
+      ])
+      const helper = path.join(releaseDir, 'tuff-native-update')
+      verifyPackagedNativeAddons({ appOutDir, electronPlatformName: 'darwin' }, { strict: false })
+      if (failure === 'non-executable') await fs.chmod(helper, 0o644)
+      else {
+        await fs.rm(helper)
+        if (failure === 'directory') await fs.mkdir(helper)
+        if (failure === 'symlink')
+          await fs.symlink(path.join(releaseDir, 'tuff-native-translation'), helper)
+      }
+      expect(() =>
+        verifyPackagedNativeAddons({ appOutDir, electronPlatformName: 'darwin' }, { strict: false })
+      ).toThrow(/tuff-native-update/)
+    }
+  )
 })
 
 type PackagedFdFixture = {

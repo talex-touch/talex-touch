@@ -5,6 +5,7 @@ import type { LogOptions } from '../../../utils/logger'
 import type { UpdateAttemptRepository } from '../update-attempt-repository'
 import type { VerifiedUpdatePackage } from '../update-system'
 import type { UpdateHandoffPlan, UpdateRecoveryMarker } from './update-recovery-store'
+import type { PreparedMacUpdate } from './macos-update-preparation'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
@@ -13,9 +14,15 @@ import process from 'node:process'
 import { setQuitIntent } from '../../../core/quit-intent'
 import { UpdateLifecycleConflictError } from '../update-lifecycle'
 import {
+  prepareMacUpdate,
+  resolveMacSwapHelper,
+  validatePreparedMacUpdate
+} from './macos-update-preparation'
+import {
   assertPlatformInstallPreflight,
   buildPlatformInstallSpec,
   preparePlatformPackage,
+  resolveBundledScript,
   resolveCurrentMacAppBundlePath
 } from './update-platform-adapter'
 import { UPDATE_HANDOFF_SCHEMA_VERSION, UpdateRecoveryStore } from './update-recovery-store'
@@ -65,6 +72,7 @@ export class UpdateInstallCoordinator {
   private preparedHelper: PreparedHelper | null = null
   private helperStartedForAttempt: string | null = null
   private healthConfirmedForAttempt: string | null = null
+  private readonly preparationAbort = new AbortController()
 
   constructor(private readonly deps: UpdateInstallCoordinatorDeps) {
     this.store = new UpdateRecoveryStore(deps.storageRoot)
@@ -74,6 +82,46 @@ export class UpdateInstallCoordinator {
   async initialize(): Promise<void> {
     await this.store.initialize()
     await this.reconcileStartupLifecycle()
+  }
+
+  async prepareDownloadedUpdate(
+    lifecycle: UpdateLifecycleSnapshot,
+    verifiedPackage: VerifiedUpdatePackage
+  ): Promise<void> {
+    if (this.deps.platform !== 'darwin') return
+    if (
+      !lifecycle.attemptId ||
+      !lifecycle.targetVersion ||
+      lifecycle.taskId !== verifiedPackage.taskId
+    ) {
+      throw new Error('macOS preparation does not match the active update')
+    }
+    const appBundlePath = resolveCurrentMacAppBundlePath(this.deps.executablePath)
+    if (!appBundlePath) throw new Error('Unable to resolve the installed macOS app')
+    const { attemptRoot } = this.store.createAttemptPaths(lifecycle.attemptId)
+    const startedAt = Date.now()
+    await prepareMacUpdate({
+      attemptId: lifecycle.attemptId,
+      attemptRoot,
+      appBundlePath,
+      packagePath: verifiedPackage.filePath,
+      packageSha256: verifiedPackage.sha256,
+      targetVersion: normalizeUpdateVersion(lifecycle.targetVersion),
+      resourcesPath: this.deps.resourcesPath,
+      appPath: this.deps.appPath,
+      signal: this.preparationAbort.signal
+    })
+    this.deps.log.info('macOS update prepared while application remains running', {
+      meta: {
+        attemptId: lifecycle.attemptId,
+        phase: 'preparation',
+        durationMs: Date.now() - startedAt
+      }
+    })
+  }
+
+  cancelPreparation(): void {
+    this.preparationAbort.abort()
   }
 
   async scheduleInstallNow(taskId: string): Promise<UpdateLifecycleSnapshot> {
@@ -98,9 +146,15 @@ export class UpdateInstallCoordinator {
       to: 'install-scheduled',
       patch: { installMode: 'install-now' }
     })
-    setQuitIntent('update-now', `update-install:${ready.attemptId}`)
-    this.deps.requestQuit()
-    return scheduled
+    try {
+      const handedOff = await this.prepareHandoff(scheduled)
+      setQuitIntent('update-now', `update-install:${ready.attemptId}`)
+      this.deps.requestQuit()
+      return handedOff
+    } catch (error) {
+      await this.failLifecycle(scheduled, 'UPDATE_INSTALL_PREFLIGHT_FAILED', error)
+      throw error
+    }
   }
 
   async handleBeforeQuit(intent: QuitIntent): Promise<void> {
@@ -208,7 +262,9 @@ export class UpdateInstallCoordinator {
     })
   }
 
-  private async prepareHandoff(lifecycle: UpdateLifecycleSnapshot): Promise<void> {
+  private async prepareHandoff(
+    lifecycle: UpdateLifecycleSnapshot
+  ): Promise<UpdateLifecycleSnapshot> {
     if (!lifecycle.attemptId || !lifecycle.taskId || !lifecycle.targetVersion) {
       throw new Error('Install lifecycle is missing task or target version')
     }
@@ -228,6 +284,30 @@ export class UpdateInstallCoordinator {
     if (previousAsset) await preparePlatformPackage(this.deps.platform, previousAsset.filePath)
 
     const paths = this.store.createAttemptPaths(lifecycle.attemptId)
+    let preparedMacUpdate: PreparedMacUpdate | undefined
+    if (this.deps.platform === 'darwin') {
+      const appBundlePath = resolveCurrentMacAppBundlePath(this.deps.executablePath)
+      if (!appBundlePath) throw new Error('Unable to resolve the installed macOS app')
+      preparedMacUpdate = await validatePreparedMacUpdate({
+        attemptId: lifecycle.attemptId,
+        attemptRoot: paths.attemptRoot,
+        appBundlePath,
+        packagePath: verifiedPackage.filePath,
+        packageSha256: verifiedPackage.sha256,
+        targetVersion: normalizeUpdateVersion(lifecycle.targetVersion),
+        resourcesPath: this.deps.resourcesPath,
+        appPath: this.deps.appPath
+      })
+      const swapHelper = await resolveMacSwapHelper(this.deps.resourcesPath, this.deps.appPath)
+      for (const name of ['macos-apply-update.sh', 'macos-restore-update.sh']) {
+        await fs.promises.copyFile(
+          resolveBundledScript(name, this.deps.resourcesPath, this.deps.appPath),
+          path.join(paths.attemptRoot, name)
+        )
+      }
+      await fs.promises.copyFile(swapHelper, path.join(paths.attemptRoot, 'tuff-native-update'))
+      await fs.promises.chmod(path.join(paths.attemptRoot, 'tuff-native-update'), 0o700)
+    }
     const platformSpec = buildPlatformInstallSpec({
       platform: this.deps.platform,
       packagePath: verifiedPackage.filePath,
@@ -237,10 +317,8 @@ export class UpdateInstallCoordinator {
       attemptRoot: paths.attemptRoot,
       resourcesPath: this.deps.resourcesPath,
       appPath: this.deps.appPath,
-      appBundlePath:
-        this.deps.platform === 'darwin'
-          ? resolveCurrentMacAppBundlePath(this.deps.executablePath)
-          : null,
+      appBundlePath: preparedMacUpdate?.appBundlePath ?? null,
+      preparedMacUpdate,
       allowRecovery
     })
     const plan: UpdateHandoffPlan = {
@@ -263,10 +341,15 @@ export class UpdateInstallCoordinator {
       recovery: platformSpec.recovery,
       cleanupPaths: platformSpec.cleanupPaths,
       previousVersion: platformSpec.previousVersion,
-      recoveryAvailable: platformSpec.recoveryAvailable
+      recoveryAvailable: platformSpec.recoveryAvailable,
+      macosTransaction: platformSpec.macosTransaction
     }
     const planPath = await this.store.writePlan(plan)
-    const helperPath = resolveBundledHelperPath(this.deps.resourcesPath, this.deps.appPath)
+    const helperPath = path.join(paths.attemptRoot, 'update-handoff-helper.cjs')
+    await fs.promises.copyFile(
+      resolveBundledHelperPath(this.deps.resourcesPath, this.deps.appPath),
+      helperPath
+    )
 
     const handedOff = await this.deps.repository.transition({
       attemptId: lifecycle.attemptId,
@@ -279,6 +362,7 @@ export class UpdateInstallCoordinator {
       }
     })
     this.preparedHelper = { attemptId: handedOff.attemptId!, planPath, helperPath }
+    return handedOff
   }
 
   private async reconcileStartupLifecycle(): Promise<void> {

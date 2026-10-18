@@ -1,6 +1,6 @@
 ---
 title: "TimeseriesChart"
-description: "Time-series lines and stacked bars: clustered markers, threshold lines, range brushing, full tooltips."
+description: "Time-series lines and stacked bars: clustered markers, threshold lines, zoom and range brushing, full tooltips."
 category: Charts
 status: beta
 since: 0.1.0
@@ -90,16 +90,20 @@ code: |
 | `highlightedSeries` | `string \| null` | — | Emphasized series; the rest dim to 10% opacity. |
 | `height` | `number` | `350` | Pixel height. |
 | `width` | `number` | measured | Explicit width (SSR/tests). |
-| `ariaDescription` | `string` | — | Accessible description (svg `role="img"`). |
+| `ariaDescription` | `string` | — | Accessible name of the chart (svg `role="group"`, with the key instructions as its description); falls back to `labels.chart`. |
 | `clusterLabel` | `(n: number) => string` | `` n => `${n} changes` `` | Cluster label wording. |
 | `timestampFormat` | `(ts: number) => string` | compact locale | Tooltip timestamp format. |
+| `zoom` | `boolean` | `true` | Zooms and pans the time axis on the chart; `false` keeps the view fixed, and a `time-range-change` listener still brushes. |
+| `window` | `[number, number] \| null` | `null` | Time window shown, in millisecond timestamps, bindable with `v-model:window`; `null` shows everything. |
+| `labels` | `Partial<ChartLabels>` | English | Accessible name and key instructions: `chart`, `instructions`, `zoomInstructions`. |
 
 ### TimeseriesChart Events
 
 | Event | Payload | Description |
 |------|------|------|
-| `time-range-change` | `(from: number, to: number)` | Brush finished. Attaching it enables brushing. |
+| `time-range-change` | `(from: number, to: number)` | The brushed range on release; by default the chart also zooms into it. With `zoom` set to `false`, attaching it is what enables brushing. |
 | `update:hiddenSeries` | `(names: string[])` | `v-model:hidden-series` write-back. |
+| `update:window` | `(window: [number, number] \| null)` | `v-model:window` write-back after a zoom, a pan, a reset or following new data. |
 
 ## Markers & Thresholds
 
@@ -161,9 +165,11 @@ code: |
 ---
 :::
 
-## Time Range Selection
+## Zoom & Brush
 
-Attaching a `time-range-change` listener enables horizontal brushing: drag on the plot to draw a selection; releasing emits `(from, to)` in milliseconds and clears the selection. Drags under 3px count as clicks and do nothing. The selection rectangle fills with `rgba(120, 140, 180, 0.3)` and strokes 1px `rgba(120, 140, 180, 0.8)`. While dragging, the plot outside the selection dims too: one luminance `<mask>` spanning the plot (a white plot rect plus two `#4D4D4D` strips) presses everything outside the selection to 30%, so each series stays mounted exactly once — equivalent to ECharts `outOfBrush.colorAlpha: 0.3`.
+The time axis zooms by default: drag across the plot and the release zooms into that range; drag a zoomed chart to pan, which rubberbands past either end and glides on release, while Shift-drag still brushes. ⌘/Ctrl + wheel or a trackpad pinch zooms around the pointer, and so does a two-finger pinch on touch; a sideways trackpad swipe pans a zoomed view, a plain wheel scrolls the page, and a double-click shows everything. With the chart focused, `+` / `-` zoom, Shift + ← / → pan and `0` shows everything. A window resting on the last timestamp moves forward with new data. `v-model:window` reads and sets the window; `null` is everything.
+
+Listen to `time-range-change` for the brushed `(from, to)` in milliseconds on release, after which the selection clears; `:zoom="false"` keeps the view fixed, and a listener then brushes without zooming. Drags under 4px count as clicks. The selection rectangle fills with `rgba(120, 140, 180, 0.3)` and strokes 1px `rgba(120, 140, 180, 0.8)`. While dragging, the plot outside the selection dims too: one luminance `<mask>` spanning the plot (a white plot rect plus two `#4D4D4D` strips) presses everything outside the selection to 30%, so each series stays mounted exactly once — equivalent to ECharts `outOfBrush.colorAlpha: 0.3`.
 
 ### Drag to select
 
@@ -227,6 +233,8 @@ The chart reuses ECharts' default timings (kumo pins `echarts ^6.0.0`):
 - `animationThreshold` 2000: a series with more points than that renders its final geometry with no animation.
 - Tooltip: closing waits 100ms, then fades out over 200ms and removes the DOM, so brief pointer excursions do not flicker; the position travels via `transform: translate3d()` and lets the browser interpolate the 400ms move (`cubic-bezier(0.23, 1, 0.32, 1)`); pointer tracking is throttled to 50ms, taking one leading and one trailing sample.
 - The plot outside the brush selection dims while dragging and restores on release — see the single `<mask>` above.
+- Zoom: a brush, a mouse wheel and the keys move to the new window on a critically damped spring (0.35s response); a trackpad pinch and a pan track the pointer 1:1, and a pan glides on release at the speed it was let go.
+- Reading: hovering or press-dragging snaps the crosshair to the nearest sampled timestamp; with the chart focused, ← / → read sample by sample, Home / End jump to either end and Escape clears, and screen readers hear the time and each series' value. A one-finger press-drag reads on touch, and a vertical swipe still scrolls the page.
 - Hovering the plot dims every series except the one nearest the cursor's value at that timestamp to 10% opacity; this is a documented approximation of ECharts `emphasis.focus: 'series'`, which only emphasizes over an actual item.
 - Under `prefers-reduced-motion: reduce` every tween lands on its final frame immediately, and all CSS transitions sit inside `@media (prefers-reduced-motion: no-preference)`.
 
@@ -237,6 +245,7 @@ The `@talex-touch/tuffex/charts` entry also exports the animation primitives, so
 - `enableLegendSelection` + imperative echarts actions → declarative `v-model:hidden-series`; highlighting via `highlighted-series`.
 - `tooltipBoundary` performs the real clipping-ancestors collision walk: it intersects clipping ancestors (offsetParents whose `overflow` is not `visible`) with the viewport, flips on overflow, and defaults to `'clipping-ancestors'`.
 - The brush no longer just draws the rectangle during a drag: one luminance `<mask>` presses everything outside the selection to 30% while each series stays mounted exactly once.
+- kumo's brush only reports the range; here it also zooms by default, with panning, pinching and keyboard zoom, and `:zoom="false"` goes back to brushing only.
 - Geometry animation matches ECharts: the pie grows angularly via `animationType: 'expansion'` and highlights displace a slice by `scaleSize` 5px; sankey and maps have no geometry animation (`SankeyView` has no `initProps`/`updateProps`, maps set `animationDurationUpdate: 0`) — parity, not a gap.
 - Series-level hover emphasis is an approximation: ECharts blurs the other series only over an actual item, while this picks the nearest series at the cursor's timestamp.
 - Keep each series under ~5k points: SVG rendering degrades in the tens of thousands.

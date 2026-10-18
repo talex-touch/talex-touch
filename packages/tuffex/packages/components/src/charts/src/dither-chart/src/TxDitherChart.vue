@@ -4,6 +4,7 @@ import type { DitherChartProps, DitherDataset, DitherHover, DitherSeries } from 
 import type { DitherRenderInput } from './use-dither-canvas'
 import type { ScaleKind } from '../../core/types'
 import { computed, provide, reactive, ref, useId, watch } from 'vue'
+import { usePressScrub } from '../../../../../../utils/press-scrub'
 import TxTextMorph from '../../../../text-morph/src/TxTextMorph.vue'
 import { chartContextKey, createChartContext } from '../../core/context'
 import TxChartTooltip from '../../tooltip/src/TxChartTooltip.vue'
@@ -66,7 +67,7 @@ const context = createChartContext({
 // The shared core's legacy counter is not used for any new SVG identifier.
 context.clipId = `${id}-clip`
 provide(chartContextKey, context)
-const copy = computed(() => ({ empty: 'No data', period: 'Period', series: 'Series', chart: 'Dither chart', total: 'Total', capacity: 'Capacity', less: 'Less', more: 'More', cursor: 'Date cursor', ...props.labels }))
+const copy = computed(() => ({ empty: 'No data', period: 'Period', series: 'Series', chart: 'Dither chart', total: 'Total', capacity: 'Capacity', less: 'Less', more: 'More', ...props.labels }))
 const isDonut = computed(() => ['dither-donut', 'dither-device', 'plan-card'].includes(props.variant))
 const isSelector = computed(() => ['dither-gauge', 'dither-radial', 'dither-storage', 'dither-sparkline-matrix'].includes(props.variant))
 const isTime = computed(() => ['dither-growth', 'members-growth', 'dither-revenue', 'dither-sparkline-matrix'].includes(props.variant))
@@ -200,6 +201,16 @@ function move(event: PointerEvent): void {
   updateHover(found)
 }
 
+// The stage reads the clamped pointer itself, so a captured drag past its edge holds the edge datum.
+const scrub = usePressScrub(stage, { press: move, read: move, cancel: leave })
+// A drag owns the reading until it ends. A pen also moves the mouse, whose own enter and leave
+// still reach the stage, the axis and the legend mid-drag.
+const scrubbing = scrub.dragging
+
+function stageMove(event: PointerEvent): void {
+  if (!scrub.pointermove(event)) move(event)
+}
+
 function keydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') { leave(); return }
   const values = isTime.value ? scene.value.cursorPoints.map(point => point.datum) : scene.value.shapes.filter(shape => shape.datum).map(shape => shape.datum!)
@@ -212,7 +223,9 @@ function keydown(event: KeyboardEvent): void {
   if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
   const current = isTime.value ? dateCursor.value ?? -1 : values.findIndex(value => value.id === hover.value?.id && value.seriesId === hover.value?.seriesId)
-  const index = event.key === 'Home' ? 0 : event.key === 'End' ? values.length - 1 : clamp(current + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1), 0, values.length - 1)
+  const backwards = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+  // With nothing read yet, stepping back starts from the latest point rather than the first.
+  const index = event.key === 'Home' ? 0 : event.key === 'End' || (current < 0 && backwards) ? values.length - 1 : clamp(current + (backwards ? -1 : 1), 0, values.length - 1)
   pointer.inside = true
   context.pointer.inside = true
   if (isTime.value) updateCursor(index)
@@ -265,7 +278,7 @@ defineExpose({ scene, dataset, period, selectedSeries, dateCursor })
         <div v-if="!compact && scene.ticks.length" class="tx-dither-chart__y-axis" :style="{ height: `${height}px` }" aria-hidden="true">
           <span v-for="tick in scene.ticks" :key="tick.value" :style="{ top: `${tick.y / height * 100}%` }" :title="format(tick.value, '', selected)">{{ format(tick.value, '', selected) }}</span>
         </div>
-        <div ref="stage" class="tx-dither-chart__stage" :style="{ height: `${height}px` }" role="group" tabindex="0" :aria-label="title || copy.chart" :aria-describedby="`${id}-description`" @pointermove="move" @pointerleave="leave" @keydown="keydown" @blur="leave" @click="currentHover && emit('select', currentHover)">
+        <div ref="stage" class="tx-dither-chart__stage" :style="{ height: `${height}px` }" role="group" tabindex="0" :aria-label="title || copy.chart" :aria-describedby="`${id}-description`" @pointerdown="scrub.pointerdown" @pointermove="stageMove" @pointerup="scrub.pointerup" @pointercancel="scrub.pointercancel" @lostpointercapture="scrub.lostpointercapture" @pointerleave="scrubbing || leave()" @keydown="keydown" @blur="leave" @click="currentHover && emit('select', currentHover)">
           <span v-for="probe in probes" :key="probe.id" data-dither-color class="tx-dither-chart__color-probe" :style="{ color: probe.color }" />
           <span data-dither-label-color class="tx-dither-chart__color-probe" style="color: var(--tx-bg-color, #fff)" />
           <svg class="tx-dither-chart__svg" :viewBox="`0 0 ${width} ${height}`" role="img" :aria-label="title || copy.chart">
@@ -304,19 +317,15 @@ defineExpose({ scene, dataset, period, selectedSeries, dateCursor })
         </div>
         <div v-if="!compact && scene.labels.length && variant !== 'dither-traffic'" class="tx-dither-chart__axis" :style="{ height: '24px' }">
           <template v-for="(label, index) in scene.labels" :key="`${label.text}-${index}`">
-            <button v-if="['dither-stacked', 'payments', 'dither-bar'].includes(variant)" type="button" :style="{ left: `${label.x / width * 100}%` }" @pointerenter="focusCategory(label.text)" @pointerleave="leave" @focus="focusCategory(label.text)" @blur="leave" @click="currentHover && emit('select', currentHover)">
+            <button v-if="['dither-stacked', 'payments', 'dither-bar'].includes(variant)" type="button" :style="{ left: `${label.x / width * 100}%` }" @pointerenter="scrubbing || focusCategory(label.text)" @pointerleave="scrubbing || leave()" @focus="focusCategory(label.text)" @blur="leave" @click="currentHover && emit('select', currentHover)">
 {{ label.text }}
 </button>
             <span v-else :style="{ left: `${label.x / width * 100}%`, transform: label.anchor === 'start' ? 'none' : label.anchor === 'end' ? 'translateX(-100%)' : 'translateX(-50%)' }">{{ label.text }}</span>
           </template>
         </div>
-        <div v-if="!compact && isTime && scene.cursorPoints.length" class="tx-dither-chart__scrubber">
-          <label :for="`${id}-cursor`">{{ copy.cursor }}</label>
-          <input :id="`${id}-cursor`" type="range" min="0" :max="scene.cursorPoints.length - 1" :value="dateCursor ?? 0" @input="updateCursor(Number(($event.target as HTMLInputElement).value))">
-        </div>
       </div>
       <div v-if="!compact && showLegend && dataset.series?.length" class="tx-dither-chart__legend" :class="{ 'is-matrix': variant === 'dither-sparkline-matrix' }" role="group" :aria-label="copy.series">
-        <button v-for="(item, index) in dataset.series" :key="item.id" type="button" :aria-pressed="isSelector ? selected?.id === item.id : !activeKeys || activeKeys.includes(item.id)" @click="chooseSeries(item)" @pointerenter="focusSeries(item)" @pointerleave="leave" @focus="focusSeries(item)" @blur="leave">
+        <button v-for="(item, index) in dataset.series" :key="item.id" type="button" :aria-pressed="isSelector ? selected?.id === item.id : !activeKeys || activeKeys.includes(item.id)" @click="chooseSeries(item)" @pointerenter="scrubbing || focusSeries(item)" @pointerleave="scrubbing || leave()" @focus="focusSeries(item)" @blur="leave">
           <span class="tx-dither-chart__indicator" :class="`is-${indicator}`" :style="indicator === 'dashed' ? { color: probes[index]?.color } : { backgroundColor: probes[index]?.color }" />
           <span class="tx-dither-chart__legend-label">{{ item.label }}</span>
           <span>{{ format(seriesValue(item), item.label, item) }}</span>
@@ -373,7 +382,8 @@ defineExpose({ scene, dataset, period, selectedSeries, dateCursor })
   &:has(.is-sparkline) &__legend { order: -1; }
   // `isolation` keeps the tooltip's z-index inside the stage, so the stage itself
   // has to sit above the axis row that follows it or the labels paint over the tooltip.
-  &__stage { position: relative; z-index: 1; width: 100%; touch-action: pan-y; isolation: isolate; }
+  // A sideways drag reads (and moves the date cursor); a vertical swipe still scrolls the page.
+  &__stage { position: relative; z-index: 1; width: 100%; touch-action: pan-y; isolation: isolate; cursor: crosshair; -webkit-user-select: none; user-select: none; }
   &__svg, &__canvas, &__cursor { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   &__canvas { opacity: 0; }
   &__canvas.is-visible { opacity: 1; }
@@ -392,8 +402,6 @@ defineExpose({ scene, dataset, period, selectedSeries, dateCursor })
   &__indicator, &__tooltip-indicator { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--tx-chart-categorical-1, var(--tx-color-primary, #409eff)); }
   .is-line { width: 12px; height: 2px; border-radius: 0; }
   .is-dashed { width: 12px; height: 2px; border-radius: 0; background: transparent; border-top: 2px dashed currentColor; }
-  &__scrubber { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-  &__scrubber input { flex: 1; min-width: 0; cursor: ew-resize; accent-color: var(--tx-chart-categorical-1, var(--tx-color-primary, #409eff)); }
   &__radial-value, &__empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
   &__radial-value > :first-child { font-size: 24px; font-weight: var(--tx-font-weight-semibold, 600); }
   &__intensity { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 12px; margin-top: 8px; }

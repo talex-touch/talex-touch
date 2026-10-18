@@ -5759,6 +5759,8 @@
         "preparing": "正在准备下载 {version}",
         "downloading": "正在下载 {version}",
         "verifying": "正在校验 {version}",
+        "preparingInstall": "正在准备安装 {version}",
+        "preparingInstallElapsed": "已用时 {seconds} 秒 · 后台解包中，可继续使用 Tuff",
         "ready": "{version} 已就绪",
         "readyOnQuit": "退出 Tuff 时会自动安装",
         "readyBlocked": "非官方版本无法自动安装，请从官网下载",

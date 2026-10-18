@@ -12,14 +12,14 @@ const lastReorder = ref<MotionDockReorder | null>(null)
 const lastSelected = ref<MotionDockId | null>(null)
 const copy = computed(() => locale.value === 'zh' ? {
   apps: { files: '文件', search: '搜索', calendar: '日历', terminal: '终端', settings: '设置', help: '说明', locked: '锁定' },
-  reset: '恢复初始顺序', reorderOn: '排序：开启', reorderOff: '排序：关闭', pause: '暂停放大', resume: '启用放大',
+  reorderOn: '排序：开启', reorderOff: '排序：关闭', pause: '暂停放大', resume: '启用放大',
   labelsOn: '标签：显示', labelsOff: '标签：隐藏', order: '当前顺序', selected: '实际选中', none: '尚无',
   pointer: '指针', keyboard: '键盘', moved: '实际排序操作',
   help: '沿工具栏移动指针，会同时放大临近项。拖动项目后，顺序同步更新。方向键移动焦点，Alt + 方向键排序，Home / End 跳到两端；按 Escape 取消拖动。锁定项不能激活，说明项是当前段落的真实链接。',
   labels: { dock: '应用程序栏', instructions: '左右方向键移动焦点，Home 和 End 到达首尾。Alt 加这些按键调整顺序。Enter 或空格激活；Escape 取消指针拖动。', reordered: '已将{label}移到第 {position} 项，共 {total} 项。' },
 } : {
   apps: { files: 'Files', search: 'Search', calendar: 'Calendar', terminal: 'Terminal', settings: 'Settings', help: 'Help', locked: 'Locked' },
-  reset: 'Restore initial order', reorderOn: 'Reorder: on', reorderOff: 'Reorder: off', pause: 'Pause magnification', resume: 'Enable magnification',
+  reorderOn: 'Reorder: on', reorderOff: 'Reorder: off', pause: 'Pause magnification', resume: 'Enable magnification',
   labelsOn: 'Labels: visible', labelsOff: 'Labels: hidden', order: 'Current order', selected: 'Actual selection', none: 'None yet',
   pointer: 'Pointer', keyboard: 'Keyboard', moved: 'Actual reorder',
   help: 'Move the pointer along the toolbar to magnify neighboring items. Dragging updates the order. Arrow keys move focus; Alt + arrows reorder; Home / End reach the ends. Escape cancels a drag. The locked item cannot activate. Help is a real link to this paragraph.',
@@ -41,7 +41,8 @@ watch(copy, () => {
   // Localization preserves the user's order instead of rebuilding the initial list.
   items.value = items.value.map(item => ({ ...item, label: copy.value.apps[item.id as typeof initialIds[number]] }))
 })
-function reset(): void {
+// The wrapper's reset: the dock springs back to the initial order instead of remounting.
+function resetDemo(): void {
   items.value = initialIds.map(id => ({ id, label: copy.value.apps[id], disabled: id === 'locked', href: id === 'help' ? `#${helpId}` : undefined }))
   activeId.value = 'files'
   lastSelected.value = null
@@ -53,14 +54,12 @@ function reordered(_items: MotionDockItem[], detail: MotionDockReorder): void {
 function selectedItem(item: MotionDockItem): void {
   lastSelected.value = item.id
 }
+defineExpose({ resetDemo })
 </script>
 
 <template>
   <div class="dock-demo not-prose">
     <div class="dock-demo__actions">
-      <TxButton size="sm" @click="reset">
-{{ copy.reset }}
-</TxButton>
       <TxButton size="sm" :aria-pressed="reorderable" @click="reorderable = !reorderable">
 {{ reorderable ? copy.reorderOn : copy.reorderOff }}
 </TxButton>
@@ -98,7 +97,7 @@ v-model:items="items" v-model:active-id="activeId" :reorderable="reorderable" :p
 .dock-demo { display: grid; gap: 16px; color: var(--tx-text-color-regular, #606266); font-size: 13px; }
 .dock-demo__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .dock-demo__stage { display: flex; align-items: center; justify-content: center; padding: 20px 8px; min-height: 120px; border-block: 1px solid var(--tx-border-color, #dcdfe6); }
-.dock-demo__icon { width: 70%; height: 70%; }
+.dock-demo__icon { width: 1em; height: 1em; }
 .dock-demo__output { display: grid; gap: 6px; overflow-wrap: anywhere; line-height: 1.6; }
 .dock-demo__output output { font-size: 13px; color: var(--tx-text-color-primary, #303133); }
 .dock-demo__hint { margin: 0; font-size: 12px; line-height: 1.6; }

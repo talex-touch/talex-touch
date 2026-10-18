@@ -1,7 +1,7 @@
 import type { BarChartProps, BarChartSeriesInput } from './src/options/bar'
 import type { FunnelChartDatum, FunnelChartProps } from './src/options/funnel'
 import type { GaugeChartProps } from './src/options/gauge'
-import type { HeatmapChartProps } from './src/options/heatmap'
+import type { HeatmapCell, HeatmapChartEmits, HeatmapChartProps, HeatmapLabels, HeatmapSelection } from './src/options/heatmap'
 import type { LineChartProps, LineChartSeriesInput } from './src/options/line'
 import type { PieChartDatum, PieChartProps } from './src/options/pie'
 import type { RadarChartProps, RadarIndicator, RadarSeriesInput } from './src/options/radar'
@@ -48,7 +48,7 @@ export type { EChartProps }
 export type { BarChartProps, BarChartSeriesInput }
 export type { FunnelChartDatum, FunnelChartProps }
 export type { GaugeChartProps }
-export type { HeatmapChartProps }
+export type { HeatmapCell, HeatmapChartEmits, HeatmapChartProps, HeatmapLabels, HeatmapSelection }
 export type { LineChartProps, LineChartSeriesInput }
 export type { PieChartDatum, PieChartProps }
 export type { RadarChartProps, RadarIndicator, RadarSeriesInput }
@@ -93,7 +93,7 @@ export type {
 export { buildBarChartOption } from './src/options/bar'
 export { buildFunnelChartOption } from './src/options/funnel'
 export { buildGaugeChartOption } from './src/options/gauge'
-export { buildHeatmapChartOption } from './src/options/heatmap'
+export { buildHeatmapChartOption, HEATMAP_DEFAULT_LABELS, heatmapSelection } from './src/options/heatmap'
 export { buildLineChartOption } from './src/options/line'
 export { buildPieChartOption } from './src/options/pie'
 export { buildRadarChartOption } from './src/options/radar'

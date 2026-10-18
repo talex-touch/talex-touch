@@ -15,7 +15,7 @@ verified: true
 
 ### Traffic distribution
 
-:::TuffDemoWrapper{demo="SankeyChartBasicDemo" code-lang="vue" title="Gradient links + tooltip" description="Hover nodes for value and tooltipData rows; drillable nodes get a pointer cursor."}
+:::TuffDemoWrapper{demo="SankeyChartBasicDemo" code-lang="vue" title="Gradient links + tooltip" description="Hover for value and tooltipData rows; drag a node to move it, drillable links get a pointer cursor."}
 ---
 code: |
   <script setup lang="ts">
@@ -81,6 +81,7 @@ code: |
 | `left` / `right` | `number \| string` | `'5%'` | Layout insets (px or percent). |
 | `linkColor` | `'gradient' \| 'gray'` | `'gradient'` | Link fill mode. |
 | `linkOpacity` | `number` | `0.5` | Gradient link opacity. |
+| `labels` | `Partial<SankeyLabels>` | English | `{ instructions }`: read after each node's name. |
 
 ### SankeyChart Events
 
@@ -95,6 +96,21 @@ code: |
 |------|------|------|
 | `tooltip` | `{ params: SankeyTooltipParams }` | Replaces the tooltip body; `params.type` is `'node' \| 'link'`. |
 
+## Node Dragging
+
+Nodes move vertically. Each stays in its column and its links re-route live.
+
+| Input | Effect |
+|------|------|
+| Drag a node | Follows the pointer 1:1 from where it was grabbed, inside the chart's height. Past 4 px the press never fires `node-click`. |
+| Release | The node stays where it was dropped. |
+| `Escape` during a drag | Cancels; the node springs back to where it was picked up. |
+| Double-click the background | Springs every node back to the computed layout. |
+| `Alt` + `↑` / `↓` on a focused node | Moves it 8 px. |
+| `Enter` / `Space` on a focused node | Selects it (`node-click`). |
+
+Nodes take focus (`role="button"`, named by the node) and read `labels.instructions` after the name; it merges over `SANKEY_DEFAULT_LABELS`. A touch drag that starts on a node moves it instead of scrolling the page; a touch on a link or the background still scrolls. Different `nodes` (names, values), `links` (ends, values) or `height` start over from the computed layout and drop every move; a new array with the same content keeps them. Under `prefers-reduced-motion: reduce` the springs jump to their end state; a dragged node still follows the pointer.
+
 ## Resilience
 
 Circular links make d3-sankey throw — the component catches that, renders an empty state and logs a dev warning instead of crashing the host page.
@@ -103,9 +119,10 @@ Circular links make d3-sankey throw — the component catches that, renders an e
 
 Hovering a node or a link leaves only adjacent elements untouched: the non-adjacent nodes, links and labels dim together to 10% opacity, matching ECharts' `emphasis.focus: 'adjacency'` (blur is `fromState.opacity * 0.1`), switched on the frame the pointer arrives rather than over ECharts' 300ms `cubicOut` (TuffEx's hover rule). A node's neighbourhood is itself, every link touching it and the nodes at those links' other ends; a link's is itself, its two endpoint nodes and every link touching either endpoint.
 
-Sankey has **no geometry animation**, which is parity with kumo rather than a missing feature: ECharts' `SankeyView` has neither `initProps` nor `updateProps`, so when the d3-sankey layout changes the nodes and links land on their new positions without a tween. Under `prefers-reduced-motion: reduce` the 300ms transition drops out and the highlight switches instantly.
+Sankey has **no geometry animation** when the data changes, which is parity with kumo rather than a missing feature: ECharts' `SankeyView` has neither `initProps` nor `updateProps`, so when the d3-sankey layout changes the nodes and links land on their new positions without a tween. Only the drag's own springs (Escape, reset) move. Under `prefers-reduced-motion: reduce` the 300ms transition drops out and the highlight switches instantly.
 
 ## Differences from kumo
 
 - `tooltipFormatter` (HTML strings + manual XSS escaping) → the `tooltip` slot (VNodes).
+- kumo's nodes are fixed; here a node can be dragged, nudged with `Alt` + arrow keys and reset.
 - kumo throws on circular input; this degrades to an empty render with a dev warning.

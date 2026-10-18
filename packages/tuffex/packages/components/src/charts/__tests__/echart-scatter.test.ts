@@ -132,6 +132,14 @@ describe('buildScatterChartOption', () => {
 })
 
 describe('scatter option overrides', () => {
+  it('zooms both axes inside the plot unless zoom is off', () => {
+    expect(record(buildScatterChartOption({ series: [{ name: 'device', data: device }] })).dataZoom).toEqual([
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      { type: 'inside', yAxisIndex: 0, filterMode: 'none' },
+    ])
+    expect(record(buildScatterChartOption({ series: [{ name: 'device', data: device }], zoom: false })).dataZoom).toBeUndefined()
+  })
+
   it('lets a caller tweak a key while a series array replaces wholesale', () => {
     const built = buildScatterChartOption({ series: [{ name: 'A', data: device }] })
     const merged = mergeChartOption(built, {

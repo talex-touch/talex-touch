@@ -8,13 +8,13 @@ const copy = computed(() => locale.value === 'zh' ? {
   all: '全部变体', variant: '变体', previous: '上一项', next: '下一项', item: '原创景物',
   current: '当前项', timeline: '时间轴', animated: '启用动画', loop: '循环切换',
   expanded: '固定展开弧线', date: ['今天', '昨天', '上周', '上月', '去年'],
-  hint: '三种轨迹各有彩色和单色版本。点击卡片、指示点或时间轴，拖动滑块；方向键和 Home/End 同样可操作。',
+  hint: '三种轨迹各有彩色和单色版本。点击卡片、指示点或时间轴，拖动滑块，或直接拖动舞台；方向键和 Home/End 同样可操作。',
   slot: '自定义卡片插槽', descriptions: ['湖边晨光', '林间小径', '山谷落日', '暮色山脊', '海岸薄雾'],
 } : {
   all: 'All variants', variant: 'Variant', previous: 'Previous', next: 'Next', item: 'Original landscape',
   current: 'Current item', timeline: 'Timeline', animated: 'Animate', loop: 'Loop',
   expanded: 'Keep arc expanded', date: ['Today', 'Yesterday', 'Last week', 'Last month', 'Last year'],
-  hint: 'Each spatial path has color and monochrome versions. Select cards, dots or timeline ticks; drag the scrubber. Arrow keys and Home/End work as well.',
+  hint: 'Each spatial path has color and monochrome versions. Select cards, dots or timeline ticks, drag the scrubber, or drag the stage itself. Arrow keys and Home/End work as well.',
   slot: 'Custom item slot', descriptions: ['Lake at dawn', 'Forest path', 'Valley sunset', 'Ridge at dusk', 'Coastal mist'],
 })
 const filter = ref<Carousel3DVariant | 'all'>('all')

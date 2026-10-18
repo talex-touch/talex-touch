@@ -12,7 +12,7 @@ defineOptions({ name: 'TxBubbleMap' })
 
 const props = withDefaults(defineProps<BubbleMapProps<T>>(), {
   zoom: 1.25,
-  roam: false,
+  roam: true,
   minRadius: 6,
   maxRadius: 26,
   bubbleBorderColor: 'transparent',
@@ -32,7 +32,7 @@ defineSlots<{
   tooltip?: (slotProps: { row: T }) => unknown
 }>()
 
-const base = useMapBase(props)
+const base = useMapBase(props, { onDragStart: () => onLeave() })
 
 interface Bubble {
   key: number
@@ -128,12 +128,16 @@ function bubbleStyle(bubble: Bubble): Record<string, string> {
 }
 
 function onEnter(bubble: Bubble): void {
+  if (base.dragging.value)
+    return
   hovered.value = bubble
   emphasisState.enter(bubble.key)
   emit('bubbleHover', bubble.row)
 }
 
 function onLeave(): void {
+  if (!hovered.value)
+    return
   hovered.value = null
   emphasisState.leave()
   emit('bubbleHover', undefined)
@@ -144,12 +148,20 @@ function onLeave(): void {
   <div
     :ref="base.container"
     class="tx-map tx-map--bubble"
+    :class="{ 'is-roam': props.roam, 'is-dragging': base.dragging.value }"
     :style="base.rootStyle.value"
+    v-bind="base.rootAttrs.value"
     @wheel="base.onWheel"
     @pointerdown="base.onPointerDown"
     @pointermove="base.onPointerMove"
     @pointerup="base.onPointerUp"
+    @pointercancel="base.onPointerCancel"
+    @lostpointercapture="base.onLostPointerCapture"
+    @keydown="base.onKeyDown"
+    @dblclick="base.onDblClick"
+    @click.capture="base.onClickCapture"
   >
+    <span v-if="props.roam" :id="base.instructionsId" class="tx-map__instructions">{{ base.labels.value.instructions }}</span>
     <svg
       v-if="base.ready.value"
       class="tx-map__svg"
@@ -173,7 +185,6 @@ function onLeave(): void {
           :stroke="bubble.stroke"
           :stroke-width="bubble.strokeWidth / base.scaleFactor.value"
           :style="bubbleStyle(bubble)"
-          @pointerdown.stop
           @pointerenter="onEnter(bubble)"
           @pointerleave="onLeave"
           @click="emit('bubbleClick', bubble.row)"

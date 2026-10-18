@@ -1,36 +1,64 @@
 <script setup lang="ts">
 // Adapted from Amicro Dock. MIT License. Copyright (c) 2026 SYED  SUBHAN UDDIN.
 import type { ComponentPublicInstance, CSSProperties } from 'vue'
+import type { BaseSurfaceMode } from '../../base-surface/src/types'
 import type { MotionDockEmits, MotionDockId, MotionDockItem, MotionDockProps, MotionDockReorder } from './types'
 import { computed, nextTick, onBeforeUnmount, onDeactivated, ref, useId, watch } from 'vue'
+import { stepSpring } from '../../../../utils/animation/spring'
 import { useMotionActivity } from '../../../../utils/motion-activity'
-import { springSteps } from '../../liquid/src/spring'
+import TxBaseSurface from '../../base-surface/src/TxBaseSurface.vue'
 import { MOTION_DOCK_DEFAULT_LABELS } from './types'
 
 defineOptions({ name: 'TxMotionDock' })
 const props = withDefaults(defineProps<MotionDockProps>(), {
-  reorderable: true, disabled: false, paused: false, size: 'md', distance: 80, showLabels: false,
+  reorderable: true, disabled: false, paused: false, size: 'md', showLabels: false, surface: 'refraction',
 })
 const emit = defineEmits<MotionDockEmits>()
+
+interface Spring { stiffness: number, damping: number, mass?: number }
+interface Axis { value: number, velocity: number, target: number }
+interface ItemMotion { size: Axis, x: Axis, y: Axis, lift: Axis, released: boolean }
+interface Sample { time: number, x: number, y: number }
+
+const SIZES: Record<string, number> = { xs: 20, sm: 24, md: 28, lg: 36 }
+const SURFACES: readonly string[] = ['pure', 'mask', 'blur', 'glass', 'refraction', 'acrylic', 'mica', 'flat', 'plain']
+// Magnification keeps the source's spring (ζ ≈ 1.7, so it never overshoots).
+const SIZE_SPRING: Spring = { mass: .1, stiffness: 220, damping: 16 }
+// Neighbours making room: critically damped, response ≈ 0.3 s.
+const MOVE_SPRING: Spring = { stiffness: 440, damping: 42 }
+// A released icon: ζ ≈ 0.8, response ≈ 0.35 s. Only a release carries the pointer's momentum, so only it overshoots.
+const DROP_SPRING: Spring = { stiffness: 320, damping: 29 }
+const LIFT = 1.06
+const DRAG_SLOP = 4
+const VELOCITY_WINDOW = 100
+const MAX_VELOCITY = 4000
+
 const root = ref<HTMLElement | null>(null)
-const { active, present } = useMotionActivity(root, () => !props.paused && !props.disabled)
+const shelf = ref<HTMLElement | null>(null)
+const { active, present, reduced } = useMotionActivity(root, () => !props.paused && !props.disabled)
+// Reflow and the drop answer the user's own drag, so pausing the magnification leaves them on.
+const animated = computed(() => present.value && !reduced.value)
 const instructionsId = useId()
 const labels = computed(() => ({ ...MOTION_DOCK_DEFAULT_LABELS, ...props.labels }))
 const itemSize = computed(() => props.itemSize !== undefined && Number.isFinite(props.itemSize)
-  ? Math.max(16, props.itemSize) : ({ xs: 20, sm: 24, md: 28, lg: 36 })[props.size])
+  ? Math.max(16, props.itemSize) : SIZES[props.size] ?? 28)
 const peakSize = computed(() => props.magnifiedSize !== undefined && Number.isFinite(props.magnifiedSize)
   ? Math.max(itemSize.value, props.magnifiedSize) : itemSize.value * 44 / 28)
-const distance = computed(() => Number.isFinite(props.distance) ? Math.max(1, props.distance) : 80)
-const rootStyle = computed<CSSProperties>(() => ({ '--tx-motion-dock-base-size': `${itemSize.value}px` }))
+// The source's 80 px radius belongs to its 28 px icons; a larger dock reaches as many neighbours.
+const distance = computed(() => props.distance !== undefined && Number.isFinite(props.distance)
+  ? Math.max(1, props.distance) : itemSize.value * 80 / 28)
+const surfaceMode = computed<BaseSurfaceMode>(() => SURFACES.includes(props.surface) ? props.surface : 'refraction')
+const rootStyle = computed<CSSProperties>(() => ({
+  '--tx-motion-dock-base-size': `${itemSize.value}px`,
+  '--tx-motion-dock-peak-size': `${peakSize.value}px`,
+}))
 const focusId = ref<MotionDockId>()
 const localOrder = ref<MotionDockItem[] | null>(null)
 const displayedItems = computed(() => localOrder.value ?? props.items)
 const draggedId = ref<MotionDockId>()
-const dragTranslate = ref(0)
 const announcement = ref('')
 const elements = new Map<MotionDockId, HTMLElement>()
-const springs = new Map<MotionDockId, { position: number, velocity: number, target: number }>()
-const spring = { mass: .1, stiffness: 220, damping: 16 }
+const motions = new Map<MotionDockId, ItemMotion>()
 let raf: number | undefined
 let lastFrame: number | undefined
 let suppressClick: MotionDockId | undefined
@@ -38,67 +66,146 @@ let drag: {
   id: MotionDockId
   pointerId: number
   startX: number
-  pointerOffset: number
+  startY: number
+  /** Pointer to the icon's centre at grab time, so the icon never jumps to centre on the pointer. */
+  grab: number
   moved: boolean
   capture: HTMLElement
   original: MotionDockItem[]
+  samples: Sample[]
 } | undefined
+
+function axis(value: number): Axis {
+  return { value, velocity: 0, target: value }
+}
+
+function motionOf(id: MotionDockId): ItemMotion {
+  let motion = motions.get(id)
+  if (!motion) {
+    motion = { size: axis(itemSize.value), x: axis(0), y: axis(0), lift: axis(1), released: false }
+    motions.set(id, motion)
+  }
+  return motion
+}
+
+function paint(id: MotionDockId, motion: ItemMotion): void {
+  const element = elements.get(id)
+  if (!element)
+    return
+  element.style.setProperty('--tx-motion-dock-item-size', `${motion.size.value}px`)
+  element.style.translate = motion.x.value || motion.y.value ? `${motion.x.value}px ${motion.y.value}px` : ''
+  element.style.scale = motion.lift.value === 1 ? '' : String(motion.lift.value)
+}
 
 function setItemRef(id: MotionDockId, element: Element | ComponentPublicInstance | null): void {
   if (element && 'style' in element) {
     elements.set(id, element as HTMLElement)
-    const state = springs.get(id)
-    if (state)
-      (element as HTMLElement).style.setProperty('--tx-motion-dock-item-size', `${state.position}px`)
+    const motion = motions.get(id)
+    if (motion)
+      paint(id, motion)
   }
   else {
     elements.delete(id)
   }
 }
 
-function stopSpring(): void {
+/** Steps one axis; false once it has landed on its target. */
+function advance(state: Axis, spring: Spring, dt: number, epsilon: number): boolean {
+  if (state.value === state.target && state.velocity === 0)
+    return false
+  const [value, velocity] = stepSpring(state.value, state.velocity, state.target, spring, dt)
+  if (Math.abs(value - state.target) <= epsilon && Math.abs(velocity) <= epsilon * 20) {
+    state.value = state.target
+    state.velocity = 0
+    return false
+  }
+  state.value = value
+  state.velocity = velocity
+  return true
+}
+
+function land(state: Axis): void {
+  state.value = state.target
+  state.velocity = 0
+}
+
+function held(id: MotionDockId): boolean {
+  return drag?.moved === true && drag.id === id
+}
+
+function stop(): void {
   if (raf !== undefined)
     cancelAnimationFrame(raf)
   raf = undefined
   lastFrame = undefined
 }
 
-function rest(): void {
-  stopSpring()
-  for (const [id, state] of springs) {
-    state.position = itemSize.value
-    state.target = itemSize.value
-    state.velocity = 0
-    elements.get(id)?.style.setProperty('--tx-motion-dock-item-size', `${itemSize.value}px`)
-  }
+function start(): void {
+  if (raf === undefined && motions.size)
+    raf = requestAnimationFrame(frame)
 }
 
 function frame(time: number): void {
   raf = undefined
-  if (!active.value) {
-    rest()
-    return
-  }
   const dt = lastFrame === undefined ? 1 / 60 : Math.min(.1, Math.max(0, (time - lastFrame) / 1000))
   lastFrame = time
   let moving = false
-  for (const [id, state] of springs) {
-    const [position, velocity] = springSteps(state.position, state.velocity, state.target, spring, dt)
-    state.position = position
-    state.velocity = velocity
-    if (Math.abs(position - state.target) > .02 || Math.abs(velocity) > .02) {
-      moving = true
+  for (const [id, motion] of motions) {
+    if (active.value)
+      moving = advance(motion.size, SIZE_SPRING, dt, .02) || moving
+    else
+      motion.size = axis(itemSize.value)
+    if (animated.value) {
+      if (!held(id)) {
+        const spring = motion.released ? DROP_SPRING : MOVE_SPRING
+        moving = advance(motion.x, spring, dt, .05) || moving
+        moving = advance(motion.y, spring, dt, .05) || moving
+        if (motion.x.value === 0 && motion.y.value === 0)
+          motion.released = false
+      }
+      moving = advance(motion.lift, held(id) ? MOVE_SPRING : DROP_SPRING, dt, .0005) || moving
     }
     else {
-      state.position = state.target
-      state.velocity = 0
+      if (!held(id)) {
+        land(motion.x)
+        land(motion.y)
+      }
+      land(motion.lift)
+      motion.released = false
     }
-    elements.get(id)?.style.setProperty('--tx-motion-dock-item-size', `${state.position}px`)
+    paint(id, motion)
   }
   if (moving)
     raf = requestAnimationFrame(frame)
   else
     lastFrame = undefined
+}
+
+function rest(): void {
+  for (const [id, motion] of motions) {
+    motion.size = axis(itemSize.value)
+    paint(id, motion)
+  }
+}
+
+/** Every icon straight to rest, for a dock that stops being drawn mid-motion. */
+function snap(): void {
+  for (const [id, motion] of motions) {
+    motion.size = axis(itemSize.value)
+    land(motion.x)
+    land(motion.y)
+    land(motion.lift)
+    motion.released = false
+    paint(id, motion)
+  }
+}
+
+/** Sizes an icon by how far it is from the magnification's centre. */
+function grow(item: MotionDockItem, offset: number): void {
+  const reach = Math.min(1, offset / distance.value)
+  // Cosine falloff: flat at the peak and at the edge, where the source's linear tent had corners.
+  const proximity = item.disabled ? 0 : (1 + Math.cos(Math.PI * reach)) / 2
+  motionOf(item.id).size.target = itemSize.value + (peakSize.value - itemSize.value) * proximity
 }
 
 function magnify(clientX: number): void {
@@ -108,34 +215,36 @@ function magnify(clientX: number): void {
   }
   // Read layout only on input, never from the spring frame driver.
   for (const item of displayedItems.value) {
-    const element = elements.get(item.id)
-    if (!element)
-      continue
-    const bounds = element.getBoundingClientRect()
-    const proximity = item.disabled ? 0 : Math.max(0, 1 - Math.abs(clientX - bounds.left - bounds.width / 2) / distance.value)
-    let state = springs.get(item.id)
-    if (!state) {
-      state = { position: itemSize.value, velocity: 0, target: itemSize.value }
-      springs.set(item.id, state)
-    }
-    state.target = itemSize.value + (peakSize.value - itemSize.value) * proximity
+    const bounds = elements.get(item.id)?.getBoundingClientRect()
+    if (bounds)
+      grow(item, Math.abs(clientX - bounds.left - bounds.width / 2))
   }
-  if (raf === undefined)
-    raf = requestAnimationFrame(frame)
+  start()
 }
 
 function leave(): void {
-  for (const state of springs.values())
-    state.target = itemSize.value
-  if (active.value && raf === undefined && springs.size)
-    raf = requestAnimationFrame(frame)
+  for (const motion of motions.values())
+    motion.size.target = itemSize.value
+  start()
 }
 
 function focus(item: MotionDockItem): void {
   focusId.value = item.id
-  const bounds = elements.get(item.id)?.getBoundingClientRect()
-  if (bounds)
-    magnify(bounds.left + bounds.width / 2)
+  // A click focuses its icon too, and there the pointer is already magnifying.
+  if (!elements.get(item.id)?.matches(':focus-visible'))
+    return
+  if (!active.value) {
+    rest()
+    return
+  }
+  // Measured in resting slots, not in the icons as they are drawn: these are still sized for the
+  // last focus, which would leave the new one lopsided, and may be sliding to a new slot.
+  const gap = shelf.value ? Number.parseFloat(getComputedStyle(shelf.value).columnGap) || 0 : 0
+  const order = displayedItems.value
+  const at = order.findIndex(entry => entry.id === item.id)
+  for (const [index, entry] of order.entries())
+    grow(entry, Math.abs(index - at) * (itemSize.value + gap))
+  start()
 }
 
 function select(item: MotionDockItem, index: number, event: MouseEvent): void {
@@ -164,13 +273,39 @@ function commit(items: MotionDockItem[], detail: MotionDockReorder): void {
     announce(item, detail.to, items.length)
 }
 
-function cancelDrag(): void {
-  if (drag?.capture.hasPointerCapture(drag.pointerId))
-    drag.capture.releasePointerCapture(drag.pointerId)
+/** Resistance past the dock's edge: follows less the further it is pulled. */
+function rubberband(offset: number, dimension: number, constant = .55): number {
+  return (offset * dimension * constant) / (dimension + constant * Math.abs(offset))
+}
+
+function releaseVelocity(samples: readonly Sample[], now: number): [number, number] {
+  const last = samples[samples.length - 1]
+  const first = samples.find(sample => last && last.time - sample.time <= VELOCITY_WINDOW)
+  // A pointer that stopped before letting go hands over no momentum.
+  if (!last || !first || last === first || now - last.time > VELOCITY_WINDOW / 2)
+    return [0, 0]
+  const seconds = (last.time - first.time) / 1000
+  const clamp = (value: number) => Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, value))
+  return [clamp((last.x - first.x) / seconds), clamp((last.y - first.y) / seconds)]
+}
+
+function endDrag(): void {
+  const current = drag
   drag = undefined
+  if (current?.capture.hasPointerCapture(current.pointerId))
+    current.capture.releasePointerCapture(current.pointerId)
   draggedId.value = undefined
-  dragTranslate.value = 0
   localOrder.value = null
+}
+
+function cancelDrag(): void {
+  const current = drag
+  if (!current)
+    return
+  if (current.moved)
+    motionOf(current.id).lift.target = 1
+  endDrag()
+  start()
 }
 
 function pointerDown(item: MotionDockItem, event: PointerEvent): void {
@@ -179,56 +314,97 @@ function pointerDown(item: MotionDockItem, event: PointerEvent): void {
   suppressClick = undefined
   const element = event.currentTarget as HTMLElement
   const bounds = element.getBoundingClientRect()
-  drag = { id: item.id, pointerId: event.pointerId, startX: event.clientX,
-    pointerOffset: event.clientX - bounds.left - bounds.width / 2, moved: false,
-    capture: element, original: Array.from(props.items) }
-  localOrder.value = Array.from(props.items)
+  drag = {
+    id: item.id,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    grab: event.clientX - bounds.left - bounds.width / 2,
+    moved: false,
+    capture: element,
+    original: Array.from(props.items),
+    samples: [{ time: event.timeStamp, x: event.clientX, y: event.clientY }],
+  }
   element.setPointerCapture(event.pointerId)
 }
 
-async function pointerMove(event: PointerEvent): Promise<void> {
+function pointerMove(event: PointerEvent): void {
   magnify(event.clientX)
   const current = drag
-  if (!current || current.pointerId !== event.pointerId || !localOrder.value)
+  if (!current || current.pointerId !== event.pointerId)
     return
-  if (!current.moved && Math.abs(event.clientX - current.startX) < 4)
-    return
-  current.moved = true
-  draggedId.value = current.id
+  current.samples.push({ time: event.timeStamp, x: event.clientX, y: event.clientY })
+  while (current.samples.length > 2 && event.timeStamp - current.samples[0]!.time > VELOCITY_WINDOW)
+    current.samples.shift()
+  const dy = event.clientY - current.startY
+  if (!current.moved) {
+    if (Math.hypot(event.clientX - current.startX, dy) < DRAG_SLOP)
+      return
+    current.moved = true
+    draggedId.value = current.id
+    localOrder.value = Array.from(props.items)
+  }
   event.preventDefault()
-  const centre = event.clientX - current.pointerOffset
-  const others = localOrder.value.filter(item => item.id !== current.id)
-  let insertion = 0
-  for (const item of others) {
-    const bounds = elements.get(item.id)?.getBoundingClientRect()
-    if (bounds && centre > bounds.left + bounds.width / 2)
-      insertion++
-  }
-  const item = localOrder.value.find(entry => entry.id === current.id)
-  const from = localOrder.value.findIndex(entry => entry.id === current.id)
-  if (item && from !== insertion) {
-    others.splice(insertion, 0, item)
-    localOrder.value = others
-  }
-  await nextTick()
-  if (drag !== current)
+  const order = localOrder.value
+  if (!order)
     return
-  const bounds = elements.get(current.id)?.getBoundingClientRect()
-  if (bounds)
-    dragTranslate.value = centre - (bounds.left + bounds.width / 2 - dragTranslate.value)
+  const motion = motionOf(current.id)
+  const centre = event.clientX - current.grab
+  // The held icon takes the slot nearest it. Slots are read where their icons land, not where
+  // a reflow draws them this frame; the held icon is the widest, so a swap does not swap back.
+  let from = -1
+  let to = 0
+  let nearest = Infinity
+  for (const [index, entry] of order.entries()) {
+    const bounds = elements.get(entry.id)?.getBoundingClientRect()
+    if (!bounds)
+      continue
+    const slot = bounds.left + bounds.width / 2 - motionOf(entry.id).x.value
+    if (entry.id === current.id) {
+      from = index
+      // 1:1 along the dock; across it the icon is tethered and follows less the further it is pulled.
+      motion.x.value = centre - slot
+    }
+    if (Math.abs(centre - slot) < nearest) {
+      nearest = Math.abs(centre - slot)
+      to = index
+    }
+  }
+  motion.y.value = rubberband(dy, itemSize.value)
+  motion.x.velocity = 0
+  motion.y.velocity = 0
+  motion.lift.target = LIFT
+  paint(current.id, motion)
+  const item = order[from]
+  if (item && from !== to) {
+    const next = Array.from(order)
+    next.splice(from, 1)
+    next.splice(to, 0, item)
+    localOrder.value = next
+  }
+  start()
 }
 
 function pointerUp(event: PointerEvent): void {
-  if (!drag || drag.pointerId !== event.pointerId)
-    return
   const current = drag
-  const items = localOrder.value ? Array.from(localOrder.value) : Array.from(props.items)
+  if (!current || current.pointerId !== event.pointerId)
+    return
   if (current.moved) {
     suppressClick = current.id
+    const motion = motionOf(current.id)
+    const [vx, vy] = releaseVelocity(current.samples, event.timeStamp)
+    // The release continues at the pointer's speed; across the dock, at the tether's.
+    const pull = itemSize.value / (itemSize.value + .55 * Math.abs(event.clientY - current.startY))
+    motion.x.velocity = vx
+    motion.y.velocity = vy * .55 * pull * pull
+    motion.released = true
+    motion.lift.target = 1
+    const items = Array.from(localOrder.value ?? props.items)
     commit(items, { id: current.id, from: current.original.findIndex(item => item.id === current.id),
       to: items.findIndex(item => item.id === current.id), source: 'pointer' })
   }
-  cancelDrag()
+  endDrag()
+  start()
 }
 
 async function keyboard(item: MotionDockItem, event: KeyboardEvent): Promise<void> {
@@ -260,7 +436,11 @@ async function keyboard(item: MotionDockItem, event: KeyboardEvent): Promise<voi
       items.splice(to, 0, item)
       commit(items, { id: item.id, from, to, source: 'keyboard' })
       await nextTick()
-      elements.get(item.id)?.focus()
+      const element = elements.get(item.id)
+      element?.focus()
+      // An item that kept focus gets no focus event: the magnification follows it to its new slot.
+      if (element)
+        focus(item)
     }
     return
   }
@@ -274,11 +454,40 @@ async function keyboard(item: MotionDockItem, event: KeyboardEvent): Promise<voi
   }
 }
 
+/** FLIP: an icon whose slot moved starts from where it was drawn and springs into the new slot. */
+function reflow(before: ReadonlyMap<MotionDockId, number>): void {
+  const shifts: [MotionDockId, number][] = []
+  for (const [id, element] of elements) {
+    const left = before.get(id)
+    if (left !== undefined)
+      shifts.push([id, left - element.getBoundingClientRect().left])
+  }
+  for (const [id, shift] of shifts) {
+    if (Math.abs(shift) < .5)
+      continue
+    const motion = motionOf(id)
+    motion.x.value += shift
+    paint(id, motion)
+  }
+  start()
+}
+
+// Every order change animates the same way: a drag, Alt + arrows, a caller that
+// rejects a drop (the icon returns), or a caller replacing the array.
+watch(() => displayedItems.value.map(item => item.id), (ids, previous) => {
+  if (!animated.value || !previous || (ids.length === previous.length && ids.every((id, index) => id === previous[index])))
+    return
+  // A pre-flush watcher runs before the DOM is patched, so these are the old slots.
+  const before = new Map<MotionDockId, number>()
+  for (const [id, element] of elements)
+    before.set(id, element.getBoundingClientRect().left)
+  void nextTick(() => reflow(before))
+}, { flush: 'pre' })
 watch(() => props.items.map(item => [item.id, item.disabled] as const), (items) => {
   const ids = new Set(items.map(([id]) => id))
-  for (const id of springs.keys()) {
+  for (const id of motions.keys()) {
     if (!ids.has(id))
-      springs.delete(id)
+      motions.delete(id)
   }
   if (drag && !ids.has(drag.id))
     cancelDrag()
@@ -291,22 +500,29 @@ watch(() => props.items, () => {
     cancelDrag()
 })
 watch([active, itemSize, peakSize], rest)
+watch(animated, start)
 watch([present, () => props.disabled, () => props.reorderable], ([visible, disabled, reorderable]) => {
   if (!visible || disabled || !reorderable)
     cancelDrag()
 })
-onDeactivated(() => { cancelDrag(); rest() })
-onBeforeUnmount(() => { cancelDrag(); stopSpring(); springs.clear(); elements.clear() })
+onDeactivated(() => { cancelDrag(); stop(); snap() })
+onBeforeUnmount(() => { cancelDrag(); stop(); motions.clear(); elements.clear() })
 </script>
 
 <template>
-  <div ref="root" class="tx-motion-dock" :style="rootStyle" :data-dragging="draggedId !== undefined">
+  <div ref="root" class="tx-motion-dock" :class="{ 'is-dragging': draggedId !== undefined, 'is-labelled': showLabels }" :style="rootStyle">
     <div
-class="tx-motion-dock__items" role="toolbar" aria-orientation="horizontal" :aria-label="labels.dock" :aria-describedby="instructionsId"
+      ref="shelf" class="tx-motion-dock__shelf" role="toolbar" aria-orientation="horizontal" :aria-label="labels.dock" :aria-describedby="instructionsId"
       @pointermove="pointerMove" @pointerleave="leave" @pointerup="pointerUp" @pointercancel="cancelDrag"
       @lostpointercapture="drag?.pointerId === $event.pointerId && cancelDrag()"
       @focusout="!root?.contains($event.relatedTarget as Node | null) && leave()"
->
+    >
+      <!-- No cross-fade on a theme switch: while the material transitions, Chrome draws the
+        refraction without the shelf's rounded clip, a square flash of the old theme. -->
+      <TxBaseSurface
+        class="tx-motion-dock__surface" preset="card" fake aria-hidden="true" :transition-duration="0"
+        :mode="surfaceMode" color="var(--tx-fill-color, #f0f2f5)" :opacity="surfaceMode === 'mask' ? .96 : .72"
+      />
       <component
         :is="item.href ? 'a' : 'button'" v-for="(item, index) in displayedItems" :key="item.id"
         :ref="(element: Element | ComponentPublicInstance | null) => setItemRef(item.id, element)" class="tx-motion-dock__item"
@@ -317,14 +533,14 @@ class="tx-motion-dock__items" role="toolbar" aria-orientation="horizontal" :aria
         :aria-label="item.label" :aria-pressed="!item.href && activeId !== undefined ? activeId === item.id : undefined"
         :aria-current="item.href && activeId === item.id ? 'page' : undefined"
         :tabindex="!disabled && !item.disabled && focusId === item.id ? 0 : -1"
-        :style="draggedId === item.id ? { transform: `translateX(${dragTranslate}px)` } : undefined"
-        :title="item.label" @focus="focus(item)" @click="select(item, index, $event)" @keydown="keyboard(item, $event)"
+        @focus="focus(item)" @click="select(item, index, $event)" @keydown="keyboard(item, $event)"
         @pointerdown="pointerDown(item, $event)" @dragstart.prevent
       >
         <slot name="item" :item="item" :index="index" :active="activeId === item.id" :dragging="draggedId === item.id">
           <span class="tx-motion-dock__icon" aria-hidden="true"><slot name="icon" :item="item" :index="index">{{ item.label.slice(0, 1) }}</slot></span>
-          <span v-if="showLabels" class="tx-motion-dock__label"><slot name="label" :item="item" :index="index">{{ item.label }}</slot></span>
         </slot>
+        <span :class="showLabels ? 'tx-motion-dock__label' : 'tx-motion-dock__tip'" aria-hidden="true"><slot name="label" :item="item" :index="index">{{ item.label }}</slot></span>
+        <span class="tx-motion-dock__dot" aria-hidden="true" />
       </component>
     </div>
     <span :id="instructionsId" class="tx-motion-dock__sr">{{ labels.instructions }}</span>
@@ -332,19 +548,234 @@ class="tx-motion-dock__items" role="toolbar" aria-orientation="horizontal" :aria
   </div>
 </template>
 
-<style scoped>
-.tx-motion-dock { display: inline-flex; box-sizing: border-box; max-width: 100%; padding: 6px; border-radius: 12px; background: var(--tx-fill-color-light, #f5f7fa); box-shadow: inset 0 0 0 1px var(--tx-border-color, #dcdfe6); color: var(--tx-text-color-regular, #606266); font-size: 13px; }
-.tx-motion-dock__items { display: flex; align-items: flex-end; gap: 5px; min-height: var(--tx-motion-dock-base-size); padding-top: 16px; }
-.tx-motion-dock__item { position: relative; display: grid; place-items: center; flex: none; box-sizing: border-box; width: var(--tx-motion-dock-item-size, var(--tx-motion-dock-base-size)); height: var(--tx-motion-dock-item-size, var(--tx-motion-dock-base-size)); padding: 2px; border: 0; border-radius: 10px; background: var(--tx-bg-color, #ffffff); box-shadow: inset 0 0 0 1px var(--tx-border-color, #dcdfe6); color: inherit; font: inherit; text-decoration: none; cursor: grab; user-select: none; touch-action: pan-y; }
-.tx-motion-dock__item.is-fixed:not(.is-disabled) { cursor: pointer; }
-.tx-motion-dock__item:hover:not(.is-disabled) { background: var(--tx-fill-color, #f0f2f5); }
-.tx-motion-dock__item:focus-visible { outline: 2px solid var(--tx-color-primary, #409eff); outline-offset: 3px; }
-.tx-motion-dock__item.is-active { box-shadow: inset 0 0 0 2px var(--tx-color-primary, #409eff); }
-.tx-motion-dock__item.is-dragging { z-index: 1; cursor: grabbing; }
-.tx-motion-dock__item.is-disabled { cursor: not-allowed; opacity: .5; }
-.tx-motion-dock__icon { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 8px; background: var(--tx-color-primary-light-9, #ecf5ff); font-weight: var(--tx-font-weight-medium, 500); }
-.tx-motion-dock__label { position: absolute; top: calc(100% + 8px); left: 50%; translate: -50% 0; white-space: nowrap; line-height: 1.5; }
-.tx-motion-dock:has(.tx-motion-dock__label) { margin-bottom: 28px; }
-.tx-motion-dock__sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-@media (prefers-reduced-motion: reduce) { .tx-motion-dock__item { transition: none; } }
+<style scoped lang="scss">
+@use '../../../style/mixins.scss' as *;
+
+.tx-motion-dock {
+  --tx-motion-dock-pad: calc(var(--tx-motion-dock-base-size) * .22 + 1px);
+  --tx-motion-dock-gap: calc(var(--tx-motion-dock-base-size) * .18);
+  --tx-motion-dock-dot: 4px;
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-width: 100%;
+  // The magnified icons grow up out of the shelf, into room kept above it rather than inside it.
+  padding-top: calc(var(--tx-motion-dock-peak-size) - var(--tx-motion-dock-base-size));
+  color: var(--tx-text-color-regular, #606266);
+  font-size: 13px;
+  vertical-align: bottom;
+
+  &.is-labelled {
+    padding-bottom: 22px;
+  }
+}
+
+.tx-motion-dock__shelf {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--tx-motion-dock-gap);
+  box-sizing: border-box;
+  height: calc(var(--tx-motion-dock-base-size) + var(--tx-motion-dock-pad) * 2);
+  padding: var(--tx-motion-dock-pad);
+  // Concentric with the resting icons: their radius plus the inset.
+  @include tx-squircle(calc(var(--tx-motion-dock-base-size) * .225 + var(--tx-motion-dock-pad)));
+
+  // Ring and shadow above the material (an inset ring under it would be covered) and under the icons.
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    corner-shape: inherit;
+    box-shadow: inset 0 0 0 1px var(--tx-border-color-lighter, #ebeef5), var(--tx-elevation-4, 4px 8px 24px rgba(0, 0, 0, .08));
+    pointer-events: none;
+  }
+}
+
+.tx-motion-dock__surface {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: inherit;
+  pointer-events: none;
+}
+
+.tx-motion-dock__item {
+  --tx-motion-dock-size: var(--tx-motion-dock-item-size, var(--tx-motion-dock-base-size));
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--tx-motion-dock-size);
+  height: var(--tx-motion-dock-size);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  @include tx-squircle(calc(var(--tx-motion-dock-size) * .225));
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+
+  &.is-fixed:not(.is-disabled) {
+    cursor: pointer;
+  }
+
+  &.is-dragging {
+    z-index: 1;
+    cursor: grabbing;
+  }
+
+  &.is-disabled {
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--tx-color-primary, #409eff);
+    outline-offset: 2px;
+  }
+}
+
+.tx-motion-dock__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  corner-shape: inherit;
+  background: var(--tx-surface-raised, #fff);
+  box-shadow: inset 0 0 0 1px var(--tx-border-color-lighter, #ebeef5), var(--tx-elevation-1, 1px 2px 4px rgba(0, 0, 0, .04));
+  color: var(--tx-text-color-primary, #303133);
+  // A slotted 1em glyph keeps to 56% of the tile at every magnification.
+  font-size: calc(var(--tx-motion-dock-size) * .56);
+  font-weight: var(--tx-font-weight-medium, 500);
+  line-height: 1;
+
+  // The held icon's deeper shadow fades in on a layer of its own: transitioning the tile's
+  // shadow would also cross-fade its ring on a theme switch.
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    corner-shape: inherit;
+    box-shadow: var(--tx-elevation-4, 4px 8px 24px rgba(0, 0, 0, .08));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease-out;
+  }
+
+  .is-dragging > &::after {
+    opacity: 1;
+  }
+
+  .tx-motion-dock__item:active:not(.is-disabled, .is-dragging) > & {
+    filter: brightness(.92);
+  }
+
+  .is-disabled > & {
+    opacity: .45;
+  }
+}
+
+.tx-motion-dock__tip,
+.tx-motion-dock__label {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tx-motion-dock__tip {
+  bottom: calc(100% + 6px);
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  @include tx-squircle(7px);
+  background: var(--tx-bg-color-overlay, #fff);
+  box-shadow: inset 0 0 0 1px var(--tx-border-color-lighter, #ebeef5), var(--tx-elevation-3, 2px 4px 14px rgba(0, 0, 0, .06));
+  color: var(--tx-text-color-primary, #303133);
+  opacity: 0;
+  translate: -50% 3px;
+  transition: opacity 120ms ease-out, translate 160ms ease-out;
+
+  .tx-motion-dock__item:focus-visible > & {
+    opacity: 1;
+    translate: -50% 0;
+  }
+
+  // A tap leaves :hover behind on touch screens, so only a hovering pointer raises the bubble.
+  @media (hover: hover) {
+    .tx-motion-dock__item:hover > & {
+      opacity: 1;
+      translate: -50% 0;
+    }
+  }
+
+  .tx-motion-dock.is-dragging & {
+    opacity: 0;
+  }
+}
+
+// No wider than the icon and half a gap each side, so neighbours never overlap; a magnified
+// icon has room for more of its name.
+.tx-motion-dock__label {
+  top: calc(100% + var(--tx-motion-dock-pad) + 6px);
+  max-width: calc(var(--tx-motion-dock-size) + var(--tx-motion-dock-gap));
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+}
+
+.tx-motion-dock__dot {
+  position: absolute;
+  top: calc(100% + (var(--tx-motion-dock-pad) - var(--tx-motion-dock-dot)) / 2);
+  left: calc(50% - var(--tx-motion-dock-dot) / 2);
+  width: var(--tx-motion-dock-dot);
+  height: var(--tx-motion-dock-dot);
+  border-radius: 50%;
+  background: var(--tx-text-color-regular, #606266);
+  opacity: 0;
+  scale: .5;
+  pointer-events: none;
+  transition: opacity 160ms ease-out, scale 200ms ease-out;
+
+  .is-active > & {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.tx-motion-dock__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-motion-dock__icon::after,
+  .tx-motion-dock__tip,
+  .tx-motion-dock__dot {
+    transition: none;
+  }
+}
 </style>

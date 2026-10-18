@@ -4,6 +4,7 @@
 import type { MonoChartData, MonoChartEmits, MonoChartHit, MonoChartProps } from './types'
 import { computed, nextTick, onBeforeUnmount, onDeactivated, ref, useId, watch } from 'vue'
 import { useMotionActivity } from '../../../../../../utils/motion-activity'
+import { usePressScrub } from '../../../../../../utils/press-scrub'
 import { placeTooltip } from '../../tooltip/src/position'
 import { loadGitHubActivity } from './activity-source'
 import { buildMonoGeometry } from './geometry'
@@ -157,12 +158,12 @@ async function place(): Promise<void> {
   if (!host.value || !tooltip.value || !hovered.value) return
   placement.value = placeTooltip({ pointerX: pointer.value.x, pointerY: pointer.value.y, tooltipWidth: tooltip.value.offsetWidth, tooltipHeight: tooltip.value.offsetHeight, containerWidth: host.value.clientWidth, containerHeight: host.value.clientHeight, offset: 10, follow: 'both' })
 }
-function hoverMark(key: string | undefined, event?: PointerEvent): void {
+function hoverMark(key: string | undefined, point?: { clientX: number, clientY: number }): void {
   if (!key || !hitIndex.value.has(key)) return
   selected.value = key
-  if (host.value && event) {
+  if (host.value && point) {
     const bounds = host.value.getBoundingClientRect()
-    pointer.value = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+    pointer.value = { x: point.clientX - bounds.left, y: point.clientY - bounds.top }
   }
   else if (svg.value && host.value) {
     const bounds = svg.value.getBoundingClientRect()
@@ -196,7 +197,75 @@ function navigate(event: KeyboardEvent): void {
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? hits.length - 1 : current < 0 ? backwards ? hits.length - 1 : 0 : (current + (backwards ? -1 : 1) + hits.length) % hits.length
   hoverMark(hits[next]!.key)
 }
-watch(geometry, clearHover)
+interface HitBox { key: string, left: number, top: number, right: number, bottom: number, anchorX: number, anchorY: number }
+/** Mark boxes in svg pixels, measured when a drag first reads and again after a resize. */
+let hitBoxes: { width: number, height: number, union: Omit<HitBox, 'key' | 'anchorX' | 'anchorY'>, items: HitBox[] } | undefined
+function measureHits(bounds: DOMRect): typeof hitBoxes {
+  // The viewBox scales with `meet`, which letterboxes once `max-height` caps the svg.
+  const scale = Math.min(bounds.width / width.value, bounds.height / height.value)
+  const offsetX = (bounds.width - width.value * scale) / 2
+  const offsetY = (bounds.height - height.value * scale) / 2
+  const boxes = new Map<string, HitBox>()
+  svg.value?.querySelectorAll('[data-hit]').forEach((element) => {
+    const key = element.getAttribute('data-hit')!
+    const rect = element.getBoundingClientRect()
+    const box = boxes.get(key)
+    const hit = hitIndex.value.get(key)
+    const left = rect.left - bounds.left
+    const top = rect.top - bounds.top
+    const right = rect.right - bounds.left
+    const bottom = rect.bottom - bounds.top
+    if (!box) boxes.set(key, { key, left, top, right, bottom, anchorX: offsetX + (hit?.x ?? 0) * scale, anchorY: offsetY + (hit?.y ?? 0) * scale })
+    else Object.assign(box, { left: Math.min(box.left, left), top: Math.min(box.top, top), right: Math.max(box.right, right), bottom: Math.max(box.bottom, bottom) })
+  })
+  const items = [...boxes.values()]
+  if (!items.length) return undefined
+  const union = items.reduce((all, box) => ({ left: Math.min(all.left, box.left), top: Math.min(all.top, box.top), right: Math.max(all.right, box.right), bottom: Math.max(all.bottom, box.bottom) }), { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity })
+  return { width: bounds.width, height: bounds.height, union, items }
+}
+/** The mark nearest a point that is over none: in its column or row, or else in both directions. */
+function nearestHit(x: number, y: number): string | undefined {
+  const axis = geometry.value.axis
+  let best: HitBox | undefined
+  let bestDistance = Infinity
+  let bestAnchor = Infinity
+  for (const box of hitBoxes?.items ?? []) {
+    const dx = Math.max(box.left - x, 0, x - box.right)
+    const dy = Math.max(box.top - y, 0, y - box.bottom)
+    const distance = axis === 'x' ? dx : axis === 'y' ? dy : Math.hypot(dx, dy)
+    // Overlapping boxes (arcs, links) tie; the datum's own anchor breaks it.
+    const anchor = Math.hypot(box.anchorX - x, box.anchorY - y)
+    if (distance < bestDistance - 0.5 || (distance <= bestDistance + 0.5 && anchor < bestAnchor)) {
+      best = box
+      bestDistance = Math.min(bestDistance, distance)
+      bestAnchor = anchor
+    }
+  }
+  return best?.key
+}
+/** Capture sends a drag's moves to the svg, not the mark under the pointer; find that mark. */
+function scrubAt(event: PointerEvent): void {
+  const element = svg.value
+  if (!element) return
+  const bounds = element.getBoundingClientRect()
+  if (!hitBoxes || hitBoxes.width !== bounds.width || hitBoxes.height !== bounds.height) hitBoxes = measureHits(bounds)
+  if (!hitBoxes) return
+  // Held off the plot, the reading stays on the edge datum.
+  const { union } = hitBoxes
+  const x = Math.min(Math.max(event.clientX - bounds.left, union.left + 0.5), Math.max(union.left + 0.5, union.right - 0.5))
+  const y = Math.min(Math.max(event.clientY - bounds.top, union.top + 0.5), Math.max(union.top + 0.5, union.bottom - 0.5))
+  const target = document.elementFromPoint(bounds.left + x, bounds.top + y)
+  const key = (target && element.contains(target) ? target.closest('[data-hit]')?.getAttribute('data-hit') : undefined) ?? nearestHit(x, y)
+  hoverMark(key, { clientX: bounds.left + x, clientY: bounds.top + y })
+}
+const scrub = usePressScrub(svg, { press: scrubAt, read: scrubAt, cancel: clearHover })
+// A drag owns the reading until it ends. A pen also moves the mouse, whose own enter and leave
+// still reach the svg and the legend mid-drag.
+const scrubbing = scrub.dragging
+watch(geometry, () => {
+  hitBoxes = undefined
+  clearHover()
+})
 const legend = computed(() => data.value.items?.map((item, index) => ({ key: `item-${index}`, name: item.label, value: item.value })) ?? data.value.series?.map((series, index) => ({ key: `spark-${index}`, name: series.name, value: series.metric ?? series.data.at(-1)?.value ?? '' })) ?? [])
 </script>
 
@@ -239,7 +308,7 @@ const legend = computed(() => data.value.items?.map((item, index) => ({ key: `it
       </div>
     </header>
     <div class="tx-mono-chart__stage">
-      <svg ref="svg" :viewBox="`0 0 ${width} ${height}`" :width="width" :height="height" role="group" :aria-label="ariaLabel" :aria-describedby="hovered && showTooltip ? `${uid}-readout` : undefined" tabindex="0" @keydown="navigate" @blur="clearHover" @pointerleave="clearHover">
+      <svg ref="svg" :viewBox="`0 0 ${width} ${height}`" :width="width" :height="height" role="group" :aria-label="ariaLabel" :aria-describedby="hovered && showTooltip ? `${uid}-readout` : undefined" tabindex="0" @keydown="navigate" @blur="clearHover" @pointerleave="scrubbing || clearHover()" @pointerdown="scrub.pointerdown" @pointermove="scrub.pointermove" @pointerup="scrub.pointerup" @pointercancel="scrub.pointercancel" @lostpointercapture="scrub.lostpointercapture">
         <title>{{ ariaLabel }}</title>
         <defs>
           <linearGradient :id="`${uid}-gradient`" x1="0" y1="0" x2="0" y2="1">
@@ -276,7 +345,7 @@ const legend = computed(() => data.value.items?.map((item, index) => ({ key: `it
 </slot>
     </div>
     <div v-if="showLegend && legend.length && ['mono-rounded-donut', 'mono-rounded-radial-group', 'mono-rounded-radial-gauge', 'mono-rounded-polar'].includes(variant)" class="tx-mono-chart__legend">
-      <button v-for="item in legend" :key="item.key" type="button" @pointerenter="hoverMark(item.key)" @focus="hoverMark(item.key)" @blur="clearHover" @pointerleave="clearHover" @click="selectMark(item.key)">
+      <button v-for="item in legend" :key="item.key" type="button" @pointerenter="scrubbing || hoverMark(item.key)" @focus="hoverMark(item.key)" @blur="clearHover" @pointerleave="scrubbing || clearHover()" @click="selectMark(item.key)">
 {{ item.name }} <span>{{ format(item.value) }}</span>
 </button>
     </div>
@@ -323,10 +392,11 @@ const legend = computed(() => data.value.items?.map((item, index) => ({ key: `it
   button:hover { color: var(--tx-text-color-primary, #303133); background: var(--tx-fill-color, #f0f2f5); }
   button:focus-visible, svg:focus-visible { outline: 2px solid var(--tx-color-primary, #409eff); outline-offset: 2px; }
   &__stage { min-width: 0; border-radius: 8px; background: var(--tx-fill-color-lighter, #fafafa); }
-  &__stage > svg { display: block; width: 100%; height: auto; max-height: 360px; }
+  // Sweeping the marks reads them and picks nothing up; a vertical swipe still scrolls the page.
+  &__stage > svg { display: block; width: 100%; height: auto; max-height: 360px; cursor: crosshair; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
   &__axis { fill: var(--tx-chart-text-primary, var(--tx-text-color-regular, #606266)); font: 11px sans-serif; }
   &__tile-label { font: 11px sans-serif; }
-  &__mark { cursor: pointer; transform-box: fill-box; transform-origin: center; }
+  &__mark { transform-box: fill-box; transform-origin: center; }
   &__mark.is-highlighted { filter: drop-shadow(0 0 2px var(--tx-chart-grid-line, var(--tx-border-color, #dcdfe6))); }
   &__center-content { display: flex; flex-direction: column; text-align: center; gap: 4px; font-size: 12px; }
   &__center-content strong { font-size: 18px; font-weight: var(--tx-font-weight-semibold, 600); }

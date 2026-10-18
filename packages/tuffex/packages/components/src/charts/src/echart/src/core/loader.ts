@@ -34,6 +34,7 @@ async function register(): Promise<EChartsRuntime> {
     components.TitleComponent,
     components.VisualMapComponent,
     components.AriaComponent,
+    components.DataZoomInsideComponent,
   ])
 
   return core

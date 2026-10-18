@@ -1,6 +1,7 @@
 import type { GitHubRelease, UpdateCheckResult } from '@talex-touch/utils'
 import type { ModuleInitContext } from '@talex-touch/utils/types/modules'
 import type { PathLike } from 'node:fs'
+import type { VerifiedUpdatePackage } from './update-system'
 import { resetQuitIntentForTest, setQuitIntent } from '../../core/quit-intent'
 import { TalexEvents } from '../../core/eventbus/touch-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -176,6 +177,14 @@ const mocks = vi.hoisted(() => {
       clearAllRecords: vi.fn(async () => {})
     },
     updateSystem: {
+      verifyDownloadedUpdate: vi.fn(async (taskId: string) => ({
+        taskId,
+        filePath: '/tmp/update-service-contracts/Tuff.app.zip',
+        destination: '/tmp/update-service-contracts',
+        filename: 'Tuff.app.zip',
+        sha256: 'b'.repeat(64),
+        signatureUrl: 'https://example.test/Tuff.app.zip.sig'
+      })),
       downloadUpdate: vi.fn(async () => 'download-task'),
       installUpdate: vi.fn(async () => {}),
       ignoreVersion: vi.fn(),
@@ -301,6 +310,7 @@ vi.mock('./update-attempt-repository', () => ({
 vi.mock('./update-system', () => ({
   UpdateSystem: class UpdateSystem {
     downloadUpdate = mocks.updateSystem.downloadUpdate
+    verifyDownloadedUpdate = mocks.updateSystem.verifyDownloadedUpdate
     installUpdate = mocks.updateSystem.installUpdate
     ignoreVersion = mocks.updateSystem.ignoreVersion
     setAutoDownload = mocks.updateSystem.setAutoDownload
@@ -390,7 +400,7 @@ function persistPendingRelease(tag: string, fetchedAgoMs: number): void {
 /** Drives an attempt for `tag` through the lifecycle until it rests at `phase`. */
 async function activeAttemptAt(
   tag: string,
-  phase: 'downloading' | 'ready'
+  phase: 'downloading' | 'verifying' | 'preparing' | 'ready'
 ): Promise<Record<string, unknown>> {
   const created = await mocks.lifecycleRepository.createChecking({
     id: `attempt-${tag}`,
@@ -404,6 +414,7 @@ async function activeAttemptAt(
     ['available', { targetVersion: tag, releaseTag: tag, source: 'nexus' }],
     ['downloading', { taskId: `task-${tag}` }],
     ['verifying', undefined],
+    ['preparing', undefined],
     ['ready', undefined]
   ] as const) {
     lifecycle = await mocks.lifecycleRepository.transition({
@@ -477,6 +488,7 @@ describe('UpdateServiceModule facade', () => {
     }
     vi.useRealTimers()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('ignores a late before-modules-unload event after quit-intent destruction', async () => {
@@ -501,6 +513,149 @@ describe('UpdateServiceModule facade', () => {
     } finally {
       resetQuitIntentForTest()
     }
+  })
+
+  it.each(['resolve', 'reject'] as const)(
+    'does not publish readiness or write closed storage when verification later %ss',
+    async (outcome) => {
+      const service = await createService()
+      const internal = service as unknown as {
+        markCenterDownloadReady: (taskId: string) => Promise<void>
+      }
+      const verification = Promise.withResolvers<VerifiedUpdatePackage>()
+      const entered = Promise.withResolvers<void>()
+      mocks.updateSystem.verifyDownloadedUpdate.mockImplementationOnce(() => {
+        entered.resolve()
+        return verification.promise
+      })
+      await activeAttemptAt('v1.1.0', 'downloading')
+      const completion = internal.markCenterDownloadReady('task-v1.1.0')
+      await entered.promise
+      await service.onDestroy()
+      mocks.lifecycleRepository.transition.mockClear()
+      if (outcome === 'reject')
+        verification.reject(new Error('Verification aborted after teardown'))
+      else
+        verification.resolve({
+          taskId: 'task-v1.1.0',
+          filePath: '/tmp/update-service-contracts/Tuff.app.zip',
+          destination: '/tmp/update-service-contracts',
+          filename: 'Tuff.app.zip',
+          sha256: 'b'.repeat(64),
+          signatureUrl: 'https://example.test/Tuff.app.zip.sig'
+        })
+      await completion
+      expect(mocks.lifecycleRepository.transition).not.toHaveBeenCalled()
+      expect(mocks.app.quit).not.toHaveBeenCalled()
+    }
+  )
+
+  describe.runIf(process.platform === 'darwin')('pre-quit preparation lifecycle', () => {
+    it.each(['downloading', 'preparing', 'ready'] as const)(
+      'holds a %s attempt in preparing until validated bytes are available',
+      async (phase) => {
+        const service = await createService()
+        const internal = service as unknown as {
+          restoreLifecycleState: () => Promise<void>
+          markCenterDownloadReady: (taskId: string) => Promise<void>
+          installCoordinator: { prepareDownloadedUpdate: (...args: unknown[]) => Promise<void> }
+        }
+        const entered = Promise.withResolvers<void>()
+        const preparation = Promise.withResolvers<void>()
+        const prepare = vi
+          .spyOn(internal.installCoordinator, 'prepareDownloadedUpdate')
+          .mockImplementation(async () => {
+            entered.resolve()
+            await preparation.promise
+          })
+        await activeAttemptAt('v1.1.0', phase)
+        const taskId = 'task-v1.1.0'
+        const completion =
+          phase === 'downloading'
+            ? internal.markCenterDownloadReady(taskId)
+            : internal.restoreLifecycleState()
+        try {
+          await entered.promise
+          await expect(mocks.lifecycleRepository.getActive()).resolves.toMatchObject({
+            phase: 'preparing'
+          })
+          expect(
+            mocks.lifecycleRepository.transition.mock.calls.filter(
+              ([input]) => input.to === 'ready'
+            )
+          ).toHaveLength(phase === 'ready' ? 1 : 0)
+          expect(mocks.app.quit).not.toHaveBeenCalled()
+          const install = await invoke(UpdateEvents.install, { taskId })
+          expect(install).toMatchObject({ success: false })
+          expect(mocks.app.quit).not.toHaveBeenCalled()
+          const repeated = internal.markCenterDownloadReady(taskId)
+          preparation.resolve()
+          await Promise.all([completion, repeated])
+          await expect(mocks.lifecycleRepository.getActive()).resolves.toMatchObject({
+            phase: 'ready'
+          })
+          expect(prepare).toHaveBeenCalledOnce()
+        } finally {
+          preparation.resolve()
+          await completion
+          await service.onDestroy()
+        }
+      }
+    )
+
+    it('surfaces preparation failure without quitting or offering a ready update', async () => {
+      const service = await createService()
+      const internal = service as unknown as {
+        markCenterDownloadReady: (taskId: string) => Promise<void>
+        installCoordinator: { prepareDownloadedUpdate: () => Promise<void> }
+      }
+      vi.spyOn(internal.installCoordinator, 'prepareDownloadedUpdate').mockRejectedValue(
+        new Error('Invalid prepared signature')
+      )
+      await activeAttemptAt('v1.1.0', 'downloading')
+      try {
+        await internal.markCenterDownloadReady('task-v1.1.0')
+        await expect(mocks.lifecycleRepository.getLatest()).resolves.toMatchObject({
+          phase: 'failed',
+          error: { code: 'UPDATE_PREPARATION_FAILED' }
+        })
+        expect(
+          mocks.lifecycleRepository.transition.mock.calls.some(([input]) => input.to === 'ready')
+        ).toBe(false)
+        expect(mocks.app.quit).not.toHaveBeenCalled()
+      } finally {
+        await service.onDestroy()
+      }
+    })
+
+    it.each(['resolve', 'reject'] as const)(
+      'does not write the closed repository when preparation later %ss',
+      async (outcome) => {
+        const service = await createService()
+        const internal = service as unknown as {
+          markCenterDownloadReady: (taskId: string) => Promise<void>
+          installCoordinator: { prepareDownloadedUpdate: () => Promise<void> }
+        }
+        const entered = Promise.withResolvers<void>()
+        const preparation = Promise.withResolvers<void>()
+        vi.spyOn(internal.installCoordinator, 'prepareDownloadedUpdate').mockImplementation(
+          async () => {
+            entered.resolve()
+            await preparation.promise
+          }
+        )
+        await activeAttemptAt('v1.1.0', 'downloading')
+        const completion = internal.markCenterDownloadReady('task-v1.1.0')
+        await entered.promise
+        await service.onDestroy()
+        mocks.lifecycleRepository.transition.mockClear()
+        if (outcome === 'resolve') preparation.resolve()
+        else preparation.reject(new Error('aborted after teardown'))
+        await completion
+        expect(mocks.lifecycleRepository.transition).not.toHaveBeenCalled()
+        expect(mocks.app.quit).not.toHaveBeenCalled()
+      }
+    )
   })
 
   it('coalesces renderer quick checks into one background release request', async () => {
@@ -671,49 +826,52 @@ describe('UpdateServiceModule facade', () => {
       await service.onDestroy()
     }
   })
-  it('re-publishes a restored ready lifecycle and shows its notification once per process', async () => {
-    const service = await createService()
-    const showUpdateReadyNotification = vi.fn(() => true)
-    const internal = service as unknown as {
-      updateNotificationService: {
-        showUpdateReadyNotification: typeof showUpdateReadyNotification
+  it.runIf(process.platform !== 'darwin')(
+    're-publishes a restored ready lifecycle and shows its notification once per process',
+    async () => {
+      const service = await createService()
+      const showUpdateReadyNotification = vi.fn(() => true)
+      const internal = service as unknown as {
+        updateNotificationService: {
+          showUpdateReadyNotification: typeof showUpdateReadyNotification
+        }
+        restoreLifecycleState: () => Promise<void>
       }
-      restoreLifecycleState: () => Promise<void>
-    }
-    internal.updateNotificationService = { showUpdateReadyNotification }
-    const created = await mocks.lifecycleRepository.createChecking({
-      id: 'attempt-ready',
-      currentVersion: '1.0.0',
-      channel: AppPreviewChannel.RELEASE,
-      installOnNormalQuit: true,
-      now: 100
-    })
-    for (const [to, patch] of [
-      ['available', { targetVersion: '1.1.0', releaseTag: 'v1.1.0', source: 'nexus' }],
-      ['downloading', { taskId: 'task-ready' }],
-      ['verifying', undefined],
-      ['ready', undefined]
-    ] as const) {
-      await mocks.lifecycleRepository.transition({
-        attemptId: created.attemptId,
-        to,
-        patch
+      internal.updateNotificationService = { showUpdateReadyNotification }
+      const created = await mocks.lifecycleRepository.createChecking({
+        id: 'attempt-ready',
+        currentVersion: '1.0.0',
+        channel: AppPreviewChannel.RELEASE,
+        installOnNormalQuit: true,
+        now: 100
       })
-    }
+      for (const [to, patch] of [
+        ['available', { targetVersion: '1.1.0', releaseTag: 'v1.1.0', source: 'nexus' }],
+        ['downloading', { taskId: 'task-ready' }],
+        ['verifying', undefined],
+        ['ready', undefined]
+      ] as const) {
+        await mocks.lifecycleRepository.transition({
+          attemptId: created.attemptId,
+          to,
+          patch
+        })
+      }
 
-    try {
-      await internal.restoreLifecycleState()
-      await internal.restoreLifecycleState()
+      try {
+        await internal.restoreLifecycleState()
+        await internal.restoreLifecycleState()
 
-      expect(mocks.transport.broadcast).toHaveBeenCalledWith(
-        UpdateEvents.lifecycleChanged,
-        expect.objectContaining({ phase: 'ready', taskId: 'task-ready' })
-      )
-      expect(showUpdateReadyNotification).toHaveBeenCalledOnce()
-    } finally {
-      await service.onDestroy()
+        expect(mocks.transport.broadcast).toHaveBeenCalledWith(
+          UpdateEvents.lifecycleChanged,
+          expect.objectContaining({ phase: 'ready', taskId: 'task-ready' })
+        )
+        expect(showUpdateReadyNotification).toHaveBeenCalledOnce()
+      } finally {
+        await service.onDestroy()
+      }
     }
-  })
+  )
 
   it('restores and fails an active attempt from a different application version', async () => {
     const service = await createService()

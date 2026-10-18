@@ -52,7 +52,9 @@ const progressStatus = computed(() =>
  * Byte progress changes every second. Inside the live region a screen reader would re-read it on
  * every tick, so it sits beside the region; the bar itself still reports its value.
  */
-const detailIsLive = computed(() => props.view.detail?.kind !== 'progress')
+const detailIsLive = computed(
+  () => props.view.detail?.kind !== 'progress' && props.view.phase !== 'preparing'
+)
 
 function handleAction(): void {
   if (props.view.action) emit('action', props.view.action.kind)

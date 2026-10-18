@@ -23,7 +23,12 @@ export interface MapBaseProps {
   center?: [number, number]
   /** Zoom level — multiplies the auto-fit scale. @default 1.25 */
   zoom?: number
-  /** Enable drag-to-pan and scroll-to-zoom. @default false */
+  /**
+   * Pan and zoom: drag pans, ⌘/Ctrl + wheel or a pinch zooms around the
+   * pointer, double-click resets, and the focused map takes the arrow keys,
+   * +/− and 0. A plain wheel always scrolls the page. `false` keeps the map
+   * fixed. @default true
+   */
   roam?: boolean
   /**
    * Geographic projection: a d3-geo projection (kumo wraps these in a
@@ -46,6 +51,21 @@ export interface MapBaseProps {
   height?: number
   /** Explicit width in pixels (SSR/tests). Defaults to the measured container. */
   width?: number
+  /** The roaming map's accessible name and instructions. English by default. */
+  labels?: Partial<MapLabels>
+}
+
+/** Text a roaming map gives assistive technology. */
+export interface MapLabels {
+  /** Accessible name of the map. */
+  map: string
+  /** How to pan, zoom and reset, read after the name. */
+  instructions: string
+}
+
+export const MAP_DEFAULT_LABELS: MapLabels = {
+  map: 'Map',
+  instructions: 'Drag or use the arrow keys to pan. Pinch, hold Control or Command while scrolling, or press plus and minus to zoom. Double-click or press 0 to reset.',
 }
 
 export interface BubbleMapProps<T> extends MapBaseProps {

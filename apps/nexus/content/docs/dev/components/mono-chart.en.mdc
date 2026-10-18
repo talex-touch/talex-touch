@@ -13,7 +13,7 @@ verified: false
 
 `TxMonoChart` renders native SVG using the existing chart scales, d3 curves, Sankey layout and `--tx-chart-*` theme. It has no React, Recharts or ECharts runtime. All values come from `data`; omitting it shows an empty state, not invented business values. Activity palettes retain emerald, blue and violet emphasis; other charts follow the host's monochrome ink.
 
-Hover a mark to read its actual values. Focus the SVG and use arrow keys, Home or End to inspect marks, Enter or Space to emit `select`, and Escape to clear the readout. Donut/radial legends are also keyboard-operable. Repository disclosure uses a native button, `aria-expanded` and an inert collapsed list. Center values reflect the hovered segment, otherwise the caller's metric or the data total.
+Hover a mark to read its actual values. Press and drag to sweep across marks: the reading snaps to the mark under the pointer, or the nearest one, with no easing, and holds the edge datum past the plot; ending a drag does not emit `select`. On touch a sideways drag reads and a vertical swipe still scrolls the page. Focus the SVG and use arrow keys, Home or End to inspect marks, Enter or Space to emit `select`, and Escape to clear the readout or cancel a drag. Donut/radial legends are also keyboard-operable. Repository disclosure uses a native button, `aria-expanded` and an inert collapsed list. Center values reflect the hovered segment, otherwise the caller's metric or the data total.
 
 ## Usage
 
@@ -162,7 +162,7 @@ All types are exported from `@talex-touch/tuffex/charts`.
 | --- | --- | --- |
 | `update:seriesMode`, `update:layout`, `update:curve`, `update:showLine`, `update:period`, `update:open` | Corresponding prop value | Controlled switch/disclosure changes; absent models use local state. |
 | `hover` | `MonoChartHit \| null` | `{key,label,rows:[{name,value}],value?,x,y}`; coordinates use the SVG viewBox. Null clears inspection. |
-| `select` | `MonoChartHit` | Pointer click, legend activation, Enter or Space. No business action is simulated. |
+| `select` | `MonoChartHit` | Pointer click, legend activation, Enter or Space; ending a drag does not select. No business action is simulated. |
 | `load` | `{contributions?,repos?}` | Real source data accepted by the current request. |
 | `error` | `Error` | Current loader/response failure; aborted or superseded requests do not emit success/errors. |
 
@@ -190,4 +190,4 @@ All types are exported from `@talex-touch/tuffex/charts`.
 
 ## Technologies
 
-The implementation ports the distinct rendering contracts of all 29 files under Amicro `src/components/mono-charts` plus its 30-row catalog. `GitHubActivity` is an additional variant, not a renamed activity palette. Geometry is pure and data-driven; chart scale/curve/tooltip-position/Sankey helpers are reused. Weighted allocation is calculated from input rather than the upstream demo's fixed CSS grid. Request abort/version ownership prevents stale updates, and the shared motion activity helper owns visibility/KeepAlive cleanup. The repository disclosure transition runs only while active and with no reduced-motion preference. No browser API is touched during SVG SSR. Final build, browser and lifecycle verification are performed by the integration owner.
+The implementation ports the distinct rendering contracts of all 29 files under Amicro `src/components/mono-charts` plus its 30-row catalog. `GitHubActivity` is an additional variant, not a renamed activity palette. Geometry is pure and data-driven; chart scale/curve/tooltip-position/Sankey helpers are reused. Weighted allocation is calculated from input rather than the upstream demo's fixed CSS grid. A drag captures the pointer on the SVG, so its reading is resolved from coordinates: the pointer is clamped into the union of the mark boxes, `elementFromPoint` finds the mark, and a gap falls to the nearest mark in its column, its row or the plane (`geometry.axis`); the slop, capture, click swallowing and Escape come from the shared `utils/press-scrub.ts`. Request abort/version ownership prevents stale updates, and the shared motion activity helper owns visibility/KeepAlive cleanup. The repository disclosure transition runs only while active and with no reduced-motion preference. No browser API is touched during SVG SSR. Final build, browser and lifecycle verification are performed by the integration owner.

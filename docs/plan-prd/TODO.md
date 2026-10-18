@@ -50,4 +50,5 @@
 - [ ] **v2.4.14 发布说明有两处与代码不符：仓库和 GitHub 已改，Nexus 副本未改。** `notes/update_2.4.14.zh.md`、`notes/update_2.4.14.en.md` 和 GitHub Release 正文已于 2026-10-11 改正。Nexus 发布记录 `v2.4.14` 的 `notes` / `notesHtml` 是发版时同步过去的副本，同日用 `GET /api/releases/v2.4.14` 核对仍是旧措辞。改它要用发布同步密钥调 `PATCH /api/releases/v2.4.14`，或在管理台编辑；这属于对外发布，需先获授权。
   - 「尚未形成习惯时显示学习提示」不成立：`b8f2a2477`（10-03）先把学习提示换成空位占位网格，`0f6c75773`（10-07）又移除了习惯区的整个空态，tag 里已没有这段界面。已改为「尚未形成习惯时不填充虚构常用项目」。
   - 「支持从目录和网址直达常用操作」只对一半：目录成立，`system-actions-provider.ts` 给已存在的目录提供终端和文件管理器动作（`162809001`）；内核只把 `file://`、`tfile://` 解析成路径，普通网址直开由随应用内置的官方插件「浏览器打开」（`touch-browser-open`）提供。已改为「支持从目录直达常用操作，网址经内置 Browser 入口直开」。
+- [ ] **PR #2120（全量琉光材质与概念文档对齐）及旁路问题收口。** 旁路 10+ 项修复（工区 `/private/tmp/tuff-side-issues-1017`，分支 `task/feat/refraction-surfaces-and-concept-docs`，31 文件）已完成：BottomDialog 150ms 截断修复、TxFlatRadio 强制颜色与高对比度选中态、TxBlowDialog/TBlowDialog 安全移除样式、TxModal/TxDrawer 焦点环抑制与防视口跳动、refractionRenderer="css" 毛玻璃降级修复、着色模式抽屉修复等，120 项单测通过且 CSS 预算受控；等待正式审查与合入授权。后续长尾债务（183.9 KiB 图标 safelist 局部 classGlyph 剥离、core-app 历史对话框副本平迁）已归档至 [TODO 长期债务池](./TODO-BACKLOG-LONG-TERM.md#a-架构与质量债务)。
 

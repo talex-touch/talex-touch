@@ -10,6 +10,7 @@ const {
 } = require('./lib/touch-translation-runtime-sync')
 const {
   nativeAddonReleaseDir,
+  verifyMacUpdateHelper,
   preserveRequiredNativeAddons,
   restorePreservedNativeAddons
 } = require('./build-target/native-addons')
@@ -165,6 +166,7 @@ function resolveBuilderBin() {
 function verifyNativeModules(strict, target) {
   const releaseDir = nativeAddonReleaseDir(projectRoot)
   const requiredModuleNames = requiredNativeAddonNames(target)
+  if (target === 'mac' || target === 'darwin') verifyMacUpdateHelper(releaseDir)
 
   const missingModuleNames = requiredModuleNames.filter(
     (moduleName) => !fs.existsSync(path.join(releaseDir, moduleName))
@@ -178,7 +180,7 @@ function verifyNativeModules(strict, target) {
 
   const message =
     `Required native modules missing from ${releaseDir}: ${missingModuleNames.join(', ')}. ` +
-    'Run the native package rebuild, build:audio, and (on macOS) build:translation scripts to produce them.'
+    'Run the native package rebuild, build:audio, and (on macOS) build:translation and build:update scripts to produce them.'
 
   if (strict || target === 'win') {
     throw new Error(message)
@@ -661,6 +663,11 @@ function build() {
       execFileSync(
         process.execPath,
         [path.join(nativeAddonReleaseDir(projectRoot), '..', '..', 'scripts', 'build-translation.js'), '--universal'],
+        { stdio: 'inherit' }
+      )
+      execFileSync(
+        process.execPath,
+        [path.join(nativeAddonReleaseDir(projectRoot), '..', '..', 'scripts', 'build-update.js'), '--universal'],
         { stdio: 'inherit' }
       )
     }

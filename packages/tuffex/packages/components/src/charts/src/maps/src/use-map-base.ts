@@ -1,18 +1,39 @@
 import type { GeoProjection } from 'd3-geo'
 import type { ComputedRef, Ref } from 'vue'
-import type { MapBaseProps } from './types'
+import type { RoamBounds, RoamBox, RoamState } from './roam'
+import type { MapBaseProps, MapLabels } from './types'
 import { geoPath } from 'd3-geo'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, useId, watch } from 'vue'
+import { stepSpring } from '../../../../../../utils/animation/spring'
+import {
+  createVelocityTracker,
+  isZoomWheel,
+  responseSpring,
+  wheelPixels,
+  wheelZoomFactor,
+} from '../../../../../../utils/gesture'
+import { useReducedMotion } from '../../../../../../utils/use-reduced-motion'
 import { easings, STATE_DURATION, tween } from '../../core/animate'
 import { placeTooltip } from '../../tooltip'
 import {
+  boundingWindowFeature,
   DEFAULT_BOUNDING_COORDS,
   fitProjectionToWindow,
   MAX_ZOOM_FACTOR,
   projectedAspect,
   resolveProjection,
 } from './projection'
-import { clampScale, initialRoam, panBy, scaleAboutPoint } from './roam'
+import {
+  clampRoam,
+  clampScale,
+  glideAxis,
+  initialRoam,
+  panBy,
+  resistRoam,
+  roamBounds,
+  scaleAboutPoint,
+} from './roam'
+import { MAP_DEFAULT_LABELS } from './types'
 
 export interface MapBase {
   container: Ref<HTMLElement | null>
@@ -33,10 +54,23 @@ export interface MapBase {
   scaleFactor: ComputedRef<number>
   pointer: { x: number, y: number }
   tooltipStyle: (el: HTMLElement | null) => Record<string, string>
+  /** A pan or pinch is moving the map (the pointer has travelled past the slop). */
+  dragging: Ref<boolean>
+  labels: ComputedRef<MapLabels>
+  /** `id` of the visually hidden instructions element. */
+  instructionsId: string | undefined
+  /** Focus, role and name for the root while the map roams. */
+  rootAttrs: ComputedRef<Record<string, string | number>>
   onWheel: (event: WheelEvent) => void
   onPointerDown: (event: PointerEvent) => void
   onPointerMove: (event: PointerEvent) => void
   onPointerUp: (event: PointerEvent) => void
+  onPointerCancel: (event: PointerEvent) => void
+  onLostPointerCapture: (event: PointerEvent) => void
+  onKeyDown: (event: KeyboardEvent) => void
+  onDblClick: (event: MouseEvent) => void
+  /** Bind with `.capture`: swallows the click a pan ends in. */
+  onClickCapture: (event: MouseEvent) => void
 }
 
 export interface MapBaseOptions {
@@ -47,6 +81,8 @@ export interface MapBaseOptions {
    * content; without it an absolutely positioned legend overlaps the map.
    */
   heightInset?: () => number
+  /** A pan or pinch took over the pointer: drop hover state and the tooltip. */
+  onDragStart?: () => void
 }
 
 /**
@@ -215,18 +251,25 @@ export function useMapBase(props: MapBaseProps, options: MapBaseOptions = {}): M
   }
 
   // ── Roam ──────────────────────────────────────────────────────────────────
+  // Drag pans 1:1 from the press and resists past the map's edge; a flick
+  // coasts to a stop and a spring brings an overshoot back inside. ⌘/Ctrl +
+  // wheel and pinches zoom around the pointer; a plain wheel is the page's.
+  // Double-click and 0 spring back to the fitted view; the keys pan and zoom.
 
+  const reduced = useReducedMotion()
   const zoom = computed(() => props.zoom ?? 1.25)
-  const userRoam = ref<{ k: number, tx: number, ty: number } | null>(null)
 
-  const roamState = computed(() => {
-    if (userRoam.value)
-      return userRoam.value
+  /** The view `zoom` and `center` ask for. */
+  const home = computed<RoamState>(() => {
     const projectedCenter = props.center
       ? project(props.center[0], props.center[1]) ?? undefined
       : undefined
     return initialRoam(zoom.value, width.value, height.value, projectedCenter)
   })
+
+  /** The view as drawn; `null` follows `home`, through resizes. */
+  const drawn = shallowRef<RoamState | null>(null)
+  const roamState = computed(() => drawn.value ?? home.value)
 
   const transform = computed(() => {
     const { k, tx, ty } = roamState.value
@@ -235,8 +278,177 @@ export function useMapBase(props: MapBaseProps, options: MapBaseOptions = {}): M
 
   const scaleFactor = computed(() => roamState.value.k)
 
+  /** The displayed window as fitted: what a pan keeps in view. */
+  const box = computed<RoamBox>(() => {
+    const fitted = projection.value
+    if (!fitted)
+      return { x0: 0, y0: 0, x1: width.value, y1: height.value }
+    const [[x0, y0], [x1, y1]] = geoPath(fitted).bounds(
+      boundingWindowFeature(DEFAULT_BOUNDING_COORDS) as never,
+    )
+    return { x0, y0, x1, y1 }
+  })
+
+  function boundsAt(k: number): RoamBounds {
+    return roamBounds(k, box.value, width.value, height.value, home.value)
+  }
+
+  function zoomAbout(state: RoamState, factor: number, point: { x: number, y: number }): RoamState {
+    return scaleAboutPoint(state, clampScale(state.k * factor, zoom.value, MAX_ZOOM_FACTOR), point)
+  }
+
+  // ── Motion ──
+
+  /** Resets, key presses, wheel notches and overshoots all settle on this. */
+  const VIEW_SPRING = responseSpring(0.35, 1)
+  /** A gliding axis slower than this (px/s) has stopped. */
+  const GLIDE_REST = 10
+
+  interface Axis { mode: 'rest' | 'glide' | 'spring', value: number, velocity: number, target: number }
+  interface Motion { k: Axis, tx: Axis, ty: Axis, bounds: RoamBounds, home: boolean }
+
+  let motion: Motion | null = null
+  let frame = 0
+  let lastTime = 0
+
+  function axis(value: number, velocity = 0): Axis {
+    return { mode: 'rest', value, velocity, target: value }
+  }
+
+  function canAnimate(): boolean {
+    return !reduced.value && typeof requestAnimationFrame !== 'undefined'
+  }
+
+  function stopMotion(): void {
+    if (frame)
+      cancelAnimationFrame(frame)
+    frame = 0
+    motion = null
+  }
+
+  function stepAxis(a: Axis, dt: number, limits: [number, number] | null, rest: number): void {
+    if (a.mode === 'glide') {
+      ;[a.value, a.velocity] = glideAxis(a.value, a.velocity, dt)
+      if (limits && (a.value < limits[0] || a.value > limits[1])) {
+        // Coasting into the edge, a spring takes the velocity over and
+        // brings the map back inside.
+        a.mode = 'spring'
+        a.target = Math.max(limits[0], Math.min(limits[1], a.value))
+      }
+      else if (Math.abs(a.velocity) < GLIDE_REST) {
+        a.mode = 'rest'
+        a.velocity = 0
+      }
+    }
+    else if (a.mode === 'spring') {
+      ;[a.value, a.velocity] = stepSpring(a.value, a.velocity, a.target, VIEW_SPRING, dt)
+      if (Math.abs(a.target - a.value) < rest && Math.abs(a.velocity) < rest * 16) {
+        a.value = a.target
+        a.velocity = 0
+        a.mode = 'rest'
+      }
+    }
+  }
+
+  function tick(now: number): void {
+    frame = 0
+    const m = motion
+    if (!m)
+      return
+    const dt = Math.min(0.064, Math.max(0, (now - lastTime) / 1000))
+    lastTime = now
+    stepAxis(m.k, dt, null, 1e-4)
+    stepAxis(m.tx, dt, m.bounds.tx, 0.1)
+    stepAxis(m.ty, dt, m.bounds.ty, 0.1)
+    const settled = m.k.mode === 'rest' && m.tx.mode === 'rest' && m.ty.mode === 'rest'
+    if (settled) {
+      motion = null
+      drawn.value = m.home ? null : { k: m.k.value, tx: m.tx.value, ty: m.ty.value }
+      return
+    }
+    drawn.value = { k: m.k.value, tx: m.tx.value, ty: m.ty.value }
+    frame = requestAnimationFrame(tick)
+  }
+
+  function run(next: Motion): void {
+    motion = next
+    if (frame)
+      return
+    lastTime = performance.now()
+    frame = requestAnimationFrame(tick)
+  }
+
+  /** Where the view is heading: a key press or notch builds on the last one. */
+  function goal(): RoamState {
+    const m = motion
+    if (!m)
+      return roamState.value
+    const pick = (a: Axis): number => (a.mode === 'spring' ? a.target : a.value)
+    return { k: pick(m.k), tx: pick(m.tx), ty: pick(m.ty) }
+  }
+
+  /** Springs to `target`, keeping any velocity in flight. `toHome` follows `home` once there. */
+  function springTo(target: RoamState, toHome = false): void {
+    if (!canAnimate()) {
+      stopMotion()
+      drawn.value = toHome ? null : target
+      return
+    }
+    const from = roamState.value
+    const next = motion ?? { k: axis(from.k), tx: axis(from.tx), ty: axis(from.ty), bounds: boundsAt(from.k), home: false }
+    for (const key of ['k', 'tx', 'ty'] as const) {
+      next[key].mode = 'spring'
+      next[key].target = target[key]
+    }
+    next.home = toHome
+    run(next)
+  }
+
+  function reset(): void {
+    springTo(home.value, true)
+  }
+
+  /** A pan let go with `velocity` (px/s): glide on, or spring back inside. */
+  function release(velocity: [number, number]): void {
+    // Two samples with one timestamp read as 0 / 0; that is no momentum.
+    const [vx, vy] = velocity.map(v => (Number.isFinite(v) ? v : 0))
+    const from = roamState.value
+    const bounds = boundsAt(from.k)
+    const plan = (value: number, velocity: number, [lo, hi]: [number, number]): Axis => {
+      if (value < lo || value > hi)
+        return { mode: 'spring', value, velocity, target: Math.max(lo, Math.min(hi, value)) }
+      if (Math.abs(velocity) > GLIDE_REST)
+        return { mode: 'glide', value, velocity, target: value }
+      return axis(value)
+    }
+    const tx = plan(from.tx, vx ?? 0, bounds.tx)
+    const ty = plan(from.ty, vy ?? 0, bounds.ty)
+    if (tx.mode === 'rest' && ty.mode === 'rest')
+      return
+    if (!canAnimate()) {
+      // No glide; a map pulled past its edge goes straight back inside.
+      drawn.value = clampRoam(from, bounds)
+      return
+    }
+    run({ k: axis(from.k), tx, ty, bounds, home: false })
+  }
+
+  // ── Pointer gestures ──
+
+  /** A press moving further than this (px) pans instead of clicking. */
+  const DRAG_SLOP_PX = 4
+
+  interface Drag { id: number, x: number, y: number, origin: RoamState, active: boolean }
+  interface Pinch { distance: number, middle: { x: number, y: number }, origin: RoamState }
+
   const pointer = reactive({ x: 0, y: 0 })
-  let dragging: { x: number, y: number } | null = null
+  const dragging = ref(false)
+  const touches = new Map<number, { x: number, y: number }>()
+  const tracker = createVelocityTracker()
+  let drag: Drag | null = null
+  let pinch: Pinch | null = null
+  /** The pointer sequence moved the map, so its click is not a click. */
+  let suppressClick = false
 
   function toLocal(event: { clientX: number, clientY: number }): { x: number, y: number } {
     const el = container.value
@@ -246,36 +458,281 @@ export function useMapBase(props: MapBaseProps, options: MapBaseOptions = {}): M
     return { x: event.clientX - rect.left, y: event.clientY - rect.top }
   }
 
-  function onWheel(event: WheelEvent): void {
-    if (!props.roam)
+  function beginGesture(): void {
+    dragging.value = true
+    suppressClick = true
+    options.onDragStart?.()
+  }
+
+  function startPinch(): void {
+    const [a, b] = [...touches.values()]
+    if (!a || !b)
       return
-    event.preventDefault()
-    const factor = Math.exp(-event.deltaY * 0.002)
-    const current = roamState.value
-    const target = clampScale(current.k * factor, zoom.value, MAX_ZOOM_FACTOR)
-    userRoam.value = scaleAboutPoint(current, target, toLocal(event))
+    // A second finger turns a pan, or a press still deciding, into a pinch.
+    if (!dragging.value)
+      beginGesture()
+    drag = null
+    stopMotion()
+    pinch = {
+      distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      middle: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      origin: roamState.value,
+    }
+  }
+
+  function movePinch(): void {
+    const [a, b] = [...touches.values()]
+    if (!pinch || !a || !b)
+      return
+    const { origin } = pinch
+    const k = clampScale(
+      origin.k * Math.hypot(b.x - a.x, b.y - a.y) / pinch.distance,
+      zoom.value,
+      MAX_ZOOM_FACTOR,
+    )
+    // The map point under the first midpoint stays under the fingers.
+    const ratio = k / origin.k
+    const raw: RoamState = {
+      k,
+      tx: (a.x + b.x) / 2 - (pinch.middle.x - origin.tx) * ratio,
+      ty: (a.y + b.y) / 2 - (pinch.middle.y - origin.ty) * ratio,
+    }
+    drawn.value = resistRoam(raw, boundsAt(k), width.value, height.value)
   }
 
   function onPointerDown(event: PointerEvent): void {
-    if (!props.roam || event.button !== 0)
+    if (!props.roam)
       return
-    dragging = toLocal(event)
-    ;(event.currentTarget as Element | null)?.setPointerCapture?.(event.pointerId)
+    const touch = event.pointerType === 'touch'
+    // ⌃-click is the secondary click on macOS: its release goes to the context menu, not to the map.
+    if (!touch && (event.button !== 0 || event.isPrimary === false || event.ctrlKey))
+      return
+    const local = toLocal(event)
+    if (touch) {
+      touches.set(event.pointerId, local)
+      if (touches.size === 2)
+        startPinch()
+      if (touches.size > 1)
+        return
+    }
+    // Grabbing a moving map stops it where it is drawn, and that press only stops it.
+    suppressClick = motion !== null
+    stopMotion()
+    const origin = roamState.value
+    drag = { id: event.pointerId, x: local.x, y: local.y, origin, active: false }
+    tracker.reset(event.timeStamp, origin.tx, origin.ty)
   }
 
   function onPointerMove(event: PointerEvent): void {
     const local = toLocal(event)
     pointer.x = local.x
     pointer.y = local.y
-    if (!dragging)
+    if (touches.has(event.pointerId)) {
+      touches.set(event.pointerId, local)
+      if (pinch) {
+        movePinch()
+        return
+      }
+    }
+    if (!drag || event.pointerId !== drag.id)
       return
-    userRoam.value = panBy(roamState.value, local.x - dragging.x, local.y - dragging.y)
-    dragging = local
+    // A mouse let go where the page never heard of it (a menu, outside the window) says nothing:
+    // moving on without the button is hover, so the press ends here.
+    if (event.pointerType === 'mouse' && (event.buttons & 1) === 0) {
+      onPointerUp(event)
+      return
+    }
+    const dx = local.x - drag.x
+    const dy = local.y - drag.y
+    if (!drag.active) {
+      if (Math.hypot(dx, dy) < DRAG_SLOP_PX)
+        return
+      drag.active = true
+      beginGesture()
+      // Captured only now: a press that never moves keeps its click on the
+      // region or bubble under it. jsdom has no pointer-capture API.
+      container.value?.setPointerCapture?.(event.pointerId)
+    }
+    // 1:1 from the press, so the slop is not lost.
+    const raw = panBy(drag.origin, dx, dy)
+    const shown = resistRoam(raw, boundsAt(raw.k), width.value, height.value)
+    drawn.value = shown
+    tracker.push(event.timeStamp, shown.tx, shown.ty)
   }
 
-  function onPointerUp(): void {
-    dragging = null
+  function endPinch(event: PointerEvent): void {
+    pinch = null
+    const remaining = [...touches.entries()][0]
+    if (remaining) {
+      // The finger still down carries on panning from here.
+      const origin = roamState.value
+      drag = { id: remaining[0], x: remaining[1].x, y: remaining[1].y, origin, active: true }
+      tracker.reset(event.timeStamp, origin.tx, origin.ty)
+      return
+    }
+    dragging.value = false
+    release([0, 0])
   }
+
+  function onPointerUp(event: PointerEvent): void {
+    if (touches.delete(event.pointerId) && pinch) {
+      endPinch(event)
+      return
+    }
+    if (!drag || event.pointerId !== drag.id)
+      return
+    const { active } = drag
+    drag = null
+    if (!active)
+      return
+    dragging.value = false
+    release(tracker.velocity(event.timeStamp))
+  }
+
+  /** Escape or a cancelled pointer: the map goes back to where the gesture took it from. */
+  function cancelGesture(pointerId?: number): void {
+    const origin = pinch?.origin ?? (drag?.active ? drag.origin : null)
+    if (pointerId !== undefined && drag?.active)
+      container.value?.releasePointerCapture?.(pointerId)
+    drag = null
+    pinch = null
+    touches.clear()
+    dragging.value = false
+    if (origin)
+      springTo(origin)
+  }
+
+  function onPointerCancel(event: PointerEvent): void {
+    if (pinch || drag?.id === event.pointerId)
+      cancelGesture()
+    touches.delete(event.pointerId)
+  }
+
+  function onLostPointerCapture(event: PointerEvent): void {
+    // Normally the pointerup already ended the pan. Capture lost without one
+    // (the element left the page, say) ends it where it is drawn. The event
+    // bubbles, and a touch that the region under it captured implicitly hands
+    // that capture to the map on the first move: only the map's own counts.
+    if (event.target !== container.value || !drag?.active || event.pointerId !== drag.id)
+      return
+    drag = null
+    dragging.value = false
+    release([0, 0])
+  }
+
+  function onClickCapture(event: MouseEvent): void {
+    if (!props.roam || !suppressClick)
+      return
+    // A pan never lands as a click on the region or bubble it started on.
+    event.stopPropagation()
+    event.preventDefault()
+  }
+
+  function onDblClick(event: MouseEvent): void {
+    if (!props.roam || suppressClick)
+      return
+    event.preventDefault()
+    reset()
+  }
+
+  // ── Wheel and keys ──
+
+  /** A wheel event under this (px) is a trackpad stream, which follows on the frame; bigger ones are notches and spring. */
+  const CONTINUOUS_WHEEL_PX = 50
+  /** One key press pans this share of the map's size. */
+  const KEY_PAN = 0.1
+
+  function onWheel(event: WheelEvent): void {
+    // A plain wheel belongs to the page: the map never traps scrolling.
+    if (!props.roam || !isZoomWheel(event))
+      return
+    event.preventDefault()
+    if (drag?.active || pinch)
+      return
+    const delta = wheelPixels(event, height.value || 800).y
+    const point = toLocal(event)
+    if (Math.abs(delta) < CONTINUOUS_WHEEL_PX) {
+      stopMotion()
+      const next = zoomAbout(roamState.value, wheelZoomFactor(delta), point)
+      drawn.value = clampRoam(next, boundsAt(next.k))
+      return
+    }
+    const next = zoomAbout(goal(), wheelZoomFactor(delta), point)
+    springTo(clampRoam(next, boundsAt(next.k)))
+  }
+
+  function onKeyDown(event: KeyboardEvent): void {
+    if (!props.roam)
+      return
+    if (event.key === 'Escape') {
+      if (drag?.active || pinch) {
+        event.preventDefault()
+        cancelGesture(drag?.id)
+      }
+      return
+    }
+    // Leave ⌘/Ctrl + plus/minus to the browser's own zoom.
+    if (event.ctrlKey || event.metaKey || event.altKey || drag?.active || pinch)
+      return
+    const from = goal()
+    const middle = { x: width.value / 2, y: height.value / 2 }
+    const stepX = width.value * KEY_PAN
+    const stepY = height.value * KEY_PAN
+    let next: RoamState
+    switch (event.key) {
+      case 'ArrowLeft': next = panBy(from, stepX, 0); break
+      case 'ArrowRight': next = panBy(from, -stepX, 0); break
+      case 'ArrowUp': next = panBy(from, 0, stepY); break
+      case 'ArrowDown': next = panBy(from, 0, -stepY); break
+      case '+':
+      case '=': next = zoomAbout(from, Math.SQRT2, middle); break
+      case '-':
+      case '_': next = zoomAbout(from, Math.SQRT1_2, middle); break
+      case '0':
+        event.preventDefault()
+        reset()
+        return
+      default:
+        return
+    }
+    event.preventDefault()
+    springTo(clampRoam(next, boundsAt(next.k)))
+  }
+
+  // A new `zoom`, `center`, map or projection starts over from its fitted view.
+  // Separate sources, so a fresh `[lng, lat]` array with the same numbers is no change.
+  watch(
+    [() => props.roam, zoom, () => props.center?.[0], () => props.center?.[1], () => props.geoJson, () => props.projection],
+    () => {
+      cancelGesture()
+      stopMotion()
+      suppressClick = false
+      drawn.value = null
+    },
+  )
+
+  // A view the user left is in the pixels of the size it was made at: a resized
+  // container scales it, and one pushed past the new edge comes back inside.
+  watch([width, height], ([w, h], [oldW, oldH]) => {
+    const view = drawn.value
+    if (!view || !w || !h)
+      return
+    stopMotion()
+    const scaled = { k: view.k, tx: oldW ? view.tx * w / oldW : view.tx, ty: oldH ? view.ty * h / oldH : view.ty }
+    drawn.value = clampRoam(scaled, boundsAt(view.k))
+  })
+  onBeforeUnmount(stopMotion)
+
+  const labels = computed<MapLabels>(() => ({ ...MAP_DEFAULT_LABELS, ...props.labels }))
+  const instructionsId = useId()
+  const rootAttrs = computed<Record<string, string | number>>(() => {
+    if (!props.roam)
+      return {}
+    const attrs: Record<string, string | number> = { 'tabindex': 0, 'role': 'application', 'aria-label': labels.value.map }
+    if (instructionsId)
+      attrs['aria-describedby'] = instructionsId
+    return attrs
+  })
 
   function tooltipStyle(el: HTMLElement | null): Record<string, string> {
     const placement = placeTooltip({
@@ -305,9 +762,18 @@ export function useMapBase(props: MapBaseProps, options: MapBaseOptions = {}): M
     scaleFactor,
     pointer,
     tooltipStyle,
+    dragging,
+    labels,
+    instructionsId,
+    rootAttrs,
     onWheel,
     onPointerDown,
     onPointerMove,
     onPointerUp,
+    onPointerCancel,
+    onLostPointerCapture,
+    onKeyDown,
+    onDblClick,
+    onClickCapture,
   }
 }

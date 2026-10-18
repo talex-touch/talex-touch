@@ -5759,6 +5759,8 @@
         "preparing": "Preparing to download {version}",
         "downloading": "Downloading {version}",
         "verifying": "Verifying {version}",
+        "preparingInstall": "Preparing to install {version}",
+        "preparingInstallElapsed": "{seconds}s elapsed · Preparing in the background; you can keep using Tuff",
         "ready": "{version} is ready",
         "readyOnQuit": "Installs when you quit Tuff",
         "readyBlocked": "Unofficial builds can't install updates. Get the official build instead.",

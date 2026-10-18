@@ -1,6 +1,6 @@
 ---
 title: "Charts"
-description: "@talex-touch/tuffex/charts overview: a kumo-shaped API surface, Vue-rendered SVG, no echarts."
+description: "The chart family: native SVG charts and on-demand ECharts charts."
 category: Charts
 status: beta
 since: 0.6.0
@@ -54,10 +54,14 @@ What each chart does with that timing (bars growing from the base axis, scatter 
 
 | Component | Section | Description |
 |------|------|------|
-| `TxTimeseriesChart` | [Timeseries](/docs/dev/components/timeseries-chart) | Time-series lines / stacked bars with markers, thresholds, brushing and tooltips. |
+| `TxTimeseriesChart` | [Timeseries](/docs/dev/components/timeseries-chart) | Time-series lines / stacked bars with markers, thresholds, zoom, brushing and tooltips. |
+| `TxLearningCurve` | [LearningCurve](/docs/dev/components/learning-curve) | Training curves: multi-seed mean and band, EMA smoothing, zoom and live growth. |
 | `TxBubbleMap` / `TxChoroplethMap` | [Maps](/docs/dev/components/maps) | GeoJSON maps: proportional bubbles and shaded regions. |
 | `TxSankeyChart` | [Sankey](/docs/dev/components/sankey-chart) | Flow diagrams. |
 | `TxChart` + series primitives | [Custom Chart](/docs/dev/components/custom-chart) | The composable escape hatch: line/area/bar/scatter/donut, freely combined. |
+| `TxMonoChart` | [MonoChart](/docs/dev/components/mono-chart) | Thirty monochrome chart variants and an activity calendar. |
+| `TxDitherChart` | [DitherChart](/docs/dev/components/dither-chart) | Presentational charts with a dithered texture, documented in the Motion suite. |
+| `TxEChart` + nine presets | [ECharts](/docs/dev/components/echart-charts) | Every other chart type; loads the optional `echarts` peer when it mounts. |
 | `ChartPalette` / CSS variables | [Colors](/docs/dev/components/chart-colors) | Categorical, semantic, sequential and map palettes, auto light/dark. |
 
 ## Legend

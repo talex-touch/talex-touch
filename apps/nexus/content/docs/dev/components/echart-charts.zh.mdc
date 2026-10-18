@@ -33,7 +33,7 @@ import { TxEChart, TxLineChart } from '@talex-touch/tuffex/charts'
 
 ## API 参考
 
-这一族每张图都接受下列公共 props，外加各自的data props，并且都转发一份原始 `option` 覆盖在生成的 option 之上——`series` 数组整体替换，其余键深度合并。
+这一族每张图都接受下列公共 props，外加各自的data props，并且都转发一份原始 `option` 覆盖在生成的 option 之上——对象深度合并，数组整体替换。`series` 与 `dataZoom` 都在此列：传入的 `dataZoom` 列表会取代内置的缩放。
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
@@ -45,19 +45,21 @@ import { TxEChart, TxLineChart } from '@talex-touch/tuffex/charts'
 
 `update` 只存在于 `TxEChart`：`'replace'`（默认）整体替换series数组，被移除的series立即停止绘制；`'merge'` 保留 ECharts 自身的合并语义。
 
+`cooperativeWheel`（默认 `true`）存在于 `TxEChart` 以及会缩放的封装：折线、柱状、散点与矩形树图。见「指针输入」。
+
 ### Per-chart props
 
 | 图表 | Props |
 |------|------|
-| `TxLineChart` | `series`（`name`、`data`、`color?`、`area?`、`smooth?`、`stack?`、`dashed?`）、`categories?`、`xAxisName?`、`yAxisName?`、`showLegend?`、`grid?` |
-| `TxBarChart` | `series`（`name`、`data`、`color?`、`stack?`）、`categories?`、`xAxisName?`、`yAxisName?`、`showLegend?`、`grid?`、`stacked?`、`horizontal?`、`barWidth?`、`showLabel?` |
+| `TxLineChart` | `series`（`name`、`data`、`color?`、`area?`、`smooth?`、`stack?`、`dashed?`）、`categories?`、`xAxisName?`、`yAxisName?`、`showLegend?`、`grid?`、`zoom?`、`cooperativeWheel?` |
+| `TxBarChart` | `series`（`name`、`data`、`color?`、`stack?`）、`categories?`、`xAxisName?`、`yAxisName?`、`showLegend?`、`grid?`、`stacked?`、`horizontal?`、`barWidth?`、`showLabel?`、`zoom?`、`cooperativeWheel?` |
 | `TxPieChart` | `data`（`name`、`value`、`color?`）、`donut?`、`roseType?`、`showLegend?`、`labelPosition?`、`centerLabel?`、`unit?` |
 | `TxFunnelChart` | `data`（`name`、`value`、`color?`）、`sort?`、`gap?`、`minSize?`、`maxSize?`、`labelPosition?`、`showLabel?`、`showLegend?`、`unit?` |
 | `TxRadarChart` | `indicators`（`name`、`max`、`min?`）、`series`（`name`、`data`、`color?`、`area?`）、`shape?`、`splitNumber?`、`showLegend?`、`showAxisName?` |
 | `TxGaugeChart` | `value`、`min?`、`max?`、`name?`、`unit?`、`precision?`、`progress?`、`segments?`、`color?` |
-| `TxScatterChart` | `series`（`name`、`data`、`color?`、`symbolSize?`）、`xAxisName?`、`yAxisName?`、`symbolSize?`、`showLegend?`、`grid?`、`xMin?`、`xMax?`、`yMin?`、`yMax?` |
-| `TxHeatmapChart` | `values`、`rows`、`columns`、`xAxisName?`、`yAxisName?`、`visualMap?`、`min?`、`max?`、`showLabel?`、`unit?` |
-| `TxTreemapChart` | `data`（`name`、`value?`、`color?`、`children?`）、`maxDepth?`、`showBreadcrumb?`、`showLabel?`、`unit?`、`roam?` |
+| `TxScatterChart` | `series`（`name`、`data`、`color?`、`symbolSize?`）、`xAxisName?`、`yAxisName?`、`symbolSize?`、`showLegend?`、`grid?`、`xMin?`、`xMax?`、`yMin?`、`yMax?`、`zoom?`、`cooperativeWheel?` |
+| `TxHeatmapChart` | `values`、`rows`、`columns`、`xAxisName?`、`yAxisName?`、`visualMap?`、`min?`、`max?`、`showLabel?`、`unit?`、`selectable?`、`labels?` |
+| `TxTreemapChart` | `data`（`name`、`value?`、`color?`、`children?`）、`maxDepth?`、`showBreadcrumb?`、`showLabel?`、`unit?`、`roam?`、`cooperativeWheel?` |
 
 构造器本身也是公开 API——`buildBarChartOption`、`buildLineChartOption` 等都返回一份普通 `EChartsOption`。需要在一张图里混用图形类型时，用它们先各自生成再合并，然后把结果交给 `TxEChart`。
 
@@ -92,7 +94,7 @@ const option: EChartsOption = {
 
 ### 折线图
 
-`TxLineChart` 在类目轴上绘制一条或多条series，可选面积填充、堆叠与平滑曲线。多条series共用同一坐标轴；tooltip 按轴触发，所以悬停类目下的每条series都会列出。
+`TxLineChart` 在类目轴上绘制一条或多条series，可选面积填充、堆叠与平滑曲线。多条series共用同一坐标轴；tooltip 按轴触发，所以悬停类目下的每条series都会列出。`zoom`（默认开启）沿类目轴加入缩放与平移；手势见「指针输入」。
 
 :::TuffDemoWrapper{demo="EChartLineChartDemo" code-lang="vue" title="Typed wrapper" description="TxLineChart is the thin typed wrapper over the same host."}
 ---
@@ -113,7 +115,7 @@ code: |
 
 ### 柱状图
 
-`TxBarChart` 在类目轴上绘制分组或堆叠柱，默认纵向。`stacked` 会给未自带 `stack` 的每条series都挂上共享 id `total`，于是堆叠与独立series可以共存于一张图；`showLabel` 把数值写在柱上（`horizontal` 时写在右侧）。
+`TxBarChart` 在类目轴上绘制分组或堆叠柱，默认纵向。`stacked` 会给未自带 `stack` 的每条series都挂上共享 id `total`，于是堆叠与独立series可以共存于一张图；`showLabel` 把数值写在柱上（`horizontal` 时写在右侧）。`zoom`（默认开启）以同样的方式缩放、平移类目。
 
 :::TuffDemoWrapper{demo="EChartBarChartDemo" code-lang="vue" title="分组柱状图" description="两条series共用类目轴，图例可单独开关。"}
 ---
@@ -220,7 +222,7 @@ code: |
 
 ### 散点图
 
-数值平面上的点，每条series一对坐标轴。`symbolSize` 设置整图点径，series 级的值优先；需要多张图共用同一量纲时，用 `xMin` / `xMax` / `yMin` / `yMax` 固定值域。
+数值平面上的点，每条series一对坐标轴。`symbolSize` 设置整图点径，series 级的值优先；需要多张图共用同一量纲时，用 `xMin` / `xMax` / `yMin` / `yMax` 固定值域。`zoom`（默认开启）同时缩放、平移两个坐标轴。
 
 :::TuffDemoWrapper{demo="EChartScatterChartDemo" code-lang="vue" title="延迟 vs 吞吐" description="同一数值平面上的两簇点。"}
 ---
@@ -242,7 +244,9 @@ code: |
 
 强度矩阵。`values` 按行主序传入（`values[row][column]`），`rows` 与 `columns` 命名两个类目轴。构造器把这两个数组原样交给 ECharts，而 ECharts 把第一个类目画在底部——所以 `rows[0]` 是最下面那一行。声明的 `visualMap` 默认读顺序色板的 token 渐变，除非你自己传 `inRange.color`。
 
-:::TuffDemoWrapper{demo="EChartHeatmapChartDemo" code-lang="vue" title="时段活跃度" description="五个时段铺满一周。"}
+在绘图区拖拽可框选一块单元格。`select` 给出 `HeatmapSelection`——`rows` 与 `columns` 是含两端的索引区间，`cells` 是区间内的单元格——清除后给出 `null`。`cells` 是快照：标签不变而 `values` 更新时，选区保留且不会再次触发 `select`；`rows` 或 `columns` 变化则清除选区。拖拽不会触发 `click`；`:selectable="false"` 关闭框选。朗读文案与播报来自 `labels`，合并到 `HEATMAP_DEFAULT_LABELS` 之上。
+
+:::TuffDemoWrapper{demo="EChartHeatmapChartDemo" code-lang="vue" title="时段活跃度" description="五个时段铺满一周；在单元格上拖拽可框选一块。"}
 ---
 code: |
   <script setup lang="ts">
@@ -266,6 +270,8 @@ code: |
 ### 矩形树图
 
 面向层级的占比图。节点通过 `children` 嵌套，节点的 `color` 就是它的填充色，`showBreadcrumb` 打开 ECharts 的面包屑下钻条；`maxDepth` 只画前 N 层并开启该下钻，不传则整棵树一次画完。不传 `children` 时同一个 prop 画出扁平矩形树。
+
+`roam` 默认开启：拖拽平移，⌘/Ctrl + 滚轮或双指捏合从适配尺寸起放大，双击重新布局。`:roam="false"` 让方块保持不动，并把触屏滑动还给页面。
 
 :::TuffDemoWrapper{demo="EChartTreemapChartDemo" code-lang="vue" title="嵌套分区" description="两个分区，各自再分小节。"}
 ---
@@ -291,6 +297,33 @@ code: |
 ---
 :::
 
+## 指针输入
+
+折线、柱状、散点与矩形树图可以缩放、平移，热力图可以框选。页面保留自己的滚动：普通滚轮不会缩放。
+
+| 图表 | 输入 | 效果 |
+|------|------|------|
+| 折线、柱状、散点 | ⌘/Ctrl + 滚轮、双指捏合 | 以指针为中心缩放。 |
+| 折线、柱状、散点 | 拖拽 | 放大之后平移。 |
+| 折线、柱状、散点 | 双击绘图区 | 动画回到完整区间。 |
+| 矩形树图 | ⌘/Ctrl + 滚轮、双指捏合 | 以指针为中心缩放，不会小于适配尺寸。 |
+| 矩形树图 | 拖拽 | 平移方块。 |
+| 矩形树图 | 双击 | 重新布局。 |
+| 热力图 | 在绘图区拖拽 | 框选一块完整的单元格，并触发 `select`。 |
+| 热力图 | 单击、`Escape` | 清除选区。 |
+
+`cooperativeWheel`（默认 `true`）让普通滚轮继续滚动页面。设为 `false` 会把滚轮还给 ECharts：绘图区上的每一次滚轮都缩放，页面不再滚动。
+
+放大后的区间在传入新的 `option`、切换主题和调用 `redraw()` 之后都会保留。例外是自带 `start`、`end`、`startValue` 或 `endValue` 的 `dataZoom` 项：它每次都从自己写明的区间开始。
+
+与原生的地图、桑基图相比：
+
+- 缩放按 ECharts 固定的档位前进（每次事件 1.1×、1.2× 或 1.4×），而不是跟随手势连续变化。没有弹簧、没有松手后的惯性、没有橡皮筋：平移在指针停下的地方停下。
+- 复位动画 350 ms；`prefers-reduced-motion: reduce` 下直接跳到终点。
+- 没有键盘缩放与平移。热力图是唯一带焦点停靠点的图表：有选区时才是 Tab 停靠点，让 `Escape` 能清除它。它的 `labels` 携带朗读文案与带 `{count}` / `{total}` 的播报。
+- 触屏上双指捏合可以缩放。未缩放的折线、柱状、散点让滑动滚动页面，放大之后滑动改为平移；带 `roam` 的矩形树图始终占用滑动，请给它留出可供页面滚动的边距，或设 `:roam="false"`。可框选的热力图同样占用所有滑动，因为触屏就是靠滑动来框选的：想让页面从它上面滚过去，请设 `:selectable="false"`。
+- 矩形树图的平移没有边界，这是 ECharts 的原生行为，双击即可回位。热力图的选区吸附到整格。
+
 ## Events
 
 | Event | Payload | Description |
@@ -299,13 +332,15 @@ code: |
 | `click` / `dblclick` | `(params: EChartEventParams)` | series 与标记上的指针事件。 |
 | `mouseover` / `mouseout` | `(params: EChartEventParams)` | series 与标记上的悬停事件。 |
 | `legendselectchanged` | `(params: EChartEventParams)` | 图例项被切换。 |
-| `datazoom` | `(params: EChartEventParams)` | dataZoom 区间变化。 |
+| `datazoom` | `(params: EChartEventParams)` | dataZoom 区间变化，内置缩放也算在内。 |
+| `select` | `(selection: HeatmapSelection \| null)` | 仅 `TxHeatmapChart`：拖拽框选了一块单元格，或选区被清除。 |
 
 ## 技术实现
 
 - 组件源码：`packages/tuffex/packages/components/src/charts/src/echart/src/`。
 - option 构造器：`packages/tuffex/packages/components/src/charts/src/echart/src/options/`。
 - 主题与 token：`packages/tuffex/packages/components/src/charts/src/echart/src/core/theme.ts`。
+- 指针输入：`packages/tuffex/packages/components/src/charts/src/echart/src/core/interaction.ts`。
 - 改编自 Cloudflare kumo (https://github.com/cloudflare/kumo)，© Cloudflare, Inc.，MIT —— `EChart.tsx`。
 
 <TuffDocSourceLink />

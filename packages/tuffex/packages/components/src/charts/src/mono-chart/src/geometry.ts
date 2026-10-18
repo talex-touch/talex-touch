@@ -13,7 +13,17 @@ export interface MonoMark {
   hit?: string
   className?: string
 }
-export interface MonoGeometry { marks: MonoMark[], hits: MonoChartHit[], total: number, center?: { x: number, y: number } }
+export interface MonoGeometry {
+  marks: MonoMark[]
+  hits: MonoChartHit[]
+  total: number
+  center?: { x: number, y: number }
+  /**
+   * How a drag between marks or off the plot finds the nearest datum: its column (`x`), its row
+   * (`y`), or, when unset, the nearest mark in both directions.
+   */
+  axis?: 'x' | 'y'
+}
 export interface MonoGeometryOptions {
   variant: MonoChartVariant
   data: MonoChartData
@@ -170,6 +180,7 @@ export function buildMonoGeometry(o: MonoGeometryOptions): MonoGeometry {
   }
 
   if (variant === 'mono-rounded-bullet' || variant === 'mono-rounded-pyramid' || variant === 'mono-rounded-funnel') {
+    result.axis = 'y'
     const rowHeight = plot.height / Math.max(1, items.length)
     const max = Math.max(1, ...items.flatMap(item => [item.max ?? 0, item.value, item.target ?? 0]))
     const left = variant === 'mono-rounded-pyramid' ? 24 : Math.min(110, w * 0.24)
@@ -282,6 +293,7 @@ export function buildMonoGeometry(o: MonoGeometryOptions): MonoGeometry {
   }
 
   if (variant === 'mono-rounded-sparkline') {
+    result.axis = 'y'
     const series = data.series ?? []
     const rowHeight = (h - 24) / Math.max(1, series.length)
     series.forEach((series, i) => {
@@ -352,6 +364,7 @@ export function buildMonoGeometry(o: MonoGeometryOptions): MonoGeometry {
     result.total = points.length
     return result
   }
+  result.axis = row ? 'y' : 'x'
   if (variant === 'mono-rounded-candlestick') {
     const candles = data.candles ?? []
     candles.forEach((candle, i) => {

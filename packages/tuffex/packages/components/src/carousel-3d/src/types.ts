@@ -13,6 +13,7 @@ export interface Carousel3DProps {
   loop?: boolean
   animated?: boolean
   disabled?: boolean
+  draggable?: boolean
   controls?: boolean
   dots?: boolean
   timeline?: boolean

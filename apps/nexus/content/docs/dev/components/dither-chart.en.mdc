@@ -14,7 +14,7 @@ syncStatus: reviewed
 
 ### Explore every source geometry
 
-The demo contains all 11 catalog charts, all eight additional chart/card renderers, all ten texture modes, source-equivalence notes and the extracted book-plus-metrics composition. Periods, series filtering, gauge/storage/metric selection, hover, keyboard navigation and the range input operate on the displayed data. Gallery thumbnails can select each full chart.
+The demo contains all 11 catalog charts, all eight additional chart/card renderers, all ten texture modes, source-equivalence notes and the extracted book-plus-metrics composition. Periods, series filtering, gauge/storage/metric selection, hover, press-drag and keyboard navigation operate on the displayed data. Gallery thumbnails can select each full chart.
 
 :::TuffDemoWrapper{demo="DitherChartDemo" code-lang="vue" title="Dither chart catalog"}
 ---
@@ -76,10 +76,10 @@ Each period has `id`, `label` and optional `series`, `nodes`, `cells`. A supplie
 | `activeKeys` | `readonly string[]` | All series/nodes | Optional controlled visibility model; `[]` hides everything. |
 | `selectedSeries` | `string` | First visible series | Controlled gauge/radial/storage/sparkline selection. |
 | `hover` | `DitherHover \| null` | Local hover | Controlled hovered datum with `id`, optional `seriesId`, `label`, `value`. |
-| `dateCursor` | `number \| null` | `null` | Controlled point index; pointer, keyboard and range input update it. |
+| `dateCursor` | `number \| null` | `null` | Controlled point index; hovering or dragging across the stage and the arrow keys update it, and leaving or Escape resets it to `null`. |
 | `title` | `string` | `''` | Heading and accessible chart name. |
 | `description` | `string` | `''` | Supporting copy and accessible description. |
-| `labels` | `DitherChartLabels` | English labels | `empty`, `period`, `series`, `chart`, `total`, `capacity`, `less`, `more`, `cursor`; supply localized strings. |
+| `labels` | `DitherChartLabels` | English labels | `empty`, `period`, `series`, `chart`, `total`, `capacity`, `less`, `more`; supply localized strings. `cursor` is deprecated: the date slider it named is replaced by dragging the chart. |
 | `height` | `number` | `180` | Plot height in CSS pixels, at least 32. Width follows its container. |
 | `compact` | `boolean` | `false` | Geometry-only specimen. |
 | `animated` | `boolean` | `true` | Enables data interpolation and pixel texture motion when activity permits. |
@@ -126,9 +126,9 @@ Each period has `id`, `label` and optional `series`, `nodes`, `cells`. A supplie
 | `update:selectedSeries` | Selected metric ID. |
 | `update:hover` | `DitherHover \| null`. |
 | `update:dateCursor` | Point index or `null`. |
-| `select` | Selected datum from pointer click or Enter/Space. |
+| `select` | Selected datum from pointer click or Enter/Space; ending a drag does not select. |
 
-Slots: `header({ total, period })`, `tooltip({ hover })`, `footer({ dataset })`. The tooltip reuses the existing charts-core context and `TxChartTooltip` placement. The default tooltip is titled with the hovered point (a date or category) and names its series in the row; where the datum is the series itself (donuts, gauges, legend focus) the two would match, so only the row is shown. `dot`, `line` and `dashed` indicators retain separate markup. The stage supports arrows, Home/End, Enter/Space and Escape; legends and period controls are native buttons.
+Slots: `header({ total, period })`, `tooltip({ hover })`, `footer({ dataset })`. The tooltip reuses the existing charts-core context and `TxChartTooltip` placement. The default tooltip is titled with the hovered point (a date or category) and names its series in the row; where the datum is the series itself (donuts, gauges, legend focus) the two would match, so only the row is shown. `dot`, `line` and `dashed` indicators retain separate markup. Pressing and dragging across the stage reads it continuously: on time charts the date cursor snaps to the nearest point with no easing and holds the first or last point past the stage edge; other charts read the datum under the pointer, as hover does. On touch a sideways drag reads and a vertical swipe still scrolls the page. The stage also supports arrows (Left with nothing read starts from the last point), Home/End, Enter/Space and Escape (cancels a drag and clears the reading), and readings are announced through a polite live region; legends and period controls are native buttons.
 
 ### CSS variables
 
@@ -142,10 +142,15 @@ The fixed commit is `43c29ce9cdd16459e3eab4992381b8d35b38776a`. Both `src/compon
 
 The other 11 pairs are **not** silently identified by name. Their visible geometry formulas are equivalent, but `dither-charts` adds cached `ResizeObserver` dimensions and visibility/reduced-motion guards to all 11; its activity/device/funnel/revenue/gauge/storage/traffic/uptime copies also cap DPR at 2, while donut/stacked/growth already capped it in both copies. Funnel/storage/uptime add 30fps throttling. Those differences remain explicitly exported in `DITHER_SOURCE_DIFFERENCES` and the demo. The port keeps the protected execution model for both origins rather than bringing back per-frame layout reads, hidden loops or motion against the user's preference.
 
-Canvas backing dimensions react to resize and DPR changes. Data interpolation uses the shared spring, paths are cached between geometry changes, colour probes and layout reads stay outside the frame loop, and timers/listeners/observers/RAF release on suspension or unmount. Static SVG geometry is also available during SSR and while choosing SVG textures. No React, Motion, Recharts or ECharts renderer is introduced.
+Canvas backing dimensions react to resize and DPR changes. Data interpolation uses the shared spring, paths are cached between geometry changes, colour probes and layout reads stay outside the frame loop, and timers/listeners/observers/RAF release on suspension or unmount. Static SVG geometry is also available during SSR and while choosing SVG textures. Press-drag comes from the shared `utils/press-scrub.ts`: the pointer is captured only past a 4px slop, the click a drag ends with is swallowed, and Escape cancels; the stage reads the pointer clamped to its own bounds, which replaces the former date slider. No React, Motion, Recharts or ECharts renderer is introduced.
 
 ### Composition and attribution
 
 `DitherChartsGrid` becomes the traversable demo catalog. The standalone `Book` and `DitherBook` belong to `TxFlipBook`, not a chart alias. The extracted page is composed in this demo from the real flip-book and `plan-card`, `payments`, `members-growth` APIs; it contains consumer-authored page artwork instead of upstream third-party photographs.
 
 Chart and pattern adaptations retain MIT and `Copyright (c) 2026 SYED  SUBHAN UDDIN`. The extracted composition's source explicitly declares Apache-2.0; its derived demo keeps that header and a Vue/TuffEx modification notice. Runtime/browser acceptance is performed by the integration owner; this page does not claim those checks have already run.
+
+## Related components
+
+- [MonoChart](/docs/dev/components/mono-chart): rounded monochrome charts in the Data suite, without the dither texture.
+- [Charts](/docs/dev/components/charts): the chart family and how to choose.

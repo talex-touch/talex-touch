@@ -1,5 +1,6 @@
 import type {
   SankeyChartProps,
+  SankeyLabels,
   SankeyLinkData,
   SankeyNodeData,
   SankeyTooltipParams,
@@ -10,15 +11,17 @@ import component from './src/TxSankeyChart.vue'
 const TxSankeyChart = withInstall(component)
 
 export { TxSankeyChart }
-export { computeSankeyLayout, resolveEdgeInset } from './src/layout'
+export { computeSankeyLayout, offsetSankeyLayout, resolveEdgeInset } from './src/layout'
 export type {
   PositionedSankeyLink,
   PositionedSankeyNode,
   SankeyLayoutOptions,
   SankeyLayoutResult,
 } from './src/layout'
+export { SANKEY_DEFAULT_LABELS } from './src/types'
 export type {
   SankeyChartProps,
+  SankeyLabels,
   SankeyLinkData,
   SankeyNodeData,
   SankeyTooltipParams,

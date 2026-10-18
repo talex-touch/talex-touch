@@ -4,6 +4,10 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { UpdateInstallCoordinator } from './update-install-coordinator'
 import {
+  createSignedMacUpdateFixture,
+  coreAppRoot
+} from '../../../../../resources/scripts/fixtures/macos-update-fixture'
+import {
   UPDATE_HANDOFF_SCHEMA_VERSION,
   UpdateRecoveryStore,
   type UpdateHandoffPlan
@@ -94,6 +98,8 @@ function createCoordinator(
     installOnNormalQuit?: boolean
     platform?: NodeJS.Platform
     executablePath?: string
+    packagePath?: string
+    packageSha256?: string
     buildVerificationStatus?: {
       isVerified: boolean
       isOfficialBuild: boolean
@@ -104,14 +110,14 @@ function createCoordinator(
 ) {
   const requestQuit = vi.fn()
   const spawnProcess = vi.fn(() => ({ once: vi.fn(), unref: vi.fn() }))
-  const packagePath = path.join(root, 'packages', 'tuff.AppImage')
+  const packagePath = options.packagePath ?? path.join(root, 'packages', 'tuff.AppImage')
   const coordinator = new UpdateInstallCoordinator({
     repository: repository as never,
     storageRoot: root,
     currentVersion: options.currentVersion ?? '2.4.10',
     platform: options.platform ?? 'linux',
-    resourcesPath: process.cwd(),
-    appPath: process.cwd(),
+    resourcesPath: path.join(coreAppRoot, 'resources'),
+    appPath: coreAppRoot,
     executablePath: options.executablePath ?? '/unused/tuff',
     getInstallOnNormalQuit: () => options.installOnNormalQuit ?? true,
     getBuildVerificationStatus: () =>
@@ -126,7 +132,7 @@ function createCoordinator(
       filePath: packagePath,
       destination: path.dirname(packagePath),
       filename: path.basename(packagePath),
-      sha256: 'b'.repeat(64),
+      sha256: options.packageSha256 ?? 'b'.repeat(64),
       signatureUrl: 'https://example.test/tuff.sig'
     }),
     requestQuit,
@@ -143,14 +149,109 @@ afterEach(async () => {
 })
 
 describe('UpdateInstallCoordinator', () => {
+  it.runIf(process.platform === 'darwin').each([false, true])(
+    'revalidates signed bytes before quitting (tampered=%s)',
+    async (tampered) => {
+      const root = await createRoot()
+      const fixture = await createSignedMacUpdateFixture(root)
+      const repository = createRepository(
+        lifecycle('preparing', {
+          rollbackCompatible: false,
+          rollbackFromVersion: null
+        })
+      )
+      const { coordinator, requestQuit } = createCoordinator(
+        path.dirname(fixture.appBundlePath),
+        repository,
+        {
+          platform: 'darwin',
+          currentVersion: '2.4.9',
+          packagePath: fixture.packagePath,
+          packageSha256: fixture.packageSha256,
+          executablePath: path.join(fixture.appBundlePath, 'Contents', 'MacOS', 'fixture')
+        }
+      )
+      await expect(coordinator.scheduleInstallNow('task-1')).rejects.toThrow('No verified update')
+      expect(requestQuit).not.toHaveBeenCalled()
+      await coordinator.prepareDownloadedUpdate(repository.current as never, {
+        taskId: 'task-1',
+        filePath: fixture.packagePath,
+        sha256: fixture.packageSha256,
+        destination: root,
+        filename: 'Tuff.app.zip',
+        signatureUrl: 'https://example.test/Tuff.app.zip.sig'
+      })
+      await repository.transition({ to: 'ready' })
+      if (tampered) {
+        const preparedPayload = path.join(
+          root,
+          '.tuff-update-attempt-1',
+          'prepared.app',
+          'Contents',
+          'Resources',
+          'payload.txt'
+        )
+        await writeFile(preparedPayload, 'tampered after ready')
+        await expect(coordinator.scheduleInstallNow('task-1')).rejects.toThrow()
+        expect(repository.current).toMatchObject({
+          phase: 'failed',
+          error: { code: 'UPDATE_INSTALL_PREFLIGHT_FAILED' }
+        })
+        expect(requestQuit).not.toHaveBeenCalled()
+      } else {
+        await expect(coordinator.scheduleInstallNow('task-1')).resolves.toMatchObject({
+          phase: 'handoff-started'
+        })
+        expect(requestQuit).toHaveBeenCalledOnce()
+        const store = new UpdateRecoveryStore(path.dirname(fixture.appBundlePath))
+        const plan = await store.readPlan('attempt-1')
+        expect(plan?.macosTransaction).toEqual({
+          appBundlePath: fixture.appBundlePath,
+          stageRoot: path.join(path.dirname(fixture.appBundlePath), '.tuff-update-attempt-1')
+        })
+        expect(
+          await readFile(
+            path.join(
+              plan!.macosTransaction!.stageRoot,
+              'prepared.app',
+              'Contents',
+              'Resources',
+              'payload.txt'
+            ),
+            'utf8'
+          )
+        ).toBe('payload:2.4.10')
+        expect(
+          await readFile(
+            path.join(fixture.appBundlePath, 'Contents', 'Resources', 'payload.txt'),
+            'utf8'
+          )
+        ).toBe('payload:2.4.9')
+      }
+    }
+  )
+
+  it('never schedules a preparing attempt on normal quit', async () => {
+    const root = await createRoot()
+    const repository = createRepository(lifecycle('preparing', { rollbackCompatible: true }))
+    const { coordinator, requestQuit, spawnProcess } = createCoordinator(root, repository)
+    const intent = { kind: 'user-normal' as const, reason: 'quit', setAt: 1 }
+    await coordinator.handleBeforeQuit(intent)
+    coordinator.handleWillQuit(intent)
+    expect(repository.current.phase).toBe('preparing')
+    expect(requestQuit).not.toHaveBeenCalled()
+    expect(spawnProcess).not.toHaveBeenCalled()
+  })
   it('allows explicit install now for an incompatible matching ready task', async () => {
     const root = await createRoot()
     const repository = createRepository(lifecycle('ready', { rollbackCompatible: false }))
-    const { coordinator, requestQuit } = createCoordinator(root, repository)
+    const { coordinator, packagePath, requestQuit } = createCoordinator(root, repository)
+    await mkdir(path.dirname(packagePath), { recursive: true })
+    await writeFile(packagePath, 'verified package')
 
     await expect(coordinator.scheduleInstallNow('other-task')).rejects.toThrow('does not match')
     await expect(coordinator.scheduleInstallNow('task-1')).resolves.toMatchObject({
-      phase: 'install-scheduled',
+      phase: 'handoff-started',
       installMode: 'install-now'
     })
     expect(requestQuit).toHaveBeenCalledOnce()

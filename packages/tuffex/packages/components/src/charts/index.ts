@@ -3,8 +3,8 @@ import './src/style/index.scss'
 export { TxAxis } from './src/axis'
 export type { AxisPosition, AxisProps, TxAxisInstance } from './src/axis'
 
-export { TxChart } from './src/chart'
-export type { ChartProps, TxChartInstance } from './src/chart'
+export { CHART_DEFAULT_LABELS, TxChart } from './src/chart'
+export type { ChartLabels, ChartProps, TxChartInstance } from './src/chart'
 
 export {
   TxChartLegendItem,
@@ -42,7 +42,7 @@ export {
   useChartContext,
 } from './src/core/context'
 
-export type { BarLayout, ChartPointer, TxChartContext } from './src/core/context'
+export type { BarLayout, ChartGesture, ChartKeyLayer, ChartPointer, TxChartContext } from './src/core/context'
 
 export type {
   BandAccessor,
@@ -72,6 +72,8 @@ export {
   ECHART_THEME_FALLBACKS,
   echartThemeOption,
   gridDefaults,
+  HEATMAP_DEFAULT_LABELS,
+  heatmapSelection,
   legendDefaults,
   loadECharts,
   mergeChartOption,
@@ -106,7 +108,11 @@ export type {
   FunnelChartDatum,
   FunnelChartProps,
   GaugeChartProps,
+  HeatmapCell,
+  HeatmapChartEmits,
   HeatmapChartProps,
+  HeatmapLabels,
+  HeatmapSelection,
   LineChartProps,
   LineChartSeriesInput,
   PieChartDatum,
@@ -131,7 +137,23 @@ export type {
 } from './src/echart'
 
 export {
+  aggregateSeeds,
+  LEARNING_CURVE_DEFAULT_LABELS,
+  smoothEma,
+  TxLearningCurve,
+} from './src/learning-curve'
+export type {
+  CurvePoint,
+  LearningCurveLabels,
+  LearningCurveProps,
+  LearningCurveRun,
+  RunCurve,
+  TxLearningCurveInstance,
+} from './src/learning-curve'
+
+export {
   DEFAULT_MAP_SCALE_VARS,
+  MAP_DEFAULT_LABELS,
   MERCATOR_MAX_LAT,
   projectedAspect,
   rampColor,
@@ -145,6 +167,7 @@ export type {
   MapAccessor,
   MapBaseProps,
   MapGeoJson,
+  MapLabels,
   MapStyle,
   RoamState,
 } from './src/maps'
@@ -161,11 +184,18 @@ export type {
   MapColors,
 } from './src/palette'
 
-export { computeSankeyLayout, resolveEdgeInset, TxSankeyChart } from './src/sankey'
+export {
+  computeSankeyLayout,
+  offsetSankeyLayout,
+  resolveEdgeInset,
+  SANKEY_DEFAULT_LABELS,
+  TxSankeyChart,
+} from './src/sankey'
 export type {
   PositionedSankeyLink,
   PositionedSankeyNode,
   SankeyChartProps,
+  SankeyLabels,
   SankeyLayoutOptions,
   SankeyLayoutResult,
   SankeyLinkData,

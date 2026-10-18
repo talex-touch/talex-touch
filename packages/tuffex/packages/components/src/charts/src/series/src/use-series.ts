@@ -42,16 +42,18 @@ export function useCartesianSeries<T>(
   const allocated = ctx.allocateColor()
   const color = computed(() => props.color ?? allocated)
 
-  const points = computed<SeriesPoint[]>(() =>
-    props.data.map((datum, index) => {
+  const points = computed<SeriesPoint[]>(() => {
+    const list: SeriesPoint[] = []
+    props.data.forEach((datum, index) => {
       const raw = resolveBand(datum, index, props.x)
-      return {
-        x: ctx.xType.value === 'band' ? raw : Number(raw),
-        y: resolveNumber(datum, index, props.y),
-        index,
-      }
-    }),
-  )
+      const x = ctx.xType.value === 'band' ? raw : Number(raw)
+      // A log axis has no place for zero or below; such a datum is not drawn.
+      if (ctx.xType.value === 'log' && !((x as number) > 0))
+        return
+      list.push({ x, y: resolveNumber(datum, index, props.y), index })
+    })
+    return list
+  })
 
   const extent = computed<SeriesExtent | null>(() => {
     const list = points.value
@@ -65,12 +67,15 @@ export function useCartesianSeries<T>(
     else {
       let lo = Infinity
       let hi = -Infinity
+      const values: number[] = []
       for (const point of list) {
         const value = Number(point.x)
         lo = Math.min(lo, value)
         hi = Math.max(hi, value)
+        values.push(value)
       }
       result.x = lo <= hi ? [lo, hi] : null
+      result.xValues = values
     }
 
     if (options.reportY?.() === false) {

@@ -1,4 +1,6 @@
 // Adapted from Amicro. MIT License. Copyright (c) 2026 SYED  SUBHAN UDDIN.
+import type { BaseSurfaceMode } from '../../base-surface/src/types'
+
 export type MotionDockId = string | number
 
 export interface MotionDockItem {
@@ -32,9 +34,12 @@ export interface MotionDockProps {
   size?: 'xs' | 'sm' | 'md' | 'lg'
   itemSize?: number
   magnifiedSize?: number
-  /** Pointer influence radius, in pixels; original source uses 80. */
+  /** Pointer influence radius, in pixels. Defaults to itemSize × 80 / 28: the source's 80 at `md`. */
   distance?: number
+  /** Labels under the shelf instead of a bubble over the hovered or focused icon. */
   showLabels?: boolean
+  /** Material of the shelf. @default 'refraction' */
+  surface?: BaseSurfaceMode
   labels?: Partial<MotionDockLabels>
 }
 

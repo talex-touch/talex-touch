@@ -14,10 +14,28 @@ const WORLD_URL: string = '/geo/world-countries.geo.json'
 const world = shallowRef<MapGeoJson | null>(null)
 const failed = ref(false)
 const selected = shallowRef<Colo | null>(null)
+const resetKey = ref(0)
 const { locale } = useI18n()
 const copy = computed(() => locale.value === 'zh'
-  ? { loading: '正在加载世界地图…', failed: '世界地图加载失败。', hint: '点击气泡查看城市，拖拽底图平移。', selected: '已选择', unit: '请求/秒' }
-  : { loading: 'Loading world GeoJSON…', failed: 'World GeoJSON failed to load.', hint: 'Select a bubble to inspect its city; drag the land to pan.', selected: 'Selected', unit: 'req/s' })
+  ? {
+      loading: '正在加载世界地图…',
+      failed: '世界地图加载失败。',
+      hint: '点击气泡查看城市；拖拽平移，⌘/Ctrl + 滚轮缩放。',
+      selected: '已选择',
+      unit: '请求/秒',
+      labels: {
+        map: '边缘节点地图',
+        instructions: '拖拽或用方向键平移。双指捏合、按住 Control 或 Command 滚动，或按加号减号缩放。双击或按 0 复位。',
+      },
+    }
+  : {
+      loading: 'Loading world GeoJSON…',
+      failed: 'World GeoJSON failed to load.',
+      hint: 'Select a bubble to inspect its city; drag to pan, ⌘/Ctrl + scroll to zoom.',
+      selected: 'Selected',
+      unit: 'req/s',
+      labels: { map: 'Edge locations map' },
+    })
 
 const colos: Colo[] = [
   { city: 'San Jose', lon: -121.89, lat: 37.34, requests: 9200 },
@@ -42,19 +60,28 @@ onMounted(async () => {
     failed.value = true
   }
 })
+
+// Remounting the map restores the initial view without fetching the GeoJSON again.
+function resetDemo(): void {
+  selected.value = null
+  resetKey.value += 1
+}
+
+defineExpose({ resetDemo })
 </script>
 
 <template>
   <div class="map-demo not-prose">
     <TxBubbleMap
       v-if="world"
+      :key="resetKey"
       :geo-json="world"
       :data="colos"
       lng="lon"
       lat="lat"
       value="requests"
       name="city"
-      roam
+      :labels="copy.labels"
       :value-format="(value: number) => `${value.toLocaleString()} ${copy.unit}`"
       @bubble-click="selected = $event"
     />

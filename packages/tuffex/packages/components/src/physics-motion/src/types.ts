@@ -39,6 +39,8 @@ export interface PhysicsMotionProps {
   loop?: boolean
   paused?: boolean
   disabled?: boolean
+  /** Grab the scene and throw it: it follows the pointer and springs home with the release's velocity. */
+  draggable?: boolean
   /** Changing this value requests a new playback without remounting. */
   replayKey?: string | number
   /** Playback multiplier. Geometry and source-relative timing stay unchanged. */

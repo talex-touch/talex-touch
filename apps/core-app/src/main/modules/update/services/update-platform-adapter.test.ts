@@ -24,6 +24,15 @@ function input(overrides: Partial<PlatformInstallSpecInput> = {}): PlatformInsta
     appPath: process.cwd(),
     appBundlePath: null,
     allowRecovery: false,
+    preparedMacUpdate: {
+      schemaVersion: 1,
+      packageSha256: 'b'.repeat(64),
+      targetVersion: '2.4.10',
+      appBundlePath: '/Applications/Tuff.app',
+      stageRoot: '/Applications/.tuff-update-attempt-1',
+      bundleId: 'com.tuff.app',
+      codeDirectoryHash: 'c'.repeat(40)
+    },
     ...overrides
   }
 }
@@ -67,8 +76,8 @@ describe('update platform handoff adapter', () => {
         command: '/bin/bash',
         waitForExit: true,
         args: expect.arrayContaining([
-          '--source',
-          '/updates/Tuff.app.zip',
+          '--prepared',
+          '/Applications/.tuff-update-attempt-1/prepared.app',
           '--dest',
           '/Applications/Tuff.app'
         ])
@@ -76,12 +85,34 @@ describe('update platform handoff adapter', () => {
       recovery: {
         command: '/bin/bash',
         waitForExit: true,
-        args: expect.arrayContaining(['--backup', '/updates/attempts/attempt-1/macos-backup.app'])
+        args: expect.arrayContaining([
+          '--backup',
+          '/Applications/.tuff-update-attempt-1/prepared.app',
+          '--version',
+          '2.4.9',
+          '--failed-version',
+          '2.4.10'
+        ])
       },
       previousVersion: '2.4.9',
       recoveryAvailable: true
     })
   })
+
+  it.each([undefined, { appBundlePath: '/Applications/Other.app' }])(
+    'rejects macOS handoff without a receipt bound to this installation',
+    (receipt) => {
+      expect(() =>
+        buildPlatformInstallSpec(
+          input({
+            platform: 'darwin',
+            appBundlePath: '/Applications/Tuff.app',
+            preparedMacUpdate: receipt as PlatformInstallSpecInput['preparedMacUpdate']
+          })
+        )
+      ).toThrow('requires a verified prepared application')
+    }
+  )
 
   it('does not expose a macOS restore command when recovery is denied', () => {
     const spec = buildPlatformInstallSpec(

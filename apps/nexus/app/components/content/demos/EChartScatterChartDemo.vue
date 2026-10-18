@@ -26,16 +26,23 @@ const series = computed(() => locale.value === 'zh'
 
 const xAxisName = computed(() => locale.value === 'zh' ? '延迟 (ms)' : 'Latency (ms)')
 const yAxisName = computed(() => locale.value === 'zh' ? '吞吐 (req/s)' : 'Throughput (req/s)')
+
+const hint = computed(() => locale.value === 'zh'
+  ? '⌘/Ctrl + 滚轮或双指捏合缩放；放大后拖拽平移；双击复位。'
+  : '⌘/Ctrl + scroll or pinch to zoom; drag to pan once zoomed in; double-click to reset.')
 </script>
 
 <template>
-  <div class="echart-demo">
+  <div class="echart-demo not-prose">
     <TxScatterChart
       :series="series"
       :x-axis-name="xAxisName"
       :y-axis-name="yAxisName"
       :height="260"
     />
+    <p class="echart-demo__hint">
+      {{ hint }}
+    </p>
   </div>
 </template>
 
@@ -43,5 +50,11 @@ const yAxisName = computed(() => locale.value === 'zh' ? '吞吐 (req/s)' : 'Thr
 .echart-demo {
   width: 100%;
   max-width: 560px;
+}
+
+.echart-demo__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--tx-chart-text-primary, #6b7280);
 }
 </style>

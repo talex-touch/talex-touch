@@ -44,6 +44,7 @@ export interface FlipBookProps {
   introFlips?: number
   animated?: boolean
   disabled?: boolean
+  draggable?: boolean
   duration?: number
   size?: 'xs' | 'sm' | 'md' | 'lg'
   ariaLabel?: string

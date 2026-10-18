@@ -1,4 +1,5 @@
 import type { PreviousUpdateAsset, UpdateHandoffCommand } from './update-recovery-store'
+import type { PreparedMacUpdate } from './macos-update-preparation'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -10,6 +11,7 @@ export interface PlatformInstallSpec {
   cleanupPaths: string[]
   previousVersion: string | null
   recoveryAvailable: boolean
+  macosTransaction?: { appBundlePath: string; stageRoot: string }
 }
 
 export interface PlatformInstallSpecInput {
@@ -23,6 +25,7 @@ export interface PlatformInstallSpecInput {
   appPath: string
   appBundlePath: string | null
   allowRecovery: boolean
+  preparedMacUpdate?: PreparedMacUpdate
 }
 
 export function buildPlatformInstallSpec(input: PlatformInstallSpecInput): PlatformInstallSpec {
@@ -110,37 +113,31 @@ export function assertPlatformInstallPreflight(
 }
 
 function buildMacInstallSpec(input: PlatformInstallSpecInput): PlatformInstallSpec {
-  if (!input.appBundlePath) {
-    throw new Error('Unable to resolve the current macOS application bundle')
+  const prepared = input.preparedMacUpdate
+  if (!prepared || prepared.appBundlePath !== input.appBundlePath) {
+    throw new Error('macOS installation requires a verified prepared application')
   }
-  const applyScript = resolveBundledScript(
-    'macos-apply-update.sh',
-    input.resourcesPath,
-    input.appPath
-  )
-  const restoreScript = resolveBundledScript(
-    'macos-restore-update.sh',
-    input.resourcesPath,
-    input.appPath
-  )
-  const stageRoot = path.join(input.attemptRoot, 'macos-stage')
-  const backupPath = path.join(input.attemptRoot, 'macos-backup.app')
+  const applyScript = path.join(input.attemptRoot, 'macos-apply-update.sh')
+  const restoreScript = path.join(input.attemptRoot, 'macos-restore-update.sh')
+  const swapHelper = path.join(input.attemptRoot, 'tuff-native-update')
+  const preparedApp = path.join(prepared.stageRoot, 'prepared.app')
   const logPath = path.join(input.attemptRoot, 'macos-update.log')
   const recoveryAllowed = hasExpectedRollbackCurrent(input)
-
   return {
     handoff: {
       command: '/bin/bash',
       args: [
         applyScript,
-        '--source',
-        input.packagePath,
+        '--prepared',
+        preparedApp,
         '--dest',
-        input.appBundlePath,
-        '--stage',
-        stageRoot,
-        '--backup',
-        backupPath,
+        prepared.appBundlePath,
+        '--swap-helper',
+        swapHelper,
+        '--version',
+        prepared.targetVersion,
+        '--previous-version',
+        input.currentVersion,
         '--pid',
         String(process.pid),
         '--log',
@@ -154,16 +151,23 @@ function buildMacInstallSpec(input: PlatformInstallSpecInput): PlatformInstallSp
           args: [
             restoreScript,
             '--backup',
-            backupPath,
+            preparedApp,
             '--dest',
-            input.appBundlePath,
+            prepared.appBundlePath,
+            '--swap-helper',
+            swapHelper,
+            '--version',
+            input.currentVersion,
+            '--failed-version',
+            prepared.targetVersion,
             '--log',
             logPath
           ],
           waitForExit: true
         }
       : null,
-    cleanupPaths: [backupPath, stageRoot],
+    cleanupPaths: [applyScript, restoreScript, swapHelper],
+    macosTransaction: { appBundlePath: prepared.appBundlePath, stageRoot: prepared.stageRoot },
     previousVersion: recoveryAllowed ? input.currentVersion : null,
     recoveryAvailable: recoveryAllowed
   }
@@ -300,7 +304,7 @@ function resolveLinuxCommand(packagePath: string): UpdateHandoffCommand {
   throw new Error('Unsupported Linux update package')
 }
 
-function resolveBundledScript(name: string, resourcesPath: string, appPath: string): string {
+export function resolveBundledScript(name: string, resourcesPath: string, appPath: string): string {
   const candidates = [
     path.join(resourcesPath, 'resources', 'scripts', name),
     path.join(resourcesPath, 'scripts', name),

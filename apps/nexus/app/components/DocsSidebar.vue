@@ -456,6 +456,7 @@ const SECTION_ORDER: Record<string, string[]> = {
     '/docs/dev/components/chart-colors',
     '/docs/dev/components/echart-charts',
     '/docs/dev/components/timeseries-chart',
+    '/docs/dev/components/learning-curve',
     '/docs/dev/components/maps',
     '/docs/dev/components/mono-chart',
     '/docs/dev/components/sankey-chart',

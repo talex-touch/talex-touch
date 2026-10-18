@@ -1,8 +1,8 @@
-import type { ScaleBand, ScaleLinear, ScaleTime } from 'd3-scale'
+import type { ScaleBand, ScaleLinear, ScaleLogarithmic, ScaleTime } from 'd3-scale'
 import type { ScaleKind } from './types'
-import { scaleBand, scaleLinear, scaleTime } from 'd3-scale'
+import { scaleBand, scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 
-export type ContinuousScale = ScaleLinear<number, number> | ScaleTime<number, number>
+export type ContinuousScale = ScaleLinear<number, number> | ScaleLogarithmic<number, number> | ScaleTime<number, number>
 export type ChartXScale = ContinuousScale | ScaleBand<string>
 export type ChartYScale = ScaleLinear<number, number>
 
@@ -27,6 +27,12 @@ export function createXScale(
   const hi = numeric[numeric.length - 1] ?? 1
   if (kind === 'time')
     return scaleTime().domain([new Date(lo), new Date(hi)]).range(range)
+  if (kind === 'log') {
+    // A log domain cannot touch zero; an empty or non-positive one shows one decade.
+    const top = hi > 0 ? hi : 10
+    const bottom = lo > 0 && lo < top ? lo : top / 10
+    return scaleLog().domain([bottom, top]).range(range)
+  }
   return scaleLinear().domain([lo, hi]).range(range)
 }
 

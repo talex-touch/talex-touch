@@ -1,7 +1,7 @@
 #!/bin/bash
 set -u
 
-# Linux self-update applier. Mirrors macos-apply-update.sh.
+# Linux self-update applier.
 #
 # Two modes:
 #   AppImage: replace the running AppImage in place (no root needed) and relaunch.

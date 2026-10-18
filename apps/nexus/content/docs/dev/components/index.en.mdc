@@ -330,6 +330,7 @@ Partly adapted from [Beautiful UI](https://www.beautifului.dev) (MIT).
 - [Chart Colors](./chart-colors.en.mdc)
 - [ECharts](./echart-charts.en.mdc)
 - [TimeseriesChart](./timeseries-chart.en.mdc)
+- [LearningCurve](./learning-curve.en.mdc)
 - [Maps](./maps.en.mdc)
 - [MonoChart](./mono-chart.en.mdc)
 - [SankeyChart](./sankey-chart.en.mdc)

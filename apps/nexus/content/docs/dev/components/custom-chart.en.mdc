@@ -105,10 +105,13 @@ const enterWidth = computed(() => plot.value.width * enter.value)
 | `aspectRatio` | `number \| string` | — | Container aspect ratio. |
 | `width` | `number` | measured | Explicit width (SSR/tests). |
 | `padding` | `number \| Partial<ChartPadding>` | `24` | Inner padding reserved for axes and labels. |
-| `xType` | `'linear' \| 'time' \| 'band'` | `'linear'` | Kind of x scale. |
+| `xType` | `'linear' \| 'log' \| 'time' \| 'band'` | `'linear'` | Kind of x scale; a `log` axis leaves out data at x ≤ 0. |
 | `xDomain` / `yDomain` | arrays | auto union | Explicit domains. |
 | `yNice` | `boolean` | `true` | Round the derived y domain. |
-| `ariaDescription` | `string` | — | Accessible description. |
+| `ariaDescription` | `string` | — | Accessible name, falling back to `labels.chart`; a chart that cannot take focus reads it as `role="img"`. |
+| `interactive` | `boolean` | `true` | Reads values on hover, press-drag and the arrow keys; `false` leaves a static picture with no focus stop and no reading. |
+| `announce` | `(x: string \| number) => string` | Formatted like the x-axis ticks | What a keyboard reading at an x value says. |
+| `labels` | `Partial<ChartLabels>` | English | Accessible name and key instructions: `chart`, `instructions`, and `zoomInstructions`, read instead on a chart that zooms. |
 
 ### Series Props (shared)
 
@@ -118,7 +121,7 @@ const enterWidth = computed(() => plot.value.width * enter.value)
 | `x` / `y` | `keyof T \| (d, i) => v` | Accessors. |
 | `color` | `string` | Defaults to categorical slots in mount order. |
 
-`TxLineSeries` adds `curve` (`linear/monotone/natural/step`), `strokeWidth`, `showSymbol`, `dashed`, and `enter` (`clip` by default wipes the plot open left to right; `draw` traces the stroke along its length and shows each symbol once the line reaches it; a dashed stroke still clips); `TxAreaSeries` adds `gradient` (on by default) and `fillOpacity`; `TxBarSeries` adds `stack`, `barWidth`, `radius`; `TxScatterSeries` adds `r` (constant or accessor); `TxArcSeries` takes `value/name?/color?` accessors plus `innerRadius/padAngle/cornerRadius`, and emits `slice-click` plus `slice-hover` with the hovered slice (`{ datum, index, name, value }`, and `null` once the pointer leaves the arc) — the axis-free arc has no chart context to read, so this is how an `#overlay` `<TxChartTooltip>` gets its values.
+`TxLineSeries` adds `curve` (`linear/monotone/natural/step`), `strokeWidth`, `showSymbol`, `dashed`, and `enter` (`clip` by default wipes the plot open left to right; `draw` traces the stroke along its length and shows each symbol once the line reaches it; a dashed stroke still clips); `TxAreaSeries` adds `gradient` (on by default) and `fillOpacity`; `TxBarSeries` adds `stack`, `barWidth`, `radius`; `TxScatterSeries` adds `r` (constant or accessor); `TxArcSeries` takes `value/name?/color?` accessors plus `innerRadius/padAngle/cornerRadius`, and emits `slice-click` plus `slice-hover` with the hovered slice (`{ datum, index, name, value }`, and `null` once the pointer leaves the arc) — the axis-free arc has no chart context to read, so this is how an `#overlay` `<TxChartTooltip>` gets its values. A press-drag reads the ring like a dial, slice by slice by angle, and its release does not fire `slice-click`; with the chart focused, ← / → read slice by slice, Home / End jump to either end and Escape clears, and `announce` sets what is spoken (`name: value` by default).
 
 ### ChartTooltip Props
 
@@ -132,6 +135,16 @@ const enterWidth = computed(() => plot.value.width * enter.value)
 | `title` / `rows` / `hiddenCount` | — | — | Default content; the slot replaces it entirely. |
 
 The tooltip keeps ECharts' cadence as well: it waits out a 100ms `hideDelay` before the 200ms fade-out and DOM removal, so a brief pointer excursion does not flicker it; movement is handed to the browser as a 400ms `transform: translate3d()` transition; and pointer tracking is throttled to 50ms, sampling once on entry and once on exit.
+
+## Reading Values
+
+`TxChart` reads values itself; a custom layer only reads `pointer`:
+
+- A hovering mouse places the reading at the pointer; a press-drag (mouse, touch or pen) keeps reading past a 4px slop and stays on the plot's edge when it leaves the plot. The click a drag's release produces is swallowed, so it reaches neither the chart nor anything around it.
+- One finger reads on touch from the press; the chart sets `touch-action: pan-y`, so a vertical swipe still scrolls the page.
+- With the chart focused, ← / → read datum by datum along x, Home / End jump to either end and Escape clears; readings go to a polite live region, worded by `announce`.
+- On `useChartContext().pointer`, `x` / `y` are container pixels, `inside` means a reading is showing, `pressed` means a press-drag holds the pointer, and `source` is `'keyboard'` for a reading the keys placed: at the datum's x, vertically centered, with no pointer height.
+- `nearestXStop(px)` returns the data x drawn nearest a pixel, which is how a crosshair snaps to data; a layer added with `registerKeyLayer({ key, clear })` gets keys before the datum-by-datum reading and returns `true` once it handled one — that is how `TxArcSeries` reads slices.
 
 ## Composition Rules
 

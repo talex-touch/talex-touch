@@ -12,7 +12,8 @@ const props = withDefaults(defineProps<TreemapChartProps>(), {
   showBreadcrumb: false,
   showLabel: true,
   unit: undefined,
-  roam: false,
+  roam: true,
+  cooperativeWheel: true,
   option: undefined,
   height: 320,
   theme: 'auto',
@@ -30,5 +31,6 @@ const chartOption = computed(() => mergeChartOption(buildTreemapChartOption(prop
     :theme="theme"
     :aria-label="ariaLabel"
     :loading="loading"
+    :cooperative-wheel="cooperativeWheel"
   />
 </template>

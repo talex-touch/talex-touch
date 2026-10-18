@@ -1,3 +1,5 @@
+import { rubberband } from '../../../../../../utils/gesture'
+
 /** Pan/zoom state applied as `translate(tx, ty) scale(k)` over the fitted map. */
 export interface RoamState {
   k: number
@@ -55,4 +57,90 @@ export function initialRoam(
     state = panBy(state, mid.x - onScreen[0], mid.y - onScreen[1])
   }
   return state
+}
+
+/** The fitted map's displayed window, in pre-roam pixels. */
+export interface RoamBox {
+  x0: number
+  y0: number
+  x1: number
+  y1: number
+}
+
+/** How far each translation may go at one scale: `[min, max]` per axis. */
+export interface RoamBounds {
+  tx: [number, number]
+  ty: [number, number]
+}
+
+function axisBounds(size: number, start: number, end: number, anchor?: number): [number, number] {
+  // `0 - start`, not `-start`: a window starting at 0 bounds at +0, not -0.
+  let lo = Math.min(size - end, 0 - start)
+  let hi = Math.max(size - end, 0 - start)
+  if (anchor !== undefined && Number.isFinite(anchor)) {
+    lo = Math.min(lo, anchor)
+    hi = Math.max(hi, anchor)
+  }
+  return [lo, hi]
+}
+
+/**
+ * Pan limits at scale `k`. Along an axis where the map is larger than the
+ * container it keeps the container covered; where it is smaller it stays
+ * inside. `home`, the view the caller asked for with `zoom` and `center`,
+ * stays reachable at every scale (rescaled about the container centre), so an
+ * off-centre `center` never springs back once the map is touched.
+ */
+export function roamBounds(
+  k: number,
+  box: RoamBox,
+  width: number,
+  height: number,
+  home?: RoamState,
+): RoamBounds {
+  const anchor = home ? scaleAboutPoint(home, k, { x: width / 2, y: height / 2 }) : undefined
+  return {
+    tx: axisBounds(width, k * box.x0, k * box.x1, anchor?.tx),
+    ty: axisBounds(height, k * box.y0, k * box.y1, anchor?.ty),
+  }
+}
+
+function clampAxis(value: number, [lo, hi]: [number, number]): number {
+  return Math.max(lo, Math.min(hi, value))
+}
+
+/** The state moved inside `bounds`; the scale is left as it is. */
+export function clampRoam(state: RoamState, bounds: RoamBounds): RoamState {
+  return { k: state.k, tx: clampAxis(state.tx, bounds.tx), ty: clampAxis(state.ty, bounds.ty) }
+}
+
+function resistAxis(value: number, [lo, hi]: [number, number], size: number): number {
+  if (value < lo)
+    return lo + rubberband(value - lo, size)
+  if (value > hi)
+    return hi + rubberband(value - hi, size)
+  return value
+}
+
+/**
+ * A dragged state as drawn: the part pulled past `bounds` resists like a
+ * rubber band (c = 0.55), measured against the container's size.
+ */
+export function resistRoam(state: RoamState, bounds: RoamBounds, width: number, height: number): RoamState {
+  return {
+    k: state.k,
+    tx: resistAxis(state.tx, bounds.tx, width),
+    ty: resistAxis(state.ty, bounds.ty, height),
+  }
+}
+
+/**
+ * One frame of a released pan coasting to a stop with a scroll view's
+ * exponential deceleration (`rate` per millisecond). In total it carries
+ * `projectMomentum(velocity, rate)`. Returns `[position, velocity]`.
+ */
+export function glideAxis(position: number, velocity: number, dt: number, rate = 0.998): [number, number] {
+  const tau = -0.001 / Math.log(rate)
+  const decay = Math.exp(-dt / tau)
+  return [position + velocity * tau * (1 - decay), velocity * decay]
 }

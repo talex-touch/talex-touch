@@ -22,6 +22,7 @@ import { useAppSdk, useDownloadSdk } from '@talex-touch/utils/renderer'
 import { useTuffTransport } from '@talex-touch/utils/transport'
 import { AppEvents } from '@talex-touch/utils/transport/events'
 import { isBuildVerificationStatus } from '@talex-touch/utils/transport/events/types'
+import { useDocumentVisibility } from '@vueuse/core'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
@@ -220,12 +221,10 @@ const canStartDownload = computed(
     cachedAssets.value.length > 0
 )
 
-/**
- * When this page saw the current attempt enter `available`, plus a clock that ticks only through
- * the automatic-download grace period — long enough to hide the manual button, then stops.
- */
+/** One clock for the download grace period and elapsed background preparation. */
 const availableSinceMs = ref<number | null>(null)
 const nowMs = ref(Date.now())
+const statusVisibility = useDocumentVisibility()
 let graceTimer: ReturnType<typeof setInterval> | null = null
 
 function stopGraceTimer(): void {
@@ -236,23 +235,31 @@ function stopGraceTimer(): void {
 }
 
 watch(
-  () => {
-    const snapshot = lifecycleSnapshot.value
-    return snapshot?.phase === 'available' ? (snapshot.attemptId ?? 'available') : null
-  },
-  (availableAttempt) => {
+  [
+    () => {
+      const snapshot = lifecycleSnapshot.value
+      return snapshot && (snapshot.phase === 'available' || snapshot.phase === 'preparing')
+        ? `${snapshot.phase}:${snapshot.attemptId}`
+        : null
+    },
+    statusVisibility
+  ],
+  ([attempt, visibility], [previousAttempt]) => {
     stopGraceTimer()
-    downloadRequestPending.value = false
-    if (availableAttempt === null) {
+    if (attempt !== previousAttempt) {
+      downloadRequestPending.value = false
       availableSinceMs.value = null
-      return
     }
-    const since = Date.now()
-    availableSinceMs.value = since
-    nowMs.value = since
+    if (attempt === null) return
+    nowMs.value = Date.now()
+    const preparing = lifecycleSnapshot.value?.phase === 'preparing'
+    if (!preparing && availableSinceMs.value === null) availableSinceMs.value = nowMs.value
+    const since = availableSinceMs.value ?? nowMs.value
+    if (visibility === 'hidden' || (!preparing && nowMs.value - since >= AUTO_DOWNLOAD_GRACE_MS))
+      return
     graceTimer = setInterval(() => {
       nowMs.value = Date.now()
-      if (nowMs.value - since >= AUTO_DOWNLOAD_GRACE_MS) stopGraceTimer()
+      if (!preparing && nowMs.value - since >= AUTO_DOWNLOAD_GRACE_MS) stopGraceTimer()
     }, 1_000)
   },
   { immediate: true }

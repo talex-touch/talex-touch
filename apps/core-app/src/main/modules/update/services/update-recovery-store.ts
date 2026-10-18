@@ -31,6 +31,7 @@ export interface UpdateHandoffPlan {
   cleanupPaths: string[]
   previousVersion: string | null
   recoveryAvailable: boolean
+  macosTransaction?: { appBundlePath: string; stageRoot: string }
 }
 
 export interface UpdateHealthAck {
@@ -322,6 +323,19 @@ export class UpdateRecoveryStore {
       typeof plan.recoveryAvailable !== 'boolean'
     ) {
       throw new Error('Update handoff plan has an invalid schema')
+    }
+    if (plan.macosTransaction !== undefined) {
+      const transaction = plan.macosTransaction
+      if (
+        plan.platform !== 'darwin' ||
+        !transaction ||
+        typeof transaction.appBundlePath !== 'string' ||
+        !path.isAbsolute(transaction.appBundlePath) ||
+        !transaction.appBundlePath.endsWith('.app') ||
+        transaction.stageRoot !==
+          path.join(path.dirname(transaction.appBundlePath), `.tuff-update-${plan.attemptId}`)
+      )
+        throw new Error('Invalid macOS update transaction paths')
     }
     this.assertCommand(plan.handoff)
     if (plan.recovery !== null) this.assertCommand(plan.recovery)

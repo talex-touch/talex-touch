@@ -175,11 +175,21 @@ describe('UpdateSystem install handoff preparation', () => {
       storageRoot: '/tmp/tuff-test'
     })
 
-    await expect(updateSystem.prepareInstallHandoff('task-1')).resolves.toMatchObject({
+    const expected = {
       taskId: 'task-1',
       filePath: '/tmp/tuff-test/Tuff-2.4.10-setup.exe',
-      sha256: checksum
-    })
+      destination: '/tmp/tuff-test',
+      filename: 'Tuff-2.4.10-setup.exe',
+      sha256: checksum,
+      signatureUrl: downloadCenter.task.metadata.signatureUrl
+    }
+    await expect(updateSystem.prepareInstallHandoff('task-1')).resolves.toEqual(expected)
+    createReadStreamMock.mockReturnValue(
+      (async function* () {
+        yield* chunks
+      })()
+    )
+    await expect(updateSystem.verifyDownloadedUpdate('task-1')).resolves.toEqual(expected)
   })
 
   it('rejects a handoff package whose streamed checksum does not match', async () => {

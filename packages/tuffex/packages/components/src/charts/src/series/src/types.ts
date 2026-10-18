@@ -82,6 +82,8 @@ export interface ArcSeriesProps<T> {
   padAngle?: number
   /** Corner radius of slices in pixels. @default 2 */
   cornerRadius?: number
+  /** Live-region text for a slice read with the keyboard. Defaults to `name: value`. */
+  announce?: (slice: ArcSliceDatum<T>) => string
 }
 
 export interface ArcSliceDatum<T> {

@@ -7,13 +7,8 @@ import {
   TxChart,
   TxChartLegendItem,
   TxChartTooltip,
-  TxChoroplethMap,
-  TxEChart,
-  TxSankeyChart,
   TxTimeseriesChart,
 } from '@talex-touch/tuffex/charts'
-import type { EChartsOption } from 'echarts'
-import { MINI_WORLD_GEO } from './mini-world-geo'
 import type { FileUploaderFile } from '@tuffex-components/file-uploader'
 import type { ImageUploaderFile } from '@tuffex-components/image-uploader'
 import type { AiChainStep, AiElementMessage } from '@tuffex-components/ai-elements'
@@ -41,10 +36,13 @@ import tuffexPkg from '../../../../../packages/tuffex/package.json'
 // specimen so its entrance can be watched again.
 import ClientOnly from './DocsGallerySpecimen.vue'
 import GalleryChoiceCard from './gallery/GalleryChoiceCard.vue'
+import GalleryChoroplethMap from './gallery/GalleryChoroplethMap.vue'
+import GalleryEChart from './gallery/GalleryEChart.vue'
 import GalleryEdgeMarquee from './gallery/GalleryEdgeMarquee.vue'
 import GalleryFusion from './gallery/GalleryFusion.vue'
 import GalleryFusionSurface from './gallery/GalleryFusionSurface.vue'
 import GalleryLiquidMenu from './gallery/GalleryLiquidMenu.vue'
+import GallerySankeyChart from './gallery/GallerySankeyChart.vue'
 import GalleryStreamElement from './gallery/GalleryStreamElement.vue'
 import GalleryStreamMarkdown from './gallery/GalleryStreamMarkdown.vue'
 import GalleryStreamText from './gallery/GalleryStreamText.vue'
@@ -62,6 +60,7 @@ import { tileImage } from './gallery/tile-image'
 const props = defineProps<{ suite: Exclude<DocsSuiteKey, 'concepts' | 'templates'> }>()
 
 const GalleryVoiceClip = defineAsyncComponent(() => import('./gallery/GalleryVoiceClip.vue'))
+const GalleryLearningCurve = defineAsyncComponent(() => import('./gallery/GalleryLearningCurve.vue'))
 
 const { locale } = useI18n()
 
@@ -827,66 +826,6 @@ function sparkTick(value: number): string {
   return `Mar ${Math.round(value) + 1}`
 }
 
-/* The gallery's only raw-option chart: a bar plus a line on one grid, which is
-   the proof that the escape hatch carries the themed axis chrome and tooltip
-   without a typed wrapper. Bars and line share the category axis, so the trend
-   is read against the same seven days. */
-const echartDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const echartOption = computed<EChartsOption>(() => ({
-  tooltip: { trigger: 'axis' },
-  legend: {},
-  grid: { left: 44, right: 12, top: 30, bottom: 28 },
-  xAxis: { type: 'category', data: echartDays },
-  yAxis: { type: 'value' },
-  series: [
-    {
-      name: 'Installs',
-      type: 'bar',
-      data: [420, 468, 512, 494, 548, 610, 586],
-      barWidth: 14,
-      itemStyle: { borderRadius: [3, 3, 0, 0] },
-    },
-    {
-      name: 'Sessions',
-      type: 'line',
-      data: [820, 932, 901, 934, 1290, 1330, 1320],
-      smooth: true,
-      showSymbol: false,
-    },
-  ],
-}))
-
-/* Ported from kumo's compact Sankey preview: every intermediate node's inflow
-   and outflow balance, so nothing hangs below its links as an unaccounted tail. */
-const sankeyNodes = [
-  { name: 'Search', value: 50 },
-  { name: 'Community', value: 40 },
-  { name: 'Paid', value: 35 },
-  { name: 'Install', value: 55 },
-  { name: 'Store', value: 70 },
-]
-const sankeyLinks = [
-  { source: 0, target: 3, value: 30 },
-  { source: 0, target: 4, value: 20 },
-  { source: 1, target: 3, value: 25 },
-  { source: 1, target: 4, value: 15 },
-  { source: 2, target: 4, value: 35 },
-]
-/* Real but rounded country outlines, inlined so the specimen never waits on a
-   fetch — and joined on `properties.name`, which is the key the choropleth
-   reads by default. */
-const mapGeoJson = MINI_WORLD_GEO
-const mapShares = [
-  { country: 'United States of America', share: 31 },
-  { country: 'Brazil', share: 12 },
-  { country: 'China', share: 24 },
-  { country: 'India', share: 14 },
-  { country: 'Australia', share: 7 },
-  { country: 'South Africa', share: 4 },
-]
-function mapValueFormat(value: number): string {
-  return `${value}%`
-}
 const allocationKey = ref('stable')
 const diffColumns = [
   { key: 'name', title: 'Plugin', width: '55%' },
@@ -1016,7 +955,7 @@ const motionGalleryItems = [
   { doc: 'dither-chart', name: 'DitherChart', zh: '抖动图表', kind: 'dither-chart' },
   { doc: 'motion-text', name: 'MotionText', zh: '文字动效', kind: 'motion-text' },
   { doc: 'physics-motion', name: 'PhysicsMotion', zh: '物理动效', kind: 'physics-motion' },
-  { doc: 'motion-dock', name: 'MotionDock', zh: '动效 Dock', kind: 'motion-dock' },
+  { doc: 'motion-dock', name: 'MotionDock', zh: '动态应用栏', kind: 'motion-dock' },
   { doc: 'motion', name: 'Motion', zh: '悬停与滚动', kind: 'motion' },
   { doc: 'motion-toggle', name: 'MotionToggle', zh: '动效切换', kind: 'motion-toggle' },
   { doc: 'motion-transition', name: 'MotionTransition', zh: '动效转场', kind: 'motion-transition' },
@@ -4334,40 +4273,14 @@ const motionGalleryItems = [
         <NuxtLink class="docs-gallery__label" :to="docPath('maps')">
           {{ cellLabel('Maps', '地图') }}
         </NuxtLink>
-        <div class="docs-gallery__stage not-prose">
-          <ClientOnly>
-            <div class="docs-gallery__block">
-              <TxChoroplethMap
-                :geo-json="mapGeoJson"
-                :data="mapShares"
-                name="country"
-                value="share"
-                :height="176"
-                :value-format="mapValueFormat"
-                show-legend
-              />
-            </div>
-            <template #fallback>
-              <div class="docs-gallery__ph" />
-            </template>
-          </ClientOnly>
-        </div>
+        <GalleryChoroplethMap />
       </section>
 
       <section class="docs-gallery__cell">
         <NuxtLink class="docs-gallery__label" :to="docPath('sankey-chart')">
           {{ cellLabel('SankeyChart', '桑基图') }}
         </NuxtLink>
-        <div class="docs-gallery__stage not-prose">
-          <ClientOnly>
-            <div class="docs-gallery__block">
-              <TxSankeyChart :nodes="sankeyNodes" :links="sankeyLinks" :height="170" />
-            </div>
-            <template #fallback>
-              <div class="docs-gallery__ph" />
-            </template>
-          </ClientOnly>
-        </div>
+        <GallerySankeyChart />
       </section>
 
       <section class="docs-gallery__cell">
@@ -4384,6 +4297,13 @@ const motionGalleryItems = [
             </template>
           </ClientOnly>
         </div>
+      </section>
+
+      <section class="docs-gallery__cell">
+        <NuxtLink class="docs-gallery__label" :to="docPath('learning-curve')">
+          {{ cellLabel('LearningCurve', '学习曲线') }}
+        </NuxtLink>
+        <GalleryLearningCurve />
       </section>
 
       <section class="docs-gallery__cell">
@@ -4420,16 +4340,7 @@ const motionGalleryItems = [
         <NuxtLink class="docs-gallery__label" :to="docPath('echart-charts')">
           {{ cellLabel('ECharts', 'ECharts 图表') }}
         </NuxtLink>
-        <div class="docs-gallery__stage not-prose">
-          <ClientOnly>
-            <div class="docs-gallery__block">
-              <TxEChart :option="echartOption" :height="220" aria-label="Installs and sessions by weekday" />
-            </div>
-            <template #fallback>
-              <div class="docs-gallery__ph" />
-            </template>
-          </ClientOnly>
-        </div>
+        <GalleryEChart />
       </section>
     </div>
 

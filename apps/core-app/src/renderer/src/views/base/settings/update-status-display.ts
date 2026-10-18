@@ -161,6 +161,20 @@ export function resolveUpdateStatusView(input: UpdateStatusViewInput): UpdateSta
         indeterminate()
       )
 
+    case 'preparing':
+      return row(
+        message('settings.settingUpdate.status.preparingInstall', { version: targetVersion }),
+        {
+          kind: 'message',
+          message: message('settings.settingUpdate.status.preparingInstallElapsed', {
+            seconds: String(
+              Math.max(0, Math.floor((input.nowMs - (snapshot?.updatedAt ?? input.nowMs)) / 1000))
+            )
+          })
+        },
+        indeterminate()
+      )
+
     case 'ready': {
       // Installing an unofficial macOS build is refused by the main process, on quit as well as on
       // request, so there is nothing to offer here. The authenticity banner above carries the one

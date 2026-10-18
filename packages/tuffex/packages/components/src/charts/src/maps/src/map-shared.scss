@@ -8,6 +8,41 @@
   width: 100%;
   overflow: hidden;
 
+  // A roaming map is picked up and moved: `grab` everywhere on it, regions and
+  // bubbles included, and the page leaves its touches to the map.
+  &.is-roam {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+
+    .tx-map__region.has-data,
+    .tx-map__bubble {
+      cursor: inherit;
+    }
+  }
+
+  &.is-dragging {
+    cursor: grabbing;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--tx-color-primary, #409eff);
+    outline-offset: -2px;
+  }
+
+  &__instructions {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   &__svg {
     display: block;
     flex: 1 1 auto;

@@ -2,7 +2,7 @@ import type { EChartsOption } from 'echarts'
 import type { HeatmapChartProps } from '../src/echart/src/options/heatmap'
 import { describe, expect, it } from 'vitest'
 import { mergeChartOption } from '../src/echart/src/core/shared'
-import { buildHeatmapChartOption } from '../src/echart/src/options/heatmap'
+import { buildHeatmapChartOption, heatmapSelection } from '../src/echart/src/options/heatmap'
 
 const values = [
   [1, 2, 3],
@@ -103,5 +103,28 @@ describe('buildHeatmapChartOption', () => {
     expect(readField(overridden.visualMap, 'bottom')).toBe(24)
     expect(readField(overridden.visualMap, 'orient')).toBe('horizontal')
     expect(overridden.series).toEqual([{ type: 'custom' }])
+  })
+})
+
+describe('heatmapSelection', () => {
+  it('collects a block given corner to corner in either order, row by row', () => {
+    const selection = heatmapSelection({ values, rows, columns }, [1, 0], [2, 1])
+    expect(selection.rows).toEqual([0, 1])
+    expect(selection.columns).toEqual([1, 2])
+    expect(selection.cells.map(cell => [cell.rowLabel, cell.columnLabel, cell.value])).toEqual([
+      ['row-0', 'col-1', 2],
+      ['row-0', 'col-2', 3],
+      ['row-1', 'col-1', 5],
+      ['row-1', 'col-2', 6],
+    ])
+  })
+
+  it('clamps indexes to the matrix and skips positions it leaves empty', () => {
+    const sparse = [[1], [4, 5, 6]]
+    const selection = heatmapSelection({ values: sparse, rows, columns }, [-3, 9], [-0, 7])
+    expect(selection.rows).toEqual([0, 1])
+    expect(selection.columns).toEqual([0, 2])
+    expect(selection.cells).toHaveLength(4)
+    expect(Object.is(selection.columns[0], -0)).toBe(false)
   })
 })

@@ -68,6 +68,19 @@ function validatePlan(root, plan) {
   ) {
     throw new Error('Update handoff plan has an invalid schema')
   }
+  if (plan.macosTransaction !== undefined) {
+    const transaction = plan.macosTransaction
+    if (
+      plan.platform !== 'darwin' ||
+      !transaction ||
+      typeof transaction.appBundlePath !== 'string' ||
+      !path.isAbsolute(transaction.appBundlePath) ||
+      !transaction.appBundlePath.endsWith('.app') ||
+      transaction.stageRoot !==
+        path.join(path.dirname(transaction.appBundlePath), `.tuff-update-${plan.attemptId}`)
+    )
+      throw new Error('Invalid macOS update transaction paths')
+  }
   assertCommand(plan.handoff)
   if (plan.recovery !== null) assertCommand(plan.recovery)
   assertInternalPath(root, plan.packagePath)
@@ -173,11 +186,39 @@ async function waitForHealthAck(plan) {
   return false
 }
 
-async function cleanup(root, cleanupPaths) {
-  for (const cleanupPath of cleanupPaths) {
+async function cleanup(root, plan) {
+  if (plan.macosTransaction) {
+    const { stageRoot } = plan.macosTransaction
+    const stage = await fs.lstat(stageRoot).catch((error) => {
+      if (error.code !== 'ENOENT') throw error
+      return null
+    })
+    if (stage) {
+      if (
+        !stage.isDirectory() ||
+        stage.isSymbolicLink() ||
+        (await fs.realpath(stageRoot)) !== stageRoot
+      ) {
+        throw new Error('Refusing to clean an unowned macOS update directory')
+      }
+      await fs.rm(stageRoot, { recursive: true })
+    }
+  }
+  for (const cleanupPath of plan.cleanupPaths) {
     const safePath = assertInternalPath(root, cleanupPath)
     await fs.rm(safePath, { recursive: true, force: true })
   }
+}
+
+async function logPhase(root, planPath, phase, startedAt) {
+  const logPath = assertInternalPath(root, path.join(path.dirname(planPath), 'handoff.log'))
+  const timestamp = Date.now()
+  await fs
+    .appendFile(
+      logPath,
+      `${JSON.stringify({ phase, timestamp, durationMs: timestamp - startedAt })}\n`
+    )
+    .catch((error) => console.error('Unable to record update phase timing:', error))
 }
 
 async function recoverOnce(root, plan, reason) {
@@ -237,7 +278,7 @@ async function runHelper(root, planPath) {
   const plan = validatePlan(root, await readJson(safePlanPath))
   const existingAck = await readJson(plan.ackPath)
   if (isMatchingHealthAck(plan, existingAck)) {
-    await cleanup(root, plan.cleanupPaths)
+    await cleanup(root, plan)
     return { status: existingAck.status }
   }
   const existingMarker = await readJson(plan.markerPath)
@@ -268,6 +309,7 @@ async function runHelper(root, planPath) {
   }
 
   try {
+    const parentWaitStarted = Date.now()
     if (!(await waitForParentExit(plan.parentPid))) {
       await writeJsonAtomic(root, plan.markerPath, {
         schemaVersion: SCHEMA_VERSION,
@@ -280,24 +322,38 @@ async function runHelper(root, planPath) {
       })
       return { status: 'parent-timeout' }
     }
+    await logPhase(root, safePlanPath, 'parent-exited', parentWaitStarted)
 
     try {
+      const handoffStarted = Date.now()
       await launchCommand(plan.handoff)
+      await logPhase(root, safePlanPath, 'platform-handoff', handoffStarted)
     } catch (error) {
-      await recoverOnce(
+      const recovered = await recoverOnce(
         root,
         plan,
         `Update handoff failed: ${error instanceof Error ? error.message : String(error)}`
       )
+      if (recovered && (await waitForHealthAck(plan))) {
+        await cleanup(root, plan)
+        return { status: 'recovered' }
+      }
       return { status: 'handoff-failed' }
     }
 
+    const healthWaitStarted = Date.now()
     if (await waitForHealthAck(plan)) {
-      await cleanup(root, plan.cleanupPaths)
+      await logPhase(root, safePlanPath, 'startup-health', healthWaitStarted)
+      await cleanup(root, plan)
       return { status: 'healthy' }
     }
 
     const recovered = await recoverOnce(root, plan, 'Startup health acknowledgement timed out')
+    if (recovered && (await waitForHealthAck(plan))) {
+      await logPhase(root, safePlanPath, 'recovery-health', healthWaitStarted)
+      await cleanup(root, plan)
+      return { status: 'recovered' }
+    }
     return { status: recovered ? 'recovery-started' : 'recovery-required' }
   } finally {
     await removeLock()

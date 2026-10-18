@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SankeyLinkData, SankeyNodeData } from '@talex-touch/tuffex/charts'
 import { TxSankeyChart } from '@talex-touch/tuffex/charts'
-import { ref } from 'vue'
+import { computed, shallowRef } from 'vue'
 
 const nodes: SankeyNodeData[] = [
   { name: 'Organic', value: 5200 },
@@ -25,20 +25,32 @@ const links: SankeyLinkData[] = [
   { source: 3, target: 6, value: 3000 },
 ]
 
-const lastClick = ref('')
+const { locale } = useI18n()
+const copy = computed(() => locale.value === 'zh'
+  ? {
+      hint: '拖动节点可重新排列；点击节点或连线。',
+      node: '节点',
+      link: '连线',
+      labels: { instructions: '按回车键选中节点。按住 Alt 加上下方向键可移动它；也可拖动节点重新排列，双击背景复位。' },
+    }
+  : { hint: 'Drag a node to move it; click nodes or links.', node: 'node', link: 'link', labels: undefined })
+
+const lastClick = shallowRef<{ kind: 'node' | 'link', text: string } | null>(null)
+const readout = computed(() => lastClick.value ? `${copy.value[lastClick.value.kind]}: ${lastClick.value.text}` : copy.value.hint)
 </script>
 
 <template>
-  <div class="sankey-demo">
+  <div class="sankey-demo not-prose">
     <TxSankeyChart
       :nodes="nodes"
       :links="links"
       :height="320"
-      @node-click="lastClick = `node: ${$event.name}`"
-      @link-click="lastClick = `link: ${$event.value}`"
+      :labels="copy.labels"
+      @node-click="lastClick = { kind: 'node', text: $event.name }"
+      @link-click="lastClick = { kind: 'link', text: String($event.value) }"
     />
     <p class="sankey-demo__readout">
-      {{ lastClick || 'Hover for tooltips; click nodes or links.' }}
+      {{ readout }}
     </p>
   </div>
 </template>

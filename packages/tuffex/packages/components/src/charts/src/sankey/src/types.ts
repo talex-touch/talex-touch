@@ -67,4 +67,16 @@ export interface SankeyChartProps {
   linkColor?: 'gradient' | 'gray'
   /** Link opacity in gradient mode. @default 0.5 */
   linkOpacity?: number
+  /** Keyboard instructions read with each node. English by default. */
+  labels?: Partial<SankeyLabels>
+}
+
+/** Text the diagram gives assistive technology. */
+export interface SankeyLabels {
+  /** How to select and move a focused node, and how to reset the layout. */
+  instructions: string
+}
+
+export const SANKEY_DEFAULT_LABELS: SankeyLabels = {
+  instructions: 'Press Enter to select the node. Alt plus the up or down arrow moves it; drag nodes to rearrange, and double-click the background to reset the layout.',
 }

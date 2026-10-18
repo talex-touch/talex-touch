@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, shallowRef } from 'vue'
+
+interface Selected { cells: Array<{ rowLabel: string, columnLabel: string, value: number }> }
 
 const { locale } = useI18n()
 
@@ -26,17 +28,49 @@ const values = computed(() => locale.value === 'zh'
     ])
 
 const unit = computed(() => locale.value === 'zh' ? '次' : '')
+
+const labels = computed(() => locale.value === 'zh'
+  ? {
+      instructions: '在单元格上拖拽可框选一块。单击或按 Escape 清除选区。',
+      selected: '已选择 {count} 格，共 {total} 格。',
+      cleared: '已清除选区。',
+    }
+  : undefined)
+
+const selection = shallowRef<Selected | null>(null)
+
+const readout = computed(() => {
+  const cells = selection.value?.cells ?? []
+  if (!cells.length) {
+    return locale.value === 'zh'
+      ? '在单元格上拖拽可框选一块；单击或按 Escape 清除。'
+      : 'Drag across the cells to select a block; click or press Escape to clear.'
+  }
+  const first = cells[0]
+  const last = cells[cells.length - 1]
+  const average = Math.round(cells.reduce((sum, cell) => sum + cell.value, 0) / cells.length * 10) / 10
+  const range = `${first.columnLabel} ${first.rowLabel}`
+  const end = `${last.columnLabel} ${last.rowLabel}`
+  return locale.value === 'zh'
+    ? `${range} 至 ${end}：${cells.length} 格，均值 ${average}${unit.value}`
+    : `${range} to ${end}: ${cells.length} cells, average ${average}`
+})
 </script>
 
 <template>
-  <div class="echart-demo">
+  <div class="echart-demo not-prose">
     <TxHeatmapChart
       :values="values"
       :rows="rows"
       :columns="columns"
       :unit="unit"
+      :labels="labels"
       :height="260"
+      @select="selection = $event"
     />
+    <p class="echart-demo__hint">
+      {{ readout }}
+    </p>
   </div>
 </template>
 
@@ -44,5 +78,11 @@ const unit = computed(() => locale.value === 'zh' ? '次' : '')
 .echart-demo {
   width: 100%;
   max-width: 560px;
+}
+
+.echart-demo__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--tx-chart-text-primary, #6b7280);
 }
 </style>

@@ -3,6 +3,7 @@
 
 import type { AllocationBarEmits, AllocationBarProps, AllocationSegment } from './types'
 import { computed, ref } from 'vue'
+import { usePressScrub } from '../../../../utils/press-scrub'
 import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({ name: 'TxAllocationBar' })
@@ -100,6 +101,65 @@ function onArrowKey(event: KeyboardEvent, index: number, set: 'segment' | 'chip'
   if (segment)
     select(segment)
 }
+
+const track = ref<HTMLElement | null>(null)
+// A drag across the bar selects the segment under the pointer, as a sweep of clicks
+// would; Escape or a cancelled pointer goes back to the segment it started from.
+// Keys, not indices, so a parent that rebuilds `segments` mid-drag loses nothing.
+let sweep: { origin: string | undefined, current: string | undefined } | null = null
+const scrub = usePressScrub(track, {
+  read: sweepTo,
+  cancel: () => {
+    const origin = props.segments.findIndex(segment => segment.key === sweep?.origin)
+    if (sweep && origin >= 0)
+      selectAndFocus(origin)
+  },
+  end: () => {
+    sweep = null
+  },
+})
+const scrubbing = scrub.dragging
+
+/** The segment nearest the pointer's x: a gap goes to the nearer side, past an end to that end. */
+function segmentAt(clientX: number): number {
+  let nearest = -1
+  let distance = Infinity
+  track.value?.querySelectorAll<HTMLElement>('[data-tx-set="segment"]').forEach((element, index) => {
+    const rect = element.getBoundingClientRect()
+    // A zero share has no width to land on.
+    if (rect.width <= 0)
+      return
+    const gap = Math.max(rect.left - clientX, 0, clientX - rect.right)
+    if (gap < distance) {
+      distance = gap
+      nearest = index
+    }
+  })
+  return nearest
+}
+
+function sweepTo(event: PointerEvent): void {
+  sweep ??= { origin: activeKey.value, current: activeKey.value }
+  const index = segmentAt(event.clientX)
+  const segment = props.segments[index]
+  // Once per segment crossed, even when no `v-model` echoes the selection back.
+  if (!segment || segment.key === sweep.current)
+    return
+  sweep.current = segment.key
+  selectAndFocus(index)
+}
+
+/** Selection carries focus, as the arrow keys do, so the keyboard resumes from it. */
+function selectAndFocus(index: number): void {
+  if (control.value?.contains(document.activeElement)) {
+    control.value
+      .querySelector<HTMLElement>(`[data-tx-set="segment"][data-tx-index="${index}"]`)
+      ?.focus({ preventScroll: true })
+  }
+  const segment = props.segments[index]
+  if (segment)
+    select(segment)
+}
 </script>
 
 <template>
@@ -110,7 +170,16 @@ function onArrowKey(event: KeyboardEvent, index: number, set: 'segment' | 'chip'
       role="radiogroup"
       :aria-label="ariaLabel"
     >
-      <div class="tx-bui-allocation-bar__track">
+      <div
+        ref="track"
+        class="tx-bui-allocation-bar__track"
+        :class="{ 'is-scrubbing': scrubbing }"
+        @pointerdown="scrub.pointerdown"
+        @pointermove="scrub.pointermove"
+        @pointerup="scrub.pointerup"
+        @pointercancel="scrub.pointercancel"
+        @lostpointercapture="scrub.lostpointercapture"
+      >
         <button
           v-for="(segment, index) in segments"
           :key="segment.key"
@@ -195,6 +264,11 @@ $allocation-ease: cubic-bezier(0.16, 1, 0.3, 1);
   height: 36px;
   padding: 2px;
   overflow: hidden;
+  // A sideways drag sweeps the selection; a vertical swipe still scrolls the page.
+  touch-action: pan-y;
+  cursor: crosshair;
+  -webkit-user-select: none;
+  user-select: none;
   background: var(--tx-bui-field, #f2f2f3);
   border-radius: 999px;
 }
@@ -203,7 +277,7 @@ $allocation-ease: cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   height: 100%;
   overflow: hidden;
-  cursor: pointer;
+  cursor: inherit;
   border-radius: 999px;
   opacity: 0.58;
   transition:
@@ -223,6 +297,16 @@ $allocation-ease: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:active {
+      transform: none;
+    }
+  }
+
+  // The selection follows the pointer 1:1, and the segment pressed first stays
+  // `:active` for the whole drag.
+  .tx-bui-allocation-bar__track.is-scrubbing & {
     transition: none;
 
     &:active {
@@ -250,6 +334,10 @@ $allocation-ease: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+
+  .tx-bui-allocation-bar__track.is-scrubbing & {
     transition: none;
   }
 }

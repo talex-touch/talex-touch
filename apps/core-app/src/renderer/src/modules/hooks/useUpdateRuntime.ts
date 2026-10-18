@@ -324,6 +324,7 @@ export function useUpdateRuntime() {
         status.targetVersion === release.tag_name &&
         (status.phase === 'downloading' ||
           status.phase === 'verifying' ||
+          status.phase === 'preparing' ||
           status.phase === 'ready' ||
           status.phase === 'install-scheduled' ||
           status.phase === 'handoff-started' ||

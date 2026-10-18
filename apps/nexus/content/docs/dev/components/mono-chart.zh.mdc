@@ -13,7 +13,7 @@ verified: false
 
 `TxMonoChart` 使用原生 SVG、现有图表比例尺、d3 曲线、Sankey 布局与 `--tx-chart-*` 主题。没有 React、Recharts 或 ECharts 运行时。所有数值由 `data` 提供；缺少输入时呈现空状态，不生成虚构业务数据。活动矩阵保留绿色、蓝色、紫色强调色，其余图形跟随宿主单色墨色。
 
-悬停图形即可读取真实数值。聚焦 SVG 后，用方向键、Home、End 检查数据，Enter 或空格触发 `select`，Escape 清除读数。环图与径向图例也支持键盘。仓库展开使用原生按钮、`aria-expanded` 和收起时的 inert 列表。中心值优先显示当前悬停片段，否则显示调用方指标或数据计算值。
+悬停图形即可读取真实数值。按住拖动会连续扫过图形：读数吸附到指针下或最近的数据、不做缓动，拖出绘图区时停在边缘数据上；拖动结束不触发 `select`。触屏横向拖动读数，纵向滑动仍滚动页面。聚焦 SVG 后，用方向键、Home、End 检查数据，Enter 或空格触发 `select`，Escape 清除读数或取消拖动。环图与径向图例也支持键盘。仓库展开使用原生按钮、`aria-expanded` 和收起时的 inert 列表。中心值优先显示当前悬停片段，否则显示调用方指标或数据计算值。
 
 ## 用法
 
@@ -162,7 +162,7 @@ code: |
 | --- | --- | --- |
 | `update:seriesMode`、`update:layout`、`update:curve`、`update:showLine`、`update:period`、`update:open` | 对应属性值 | 受控切换/展开变化；无 model 时使用本地状态。 |
 | `hover` | `MonoChartHit \| null` | `{key,label,rows:[{name,value}],value?,x,y}`，坐标使用 SVG viewBox；null 清除检查。 |
-| `select` | `MonoChartHit` | 指针点击、图例激活、Enter 或空格，不模拟业务操作。 |
+| `select` | `MonoChartHit` | 指针点击、图例激活、Enter 或空格，拖动结束时不触发；不模拟业务操作。 |
 | `load` | `{contributions?,repos?}` | 当前请求真正接收的来源数据。 |
 | `error` | `Error` | 当前加载器/响应失败，取消或过期请求不发成功/错误事件。 |
 
@@ -190,4 +190,4 @@ code: |
 
 ## 技术实现
 
-实现迁移 Amicro `src/components/mono-charts` 全部 29 个文件的独立渲染契约及其 30 行目录。`GitHubActivity` 是额外变体，不是活动配色别名。几何计算纯粹由输入驱动，复用现有比例尺、曲线、提示定位与 Sankey helper。分配块按输入权重计算，而非复刻来源演示的固定 CSS 网格。请求取消与版本所有权阻止旧响应更新，公共 motion activity helper 负责可见性/KeepAlive 清理。仓库展开过渡仅在活跃且没有减少动态效果偏好时运行。SVG SSR 不访问浏览器 API；最终构建、浏览器与生命周期验收由集成负责人统一执行。
+实现迁移 Amicro `src/components/mono-charts` 全部 29 个文件的独立渲染契约及其 30 行目录。`GitHubActivity` 是额外变体，不是活动配色别名。几何计算纯粹由输入驱动，复用现有比例尺、曲线、提示定位与 Sankey helper。分配块按输入权重计算，而非复刻来源演示的固定 CSS 网格。拖动时指针被 SVG 捕获，读数改由坐标反查：先把指针夹进全部图形包围盒的并集，再用 `elementFromPoint` 取命中的图形，落在间隙时取同列、同行或平面上最近的图形（`geometry.axis`）；阈值、捕获、点击吞没与 Escape 由共用的 `utils/press-scrub.ts` 处理。请求取消与版本所有权阻止旧响应更新，公共 motion activity helper 负责可见性/KeepAlive 清理。仓库展开过渡仅在活跃且没有减少动态效果偏好时运行。SVG SSR 不访问浏览器 API；最终构建、浏览器与生命周期验收由集成负责人统一执行。

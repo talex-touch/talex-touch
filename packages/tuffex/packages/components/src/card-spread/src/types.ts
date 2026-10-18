@@ -32,6 +32,7 @@ export interface CardSpreadProps {
   showBrackets?: boolean
   animated?: boolean
   disabled?: boolean
+  draggable?: boolean
   size?: 'xs' | 'sm' | 'md' | 'lg'
   ariaLabel?: string
   expandLabel?: string

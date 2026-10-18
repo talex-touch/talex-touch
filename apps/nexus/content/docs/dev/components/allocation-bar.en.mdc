@@ -64,15 +64,16 @@ code: |
 
 ## Selecting Is Inspecting
 
-The bar is not a read-only chart: clicking a segment — or its legend chip — changes which one you are inspecting, without the bar itself moving. That is what separates it from a progress bar: it says what the whole is *made of*, not how far along it is.
+The bar is not a read-only chart: clicking a segment — or its legend chip — or dragging across it changes which one you are inspecting, without the bar itself moving. That is what separates it from a progress bar: it says what the whole is *made of*, not how far along it is.
 
-The selection is fully controlled. With no `modelValue` the first segment reads as active, but a click still only emits — the host either binds `v-model` or handles `change` itself.
+The selection is fully controlled. With no `modelValue` the first segment reads as active, but a click or a drag still only emits — the host either binds `v-model` or handles `change` itself.
 
 `amount` travels with the data but **the bar never paints it**: it belongs to the card's headline figure, laid out by the host (see the example).
 
 ## Overview
 
 - The segments and the legend are **two sets of controls over one value inside a single radio group**: the wrapper is `role="radiogroup"` with an `aria-label`, every segment and chip is `role="radio"` reporting `aria-checked`, and only the selected item keeps `tabindex="0"`; arrow keys move focus and the selection within the set that has focus (wrapping). The segments add `aria-label="{label}: {percent}"`.
+- Pressing and dragging along the bar selects the segment under the pointer as it goes: one event per segment crossed, a gap goes to the nearer side, and past either end the end segment holds; focus follows when it is inside the group. Releasing keeps the last selection without a click, and Escape or a cancelled pointer returns to where the drag started. On touch a sideways drag selects and a vertical swipe still scrolls the page; transitions are off during the drag, so the selection tracks the pointer 1:1.
 - Clicking the active segment again emits nothing — there is no "deselect" here.
 - A segment without `color` falls back through an accent-then-receding-ink ladder by position: `--tx-bui-accent` → `--tx-bui-ink` → `--tx-bui-ink-2` → `--tx-bui-ink-3`, reusing the last step past four segments. That is how upstream expresses "colour the headline share, leave the rest grey"; the greys are the ink ramp rather than `--tx-bui-line*` because those sit a ΔRGB of 5–18 (≈1.03:1) from the track's `--tx-bui-field` and read as bare track in both themes.
 - Segment width stays exactly proportional to `percent`: the track spends 2px of padding and a 2px gap, and each segment's slice of that gap budget is subtracted from its width up front (`width: calc(percent% - its share of the gaps)`), so the separators cost fixed pixels without redrawing the data; if the shares overrun 100% flex still shrinks them proportionally rather than clipping the last one.
@@ -83,6 +84,7 @@ The selection is fully controlled. With no `modelValue` the first segment reads 
 
 - Component source: `packages/tuffex/packages/components/src/allocation-bar/src/TxAllocationBar.vue`.
 - Types: `packages/tuffex/packages/components/src/allocation-bar/src/types.ts`.
+- Drag selection: `packages/tuffex/packages/utils/press-scrub.ts`, shared with MonoChart and DitherChart.
 - **Tested coverage:** `packages/tuffex/packages/components/src/allocation-bar/__tests__/allocation-bar.test.ts` (17 cases) covers the exact rendered widths at the demo width once the gaps are carved out, accessible names and the radio-group semantics, arrow-key selection, the colour-ladder fallback and its contrast across both themes, the detail label's resolved colour, controlled selection, silence on a repeat click, legend/segment parity, the formatter, the detail panel switch, and the reduced-motion contract against compiled CSS.
 - Adapted from Beautiful UI (https://www.beautifului.dev), © 2026 Shane Levine, MIT.
 

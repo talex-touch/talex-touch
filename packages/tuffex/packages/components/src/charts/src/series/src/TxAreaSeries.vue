@@ -72,7 +72,8 @@ const morph = useTweenedNumbers(
   },
   {
     duration: UPDATE_DURATION,
-    enabled: () => enterProgress.value >= 1 && positioned.value.length <= ANIMATION_THRESHOLD,
+    // A pan or zoom moves the scales every frame; the path follows on that frame.
+    enabled: () => enterProgress.value >= 1 && positioned.value.length <= ANIMATION_THRESHOLD && !ctx.immediate.value,
   },
 )
 

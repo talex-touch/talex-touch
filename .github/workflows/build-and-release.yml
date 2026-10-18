@@ -505,6 +505,10 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: node packages/tuff-native/scripts/build-translation.js --universal
 
+      - name: Build macOS atomic update helper
+        if: matrix.os == 'macos-latest'
+        run: node packages/tuff-native/scripts/build-update.js --universal
+
       - name: Build Tuff App
         shell: bash
         env:
