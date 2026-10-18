@@ -350,6 +350,37 @@ export function useActionPanel(options: UseActionPanelOptions = {}) {
         }
         break
       }
+      case 'copy-to':
+      case 'move-to':
+      case 'move-to-trash': {
+        const sourcePath = targetItem.meta?.file?.path
+        if (!sourcePath) {
+          showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+          break
+        }
+        const action =
+          actionId === 'copy-to' ? 'copy-to' : actionId === 'move-to' ? 'move-to' : 'trash'
+        try {
+          const response = await transport.send(AppEvents.system.fileAction, { sourcePath, action })
+          if (response?.success) {
+            const feedbackKey =
+              action === 'copy-to'
+                ? 'corebox.actions.fileCopied'
+                : action === 'move-to'
+                  ? 'corebox.actions.fileMoved'
+                  : 'corebox.actions.fileTrashed'
+            showCoreBoxFooterFeedback(t(feedbackKey))
+            await refreshSearch?.({ force: true, preserveSelection: true })
+          } else if (response?.partial) {
+            showCoreBoxFooterFeedback(t('corebox.actions.filePartiallyMoved'), 'error')
+          } else if (!response?.canceled) {
+            showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+          }
+        } catch {
+          showCoreBoxFooterFeedback(t('corebox.actions.failed', '操作失败'), 'error')
+        }
+        break
+      }
       case COREBOX_FLOW_TRANSFER_ACTION_ID:
         // The ⌘K card opens its Flow page itself; the action reaches CoreBox only once a target is
         if (flow) await dispatchFlow?.(targetItem, flow)

@@ -8,6 +8,7 @@
  */
 
 import type { AgentPermission } from '@talex-touch/utils'
+import type { Dirent } from 'node:fs'
 import type { ToolExecutionContext } from '../tool-registry'
 import { promises as fs } from 'node:fs'
 import * as path from 'node:path'
@@ -299,6 +300,103 @@ export function registerFileTools(): void {
         modifiedAt: stats.mtime.toISOString(),
         accessedAt: stats.atime.toISOString()
       }
+    }
+  )
+
+  // file.search - Search file contents across workspace files
+  const EXCLUDED_DIRS = new Set([
+    '.git',
+    'node_modules',
+    'dist',
+    'build',
+    '.turbo',
+    '.next',
+    '.nuxt',
+    'target'
+  ])
+  const MAX_FILE_SEARCH_BYTES = 2 * 1024 * 1024
+
+  toolRegistry.registerTool(
+    {
+      id: 'file.search',
+      name: 'Search Files',
+      description:
+        'Search file contents across workspace files for a text string or regular expression.',
+      category: 'file',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Directory path to search in (relative to working directory, default: .)'
+          },
+          pattern: { type: 'string', description: 'Search pattern (plain text or regex)' },
+          regex: { type: 'boolean', description: 'Whether pattern is a regular expression' },
+          maxResults: { type: 'number', description: 'Maximum matching lines to return (max 50)' }
+        },
+        required: ['pattern']
+      },
+      permissions: ['file:read' as AgentPermission]
+    },
+    async (input: unknown, ctx: ToolExecutionContext) => {
+      const parsed = input as {
+        path?: string
+        pattern: string
+        regex?: boolean
+        maxResults?: number
+      }
+      const searchDir = resolveToolPath(parsed.path || '.', ctx.workingDirectory)
+      const maxMatches = Math.min(Math.max(1, parsed.maxResults ?? 30), 50)
+      let matcher: RegExp
+      try {
+        matcher = parsed.regex
+          ? new RegExp(parsed.pattern, 'u')
+          : new RegExp(parsed.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ui')
+      } catch {
+        throw new Error('INVALID_REGEX_PATTERN')
+      }
+
+      const matches: Array<{ file: string; line: number; text: string }> = []
+      const walk = async (currentDir: string): Promise<void> => {
+        if (matches.length >= maxMatches) return
+        let entries: Dirent[]
+        try {
+          entries = await fs.readdir(currentDir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const entry of entries) {
+          if (matches.length >= maxMatches) break
+          if (entry.isDirectory()) {
+            if (!EXCLUDED_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+              await walk(path.join(currentDir, entry.name))
+            }
+            continue
+          }
+          if (!entry.isFile()) continue
+          const filePath = path.join(currentDir, entry.name)
+          try {
+            const stats = await fs.stat(filePath)
+            if (stats.size > MAX_FILE_SEARCH_BYTES) continue
+            const content = await fs.readFile(filePath, 'utf8')
+            const lines = content.split(/\r?\n/)
+            for (let i = 0; i < lines.length; i++) {
+              if (matcher.test(lines[i]!)) {
+                matches.push({
+                  file: path.relative(ctx.workingDirectory, filePath),
+                  line: i + 1,
+                  text: lines[i]!.slice(0, 300).trim()
+                })
+                if (matches.length >= maxMatches) break
+              }
+            }
+          } catch {
+            // Ignore unreadable or non-utf8 files
+          }
+        }
+      }
+      await walk(searchDir)
+      return { matches, count: matches.length }
     }
   )
 }

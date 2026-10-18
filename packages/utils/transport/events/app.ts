@@ -23,9 +23,11 @@ import type {
   ExecuteCommandRequest,
   ExecuteCommandResponse,
   FeatureStats,
-  GaugePayload,
   GetActiveAppRequest,
   GetPathRequest,
+  GaugePayload,
+  FileActionRequest,
+  FileActionResult,
   HistogramPayload,
   NavigateRequest,
   OpenAppRequest,
@@ -264,6 +266,9 @@ export const AppEvents = {
       .module('system')
       .event('tray-settings.update')
       .define<TraySettingsUpdateRequest, TraySettingsUpdateResponse>(),
+
+    /** Run a safe host-owned copy, move, or system-trash operation for an indexed path. */
+    fileAction: defineEvent('app').module('system').event('file-action').define<FileActionRequest, FileActionResult>(),
 
     /**
      * Open an external URL in the default browser.

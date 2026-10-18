@@ -157,6 +157,21 @@ export interface ShowInFolderRequest {
   reveal?: boolean
 }
 
+/** Request a host-owned indexed file or directory operation from CoreBox. */
+export interface FileActionRequest {
+  sourcePath: string
+  action: 'copy-to' | 'move-to' | 'trash'
+}
+
+/** Stable result for a CoreBox file action; raw filesystem errors stay in main diagnostics. */
+export interface FileActionResult {
+  success: boolean
+  canceled?: boolean
+  partial?: boolean
+  destinationPath?: string
+  errorCode?: string
+}
+
 /**
  * Request to open an application.
  */
