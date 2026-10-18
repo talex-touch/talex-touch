@@ -213,10 +213,9 @@ describe('a preservation that fails part way', () => {
 })
 
 describe('restorePreservedNativeAddons', () => {
-  it.skipIf(process.platform === 'win32')(
-    'preserves the mac translation helper contents and executable mode across a rebuild',
-    () => {
-      const helperName = 'tuff-native-translation'
+  it.skipIf(process.platform === 'win32').each(['tuff-native-translation', 'tuff-native-update'])(
+    'preserves %s contents and executable mode across a rebuild',
+    (helperName) => {
       const fixture = createNativeAddonsFixture(['tuff_native_ocr.node', AUDIO_ADDON, helperName])
       const helperPath = path.join(fixture.releaseDir, helperName)
       const helperContents = Buffer.from('#!/bin/sh\nprintf "translation-helper\\n"\n')

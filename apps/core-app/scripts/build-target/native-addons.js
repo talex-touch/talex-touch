@@ -8,6 +8,22 @@ function nativeAddonReleaseDir(projectRoot) {
   return path.join(projectRoot, 'node_modules', '@talex-touch', 'tuff-native', 'build', 'Release')
 }
 
+/** OTA cannot safely hand off without a standalone executable atomic-swap helper. */
+function verifyMacUpdateHelper(releaseDir) {
+  const helper = path.join(releaseDir, 'tuff-native-update')
+  try {
+    if (!fs.lstatSync(helper).isFile()) {
+      throw new Error('not a regular file (symlinks are not allowed)')
+    }
+    fs.accessSync(helper, fs.constants.X_OK)
+  } catch (error) {
+    throw new Error(
+      `Required macOS update helper missing or not executable: ${helper}. Run build:update -- --universal in @talex-touch/tuff-native.`,
+      { cause: error }
+    )
+  }
+}
+
 /**
  * electron-builder's install-app-deps rebuilds @talex-touch/tuff-native with node-gyp, and its
  * clean step removes `build/Release` wholesale: it cannot know that the audio and screenshot
@@ -59,6 +75,7 @@ function restorePreservedNativeAddons({ projectRoot, preserved }) {
 
 module.exports = {
   nativeAddonReleaseDir,
+  verifyMacUpdateHelper,
   preserveRequiredNativeAddons,
   restorePreservedNativeAddons
 }

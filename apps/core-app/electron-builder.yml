@@ -13,6 +13,7 @@ asarUnpack:
   - '**/*.dll'
   - '**/*.so'
   - '**/tuff-native-translation'
+  - '**/tuff-native-update'
   - '**/node_modules/sharp/**'
   - '**/node_modules/@img/**'
   - '**/node_modules/ffmpeg-static/**'
@@ -127,6 +128,9 @@ nsis:
 mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # The required resources copy is explicit; osx-sign also discovers any unpacked Mach-O copy.
+  binaries:
+    - Contents/Resources/node_modules/@talex-touch/tuff-native/build/Release/tuff-native-update
   extendInfo:
     LSUIElement: true
     NSCameraUsageDescription: Application requests access to the device's camera.

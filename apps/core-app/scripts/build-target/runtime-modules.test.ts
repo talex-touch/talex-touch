@@ -23,8 +23,24 @@ describe('runtime module resource projection', () => {
 })
 
 const TARGET_NATIVE_ADDONS: Array<[target: string, expectedAddons: string[]]> = [
-  ['mac', ['tuff_native_ocr.node', 'tuff_native_audio.node', 'tuff-native-translation']],
-  ['darwin', ['tuff_native_ocr.node', 'tuff_native_audio.node', 'tuff-native-translation']],
+  [
+    'mac',
+    [
+      'tuff_native_ocr.node',
+      'tuff_native_audio.node',
+      'tuff-native-translation',
+      'tuff-native-update'
+    ]
+  ],
+  [
+    'darwin',
+    [
+      'tuff_native_ocr.node',
+      'tuff_native_audio.node',
+      'tuff-native-translation',
+      'tuff-native-update'
+    ]
+  ],
   ['linux', ['tuff_native_ocr.node', 'tuff_native_audio.node']],
   ['win', ['tuff_native_ocr.node', 'tuff_native_audio.node', 'tuff_native_everything.node']],
   ['win32', ['tuff_native_ocr.node', 'tuff_native_audio.node', 'tuff_native_everything.node']]
@@ -32,7 +48,7 @@ const TARGET_NATIVE_ADDONS: Array<[target: string, expectedAddons: string[]]> = 
 
 describe('required native addon projection', () => {
   it.each(TARGET_NATIVE_ADDONS)(
-    'requires exactly OCR and audio, plus Everything on Windows, for %s',
+    'requires the platform runtime binaries for %s',
     (target, expectedAddons) => {
       expect(requiredNativeAddonNames(target)).toEqual(expectedAddons)
     }

@@ -1,3 +1,6 @@
+const { execFileSync } = require('node:child_process')
+const path = require('node:path')
+const { nativeAddonReleaseDir, verifyMacUpdateHelper } = require('./native-addons')
 const { verifyBundle } = require('../legal/pi-desktop-reuse-legal.cjs')
 
 /**
@@ -5,6 +8,15 @@ const { verifyBundle } = require('../legal/pi-desktop-reuse-legal.cjs')
  * being packed, so a direct `electron-builder` run without a fresh electron-vite build fails.
  */
 module.exports = async function beforePack(context) {
+  if (context.electronPlatformName === 'darwin') {
+    const releaseDir = nativeAddonReleaseDir(context.packager.projectDir)
+    execFileSync(
+      process.execPath,
+      [path.resolve(releaseDir, '..', '..', 'scripts', 'build-update.js'), '--universal'],
+      { stdio: 'inherit' }
+    )
+    verifyMacUpdateHelper(releaseDir)
+  }
   const summary = verifyBundle({ appRoot: context.packager.projectDir })
   console.log(
     `[beforePack] Verified pi-desktop-reuse legal bundle: ${summary.entries} source files, ` +
