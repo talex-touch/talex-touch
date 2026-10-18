@@ -56,6 +56,19 @@ const HANDLE_NAMES: ScreenshotResizeHandle[] = ['n', 'ne', 'e', 'se', 's', 'sw',
 const TARGET_GRID_POINTS = ['nw', 'n', 'ne', 'w', 'center', 'e', 'sw', 's', 'se'] as const
 const GRID_CELL_KEYS = ['q', 'w', 'e', 'a', 's', 'd', 'z', 'x', 'c']
 
+// 9 Viewfinder Points for clean rule-of-thirds framing when screen opens
+const VIEWFINDER_POINTS = [
+  { id: 'p1', x: '16.6%', y: '16.6%' },
+  { id: 'p2', x: '50%', y: '16.6%' },
+  { id: 'p3', x: '83.4%', y: '16.6%' },
+  { id: 'p4', x: '16.6%', y: '50%' },
+  { id: 'p5', x: '50%', y: '50%' },
+  { id: 'p6', x: '83.4%', y: '50%' },
+  { id: 'p7', x: '16.6%', y: '83.4%' },
+  { id: 'p8', x: '50%', y: '83.4%' },
+  { id: 'p9', x: '83.4%', y: '83.4%' }
+]
+
 const transport = useTuffTransport()
 const { t } = useI18n()
 
@@ -68,6 +81,15 @@ const widthInput = ref('')
 const heightInput = ref('')
 const selectedAnchor = ref<ScreenshotSelectionAnchor>('center')
 const pointerLocal = ref<ScreenshotGeometryPoint | null>(null)
+
+// DOM Elements
+const toolbarRef = ref<HTMLElement | null>(null)
+const frozenImgRef = ref<HTMLImageElement | null>(null)
+const loupeCanvasRef = ref<HTMLCanvasElement | null>(null)
+
+// Pixel Loupe State
+const loupeColorHex = ref('#007AFF')
+const loupeColorRgb = ref('0, 122, 255')
 
 // 9-grid keyboard navigation state
 const gridNavActive = ref(false)
@@ -91,45 +113,57 @@ let suppressEscapeUntil = 0
 let commitDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const displayBounds = computed<ScreenshotGeometryRect | null>(
-  () => state.value?.display.bounds ?? null
+  () => state.value?.display?.bounds ?? null
 )
 const selectionBounds = computed<ScreenshotGeometryRect | null>(
-  () => state.value?.desktopBounds ?? null
+  () => state.value?.desktopBounds ?? displayBounds.value
 )
-const localSelection = computed(() => {
-  if (!selection.value || !displayBounds.value) return null
-  return projectScreenshotSelection(selection.value, displayBounds.value)
+const isFrozen = computed(() => state.value?.mode === 'frozen')
+const isObjectMode = computed(() => state.value?.targetMode === 'object')
+
+const localCandidate = computed<ScreenshotGeometryRect | null>(() => {
+  const current = state.value?.candidate?.bounds
+  const display = displayBounds.value
+  if (!current || !display) return null
+  return projectScreenshotSelection(current, display)
 })
-const selectionStyle = computed(() => {
-  const rect = localSelection.value
-  if (!rect) return undefined
+
+const localSelection = computed<ScreenshotGeometryRect | null>(() => {
+  const current = selection.value
+  const display = displayBounds.value
+  if (!current || !display) return null
+  return projectScreenshotSelection(current, display)
+})
+
+const candidateStyle = computed(() => {
+  const candidate = localCandidate.value
+  if (!candidate) return { display: 'none' }
   return {
-    left: `${rect.x}px`,
-    top: `${rect.y}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`
+    left: `${candidate.x}px`,
+    top: `${candidate.y}px`,
+    width: `${candidate.width}px`,
+    height: `${candidate.height}px`
   }
 })
-const localCandidate = computed(() => {
-  if (!state.value?.candidate || !displayBounds.value) return null
-  return projectScreenshotSelection(state.value.candidate.bounds, displayBounds.value)
+
+const selectionStyle = computed(() => {
+  const current = localSelection.value
+  if (!current) return { display: 'none' }
+  return {
+    left: `${current.x}px`,
+    top: `${current.y}px`,
+    width: `${current.width}px`,
+    height: `${current.height}px`
+  }
 })
-const candidateStyle = computed(() => {
-  const rect = localCandidate.value
-  return rect
-    ? {
-        left: `${rect.x}px`,
-        top: `${rect.y}px`,
-        width: `${rect.width}px`,
-        height: `${rect.height}px`
-      }
-    : undefined
-})
-const isObjectMode = computed(() => state.value?.targetMode === 'object')
-const isFrozen = computed(() => state.value?.mode === 'frozen')
-const safeAreaInsets = computed(
-  () => state.value?.safeAreaInsets ?? { top: 0, right: 0, bottom: 0, left: 0 }
-)
+
+const safeAreaInsets = computed(() => ({
+  top: state.value?.safeAreaInsets?.top ?? 0,
+  right: state.value?.safeAreaInsets?.right ?? 0,
+  bottom: state.value?.safeAreaInsets?.bottom ?? 0,
+  left: state.value?.safeAreaInsets?.left ?? 0
+}))
+
 const overlayStyle = computed<Record<string, string>>(() => ({
   '--screenshot-safe-top': `${safeAreaInsets.value.top}px`,
   '--screenshot-safe-right': `${safeAreaInsets.value.right}px`,
@@ -137,30 +171,83 @@ const overlayStyle = computed<Record<string, string>>(() => ({
   '--screenshot-safe-left': `${safeAreaInsets.value.left}px`
 }))
 
-const magnifierStyle = computed(() => {
-  const point = pointerLocal.value
+// Whether to show the Pixel Magnifier Loupe
+const showLoupe = computed(() => {
+  if (isEditing.value || gridNavActive.value || !pointerLocal.value) return false
+  if (interaction.value?.kind === 'create') return true
+  return !selection.value
+})
+
+// Dynamic Loupe positioning (flips when close to screen edges)
+const loupeStyle = computed(() => {
+  const pt = pointerLocal.value
   const display = displayBounds.value
-  const url = state.value?.display.frozenTfileUrl
-  if (!point || !display || !url || !isFrozen.value || isEditing.value) return undefined
-  const safeArea = safeAreaInsets.value
-  const minimumLeft = safeArea.left + 8
-  const minimumTop = safeArea.top + 8
-  const left = Math.min(
-    Math.max(minimumLeft, point.x + 18),
-    Math.max(minimumLeft, display.width - safeArea.right - 132)
-  )
-  const top = Math.min(
-    Math.max(minimumTop, point.y + 18),
-    Math.max(minimumTop, display.height - safeArea.bottom - 102)
-  )
+  if (!pt || !display) return null
+
+  const cardW = 138
+  const cardH = 146
+  const gap = 16
+
+  let left = pt.x + gap
+  let top = pt.y + gap
+
+  if (left + cardW > display.width - 12) {
+    left = pt.x - cardW - gap
+  }
+  if (top + cardH > display.height - 12) {
+    top = pt.y - cardH - gap
+  }
+
   return {
-    left: `${left}px`,
-    top: `${top}px`,
-    backgroundImage: `url(${JSON.stringify(url)})`,
-    backgroundSize: `${display.width * 4}px ${display.height * 4}px`,
-    backgroundPosition: `${60 - point.x * 4}px ${44 - point.y * 4}px`
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`
   }
 })
+
+// Smart Toolbar positioning: directly anchors to localSelection, flips above when near bottom
+const toolbarStyle = computed(() => {
+  const sel = localSelection.value
+  const display = displayBounds.value
+  if (!sel || !display) return { display: 'none' }
+
+  const tbWidth = toolbarRef.value?.offsetWidth || (isEditing.value ? 540 : 420)
+  const tbHeight = toolbarRef.value?.offsetHeight || 40
+  const gap = 10
+
+  const safe = safeAreaInsets.value
+  const minX = safe.left + 8
+  const maxX = display.width - safe.right - tbWidth - 8
+  const minY = safe.top + 8
+  const maxY = display.height - safe.bottom - tbHeight - 8
+
+  // Right-align with the selection right edge
+  let left = sel.x + sel.width - tbWidth
+  // If selection is narrower than toolbar, center it
+  if (sel.width < tbWidth) {
+    left = sel.x + (sel.width - tbWidth) / 2
+  }
+  left = Math.max(minX, Math.min(left, maxX))
+
+  // Default placement: below selection
+  let top = sel.y + sel.height + gap
+  // If not enough room below, flip above selection
+  if (top > maxY) {
+    const above = sel.y - tbHeight - gap
+    if (above >= minY) {
+      top = above
+    } else {
+      // If full screen, dock inside bottom
+      top = Math.max(minY, Math.min(sel.y + sel.height - tbHeight - gap, maxY))
+    }
+  }
+
+  return {
+    position: 'absolute' as const,
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`
+  }
+})
+
 const optionState = computed(() => state.value?.options)
 const hasOutputTarget = computed(() => Boolean(selection.value || state.value?.candidate))
 
@@ -197,45 +284,108 @@ function updateInputs(rect: ScreenshotGeometryRect | null): void {
   heightInput.value = rect ? String(Math.round(rect.height)) : ''
 }
 
-async function dispatchCommand(command: ScreenshotOverlayCommand): Promise<boolean> {
+async function dispatchCommand(
+  command: ScreenshotOverlayCommand
+): Promise<ScreenshotOverlayState | null> {
   const current = state.value
-  if (!current) return false
+  if (!current) return null
   try {
-    const response = await transport.send(ScreenshotSessionEvents.overlay.command, {
+    const nextState = await transport.send(ScreenshotSessionEvents.overlay.command, {
       sessionId: current.sessionId,
       command
     })
-    if (!response.accepted) {
-      errorCode.value = response.reason ?? 'command-rejected'
-      return false
-    }
-    return true
-  } catch {
+    state.value = nextState
+    return nextState
+  } catch (error) {
     errorCode.value = 'transport-failed'
-    return false
+    return null
+  }
+}
+
+function updateLoupeCanvas(localX: number, localY: number): void {
+  const canvas = loupeCanvasRef.value
+  const img = frozenImgRef.value
+  const display = displayBounds.value
+  if (!canvas || !img || !display) return
+  if (!img.complete || img.naturalWidth === 0) return
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const scaleX = img.naturalWidth / display.width
+  const scaleY = img.naturalHeight / display.height
+
+  const dipSampleW = 16
+  const dipSampleH = 12
+  const srcW = Math.round(dipSampleW * scaleX)
+  const srcH = Math.round(dipSampleH * scaleY)
+  const srcX = Math.round((localX - dipSampleW / 2) * scaleX)
+  const srcY = Math.round((localY - dipSampleH / 2) * scaleY)
+
+  ctx.imageSmoothingEnabled = false
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, canvas.width, canvas.height)
+
+  // Pixel grid overlay
+  const cellW = canvas.width / dipSampleW
+  const cellH = canvas.height / dipSampleH
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+  ctx.lineWidth = 0.5
+  for (let x = 1; x < dipSampleW; x++) {
+    ctx.beginPath()
+    ctx.moveTo(x * cellW, 0)
+    ctx.lineTo(x * cellW, canvas.height)
+    ctx.stroke()
+  }
+  for (let y = 1; y < dipSampleH; y++) {
+    ctx.beginPath()
+    ctx.moveTo(0, y * cellH)
+    ctx.lineTo(canvas.width, y * cellH)
+    ctx.stroke()
+  }
+
+  // Center crosshair / pixel indicator
+  const centerX = Math.floor(dipSampleW / 2) * cellW
+  const centerY = Math.floor(dipSampleH / 2) * cellH
+  ctx.strokeStyle = '#007AFF'
+  ctx.lineWidth = 1.5
+  ctx.strokeRect(centerX, centerY, cellW, cellH)
+
+  try {
+    const pixel = ctx.getImageData(centerX + cellW / 2, centerY + cellH / 2, 1, 1).data
+    const r = pixel[0]
+    const g = pixel[1]
+    const b = pixel[2]
+    loupeColorHex.value = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`
+    loupeColorRgb.value = `${r}, ${g}, ${b}`
+  } catch {
+    // Graceful fallback if CORS tainted
   }
 }
 
 function startCreate(event: PointerEvent): void {
+  if (busy.value || isEditing.value || gridNavActive.value || event.button !== 0) return
+  const point = localToGlobal(event)
+  if (!point) return
+  interaction.value = {
+    kind: 'create',
+    start: point,
+    pointerId: event.pointerId
+  }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+
+function startMove(event: PointerEvent): void {
   if (
     busy.value ||
     isEditing.value ||
     gridNavActive.value ||
     event.button !== 0 ||
-    !selectionBounds.value
+    !localSelection.value
   )
     return
   const point = localToGlobal(event)
-  if (!point) return
-  errorCode.value = ''
-  interaction.value = { kind: 'create', start: point, pointerId: event.pointerId }
-  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-}
-
-function startMove(event: PointerEvent): void {
-  if (busy.value || isEditing.value || event.button !== 0 || !selection.value) return
-  const point = localToGlobal(event)
-  if (!point) return
+  if (!point || !selection.value) return
   interaction.value = {
     kind: 'move',
     start: point,
@@ -261,6 +411,8 @@ function startResize(handle: ScreenshotResizeHandle, event: PointerEvent): void 
 
 function updatePointer(event: PointerEvent): void {
   pointerLocal.value = { x: event.clientX, y: event.clientY }
+  updateLoupeCanvas(event.clientX, event.clientY)
+
   if (isEditing.value || gridNavActive.value) return
   const currentInteraction = interaction.value
   const bounds = selectionBounds.value
@@ -303,22 +455,24 @@ async function selectCandidate(): Promise<void> {
   const next = snapshotScreenshotSelection(candidate.bounds)
   selection.value = next
   updateInputs(next)
-  await dispatchCommand({ type: 'lock-candidate', sequence: candidate.sequence })
+  await dispatchCommand({
+    type: 'lock-candidate',
+    sequence: state.value?.pointerSequence ?? pointerSequence
+  })
 }
 
 async function cycleCandidateLevel(): Promise<void> {
   const candidate = state.value?.candidate
-  if (!candidate || candidate.levels <= 1) return
+  if (!candidate || busy.value || candidate.levels <= 1) return
   const nextLevel = (candidate.level + 1) % candidate.levels
   await dispatchCommand({
     type: 'set-candidate-level',
-    sequence: candidate.sequence,
+    sequence: state.value?.pointerSequence ?? pointerSequence,
     level: nextLevel
   })
 }
 
 async function finishPointer(event: PointerEvent): Promise<void> {
-  if (isEditing.value || gridNavActive.value) return
   const currentInteraction = interaction.value
   if (!currentInteraction) {
     await selectCandidate()
@@ -330,57 +484,47 @@ async function finishPointer(event: PointerEvent): Promise<void> {
     point !== null &&
     Math.hypot(point.x - currentInteraction.start.x, point.y - currentInteraction.start.y) < 6 &&
     Boolean(state.value?.candidate)
+  interaction.value = null
   if (candidateClick) {
-    interaction.value = null
     await selectCandidate()
     return
   }
   updatePointer(event)
-  interaction.value = null
   if (selection.value) {
     await dispatchCommand({
       type: 'set-selection',
-      selection: snapshotScreenshotSelection(selection.value),
-      source: 'region'
+      selection: snapshotScreenshotSelection(selection.value)
     })
   }
 }
 
-async function clearSelection(): Promise<void> {
-  if (busy.value) return
-  selection.value = null
-  updateInputs(null)
-  await dispatchCommand({ type: 'clear-selection' })
+async function setMode(mode: 'frozen' | 'live'): Promise<void> {
+  if (state.value?.mode === mode) return
+  await dispatchCommand({ type: 'set-mode', mode })
 }
 
 async function setTargetMode(targetMode: 'free-region' | 'object'): Promise<void> {
-  if (!state.value || state.value.targetMode === targetMode) return
-  if (await dispatchCommand({ type: 'set-target-mode', targetMode })) {
-    state.value = { ...state.value, targetMode, candidate: undefined, selection: undefined }
-    selection.value = null
-    updateInputs(null)
+  if (state.value?.targetMode === targetMode) return
+  const nextState = await dispatchCommand({ type: 'set-target-mode', targetMode })
+  if (nextState) {
+    state.value = {
+      ...state.value,
+      ...nextState,
+      targetMode,
+      candidate: undefined,
+      selection: undefined
+    }
   }
+  selection.value = null
+  updateInputs(null)
 }
 
-async function setMode(mode: 'frozen' | 'live'): Promise<void> {
-  if (!state.value || state.value.mode === mode) return
-  if (await dispatchCommand({ type: 'set-mode', mode })) {
-    state.value = { ...state.value, mode }
-  }
+async function setOption(patch: Partial<ScreenshotOverlayOptions>): Promise<void> {
+  await dispatchCommand({ type: 'set-options', options: patch })
 }
 
-async function setOption(options: Partial<ScreenshotOverlayOptions>): Promise<void> {
-  if (!state.value || !(await dispatchCommand({ type: 'set-options', options }))) return
-  state.value = {
-    ...state.value,
-    options: { ...state.value.options, ...options }
-  }
-}
-
-async function toggleCursor(): Promise<void> {
-  const enabled = !optionState.value?.cursor
-  if (enabled && isFrozen.value) await setMode('live')
-  await setOption({ cursor: enabled })
+function toggleCursor(): void {
+  void setOption({ cursor: !optionState.value?.cursor })
 }
 
 async function applyManualSize(): Promise<void> {
@@ -389,6 +533,10 @@ async function applyManualSize(): Promise<void> {
   if (!bounds || !current) return
   const width = Number(widthInput.value)
   const height = Number(heightInput.value)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
+    updateInputs(current)
+    return
+  }
   const next = setScreenshotSelectionSize(current, width, height, bounds, {
     aspectRatio: optionState.value?.aspectRatio,
     anchor: selectedAnchor.value
@@ -398,44 +546,37 @@ async function applyManualSize(): Promise<void> {
   await dispatchCommand({ type: 'set-selection', selection: snapshotScreenshotSelection(next) })
 }
 
-// 9-Grid keyboard navigation functions
-function toggleGridNav(): void {
-  if (selection.value || isEditing.value || !displayBounds.value) return
-  gridNavActive.value = !gridNavActive.value
-  gridStack.value = gridNavActive.value ? [displayBounds.value] : []
+async function clearSelection(): Promise<void> {
+  if (!selection.value) return
+  selection.value = null
+  updateInputs(null)
+  await dispatchCommand({ type: 'clear-selection' })
 }
 
-async function selectGridCell(index: number): Promise<void> {
+// 9-Grid keyboard navigation handlers
+function toggleGridNav(): void {
+  if (selection.value || isEditing.value) return
+  gridNavActive.value = !gridNavActive.value
+  gridStack.value = []
+}
+
+function selectGridCell(index: number): void {
   const region = currentGridRegion.value
   if (!region) return
   const next = screenshotGridCell(region, index)
   if (!next) return
-  // If the cell is small enough (or level 3 reached), commit selection directly
-  if (next.width < 120 || next.height < 90 || gridStack.value.length >= 3) {
-    selection.value = next
-    updateInputs(next)
-    gridNavActive.value = false
-    gridStack.value = []
-    await dispatchCommand({
-      type: 'set-selection',
-      selection: snapshotScreenshotSelection(next),
-      source: 'grid'
-    })
-  } else {
-    gridStack.value.push(next)
-  }
+  gridStack.value.push(next)
 }
 
-function retreatGridNav(): void {
-  if (gridStack.value.length > 1) {
+function popGridNav(): void {
+  if (gridStack.value.length > 0) {
     gridStack.value.pop()
   } else {
     gridNavActive.value = false
-    gridStack.value = []
   }
 }
 
-// Annotation editing functions
+// Inline Annotation Editing Handlers
 async function startEdit(): Promise<void> {
   if (!selection.value || busy.value || isEditing.value) return
   busy.value = true
@@ -467,12 +608,10 @@ function redrawCanvas(): void {
     drawAnnotationObject(ctx, obj)
   }
 
-  // Draw transient preview object being dragged
   if (annotationDrag.value?.currentObject) {
     drawAnnotationObject(ctx, annotationDrag.value.currentObject)
   }
 
-  // Draw selection box around active selected object in 'select' mode
   const selected = annotationDoc.value.selectedObject
   if (selected && activeTool.value === 'select') {
     const bounds = AnnotationDocument.getBounds(selected)
@@ -521,111 +660,108 @@ function handleCanvasPointerDown(event: PointerEvent): void {
   if (activeTool.value === 'select') {
     const hitIdx = annotationDoc.value.hitTest(pt)
     annotationDoc.value.selectedIndex = hitIdx
-    if (hitIdx !== null) {
-      const target = annotationDoc.value.selectedObject!
+    if (hitIdx !== -1) {
+      const initialObj = annotationDoc.value.objects[hitIdx]
       annotationDrag.value = {
         kind: 'move',
         start: pt,
-        initialObject: { ...target },
-        currentObject: { ...target }
+        initialObject: initialObj,
+        currentObject: initialObj
       }
     }
     redrawCanvas()
     return
   }
 
-  // Creating new annotation object
-  const id = `annot-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  annotationDoc.value.selectedIndex = -1
+  const id = `anno_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
   const style = currentStyle.value
-  let initialObject: AnnotationObject
+  let initialObj: AnnotationObject
 
   switch (activeTool.value) {
     case 'rectangle':
-      initialObject = {
+      initialObj = {
         id,
         kind: 'rectangle',
         x: pt.x,
         y: pt.y,
-        width: 0,
-        height: 0,
+        width: 1,
+        height: 1,
         color: style.color,
         strokeWidth: style.strokeWidth,
         filled: style.filled
       }
       break
     case 'ellipse':
-      initialObject = {
+      initialObj = {
         id,
         kind: 'ellipse',
-        x: pt.x,
-        y: pt.y,
-        width: 0,
-        height: 0,
+        cx: pt.x,
+        cy: pt.y,
+        rx: 1,
+        ry: 1,
         color: style.color,
         strokeWidth: style.strokeWidth,
         filled: style.filled
       }
       break
-    case 'line':
-      initialObject = {
+    case 'arrow':
+      initialObj = {
         id,
-        kind: 'line',
-        start: { ...pt },
-        end: { ...pt },
+        kind: 'arrow',
+        from: pt,
+        to: pt,
         color: style.color,
         strokeWidth: style.strokeWidth
       }
       break
-    case 'arrow':
-      initialObject = {
+    case 'line':
+      initialObj = {
         id,
-        kind: 'arrow',
-        start: { ...pt },
-        end: { ...pt },
+        kind: 'line',
+        from: pt,
+        to: pt,
         color: style.color,
         strokeWidth: style.strokeWidth
       }
       break
     case 'brush':
-      initialObject = {
+      initialObj = {
         id,
         kind: 'brush',
-        points: [{ ...pt }],
+        points: [pt],
         color: style.color,
         strokeWidth: style.strokeWidth
       }
       break
-    case 'pixelate':
-      initialObject = {
-        id,
-        kind: 'pixelate',
-        x: pt.x,
-        y: pt.y,
-        width: 0,
-        height: 0,
-        color: '#000000',
-        strokeWidth: 1,
-        blockSize: 10
-      }
-      break
     case 'text': {
-      const text = window.prompt(t('screenshot.editor.annotation') || 'Text')
-      if (text && text.trim()) {
+      const defaultText = window.prompt('输入文本内容：')
+      if (defaultText && defaultText.trim()) {
         annotationDoc.value.add({
           id,
           kind: 'text',
           x: pt.x,
           y: pt.y,
-          text: text.trim(),
-          fontSize: style.fontSize,
+          text: defaultText.trim(),
           color: style.color,
-          strokeWidth: 1
+          fontSize: Math.max(14, style.strokeWidth * 6)
         })
         redrawCanvas()
         void scheduleCommitEdit()
       }
       return
     }
+    case 'pixelate':
+      initialObj = {
+        id,
+        kind: 'pixelate',
+        x: pt.x,
+        y: pt.y,
+        width: 1,
+        height: 1,
+        blockSize: 8
+      }
+      break
     default:
       return
   }
@@ -633,65 +769,78 @@ function handleCanvasPointerDown(event: PointerEvent): void {
   annotationDrag.value = {
     kind: 'create',
     start: pt,
-    initialObject,
-    currentObject: initialObject
+    initialObject: initialObj,
+    currentObject: initialObj
   }
   redrawCanvas()
 }
 
 function handleCanvasPointerMove(event: PointerEvent): void {
-  const drag = annotationDrag.value
-  if (!drag) return
+  if (!annotationDrag.value || !isEditing.value) return
   const pt = getCanvasPoint(event)
   if (!pt) return
+  const drag = annotationDrag.value
 
-  if (drag.kind === 'move' && drag.initialObject) {
+  if (drag.kind === 'create' && drag.initialObject) {
+    const init = drag.initialObject
+    switch (init.kind) {
+      case 'rectangle': {
+        const x = Math.min(drag.start.x, pt.x)
+        const y = Math.min(drag.start.y, pt.y)
+        const width = Math.abs(pt.x - drag.start.x)
+        const height = Math.abs(pt.y - drag.start.y)
+        drag.currentObject = { ...init, x, y, width, height }
+        break
+      }
+      case 'ellipse': {
+        const cx = (drag.start.x + pt.x) / 2
+        const cy = (drag.start.y + pt.y) / 2
+        const rx = Math.abs(pt.x - drag.start.x) / 2
+        const ry = Math.abs(pt.y - drag.start.y) / 2
+        drag.currentObject = { ...init, cx, cy, rx, ry }
+        break
+      }
+      case 'arrow':
+      case 'line': {
+        drag.currentObject = { ...init, to: pt }
+        break
+      }
+      case 'brush': {
+        const points = [...(init.points || []), pt]
+        drag.currentObject = { ...init, points }
+        drag.initialObject = { ...init, points }
+        break
+      }
+      case 'pixelate': {
+        const x = Math.min(drag.start.x, pt.x)
+        const y = Math.min(drag.start.y, pt.y)
+        const width = Math.abs(pt.x - drag.start.x)
+        const height = Math.abs(pt.y - drag.start.y)
+        drag.currentObject = { ...init, x, y, width, height }
+        break
+      }
+    }
+    redrawCanvas()
+  } else if (drag.kind === 'move' && drag.initialObject) {
     const deltaX = pt.x - drag.start.x
     const deltaY = pt.y - drag.start.y
-    drag.currentObject = AnnotationDocument.translate(drag.initialObject, deltaX, deltaY)
-  } else if (drag.kind === 'create' && drag.currentObject) {
-    const obj = drag.currentObject
-    switch (obj.kind) {
-      case 'rectangle':
-      case 'ellipse':
-      case 'pixelate':
-        obj.x = Math.min(drag.start.x, pt.x)
-        obj.y = Math.min(drag.start.y, pt.y)
-        obj.width = Math.abs(pt.x - drag.start.x)
-        obj.height = Math.abs(pt.y - drag.start.y)
-        break
-      case 'line':
-      case 'arrow':
-        obj.end = { ...pt }
-        break
-      case 'brush':
-        obj.points.push({ ...pt })
-        break
+    const moved = AnnotationDocument.translateObject(drag.initialObject, deltaX, deltaY)
+    drag.currentObject = moved
+    if (annotationDoc.value.selectedIndex !== -1) {
+      annotationDoc.value.replace(annotationDoc.value.selectedIndex, moved)
     }
+    redrawCanvas()
   }
-  redrawCanvas()
 }
 
-function handleCanvasPointerUp(): void {
+function handleCanvasPointerUp(_event: PointerEvent): void {
+  if (!annotationDrag.value) return
   const drag = annotationDrag.value
-  if (!drag) return
-  if (drag.kind === 'move' && drag.currentObject && annotationDoc.value.selectedIndex !== null) {
-    annotationDoc.value.replace(annotationDoc.value.selectedIndex, drag.currentObject)
-  } else if (drag.kind === 'create' && drag.currentObject) {
-    const obj = drag.currentObject
-    let valid = true
-    if (obj.kind === 'rectangle' || obj.kind === 'ellipse' || obj.kind === 'pixelate') {
-      valid = obj.width > 2 && obj.height > 2
-    } else if (obj.kind === 'line' || obj.kind === 'arrow') {
-      valid = Math.hypot(obj.end.x - obj.start.x, obj.end.y - obj.start.y) > 4
-    } else if (obj.kind === 'brush') {
-      valid = obj.points.length > 1
-    }
-    if (valid) {
-      annotationDoc.value.add(obj)
-    }
-  }
   annotationDrag.value = null
+
+  if (drag.kind === 'create' && drag.currentObject) {
+    annotationDoc.value.add(drag.currentObject)
+  }
   redrawCanvas()
   void scheduleCommitEdit()
 }
@@ -711,49 +860,45 @@ function redoAnnotation(): void {
 }
 
 function deleteSelectedAnnotation(): void {
-  if (annotationDoc.value.selectedIndex !== null) {
+  if (annotationDoc.value.selectedIndex !== -1) {
     annotationDoc.value.remove(annotationDoc.value.selectedIndex)
+    annotationDoc.value.selectedIndex = -1
     redrawCanvas()
     void scheduleCommitEdit()
   }
 }
 
+// Output command runner with edit revision pass-through
 async function runOutput(action: 'copy' | 'save' | 'confirm'): Promise<void> {
-  if (!hasOutputTarget.value || busy.value) return
+  if (busy.value) return
   busy.value = true
-  errorCode.value = ''
-  if (action === 'save') suppressEscapeUntil = Number.POSITIVE_INFINITY
+  const revision = isEditing.value ? annotationDoc.value.revision : undefined
 
-  // If currently in editing phase, ensure the latest revision is committed before output
-  if (isEditing.value) {
-    const edit = editState.value
-    const img = baseImage.value
-    if (edit && img && edit.committedRevision !== annotationDoc.value.revision) {
-      try {
-        const pngBytes = await renderDocumentToPng(
-          img,
-          edit.width,
-          edit.height,
-          annotationDoc.value
-        )
-        await dispatchCommand({
-          type: 'commit-edit',
-          editId: edit.editId,
-          revision: annotationDoc.value.revision,
-          png: pngBytes
-        })
-      } catch {
-        // Fall back to attempting output
-      }
+  // If in edit mode, ensure latest PNG is committed before output
+  if (isEditing.value && editState.value && baseImage.value) {
+    try {
+      const pngBytes = await renderDocumentToPng(
+        baseImage.value,
+        editState.value.width,
+        editState.value.height,
+        annotationDoc.value
+      )
+      await dispatchCommand({
+        type: 'commit-edit',
+        editId: editState.value.editId,
+        revision: annotationDoc.value.revision,
+        png: pngBytes
+      })
+    } catch {
+      // Continue to output
     }
   }
 
-  const accepted = await dispatchCommand({
-    type: action,
-    revision: isEditing.value ? annotationDoc.value.revision : undefined
-  })
-  if (action === 'save') suppressEscapeUntil = performance.now() + 300
-  if (action !== 'confirm' || !accepted) busy.value = false
+  const result = await dispatchCommand({ type: action, revision })
+  busy.value = false
+  if (!result) {
+    errorCode.value = 'command-rejected'
+  }
 }
 
 async function confirm(): Promise<void> {
@@ -762,36 +907,51 @@ async function confirm(): Promise<void> {
 
 async function cancel(): Promise<void> {
   if (busy.value) return
-  if (isEditing.value) {
-    await endEdit()
-    return
-  }
-  if (gridNavActive.value) {
-    gridNavActive.value = false
-    gridStack.value = []
-    return
-  }
   busy.value = true
-  const accepted = await dispatchCommand({ type: 'cancel' })
-  if (!accepted) busy.value = false
+  const result = await dispatchCommand({ type: 'cancel' })
+  busy.value = false
+  if (!result) {
+    errorCode.value = 'command-rejected'
+  }
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  // Chinese IME composition protection
-  if (event.isComposing || event.keyCode === 229) return
+  if (Date.now() < suppressEscapeUntil && event.key === 'Escape') {
+    event.preventDefault()
+    return
+  }
 
   if (event.key === 'Escape') {
     event.preventDefault()
-    if (busy.value || performance.now() < suppressEscapeUntil) return
+    if (gridNavActive.value) {
+      gridNavActive.value = false
+      gridStack.value = []
+      return
+    }
+    if (isEditing.value) {
+      void endEdit()
+      return
+    }
+    if (selection.value) {
+      void clearSelection()
+      return
+    }
     void cancel()
     return
   }
 
-  // 9-grid navigation key interception
+  // Space toggles free-region vs object mode when no selection
+  if (event.key === ' ' && !selection.value && !isEditing.value && !gridNavActive.value) {
+    event.preventDefault()
+    void setTargetMode(isObjectMode.value ? 'free-region' : 'object')
+    return
+  }
+
+  // In 9-grid navigation keys
   if (gridNavActive.value) {
-    if (event.key === 'Backspace') {
+    if (event.key === 'Backspace' || event.key === 'Delete') {
       event.preventDefault()
-      retreatGridNav()
+      popGridNav()
       return
     }
     if (event.key === 'Enter' || event.key === ' ') {
@@ -941,6 +1101,7 @@ onMounted(async () => {
       updateInputs(selection.value)
     }
   })
+
   try {
     const initial = await transport.send(ScreenshotSessionEvents.overlay.ready, undefined)
     state.value = initial
@@ -952,7 +1113,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (commitDebounceTimer) clearTimeout(commitDebounceTimer)
   disposeStateListener?.()
   disposeStateListener = null
   window.removeEventListener('keydown', handleKeydown)
@@ -969,14 +1129,38 @@ onBeforeUnmount(() => {
     @pointerup="finishPointer"
     @contextmenu.prevent="cancel"
   >
+    <!-- Frozen frame backdrop -->
     <img
-      v-if="state?.display.frozenTfileUrl && isFrozen && !isEditing"
+      v-if="state?.display?.frozenTfileUrl && isFrozen && !isEditing"
+      ref="frozenImgRef"
       class="frozen-frame"
-      :src="state.display.frozenTfileUrl"
+      :src="state?.display?.frozenTfileUrl"
       alt=""
       draggable="false"
+      crossorigin="anonymous"
     />
+
+    <!-- Transparent feather-light mask -->
     <div v-if="!isEditing" class="desktop-mask" />
+
+    <!-- 9-Point Viewfinder Grid (Active when no selection exists) -->
+    <div
+      v-if="!selection && !gridNavActive && !isEditing"
+      class="viewfinder-grid"
+      aria-hidden="true"
+    >
+      <div
+        v-for="pt in VIEWFINDER_POINTS"
+        :key="pt.id"
+        class="viewfinder-point"
+        :style="{ left: pt.x, top: pt.y }"
+      >
+        <span class="point-cross" />
+      </div>
+      <div class="viewfinder-hint">
+        拖拽框选截图区域 · 空格切换窗口模式 · 按 G 九宫格定位 · Esc 退出
+      </div>
+    </div>
 
     <!-- 9-Grid Keyboard Navigation Overlay -->
     <div v-if="gridNavActive && currentGridRegion" class="grid-nav-overlay">
@@ -1017,11 +1201,11 @@ onBeforeUnmount(() => {
       />
       <div v-if="state?.candidate" class="candidate-tag">
         <span class="candidate-kind">{{
-          state.candidate.kind === 'ui-element' ? 'UI' : 'Window'
+          state.candidate.kind === 'ui-element' ? 'UI 控件' : '窗口'
         }}</span>
         <span v-if="state.candidate.role" class="candidate-role">{{ state.candidate.role }}</span>
         <span v-if="state.candidate.levels > 1" class="candidate-level">
-          {{ state.candidate.level + 1 }}/{{ state.candidate.levels }}
+          {{ state.candidate.level + 1 }}/{{ state.candidate.levels }} (Tab 切换)
         </span>
       </div>
     </section>
@@ -1061,98 +1245,82 @@ onBeforeUnmount(() => {
       :style="{
         left: `${editState.bounds.x - (displayBounds?.x ?? 0)}px`,
         top: `${editState.bounds.y - (displayBounds?.y ?? 0)}px`,
-        width: `${editState.bounds.width}px`,
-        height: `${editState.bounds.height}px`
+        width: `${editState.width}px`,
+        height: `${editState.height}px`
       }"
-      @pointerdown.stop="handleCanvasPointerDown"
-      @pointermove.stop="handleCanvasPointerMove"
-      @pointerup.stop="handleCanvasPointerUp"
     >
       <canvas
         ref="canvasRef"
-        class="annotation-canvas"
         :width="editState.width"
         :height="editState.height"
+        class="annotation-canvas"
+        @pointerdown="handleCanvasPointerDown"
+        @pointermove="handleCanvasPointerMove"
+        @pointerup="handleCanvasPointerUp"
       />
     </div>
 
-    <!-- Magnifier loupe -->
-    <aside v-if="magnifierStyle" class="magnifier" :style="magnifierStyle" aria-hidden="true">
-      <span class="magnifier-cross" />
-      <span class="magnifier-coordinate">
-        {{ Math.round(pointerLocal?.x ?? 0) }}, {{ Math.round(pointerLocal?.y ?? 0) }}
-      </span>
+    <!-- Pixel Magnifier Loupe: 8x Pixel Inspection with Color chip & Coordinates -->
+    <aside v-if="showLoupe && loupeStyle" class="loupe-card" :style="loupeStyle" aria-hidden="true">
+      <div class="loupe-canvas-wrapper">
+        <canvas ref="loupeCanvasRef" width="138" height="96" class="loupe-canvas" />
+      </div>
+      <div class="loupe-meta">
+        <div class="loupe-row">
+          <span class="loupe-color-chip" :style="{ backgroundColor: loupeColorHex }" />
+          <span class="loupe-color-hex">{{ loupeColorHex }}</span>
+          <span class="loupe-color-rgb">{{ loupeColorRgb }}</span>
+        </div>
+        <div class="loupe-row secondary">
+          <span class="loupe-mode-tag">{{ isObjectMode ? '窗口识别' : '区域选择' }}</span>
+          <span class="loupe-coord">
+            <template v-if="interaction?.kind === 'create' && selection">
+              {{ Math.round(selection.width) }} × {{ Math.round(selection.height) }}
+            </template>
+            <template v-else>
+              {{ Math.round(pointerLocal?.x ?? 0) }}, {{ Math.round(pointerLocal?.y ?? 0) }}
+            </template>
+          </span>
+        </div>
+      </div>
     </aside>
 
-    <!-- Mode switch buttons -->
-    <div
-      v-if="state && selection && !isEditing"
-      class="mode-switch"
-      role="group"
-      :aria-label="t('screenshot.overlay.mode')"
+    <!-- Main macOS-Style Floating Toolbar: ONLY renders on the screen containing localSelection -->
+    <footer
+      v-if="state && localSelection"
+      ref="toolbarRef"
+      class="toolbar"
+      :style="toolbarStyle"
+      @pointerdown.stop
     >
-      <button
-        type="button"
-        class="icon-button"
-        :class="{ active: !isObjectMode }"
-        :aria-pressed="!isObjectMode"
-        :title="t('screenshot.overlay.freeRegion')"
-        @pointerdown.stop
-        @click.stop="setTargetMode('free-region')"
-      >
-        <i class="i-ri-crop-line" />
-      </button>
-      <button
-        type="button"
-        class="icon-button"
-        :class="{ active: isObjectMode }"
-        :aria-pressed="isObjectMode"
-        :title="t('screenshot.overlay.objectSelection')"
-        @pointerdown.stop
-        @click.stop="setTargetMode('object')"
-      >
-        <i class="i-ri-layout-line" />
-      </button>
-      <span class="separator" />
-      <button
-        type="button"
-        class="icon-button"
-        :class="{ active: isFrozen }"
-        :aria-pressed="isFrozen"
-        :title="t('screenshot.overlay.frozen')"
-        @pointerdown.stop
-        @click.stop="setMode('frozen')"
-      >
-        <i class="i-ri-image-line" />
-      </button>
-      <button
-        type="button"
-        class="icon-button"
-        :class="{ active: !isFrozen }"
-        :aria-pressed="!isFrozen"
-        :title="t('screenshot.overlay.live')"
-        @pointerdown.stop
-        @click.stop="setMode('live')"
-      >
-        <i class="i-ri-live-line" />
-      </button>
-    </div>
-
-    <!-- Main Toolbar -->
-    <footer v-if="state && (selection || isEditing)" class="toolbar" @pointerdown.stop>
       <!-- Normal selection controls -->
       <template v-if="!isEditing">
-        <div v-if="!isObjectMode" class="dimension-inputs">
-          <label>
-            <span>W</span>
-            <input v-model="widthInput" inputmode="numeric" @change="applyManualSize" />
-          </label>
-          <span>×</span>
-          <label>
-            <span>H</span>
-            <input v-model="heightInput" inputmode="numeric" @change="applyManualSize" />
-          </label>
-          <!-- Anchor Selector for sizing -->
+        <!-- Mode Switch: Free region vs Object selection -->
+        <div class="segmented-control" role="group">
+          <button
+            type="button"
+            class="seg-button"
+            :class="{ active: !isObjectMode }"
+            :title="t('screenshot.overlay.freeRegion')"
+            @click.stop="setTargetMode('free-region')"
+          >
+            <i class="i-ri-crop-line" />
+          </button>
+          <button
+            type="button"
+            class="seg-button"
+            :class="{ active: isObjectMode }"
+            :title="t('screenshot.overlay.objectSelection')"
+            @click.stop="setTargetMode('object')"
+          >
+            <i class="i-ri-window-line" />
+          </button>
+        </div>
+
+        <span class="separator" />
+
+        <!-- Dimension inputs with 9-Anchor selector -->
+        <div v-if="!isObjectMode" class="dimension-badge">
           <select
             v-model="selectedAnchor"
             class="anchor-select"
@@ -1169,10 +1337,25 @@ onBeforeUnmount(() => {
             <option value="s">↓</option>
             <option value="se">↘</option>
           </select>
+          <input
+            v-model="widthInput"
+            class="dim-input"
+            inputmode="numeric"
+            @change="applyManualSize"
+          />
+          <span class="dim-cross">×</span>
+          <input
+            v-model="heightInput"
+            class="dim-input"
+            inputmode="numeric"
+            @change="applyManualSize"
+          />
         </div>
 
+        <!-- Aspect Ratio -->
         <select
           v-if="!isObjectMode"
+          class="aspect-select"
           :value="optionState?.aspectRatio ?? ''"
           :aria-label="t('screenshot.overlay.aspectRatio')"
           @change="
@@ -1187,6 +1370,9 @@ onBeforeUnmount(() => {
           <option :value="16 / 9">16:9</option>
         </select>
 
+        <span class="separator" />
+
+        <!-- Options: Cursor, Border, Shadow -->
         <button
           type="button"
           class="icon-button"
@@ -1197,18 +1383,7 @@ onBeforeUnmount(() => {
         >
           <i class="i-ri-cursor-line" />
         </button>
-        <label class="radius-control" :title="t('screenshot.overlay.cornerRadius')">
-          <i class="i-ri-rounded-corner" />
-          <input
-            type="range"
-            min="0"
-            max="64"
-            step="2"
-            :value="optionState?.cornerRadius ?? 0"
-            :aria-label="t('screenshot.overlay.cornerRadius')"
-            @input="setOption({ cornerRadius: Number(($event.target as HTMLInputElement).value) })"
-          />
-        </label>
+
         <button
           type="button"
           class="icon-button"
@@ -1219,6 +1394,7 @@ onBeforeUnmount(() => {
         >
           <i class="i-ri-shape-line" />
         </button>
+
         <button
           type="button"
           class="icon-button"
@@ -1235,22 +1411,21 @@ onBeforeUnmount(() => {
         <!-- Enter Annotation Edit Mode -->
         <button
           type="button"
-          class="icon-button highlight"
-          :title="t('screenshot.editor.annotation') || '标注编辑 (E)'"
+          class="icon-button highlight-tool"
+          :title="t('screenshot.editor.annotation') || '标注 (E)'"
           @click="startEdit"
         >
-          <i class="i-ri-mark-pen-line" />
+          <i class="i-ri-pencil-line" />
         </button>
       </template>
 
-      <!-- Annotation Editing Toolbar with Rsnap-style stable primary anchor -->
+      <!-- Annotation Editing Toolbar -->
       <template v-else>
-        <!-- Annotation tool buttons -->
         <button
           type="button"
           class="icon-button"
           :class="{ active: activeTool === 'select' }"
-          title="选择 / 移动 / 调整 (V)"
+          title="选择 / 调整 (V)"
           @click="activeTool = 'select'"
         >
           <i class="i-ri-cursor-line" />
@@ -1268,7 +1443,7 @@ onBeforeUnmount(() => {
           type="button"
           class="icon-button"
           :class="{ active: activeTool === 'ellipse' }"
-          title="圆形 / 椭圆 (O)"
+          title="圆形 (O)"
           @click="activeTool = 'ellipse'"
         >
           <i class="i-ri-checkbox-blank-circle-line" />
@@ -1313,7 +1488,7 @@ onBeforeUnmount(() => {
           type="button"
           class="icon-button"
           :class="{ active: activeTool === 'pixelate' }"
-          title="马赛克 / 模糊 (M)"
+          title="马赛克 (M)"
           @click="activeTool = 'pixelate'"
         >
           <i class="i-ri-blur-off-line" />
@@ -1321,15 +1496,15 @@ onBeforeUnmount(() => {
 
         <span class="separator" />
 
-        <!-- Style capsule toggle (Rsnap pattern: secondary style controls attach stably) -->
+        <!-- Style capsule toggle -->
         <button
           type="button"
-          class="icon-button"
+          class="icon-button style-toggle-btn"
           :class="{ active: styleCapsuleOpen }"
           title="样式面板"
           @click="styleCapsuleOpen = !styleCapsuleOpen"
         >
-          <span class="color-badge" :style="{ backgroundColor: currentStyle.color }" />
+          <span class="color-indicator" :style="{ backgroundColor: currentStyle.color }" />
         </button>
 
         <!-- Floating style capsule rendered above the toolbar pill -->
@@ -1393,7 +1568,7 @@ onBeforeUnmount(() => {
 
         <!-- Exit Edit Mode -->
         <button type="button" class="icon-button" title="退出编辑模式" @click="endEdit">
-          <i class="i-ri-check-double-line" />
+          <i class="i-ri-close-circle-line" />
         </button>
       </template>
 
@@ -1404,43 +1579,46 @@ onBeforeUnmount(() => {
         type="button"
         class="icon-button"
         :disabled="!hasOutputTarget || busy"
-        :title="t('screenshot.editor.copy')"
+        :title="t('screenshot.editor.copy') || '复制到剪贴板'"
         @click="runOutput('copy')"
       >
         <i class="i-ri-file-copy-line" />
       </button>
+
       <button
         type="button"
         class="icon-button"
         :disabled="!hasOutputTarget || busy"
-        :title="t('screenshot.editor.save')"
+        :title="t('screenshot.editor.save') || '保存图片'"
         @click="runOutput('save')"
       >
         <i class="i-ri-save-line" />
       </button>
-      <span class="separator" />
+
       <button
         type="button"
-        class="icon-button danger"
-        :title="t('screenshot.overlay.cancel')"
+        class="icon-button danger-btn"
+        :title="t('screenshot.overlay.cancel') || '取消 (Esc)'"
         @click="cancel"
       >
         <i class="i-ri-close-line" />
       </button>
+
       <button
         type="button"
-        class="icon-button primary"
+        class="icon-button primary-confirm"
         :disabled="!hasOutputTarget || busy"
-        :title="t('screenshot.editor.done')"
+        :title="t('screenshot.editor.done') || '完成并复制 (Enter)'"
         @click="confirm"
       >
         <i class="i-ri-check-line" />
+        <span>完成</span>
       </button>
     </footer>
 
-    <!-- Error message output -->
+    <!-- Error Toast -->
     <output v-if="errorCode" class="error-status" aria-live="polite">
-      {{ t(`screenshot.errors.${errorCode}`) || errorCode }}
+      {{ t(`screenshot.errors.${errorCode}`) }}
     </output>
   </main>
 </template>
@@ -1450,31 +1628,30 @@ onBeforeUnmount(() => {
 :global(body),
 :global(#app) {
   margin: 0;
+  padding: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
   background: transparent !important;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .screenshot-overlay {
-  --screenshot-primary: var(--tx-color-primary, #409eff);
-  --screenshot-primary-dark: var(--tx-color-primary-dark-2, #337ecc);
   position: relative;
   width: 100vw;
   height: 100vh;
-  overflow: hidden;
-  user-select: none;
   cursor: crosshair;
-}
-
-.screenshot-overlay.is-busy {
-  cursor: wait;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
 }
 
 .screenshot-overlay.is-editing {
   cursor: default;
 }
 
+/* Frozen frame: crisp desktop screenshot */
 .frozen-frame {
   position: absolute;
   inset: 0;
@@ -1484,75 +1661,130 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+/* Feather-light ambient mask (not dark at all!) */
 .desktop-mask {
   position: absolute;
   inset: 0;
-  background: rgba(8, 10, 12, 0.28);
+  background: rgba(0, 0, 0, 0.04);
   pointer-events: none;
 }
 
-/* 9-grid keyboard navigation */
+/* 9-Point Viewfinder Grid (Active when no selection exists) */
+.viewfinder-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.viewfinder-point {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.point-cross {
+  position: relative;
+  width: 8px;
+  height: 8px;
+}
+
+.point-cross::before,
+.point-cross::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.point-cross::before {
+  top: 3.5px;
+  left: 0;
+  width: 8px;
+  height: 1px;
+}
+
+.point-cross::after {
+  left: 3.5px;
+  top: 0;
+  width: 1px;
+  height: 8px;
+}
+
+.viewfinder-hint {
+  position: absolute;
+  bottom: calc(var(--screenshot-safe-bottom, 0px) + 32px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  background: rgba(24, 25, 28, 0.82);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.2px;
+}
+
+/* 9-Grid Keyboard Navigation */
 .grid-nav-overlay {
   position: absolute;
   inset: 0;
-  pointer-events: auto;
   z-index: 8;
+  pointer-events: auto;
 }
 
 .grid-nav-cell {
   position: absolute;
   box-sizing: border-box;
-  border: 1px dashed rgba(64, 158, 255, 0.6);
-  background: rgba(64, 158, 255, 0.08);
+  border: 1px dashed rgba(0, 122, 255, 0.6);
+  background: rgba(0, 122, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.1s ease;
 }
 
 .grid-nav-cell:hover {
-  background: rgba(64, 158, 255, 0.22);
+  background: rgba(0, 122, 255, 0.15);
 }
 
 .grid-cell-label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+  padding: 3px 8px;
   border-radius: 6px;
-  background: rgba(17, 19, 21, 0.85);
+  background: rgba(0, 122, 255, 0.9);
   color: #ffffff;
-  font:
-    700 14px ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .grid-nav-hint {
   position: absolute;
-  bottom: 24px;
+  bottom: calc(var(--screenshot-safe-bottom, 0px) + 32px);
   left: 50%;
   transform: translateX(-50%);
-  padding: 6px 14px;
-  border-radius: 8px;
-  background: rgba(17, 19, 21, 0.92);
-  color: #e2e8f0;
-  font-size: 13px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: rgba(20, 20, 22, 0.88);
+  backdrop-filter: blur(20px);
+  color: #ffffff;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 /* Candidate hover highlight */
 .object-candidate {
   position: absolute;
-  z-index: 2;
+  z-index: 4;
   box-sizing: border-box;
-  border: 2px dashed rgba(64, 158, 255, 0.88);
-  background: rgba(64, 158, 255, 0.16);
+  border: 1.5px solid #007aff;
+  background: rgba(0, 122, 255, 0.08);
   pointer-events: none;
 }
 
@@ -1563,29 +1795,45 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(17, 19, 21, 0.9);
-  color: #e2e8f0;
+  background: #007aff;
+  color: #ffffff;
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-.candidate-kind {
-  font-weight: 700;
-  color: var(--screenshot-primary);
+/* Selection Box */
+.selection {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  border: 1.5px solid #007aff;
+  background: transparent;
+  cursor: move;
 }
 
-/* Target grid points */
+/* Cinematic translucent dimming ONLY outside the selection */
+.selection::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.26);
+  pointer-events: none;
+}
+
+/* 9-Point Guide points on candidate and selection */
 .target-grid-point {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
+  background: #ffffff;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
   transform: translate(-50%, -50%);
   pointer-events: none;
+  opacity: 0.85;
 }
 
 .target-grid-point.is-nw {
@@ -1607,7 +1855,9 @@ onBeforeUnmount(() => {
 .target-grid-point.is-center {
   left: 50%;
   top: 50%;
-  background: var(--screenshot-primary);
+  background: #007aff;
+  width: 6px;
+  height: 6px;
 }
 .target-grid-point.is-e {
   left: 100%;
@@ -1626,55 +1876,34 @@ onBeforeUnmount(() => {
   top: 100%;
 }
 
-/* Selection Box */
-.selection {
-  position: absolute;
-  z-index: 3;
-  box-sizing: border-box;
-  border: 2px solid var(--screenshot-primary);
-  background: transparent;
-  box-shadow: 0 0 0 1px rgba(51, 126, 204, 0.78);
-  cursor: move;
-}
-
-.selection::before {
-  position: absolute;
-  inset: 0;
-  content: '';
-  box-shadow: 0 0 0 9999px rgba(8, 10, 12, 0.5);
-  pointer-events: none;
-}
-
 .selection-size {
   position: absolute;
+  top: -24px;
   left: 0;
-  bottom: -28px;
-  min-width: 74px;
-  height: 22px;
-  padding: 0 7px;
-  border: 1px solid rgba(148, 163, 184, 0.32);
+  padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(17, 19, 21, 0.94);
-  color: #e2e8f0;
-  font:
-    600 11px/20px ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  text-align: center;
-  white-space: nowrap;
+  background: rgba(20, 20, 22, 0.85);
+  backdrop-filter: blur(12px);
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
   pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .resize-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 1px solid var(--screenshot-primary-dark);
-  border-radius: 2px;
-  background: #f8fafc;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transform: translate(-50%, -50%);
+  padding: 0;
+  cursor: pointer;
+  z-index: 6;
 }
 
 .resize-handle.is-nw {
@@ -1718,12 +1947,12 @@ onBeforeUnmount(() => {
   cursor: nwse-resize;
 }
 
-/* Inline Annotation Canvas Container */
+/* Inline Annotation Canvas */
 .annotation-canvas-container {
   position: absolute;
-  z-index: 5;
-  box-sizing: border-box;
-  box-shadow: 0 0 0 9999px rgba(8, 10, 12, 0.65);
+  z-index: 6;
+  border: 1.5px solid #007aff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.26);
   cursor: crosshair;
 }
 
@@ -1733,222 +1962,316 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-/* Magnifier loupe */
-.magnifier {
+/* Pixel Magnifier Loupe */
+.loupe-card {
   position: absolute;
-  z-index: 7;
-  width: 120px;
-  height: 90px;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 6px;
-  background-color: #111315;
-  background-repeat: no-repeat;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 90;
+  width: 138px;
+  box-sizing: border-box;
+  background: rgba(26, 27, 30, 0.9);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
   pointer-events: none;
+  user-select: none;
 }
 
-.magnifier-cross {
-  position: absolute;
-  left: 50%;
-  top: 50%;
+.loupe-canvas-wrapper {
+  width: 138px;
+  height: 96px;
+  background: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loupe-canvas {
+  width: 138px;
+  height: 96px;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.loupe-meta {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.loupe-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.loupe-color-chip {
   width: 8px;
   height: 8px;
-  border: 1px solid #409eff;
-  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  border: 0.5px solid rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
 }
 
-.magnifier-coordinate {
-  position: absolute;
-  right: 4px;
-  bottom: 2px;
-  color: #e2e8f0;
-  font:
-    500 10px/14px ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
+.loupe-color-hex {
+  font-weight: 600;
 }
 
-/* Controls: Mode Switch & Toolbar */
-.mode-switch,
+.loupe-color-rgb {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 9px;
+  margin-left: auto;
+}
+
+.loupe-row.secondary {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 9px;
+}
+
+.loupe-mode-tag {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.loupe-coord {
+  margin-left: auto;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+/* macOS Native Frosted Glass Toolbar */
 .toolbar {
-  z-index: 10;
+  z-index: 100;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   padding: 4px 6px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 8px;
-  background: rgba(17, 19, 21, 0.94);
-  color: #e2e8f0;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  height: 38px;
+  box-sizing: border-box;
+  background: rgba(30, 31, 34, 0.88);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.4),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+  user-select: none;
 }
 
-.mode-switch {
-  position: absolute;
-  top: calc(var(--screenshot-safe-top, 0px) + 18px);
-  right: var(--screenshot-safe-right, 0px);
-}
-
-.toolbar {
-  position: absolute;
-  right: var(--screenshot-safe-right, 0px);
-  bottom: calc(var(--screenshot-safe-bottom, 0px) + 24px);
-}
-
-.dimension-inputs {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-}
-
-.dimension-inputs label {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.dimension-inputs input {
-  width: 44px;
-  height: 22px;
-  padding: 0 4px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 4px;
-  background: rgba(30, 34, 38, 0.8);
-  color: #ffffff;
-  font-size: 11px;
-  text-align: center;
-}
-
-.anchor-select {
-  height: 22px;
-  padding: 0 2px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 4px;
-  background: rgba(30, 34, 38, 0.8);
-  color: #409eff;
-  font-size: 12px;
-}
-
-.toolbar select {
-  height: 26px;
-  padding: 0 4px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 4px;
-  background: rgba(30, 34, 38, 0.8);
-  color: #e2e8f0;
-  font-size: 11px;
-}
-
-.radius-control {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 4px;
-}
-
-.radius-control input[type='range'] {
-  width: 48px;
-}
-
-.separator {
-  width: 1px;
-  height: 18px;
-  background: rgba(148, 163, 184, 0.2);
-}
-
-.icon-button {
+.toolbar .icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid transparent;
+  border: none;
   border-radius: 6px;
   background: transparent;
-  color: #cbd5e1;
-  font-size: 15px;
+  color: rgba(255, 255, 255, 0.82);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
+  font-size: 14px;
 }
 
-.icon-button:hover:not(:disabled) {
-  background: rgba(148, 163, 184, 0.16);
+.toolbar .icon-button:hover {
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
 
-.icon-button.active {
-  background: rgba(64, 158, 255, 0.25);
-  border-color: rgba(64, 158, 255, 0.6);
-  color: #409eff;
-}
-
-.icon-button.highlight {
-  color: #38bdf8;
-}
-
-.icon-button.primary {
-  background: #409eff;
+.toolbar .icon-button.active {
+  background: #007aff;
   color: #ffffff;
 }
 
-.icon-button.primary:hover:not(:disabled) {
-  background: #66b1ff;
-}
-
-.icon-button.danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.25);
-  color: #ef4444;
-}
-
-.icon-button:disabled {
-  opacity: 0.4;
+.toolbar .icon-button:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-.color-badge {
+.toolbar .separator {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.14);
+  margin: 0 3px;
+}
+
+/* Segmented Control (Mode Switch) */
+.segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.seg-button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.1s ease;
+}
+
+.seg-button.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Dimension Badge */
+.dimension-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+.anchor-select {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+}
+
+.dim-input {
+  width: 36px;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: center;
+  outline: none;
+  padding: 0;
+}
+
+.dim-input:focus {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.dim-cross {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.aspect-select {
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+
+.aspect-select option {
+  background: #232528;
+  color: #ffffff;
+}
+
+.highlight-tool {
+  background: rgba(0, 122, 255, 0.15) !important;
+  color: #38bdf8 !important;
+}
+
+.highlight-tool:hover {
+  background: rgba(0, 122, 255, 0.3) !important;
+}
+
+/* Primary Confirm Button: Signature macOS Blue Pill */
+.primary-confirm {
+  width: auto !important;
+  padding: 0 10px !important;
+  height: 28px !important;
+  background: #007aff !important;
+  color: #ffffff !important;
+  font-weight: 500;
+  font-size: 12px;
+  gap: 4px;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.35);
+}
+
+.primary-confirm:hover {
+  background: #0a84ff !important;
+}
+
+.danger-btn:hover {
+  background: rgba(255, 69, 58, 0.2) !important;
+  color: #ff453a !important;
+}
+
+/* Style Capsule Popover */
+.style-toggle-btn {
+  position: relative;
+}
+
+.color-indicator {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-/* Floating Style Capsule (Rsnap-style stable primary anchor) */
 .style-capsule {
   position: absolute;
   bottom: calc(100% + 8px);
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 8px;
-  background: rgba(17, 19, 21, 0.96);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  z-index: 12;
+  background: rgba(30, 31, 34, 0.94);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  z-index: 110;
 }
 
 .color-presets {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .color-dot {
   width: 16px;
   height: 16px;
-  padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.4);
   border-radius: 50%;
+  border: none;
   cursor: pointer;
-  transition: transform 0.15s ease;
-}
-
-.color-dot:hover {
-  transform: scale(1.15);
+  padding: 0;
+  transition: transform 0.1s ease;
 }
 
 .color-dot.selected {
@@ -1958,57 +2281,55 @@ onBeforeUnmount(() => {
 
 .stroke-width-presets {
   display: flex;
-  align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 
 .stroke-btn {
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
   border-radius: 4px;
-  background: rgba(30, 34, 38, 0.6);
   cursor: pointer;
+  padding: 0;
 }
 
 .stroke-btn.selected {
-  border-color: #409eff;
-  background: rgba(64, 158, 255, 0.2);
+  background: rgba(0, 122, 255, 0.3);
+  outline: 1px solid #007aff;
 }
 
 .stroke-sample {
-  display: block;
   width: 14px;
-  border-radius: 1px;
   background: #ffffff;
+  border-radius: 1px;
 }
 
 .fill-toggle {
-  padding: 2px 6px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(30, 34, 38, 0.6);
-  color: #cbd5e1;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 11px;
   cursor: pointer;
 }
 
 .fill-toggle.active {
-  background: rgba(64, 158, 255, 0.25);
-  border-color: #409eff;
-  color: #409eff;
+  background: #007aff;
+  color: #ffffff;
 }
 
+/* Error Toast */
 .error-status {
   position: absolute;
   bottom: calc(var(--screenshot-safe-bottom, 0px) + 68px);
   right: var(--screenshot-safe-right, 0px);
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
   background: rgba(239, 68, 68, 0.9);
   color: #ffffff;
   font-size: 12px;

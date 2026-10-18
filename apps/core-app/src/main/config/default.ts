@@ -119,6 +119,7 @@ export const ScreenshotOverlayWindowOption: Electron.BrowserWindowConstructorOpt
   frame: false,
   resizable: false,
   movable: false,
+  alwaysOnTop: true,
   minimizable: false,
   maximizable: false,
   fullscreenable: false,

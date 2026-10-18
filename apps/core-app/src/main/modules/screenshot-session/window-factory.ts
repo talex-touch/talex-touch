@@ -73,8 +73,14 @@ export class ElectronScreenshotWindowFactory implements ScreenshotSessionWindowF
       webContentsId: browserWindow.webContents.id,
       displayId,
       load: async () => await this.loadRenderer(touchWindow),
-      show: () => browserWindow.show(),
-      focus: () => browserWindow.focus(),
+      show: () => {
+        browserWindow.setAlwaysOnTop(true, 'screen-saver')
+        browserWindow.show()
+      },
+      focus: () => {
+        browserWindow.setAlwaysOnTop(true, 'screen-saver')
+        browserWindow.focus()
+      },
       destroy: () => browserWindow.destroy(),
       isDestroyed: () => browserWindow.isDestroyed(),
       onClosed: (listener) => {
