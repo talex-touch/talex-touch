@@ -4,16 +4,19 @@
 // Source commit: 43c29ce9cdd16459e3eab4992381b8d35b38776a.
 // Changes: caller-owned pages/slots, semantic controls, shared motion lifecycle, no external assets.
 import type { CSSProperties } from 'vue'
+import type { VelocityTracker } from '../../../../utils/gesture'
 import type { FlipBookEmits, FlipBookProps, FlipBookSettings, FlipBookSlotProps } from './types'
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue'
+import { stepSpring } from '../../../../utils/animation/spring'
+import { createVelocityTracker, projectMomentum, rubberband } from '../../../../utils/gesture'
 import { useMotionActivity } from '../../../../utils/motion-activity'
-import { resolveTransition } from '../../liquid/src/spring'
+import { presets, resolveTransition } from '../../liquid/src/spring'
 import { TxTextMorph } from '../../text-morph'
 
 defineOptions({ name: 'TxFlipBook' })
 const props = withDefaults(defineProps<FlipBookProps>(), {
   mode: 'dither-book', compact: false, loop: true, controls: true, settingsPanel: true,
-  intro: false, introFlips: 10, animated: true, disabled: false, duration: 450,
+  intro: false, introFlips: 10, animated: true, disabled: false, draggable: true, duration: 450,
   size: 'md', ariaLabel: 'Flip book',
 })
 const emit = defineEmits<FlipBookEmits>()
@@ -37,6 +40,34 @@ let animationVersion = 0
 let mounted = true
 let entrance: Animation | undefined
 let entrancePlayed = false
+const DRAG_SLOP = 4
+// A release faster than this, in px/s, carried momentum: only then is the page's spring underdamped.
+const FLICK = 100
+// Near flat a little travel turns the page a long way; a release hands over at most this, in turns per second.
+const MAX_TURN_SPEED = 8
+const dragging = ref(false)
+/** A turn drawn from script rather than the WAAPI curve: under the pointer, or released and settling. */
+let turn: { progress: number, velocity: number, target?: 0 | 1, spring?: { stiffness: number, damping: number }, lift: boolean } | undefined
+let turnFrame: number | undefined
+let turnTime: number | undefined
+let suppressClick = false
+let drag: {
+  pointerId: number
+  x: number
+  y: number
+  moved: boolean
+  /** The page's half of the binding and where its spine is drawn, read at grab time. */
+  spine: number
+  page: number
+  /** The side grabbed at rest: 1 turns forwards, -1 backwards. */
+  side: 1 | -1
+  /** Turn progress expressed as horizontal travel, 0..1, when the drag began, and the travel a whole turn takes. */
+  start: number
+  span: number
+  /** Where a turn grabbed in flight was heading, to carry on to if the drag is cancelled. */
+  resume?: 0 | 1
+  tracker: VelocityTracker
+} | undefined
 const settings = reactive<FlipBookSettings>({ padding: 10, imageRadius: 20, creaseOpacity: 11, paperColor: 'var(--tx-bg-color-overlay, var(--tx-bg-color))', shadowIntensity: 24 })
 watch(() => [props.settings, props.padding, props.imageRadius, props.creaseOpacity, props.paperColor, props.shadowIntensity, props.compact, props.mode], () => {
   Object.assign(settings, {
@@ -99,9 +130,18 @@ function finishFlip() {
   const state = flip.value
   if (!state) return
   cancelAnimations()
-  displayedIndex.value = state.to
+  // A released page ends where it was heading; one still held, where it was before the grab.
+  const lift = turn?.lift ?? false
+  const heading = turn ? turn.target ?? drag?.resume ?? 0 : 1
+  const settled = lift || !heading ? state.from : state.to
+  if (drag) endDrag()
+  stopTurn()
+  turn = undefined
+  leaf.value?.style.removeProperty('transform')
+  leaf.value?.querySelectorAll<HTMLElement>('.tx-flip-book__shade').forEach(shade => shade.style.removeProperty('opacity'))
+  displayedIndex.value = settled
   flip.value = null
-  emit('flip-end', state.to)
+  if (!lift) emit('flip-end', settled)
   introRunning.value = false
   scheduleIntro()
 }
@@ -127,8 +167,7 @@ async function animateFlip() {
   })
   animation.onfinish = () => { if (version === animationVersion) finishFlip() }
 }
-watch(current, (to, from) => {
-  if (to === displayedIndex.value && !flip.value) return
+function startFlip(to: number, from: number) {
   if (flip.value) finishFlip()
   clearIntroTimer()
   const dir = to === normalize(from + direction.value) ? direction.value : to > from ? 1 : -1
@@ -136,6 +175,12 @@ watch(current, (to, from) => {
   emit('flip-start', displayedIndex.value, to, dir)
   if (!active.value) finishFlip()
   else void animateFlip()
+}
+watch(current, (to, from) => {
+  if (to === displayedIndex.value && !flip.value) return
+  // A released page is already turning towards the page it asked for.
+  if (turn?.target !== undefined && to === (turn.target ? flip.value?.to : flip.value?.from)) return
+  startFlip(to, from)
 }, { flush: 'sync' })
 watch(() => props.pages, () => {
   clearIntroTimer()
@@ -155,6 +200,187 @@ function goTo(index: number, requestedDirection?: 1 | -1) {
 }
 function previous() { if (manualIntroLocked.value) return; clearIntroTimer(); introRemaining.value = 0; goTo(current.value - 1, -1) }
 function next() { if (manualIntroLocked.value) return; clearIntroTimer(); introRemaining.value = 0; goTo(current.value + 1, 1) }
+function turnPage(side: 'left' | 'right', event: MouseEvent) {
+  // A drag turns the page itself; the click it leaves behind is not another turn. Keyboard clicks have no detail.
+  if (suppressClick && event.detail > 0) { suppressClick = false; return }
+  if (side === 'left') previous()
+  else next()
+}
+/** The WAAPI curve's spring, rescaled to `duration` like the curve; a release keeps its frequency. */
+function releaseSpring(flick: boolean) {
+  const omega = Math.sqrt(presets.smooth.stiffness / presets.smooth.mass) * resolveTransition('smooth').duration / props.duration
+  return { stiffness: omega * omega, damping: 2 * (flick ? 0.8 : 1) * omega }
+}
+/** Progress 0..1 to the page's angle: a forward turn lifts it off the right, a backward one off the left. */
+function paintTurn() {
+  const element = leaf.value
+  const state = flip.value
+  if (!element || !state || !turn) return
+  const lying = state.direction === 1 ? turn.progress : 1 - turn.progress
+  element.style.transform = `rotateY(${-180 * lying}deg)`
+  element.querySelectorAll<HTMLElement>('.tx-flip-book__shade').forEach((shade, index) => {
+    shade.style.opacity = String(0.4 * (index === 0 ? lying : 1 - lying))
+  })
+}
+/** How far a turn in flight has come, read from the angle the WAAPI curve is drawing. */
+function drawnProgress(direction: 1 | -1) {
+  const value = leaf.value ? getComputedStyle(leaf.value).transform : 'none'
+  const matrix = value && value !== 'none' ? new DOMMatrix(value) : new DOMMatrix()
+  const lying = Math.acos(Math.max(-1, Math.min(1, matrix.m11))) / Math.PI
+  return direction === 1 ? lying : 1 - lying
+}
+function stopTurn() {
+  if (turnFrame !== undefined) cancelAnimationFrame(turnFrame)
+  turnFrame = undefined
+  turnTime = undefined
+}
+function landTurn() {
+  finishFlip()
+  // A caller that kept its own page gets it back with an ordinary turn.
+  if (current.value !== displayedIndex.value) startFlip(current.value, displayedIndex.value)
+}
+function stepTurn(time: number) {
+  turnFrame = undefined
+  const state = turn
+  if (!state || state.target === undefined) return
+  const dt = turnTime === undefined ? 1 / 60 : Math.min(0.1, Math.max(0, (time - turnTime) / 1000))
+  turnTime = time
+  const [progress, velocity] = stepSpring(state.progress, state.velocity, state.target, state.spring ?? releaseSpring(false), dt)
+  // The page lands on the stack: it stops where it meets it instead of swinging through.
+  if (Math.abs(progress - state.target) < 1e-3 || (state.target === 1 ? progress > 1 : progress < 0)) { landTurn(); return }
+  state.progress = progress
+  state.velocity = velocity
+  paintTurn()
+  turnFrame = requestAnimationFrame(stepTurn)
+}
+/** Sends a released page to `target`, emitting the page it lands on. */
+function releaseTurn(target: 0 | 1, velocity: number, flick: boolean) {
+  const state = flip.value
+  if (!turn || !state) return
+  turn.target = target
+  turn.velocity = velocity
+  turn.spring = releaseSpring(flick)
+  const destination = target ? state.to : state.from
+  if (!turn.lift && destination !== current.value) {
+    direction.value = state.direction
+    localIndex.value = destination
+    emit('update:modelValue', destination)
+    const page = props.pages[destination]
+    if (page) emit('change', page, destination)
+  }
+  stopTurn()
+  if (!active.value || !(props.duration > 0)) landTurn()
+  else turnFrame = requestAnimationFrame(stepTurn)
+}
+function endDrag() {
+  const state = drag
+  drag = undefined
+  dragging.value = false
+  window.removeEventListener('keydown', onDragKeydown, true)
+  if (state && binding.value?.hasPointerCapture(state.pointerId)) binding.value.releasePointerCapture(state.pointerId)
+}
+/** Escape, a cancelled pointer or lost capture: a fresh turn falls back, one grabbed in flight carries on. */
+function cancelDrag() {
+  const state = drag
+  if (!state) return
+  endDrag()
+  if (!state.moved) return
+  suppressClick = true
+  releaseTurn(state.resume ?? 0, 0, false)
+}
+function onDragKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !drag?.moved) return
+  event.preventDefault()
+  event.stopPropagation()
+  cancelDrag()
+}
+function pointerDown(event: PointerEvent) {
+  if (!props.draggable || props.disabled || drag?.moved || event.button !== 0 || !event.isPrimary || !props.pages.length || manualIntroLocked.value) return
+  const bounds = binding.value?.getBoundingClientRect()
+  if (!bounds) return
+  suppressClick = false
+  const spine = bounds.left + bounds.width / 2
+  const page = (event.target as Element).closest('.tx-flip-book__page')
+  drag = {
+    pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false, spine, page: bounds.width / 2,
+    side: page ? (page.classList.contains('is-left') ? -1 : 1) : event.clientX < spine ? -1 : 1,
+    start: 0, span: bounds.width, tracker: createVelocityTracker(),
+  }
+}
+/** Grabs the page: the one in flight from where it is drawn, otherwise the grabbed side's page from flat. */
+function grab(state: NonNullable<typeof drag>) {
+  clearIntroTimer()
+  introRemaining.value = 0
+  introRunning.value = false
+  if (flip.value) {
+    let progress = turn?.progress ?? drawnProgress(flip.value.direction)
+    state.resume = turn ? turn.target : 1
+    if (!turn) {
+      cancelAnimations()
+      progress = Math.max(0, Math.min(1, progress))
+      turn = { progress, velocity: 0, lift: false }
+    }
+    stopTurn()
+    turn.target = undefined
+    turn.velocity = 0
+    // Caught mid-turn there is no telling which point of the page was grabbed: track its edge.
+    state.start = (1 - Math.cos(Math.PI * turn.progress)) / 2
+    paintTurn()
+    return
+  }
+  const count = props.pages.length
+  const to = displayedIndex.value + state.side
+  // With no other page to turn to the leaf only lifts, as at either end of a book that does not loop.
+  const lift = count < 2 || (!props.loop && (to < 0 || to >= count))
+  direction.value = state.side
+  flip.value = { from: displayedIndex.value, to: lift ? to : normalize(to), direction: state.side }
+  turn = { progress: 0, velocity: 0, lift }
+  if (!lift) emit('flip-start', flip.value.from, flip.value.to, state.side)
+  // The grabbed point stays under the pointer: a whole turn is twice its distance from the spine.
+  state.span = 2 * Math.max(state.page / 3, Math.min(state.page, Math.abs(state.x - state.spine)))
+  void nextTick(paintTurn)
+}
+function pointerMove(event: PointerEvent) {
+  const state = drag
+  if (!state || state.pointerId !== event.pointerId) return
+  const begins = !state.moved
+  if (begins) {
+    const dx = Math.abs(event.clientX - state.x)
+    const dy = Math.abs(event.clientY - state.y)
+    if (Math.hypot(dx, dy) < DRAG_SLOP) return
+    // A touch that sets off vertically is the page's scroll: the browser pans and cancels it anyway.
+    if (event.pointerType !== 'mouse' && dy > dx) { drag = undefined; return }
+    state.moved = true
+    dragging.value = true
+    grab(state)
+    binding.value?.setPointerCapture(event.pointerId)
+    window.addEventListener('keydown', onDragKeydown, true)
+  }
+  event.preventDefault()
+  if (!turn || !flip.value) return
+  const pulled = (event.clientX - state.x) * -flip.value.direction
+  // Travel is linear in the pointer; the angle that keeps the grabbed point under it is not.
+  const travel = turn.lift
+    ? Math.max(0, rubberband(pulled, state.page / 4)) / state.span
+    : Math.max(0, Math.min(1, state.start + pulled / state.span))
+  turn.progress = Math.acos(1 - 2 * travel) / Math.PI
+  paintTurn()
+  if (begins) state.tracker.reset(event.timeStamp, travel * state.span)
+  else state.tracker.push(event.timeStamp, travel * state.span)
+}
+function pointerUp(event: PointerEvent) {
+  const state = drag
+  if (!state || state.pointerId !== event.pointerId) return
+  endDrag()
+  if (!state.moved || !turn) return
+  suppressClick = true
+  const [speed] = state.tracker.velocity(event.timeStamp)
+  const travel = (1 - Math.cos(Math.PI * turn.progress)) / 2
+  // Commit where the flick would carry the page, so a flick turns it from anywhere.
+  const commit = !turn.lift && travel + projectMomentum(speed) / state.span > 0.5
+  const turnSpeed = speed / state.span * 2 / (Math.PI * Math.max(1e-3, Math.sin(Math.PI * turn.progress)))
+  releaseTurn(commit ? 1 : 0, Math.max(-MAX_TURN_SPEED, Math.min(MAX_TURN_SPEED, turnSpeed)), Math.abs(speed) >= FLICK)
+}
 function scheduleIntro() {
   clearIntroTimer()
   if (!mounted || !active.value || props.disabled || flip.value || introRemaining.value <= 0 || props.pages.length < 2) return
@@ -206,12 +432,13 @@ function onKeydown(event: KeyboardEvent) {
   else if (event.key === 'Home') { event.preventDefault(); goTo(0) }
   else if (event.key === 'End') { event.preventDefault(); goTo(props.pages.length - 1) }
 }
-onBeforeUnmount(() => { mounted = false; clearIntroTimer(); cancelAnimations(); entrance?.cancel() })
+onDeactivated(() => { if (drag) endDrag(); if (turn) finishFlip() })
+onBeforeUnmount(() => { mounted = false; if (drag) endDrag(); stopTurn(); clearIntroTimer(); cancelAnimations(); entrance?.cancel() })
 defineExpose({ previous, next, goTo, replayIntro })
 </script>
 
 <template>
-  <div ref="root" class="tx-flip-book" :class="{ 'is-compact': compact, 'is-flipping': flip }" :data-mode="mode" role="group" :aria-label="ariaLabel" @keydown="onKeydown">
+  <div ref="root" class="tx-flip-book" :class="{ 'is-compact': compact, 'is-flipping': flip, 'is-draggable': draggable && !disabled, 'is-dragging': dragging }" :data-mode="mode" role="group" :aria-label="ariaLabel" @keydown="onKeydown">
     <slot v-if="!pages.length" name="empty" />
     <template v-else>
       <div class="tx-flip-book__perspective" :style="bookStyle">
@@ -221,7 +448,7 @@ defineExpose({ previous, next, goTo, replayIntro })
         <button v-if="extracted && controls" type="button" class="tx-flip-book__side is-next" :disabled="disabled || !!flip || manualIntroLocked || (!loop && current === pages.length - 1)" :aria-label="copy.next" @click="next">
 <svg viewBox="0 0 14 44" width="14" height="44" fill="none" aria-hidden="true"><polyline points="3,3 11,22 3,41" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 </button>
-        <div ref="binding" class="tx-flip-book__binding">
+        <div ref="binding" class="tx-flip-book__binding" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp" @pointercancel="drag?.pointerId === $event.pointerId && cancelDrag()" @lostpointercapture="$event.target === binding && drag?.pointerId === $event.pointerId && cancelDrag()">
           <div v-for="entry in visiblePages" :key="entry.side" class="tx-flip-book__page" :class="`is-${entry.side}`">
             <div class="tx-flip-book__paper">
 <div class="tx-flip-book__content">
@@ -234,7 +461,7 @@ defineExpose({ previous, next, goTo, replayIntro })
             </div>
 </div>
             <div class="tx-flip-book__crease" aria-hidden="true" />
-            <button class="tx-flip-book__turn" type="button" :aria-label="entry.side === 'left' ? copy.previous : copy.next" :disabled="disabled || !!flip || manualIntroLocked || (!loop && (entry.side === 'left' ? current === 0 : current === pages.length - 1))" @click="entry.side === 'left' ? previous() : next()">
+            <button class="tx-flip-book__turn" type="button" :aria-label="entry.side === 'left' ? copy.previous : copy.next" :disabled="disabled || !!flip || manualIntroLocked || (!loop && (entry.side === 'left' ? current === 0 : current === pages.length - 1))" @click="turnPage(entry.side, $event)">
 {{ entry.side === 'left' ? '‹' : '›' }}
 </button>
           </div>
@@ -282,6 +509,9 @@ defineExpose({ previous, next, goTo, replayIntro })
 .tx-flip-book { position: relative; width: 100%; font-size: 13px; color: var(--tx-text-color-primary); }
 .tx-flip-book__perspective { position: relative; width: calc(100% - 24px); margin: 12px auto; aspect-ratio: 16 / 10; perspective: 2400px; }
 .tx-flip-book__binding { position: absolute; inset: 0; transform: var(--tx-book-pose); transform-style: preserve-3d; border-radius: 6px; box-shadow: 6px 12px 24px color-mix(in srgb, var(--tx-text-color-primary) 18%, transparent); }
+/* A horizontal drag turns the page and a vertical swipe still scrolls the page. */
+.tx-flip-book.is-draggable .tx-flip-book__binding { cursor: grab; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+.tx-flip-book.is-dragging .tx-flip-book__binding { cursor: grabbing; }
 .tx-flip-book__page { position: absolute; inset-block: 0; width: 50%; overflow: hidden; background: var(--tx-book-paper); box-shadow: inset 0 0 0 1px var(--tx-border-color); }
 .tx-flip-book__page.is-left { left: 0; border-radius: 6px 0 0 6px; }
 .tx-flip-book__page.is-right { right: 0; border-radius: 0 6px 6px 0; }
@@ -294,6 +524,9 @@ defineExpose({ previous, next, goTo, replayIntro })
 .tx-flip-book__crease { position: absolute; inset-block: 0; width: var(--tx-book-crease-width); pointer-events: none; background: linear-gradient(to right, color-mix(in srgb, var(--tx-text-color-primary) var(--tx-book-crease), transparent), color-mix(in srgb, var(--tx-text-color-primary) var(--tx-book-crease-soft), transparent), transparent); box-shadow: inset 4px 0 10px color-mix(in srgb, var(--tx-text-color-primary) 10%, transparent); left: 0; }
 .is-left > .tx-flip-book__crease, .is-back > .tx-flip-book__crease { left: auto; right: 0; transform: scaleX(-1); }
 .tx-flip-book__turn { position: absolute; inset: 0; width: 100%; padding: 0 12px; border: 0; background: transparent; color: var(--tx-text-color-regular); cursor: pointer; font-size: 24px; opacity: 0; text-align: right; }
+.tx-flip-book.is-draggable .tx-flip-book__turn:not(:disabled) { cursor: grab; }
+/* Disabled mid-turn, or at an end that does not loop, a turn button lets the page beneath it be grabbed. */
+.tx-flip-book.is-draggable .tx-flip-book__turn:disabled { pointer-events: none; }
 .is-left > .tx-flip-book__turn { text-align: left; }
 .tx-flip-book__page:hover .tx-flip-book__turn, .tx-flip-book__turn:focus-visible { opacity: 1; }
 .tx-flip-book__leaf { position: absolute; left: 50%; top: 0; width: 50%; height: 100%; transform-origin: left; transform-style: preserve-3d; z-index: 3; }

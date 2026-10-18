@@ -456,4 +456,15 @@ const activeDescendantId = computed(() =>
     transition: opacity 0.15s ease;
   }
 }
+@media (forced-colors: active) {
+  .tx-flat-radio {
+    border: 1px solid ButtonText;
+  }
+
+  .tx-flat-radio__indicator {
+    border: 2px solid Highlight;
+    box-sizing: border-box;
+  }
+}
+
 </style>

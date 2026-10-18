@@ -86,6 +86,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
 .tx-flat-radio-item {
   position: relative;
   z-index: 1;
@@ -126,6 +128,16 @@ onBeforeUnmount(() => {
 
   &.is-selected {
     color: var(--tx-text-color-primary, #303133);
+
+    @include tx-when-high-contrast {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    @media (forced-colors: active) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
   }
 
   // Press feedback rides on the label and the icon, never on the item box: the
@@ -144,6 +156,16 @@ onBeforeUnmount(() => {
     // track, so a selected chip read as a hole rather than a raised surface.
     background: var(--tx-flat-radio-indicator-bg, var(--tx-surface-raised, #fff));
     box-shadow: var(--tx-elevation-1, 1px 2px 4px rgba(0, 0, 0, 0.04));
+
+    @include tx-when-high-contrast {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    @media (forced-colors: active) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
   }
 
   &.is-focused {
