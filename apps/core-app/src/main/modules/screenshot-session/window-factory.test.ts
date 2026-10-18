@@ -113,36 +113,6 @@ describe('ElectronScreenshotWindowFactory', () => {
     expect(harness.loadRenderer).toHaveBeenCalledWith(harness.touchWindow)
   })
 
-  it('creates a hardened editor shell with its own renderer role', async () => {
-    const harness = createWindowHarness()
-    const factory = new ElectronScreenshotWindowFactory({
-      createWindow: harness.createWindow,
-      loadRenderer: harness.loadRenderer
-    })
-
-    const handle = factory.createEditor({
-      sessionId: 'screenshot-session:test',
-      resource
-    })
-    expect(harness.createWindow.mock.calls[0][0]).toMatchObject({
-      width: 960,
-      height: 640,
-      frame: false,
-      transparent: false,
-      show: false,
-      webPreferences: {
-        webSecurity: true,
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        additionalArguments: ['--touch-type=screenshot', '--screenshot-type=editor']
-      }
-    })
-    expect(handle.displayId).toBeNull()
-    await handle.load()
-    expect(harness.loadRenderer).toHaveBeenCalledWith(harness.touchWindow)
-  })
-
   it('forwards show/focus/destroy and owns exact closed listener cleanup', () => {
     const harness = createWindowHarness()
     const factory = new ElectronScreenshotWindowFactory({

@@ -4,7 +4,7 @@ export const TOUCH_TYPES = ['main', 'core-box', 'assistant', 'screenshot'] as co
 export const CORE_TYPES = ['division-box', 'omni-panel'] as const
 export const ASSISTANT_TYPES = ['voice-dock'] as const
 
-export const SCREENSHOT_TYPES = ['overlay', 'editor'] as const
+export const SCREENSHOT_TYPES = ['overlay'] as const
 
 export type TouchType = (typeof TOUCH_TYPES)[number]
 export type CoreType = (typeof CORE_TYPES)[number]
@@ -26,7 +26,6 @@ export type RendererWindowMode =
   | 'OmniPanel'
   | 'AssistantVoiceDock'
   | 'ScreenshotOverlay'
-  | 'ScreenshotEditor'
   | 'MetaOverlay'
 
 export function isKnownTouchType(value: string | undefined): value is TouchType {
@@ -110,9 +109,6 @@ export function resolveRendererWindowMode(role: WindowRole): RendererWindowMode 
   if (role.touchType === 'screenshot') {
     if (role.screenshotType === 'overlay') {
       return 'ScreenshotOverlay'
-    }
-    if (role.screenshotType === 'editor') {
-      return 'ScreenshotEditor'
     }
     return 'MainApp'
   }

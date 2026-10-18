@@ -6,7 +6,7 @@ import type {
   ScreenshotSessionWindowFactory,
   ScreenshotSessionWindowHandle
 } from './session-manager'
-import { ScreenshotEditorWindowOption, ScreenshotOverlayWindowOption } from '../../config/default'
+import { ScreenshotOverlayWindowOption } from '../../config/default'
 
 interface ScreenshotBrowserWindowLike {
   webContents: { id: number }
@@ -62,17 +62,6 @@ export class ElectronScreenshotWindowFactory implements ScreenshotSessionWindowF
     browserWindow.setVibrancy?.(null)
 
     return this.createHandle(touchWindow, display.id)
-  }
-
-  createEditor(_input: {
-    sessionId: string
-    resource: NativeScreenshotCaptureResult
-  }): ScreenshotSessionWindowHandle {
-    const touchWindow = this.createWindow({ ...ScreenshotEditorWindowOption })
-    const browserWindow = touchWindow.window
-    browserWindow.setFullScreenable(false)
-    browserWindow.setSkipTaskbar(false)
-    return this.createHandle(touchWindow, null)
   }
 
   private createHandle(

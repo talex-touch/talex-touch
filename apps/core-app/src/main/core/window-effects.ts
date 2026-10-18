@@ -3,9 +3,8 @@ export function shouldApplyMicaFallback(platform: NodeJS.Platform, isMicaWindow:
 }
 
 /**
- * Opaque colour used when transparency is given up. Same value as
- * ScreenshotEditorWindowOption, which is the one window option that already ships the
- * `transparent: false` plus explicit `backgroundColor` pair.
+ * Opaque colour used when transparency is given up: the dark surface CoreApp windows paint
+ * when they ship the `transparent: false` plus explicit `backgroundColor` pair.
  */
 export const OPAQUE_WINDOW_BACKGROUND = '#111315'
 

@@ -3,7 +3,7 @@ import { defineEvent } from '../event/builder'
 export type ScreenshotSessionCompletionMode = 'editor' | 'return-resource'
 export type ScreenshotSessionInitialTarget = 'free-region' | 'display' | 'window' | 'ui-element'
 export type ScreenshotSessionDelayMs = 0 | 3000 | 5000
-export type ScreenshotSessionPhase = 'preparing' | 'selecting' | 'confirming' | 'editor' | 'tearing-down'
+export type ScreenshotSessionPhase = 'preparing' | 'selecting' | 'confirming' | 'editing' | 'tearing-down'
 export type ScreenshotSessionMode = 'frozen' | 'live'
 export type ScreenshotSelectionTargetMode = 'free-region' | 'object'
 
@@ -96,9 +96,45 @@ export interface ScreenshotOverlayOptions {
   aspectRatio?: number
 }
 
+/** Why a UI-element hit test fell back to its window (mirrors the native protocol values). */
+export type ScreenshotAccessibilityFallback = 'permission-denied' | 'timeout' | 'unsupported' | 'unverified-window'
+
+/**
+ * A native hit-test candidate, without its native identity. `sequence` is the pointer request
+ * that produced it; a lock must name the sequence the renderer actually displayed. `level`
+ * indexes the native chain (0 = deepest UI element, then its window) and `levels` is its length.
+ */
 export interface ScreenshotOverlayCandidate {
-  kind: 'display' | 'window' | 'ui-element'
+  sequence: number
+  kind: 'window' | 'ui-element'
   bounds: ScreenshotRect
+  role?: string
+  level: number
+  levels: number
+  fallback?: ScreenshotAccessibilityFallback
+}
+
+/** What the current selection means: a native target keeps its semantics until it is edited. */
+export type ScreenshotSelectionSource = 'region' | 'grid' | 'window' | 'ui-element'
+
+export interface ScreenshotOverlaySelectionTarget {
+  source: ScreenshotSelectionSource
+  role?: string
+}
+
+/**
+ * Inline annotation source. The source image is immutable for the edit; annotations are drawn in
+ * its pixel space. `sourceUrl` is a short-lived capability URL that the overlay may read back into
+ * a canvas. `bounds` is where the source sits on the desktop in global DIP.
+ */
+export interface ScreenshotOverlayEditState {
+  editId: string
+  displayId: string
+  sourceUrl: string
+  width: number
+  height: number
+  bounds: ScreenshotRect
+  committedRevision?: number
 }
 
 export interface ScreenshotOverlayState {
@@ -110,20 +146,35 @@ export interface ScreenshotOverlayState {
   safeAreaInsets: ScreenshotSafeAreaInsets
   desktopBounds: ScreenshotRect
   selection?: ScreenshotRect
+  selectionTarget?: ScreenshotOverlaySelectionTarget
   candidate?: ScreenshotOverlayCandidate
+  hitTestError?: string
+  edit?: ScreenshotOverlayEditState
   options: ScreenshotOverlayOptions
   capabilities: Record<string, ScreenshotOverlayCapability>
 }
 
+/** Largest edited PNG the overlay may commit (matches the native compose packet budget). */
+export const SCREENSHOT_EDIT_MAX_PNG_BYTES = 64 * 1024 * 1024
+
+export type ScreenshotOverlayOutputCommand =
+  | { type: 'copy'; revision?: number }
+  | { type: 'save'; revision?: number }
+  | { type: 'confirm'; revision?: number }
+
 export type ScreenshotOverlayCommand =
-  | { type: 'set-selection'; selection: ScreenshotRect }
+  | { type: 'set-selection'; selection: ScreenshotRect; source?: 'region' | 'grid' }
+  | { type: 'clear-selection' }
   | { type: 'set-mode'; mode: ScreenshotSessionMode }
   | { type: 'set-target-mode'; targetMode: ScreenshotSelectionTargetMode }
   | { type: 'set-options'; options: Partial<ScreenshotOverlayOptions> }
-  | { type: 'pointer'; point: ScreenshotPoint }
-  | { type: 'copy' }
-  | { type: 'save' }
-  | { type: 'confirm' }
+  | { type: 'pointer'; point: ScreenshotPoint; sequence: number }
+  | { type: 'set-candidate-level'; sequence: number; level: number }
+  | { type: 'lock-candidate'; sequence: number }
+  | { type: 'begin-edit' }
+  | { type: 'end-edit' }
+  | { type: 'commit-edit'; editId: string; revision: number; png: Uint8Array }
+  | ScreenshotOverlayOutputCommand
   | { type: 'cancel' }
 
 export interface ScreenshotOverlayCommandRequest {
@@ -132,24 +183,6 @@ export interface ScreenshotOverlayCommandRequest {
 }
 
 export interface ScreenshotOverlayCommandResponse {
-  accepted: boolean
-  reason?: string
-}
-
-export interface ScreenshotEditorState {
-  sessionId: string
-  resource: ScreenshotManagedResource
-  capabilities: Record<string, ScreenshotOverlayCapability>
-}
-
-export type ScreenshotEditorAction = 'copy' | 'save' | 'quick-save' | 'complete' | 'cancel'
-
-export interface ScreenshotEditorActionRequest {
-  sessionId: string
-  action: ScreenshotEditorAction
-}
-
-export interface ScreenshotEditorActionResponse {
   accepted: boolean
   reason?: string
 }
@@ -211,12 +244,5 @@ export const ScreenshotSessionEvents = {
       .module('overlay')
       .event('command')
       .define<ScreenshotOverlayCommandRequest, ScreenshotOverlayCommandResponse>(),
-  },
-  editor: {
-    ready: defineEvent('screenshot-session').module('editor').event('ready').define<void, ScreenshotEditorState>(),
-    action: defineEvent('screenshot-session')
-      .module('editor')
-      .event('action')
-      .define<ScreenshotEditorActionRequest, ScreenshotEditorActionResponse>(),
   },
 } as const

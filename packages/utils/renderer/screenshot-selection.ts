@@ -12,10 +12,29 @@ export interface ScreenshotGeometryRect {
 
 export type ScreenshotResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 export type ScreenshotNudgeDirection = 'left' | 'right' | 'up' | 'down'
+/**
+ * One of the nine points of a selection that stays fixed while its width/height change. This is
+ * a sizing anchor, not a position: it never moves the selection to a desktop location.
+ */
+export type ScreenshotSelectionAnchor = ScreenshotResizeHandle | 'center'
+
+export const SCREENSHOT_SELECTION_ANCHORS: readonly ScreenshotSelectionAnchor[] = [
+  'nw',
+  'n',
+  'ne',
+  'w',
+  'center',
+  'e',
+  'sw',
+  's',
+  'se',
+]
 
 export interface ScreenshotResizeOptions {
   minSize?: number
   aspectRatio?: number
+  /** Fixed point for manual and keyboard sizing; defaults to the top-left corner. */
+  anchor?: ScreenshotSelectionAnchor
 }
 
 const DEFAULT_MIN_SIZE = 4
@@ -185,6 +204,36 @@ export function resizeScreenshotSelection(
   return { x: left, y: top, width: right - left, height: bottom - top }
 }
 
+function anchorFactors(anchor: ScreenshotSelectionAnchor): { x: number, y: number } {
+  if (anchor === 'center') return { x: 0.5, y: 0.5 }
+  return {
+    x: anchor.includes('w') ? 0 : anchor.includes('e') ? 1 : 0.5,
+    y: anchor.includes('n') ? 0 : anchor.includes('s') ? 1 : 0.5,
+  }
+}
+
+/** Room for an edge that grows away from an anchor at `factor` (0 start, 0.5 centre, 1 end). */
+function availableExtent(anchor: number, factor: number, start: number, end: number): number {
+  if (factor === 0) return end - anchor
+  if (factor === 1) return anchor - start
+  return 2 * Math.min(anchor - start, end - anchor)
+}
+
+export function screenshotSelectionAnchorPoint(
+  selection: ScreenshotGeometryRect,
+  anchor: ScreenshotSelectionAnchor,
+): ScreenshotGeometryPoint {
+  const factors = anchorFactors(anchor)
+  return {
+    x: selection.x + selection.width * factors.x,
+    y: selection.y + selection.height * factors.y,
+  }
+}
+
+/**
+ * Sets width/height while the chosen anchor point stays where it is. When the requested size does
+ * not fit inside `bounds` around that anchor, the size shrinks; the anchor never moves.
+ */
 export function setScreenshotSelectionSize(
   selection: ScreenshotGeometryRect,
   width: number,
@@ -192,25 +241,39 @@ export function setScreenshotSelectionSize(
   bounds: ScreenshotGeometryRect,
   options: ScreenshotResizeOptions = {},
 ): ScreenshotGeometryRect {
+  if (!finiteRect(selection) || !finiteRect(bounds)) return { ...selection }
   const minimum = normalizedMinSize(options.minSize)
   const ratio = normalizedRatio(options.aspectRatio)
+  const factors = anchorFactors(options.anchor ?? 'nw')
+  const anchor = screenshotSelectionAnchorPoint(selection, options.anchor ?? 'nw')
   let nextWidth = Math.max(minimum, Number.isFinite(width) ? width : selection.width)
   let nextHeight = Math.max(minimum, Number.isFinite(height) ? height : selection.height)
   if (ratio) nextHeight = nextWidth / ratio
-  nextWidth = Math.min(nextWidth, bounds.x + bounds.width - selection.x)
-  nextHeight = Math.min(nextHeight, bounds.y + bounds.height - selection.y)
+  nextWidth = Math.min(
+    nextWidth,
+    Math.max(0, availableExtent(anchor.x, factors.x, bounds.x, bounds.x + bounds.width)),
+  )
+  nextHeight = Math.min(
+    nextHeight,
+    Math.max(0, availableExtent(anchor.y, factors.y, bounds.y, bounds.y + bounds.height)),
+  )
   if (ratio && nextWidth / nextHeight !== ratio) {
     nextWidth = Math.min(nextWidth, nextHeight * ratio)
     nextHeight = nextWidth / ratio
   }
   return {
-    x: selection.x,
-    y: selection.y,
+    x: anchor.x - nextWidth * factors.x,
+    y: anchor.y - nextHeight * factors.y,
     width: nextWidth,
     height: nextHeight,
   }
 }
 
+/**
+ * Arrow keys move the selection; with `resize`, they change its size. When `options.anchor` is
+ * set, right/down grow and left/up shrink around that fixed anchor; otherwise the edge facing the
+ * arrow moves.
+ */
 export function nudgeScreenshotSelection(
   selection: ScreenshotGeometryRect,
   direction: ScreenshotNudgeDirection,
@@ -227,6 +290,14 @@ export function nudgeScreenshotSelection(
       bounds,
     )
   }
+  if (options.anchor) {
+    const ratio = normalizedRatio(options.aspectRatio)
+    const widthDelta = direction === 'left' ? -amount : direction === 'right' ? amount : 0
+    const heightDelta = direction === 'up' ? -amount : direction === 'down' ? amount : 0
+    const nextHeight = selection.height + heightDelta
+    const nextWidth = ratio && heightDelta !== 0 ? nextHeight * ratio : selection.width + widthDelta
+    return setScreenshotSelectionSize(selection, nextWidth, nextHeight, bounds, options)
+  }
   const handle: ScreenshotResizeHandle =
     direction === 'left' ? 'w' : direction === 'right' ? 'e' : direction === 'up' ? 'n' : 's'
   return resizeScreenshotSelection(
@@ -237,6 +308,24 @@ export function nudgeScreenshotSelection(
     bounds,
     options,
   )
+}
+
+/**
+ * One cell of a 3×3 grid over `region`, in reading order (0 top-left … 8 bottom-right). This is
+ * the keyboard navigation grid that narrows a region; it is unrelated to sizing anchors.
+ */
+export function screenshotGridCell(
+  region: ScreenshotGeometryRect,
+  index: number,
+): ScreenshotGeometryRect | null {
+  if (!finiteRect(region) || !Number.isInteger(index) || index < 0 || index > 8) return null
+  const column = index % 3
+  const row = Math.floor(index / 3)
+  const left = region.x + (region.width * column) / 3
+  const top = region.y + (region.height * row) / 3
+  const right = region.x + (region.width * (column + 1)) / 3
+  const bottom = region.y + (region.height * (row + 1)) / 3
+  return { x: left, y: top, width: right - left, height: bottom - top }
 }
 
 export function snapshotScreenshotSelection(selection: ScreenshotGeometryRect): ScreenshotGeometryRect {
