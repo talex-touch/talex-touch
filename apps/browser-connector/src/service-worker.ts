@@ -2,6 +2,7 @@ import type {
   BrowserBookmarkOperation,
   BrowserConnectionClientMessage,
   BrowserConnectionServerMessage,
+  ChromeCookieFilter,
 } from '../../../packages/utils/transport/sdk/domains/browser-connection'
 import type { NativePort } from './chrome'
 import type { ConnectorSettings } from './database'
@@ -18,6 +19,7 @@ import { verifyBrowserServerProof } from './auth'
 import {
   chromeApi,
   compareExpectation,
+  fetchCookies,
   flattenBookmarks,
   flattenTabs,
   mutateBookmark,
@@ -309,6 +311,29 @@ async function tab(
   await snapshot(expectedEpoch, 'tabs')
   send(outcome, expectedEpoch)
 }
+async function handleCookies(
+  message: { type: 'cookies', requestId: string, filter: ChromeCookieFilter },
+  expectedEpoch: number,
+): Promise<void> {
+  active(expectedEpoch)
+  try {
+    const cookies = await fetchCookies(message.filter)
+    active(expectedEpoch)
+    send({ type: 'cookies-result', requestId: message.requestId, ok: true, cookies }, expectedEpoch)
+  }
+  catch (error) {
+    active(expectedEpoch)
+    send(
+      {
+        type: 'cookies-result',
+        requestId: message.requestId,
+        ok: false,
+        error: error instanceof Error ? error.message : 'cookiesFetchFailed',
+      },
+      expectedEpoch,
+    )
+  }
+}
 
 async function receive(raw: unknown, expectedEpoch: number): Promise<void> {
   if (expectedEpoch !== epoch || !port)
@@ -401,6 +426,8 @@ async function receive(raw: unknown, expectedEpoch: number): Promise<void> {
     await bookmark(message.operation, expectedEpoch)
   else if (message.type === 'tab')
     await tab(message, expectedEpoch)
+  else if (message.type === 'cookies')
+    await handleCookies(message, expectedEpoch)
 }
 
 async function connect(): Promise<void> {

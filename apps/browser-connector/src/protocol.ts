@@ -4,6 +4,7 @@ import type {
   BrowserChromeTabCommand,
   BrowserConnectionServerMessage,
   ChromeBookmarkNode,
+  ChromeCookieFilter,
 } from '../../../packages/utils/transport/sdk/domains/browser-connection'
 import {
   BROWSER_MAX_FRAME_BYTES,
@@ -84,6 +85,21 @@ function tabCommand(value: unknown): value is BrowserChromeTabCommand {
     && (value.windowId === undefined || integer(value.windowId))
   )
 }
+function cookieFilter(value: unknown): value is ChromeCookieFilter {
+  if (!record(value))
+    return false
+  if (value.domain !== undefined && !text(value.domain, 256))
+    return false
+  if (value.url !== undefined && !text(value.url, 4096))
+    return false
+  if (value.domains !== undefined) {
+    if (!Array.isArray(value.domains) || value.domains.length > 50)
+      return false
+    if (!value.domains.every(d => text(d, 256)))
+      return false
+  }
+  return true
+}
 export function parseServerMessage(value: unknown): BrowserConnectionServerMessage {
   if (new TextEncoder().encode(JSON.stringify(value)).length > BROWSER_MAX_FRAME_BYTES || !record(value))
     throw new Error('invalidMessage')
@@ -123,6 +139,8 @@ export function parseServerMessage(value: unknown): BrowserConnectionServerMessa
     return { type: 'tab', requestId: value.requestId, command: value.command }
   if (value.type === 'refresh')
     return { type: 'refresh' }
+  if (value.type === 'cookies' && id(value.requestId) && cookieFilter(value.filter))
+    return { type: 'cookies', requestId: value.requestId, filter: value.filter }
   if (value.type === 'error' && text(value.error, 4096))
     return { type: 'error', error: value.error }
   throw new Error('invalidMessage')

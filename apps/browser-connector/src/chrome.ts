@@ -3,6 +3,8 @@ import type {
   BrowserBookmarkExpectation,
   BrowserChromeTabCommand,
   ChromeBookmarkNode,
+  ChromeCookieFilter,
+  ChromeCookieRecord,
   ChromeTab,
 } from '../../../packages/utils/transport/sdk/domains/browser-connection'
 import {
@@ -30,6 +32,17 @@ export interface RawTab {
   pinned: boolean
   groupId?: number
   incognito: boolean
+}
+export interface RawCookie {
+  name: string
+  value: string
+  domain: string
+  path: string
+  secure: boolean
+  httpOnly: boolean
+  sameSite: 'no_restriction' | 'lax' | 'strict' | 'unspecified'
+  expirationDate?: number
+  storeId?: string
 }
 interface ChromeEvent<T extends (...args: never[]) => unknown> {
   addListener: (listener: T) => void
@@ -97,6 +110,20 @@ export interface ChromeApi {
   windows: {
     get: (id: number) => Promise<{ incognito: boolean }>
     update: (id: number, details: { focused: boolean }) => Promise<unknown>
+  }
+  cookies?: {
+    getAll: (details: {
+      domain?: string
+      url?: string
+      name?: string
+      path?: string
+      secure?: boolean
+      session?: boolean
+      storeId?: string
+    }) => Promise<RawCookie[]>
+    get: (details: { url: string, name: string, storeId?: string }) => Promise<RawCookie | null>
+    set: (details: RawCookie & { url: string }) => Promise<RawCookie | null>
+    remove: (details: { url: string, name: string, storeId?: string }) => Promise<{ url: string, name: string, storeId?: string } | null>
   }
 }
 // Chrome supplies this API in the extension isolated world; it is not a remote payload.
@@ -295,4 +322,50 @@ export async function mutateTab(command: BrowserChromeTabCommand, assertActive: 
     default:
       throw new Error('invalidCommand')
   }
+}
+
+export async function fetchCookies(filter: ChromeCookieFilter): Promise<ChromeCookieRecord[]> {
+  if (!chromeApi.cookies)
+    throw new Error('cookiesApiUnavailable')
+  const records: ChromeCookieRecord[] = []
+  const seen = new Set<string>()
+
+  const addCookie = (c: RawCookie) => {
+    const key = `${c.domain}|${c.path}|${c.name}`
+    if (seen.has(key))
+      return
+    seen.add(key)
+    records.push({
+      name: c.name,
+      value: c.value,
+      domain: c.domain,
+      path: c.path,
+      secure: Boolean(c.secure),
+      httpOnly: Boolean(c.httpOnly),
+      sameSite: c.sameSite || 'lax',
+      expirationDate: c.expirationDate,
+      storeId: c.storeId,
+    })
+  }
+
+  if (filter.domains && filter.domains.length > 0) {
+    for (const domain of filter.domains) {
+      const items = await chromeApi.cookies.getAll({ domain })
+      for (const item of items) addCookie(item)
+    }
+  }
+  else if (filter.url) {
+    const items = await chromeApi.cookies.getAll({ url: filter.url })
+    for (const item of items) addCookie(item)
+  }
+  else if (filter.domain) {
+    const items = await chromeApi.cookies.getAll({ domain: filter.domain })
+    for (const item of items) addCookie(item)
+  }
+  else {
+    const items = await chromeApi.cookies.getAll({})
+    for (const item of items) addCookie(item)
+  }
+
+  return records
 }
