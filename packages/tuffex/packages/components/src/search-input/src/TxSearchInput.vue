@@ -82,6 +82,7 @@ defineExpose({
   <TuffInput
     ref="inputRef"
     v-model="value"
+    class="tx-search-input"
     :disabled="disabled"
     :placeholder="placeholder"
     :clearable="clearable"
@@ -104,6 +105,30 @@ defineExpose({
 </template>
 
 <style lang="scss" scoped>
+@use '../../../style/mixins.scss' as *;
+
+// One focus indicator, on the field's rounded box. Under high contrast the
+// global `*:focus-visible` rule (style/index.scss) also gives the inner
+// `<input>` its focus shadow, a rectangle inside the frame TxInput draws on
+// `:focus-within`; and that frame's own ring (`--tx-color-primary-light-9`) is
+// nearly invisible on the high-contrast page. Move the high-contrast ring onto
+// the wrapper and take it off the input. `is-focused` is TxInput's flag for its
+// own input, so a focused clear button keeps its own ring and adds none here.
+.tx-search-input.is-focused:not(.is-disabled) {
+  @include tx-when-high-contrast {
+    outline: 2px solid var(--tx-focus-ring-color, var(--tx-color-primary, #409eff));
+    outline-offset: 0;
+    box-shadow: var(--tx-focus-ring-shadow);
+  }
+}
+
+.tx-search-input :deep(.tx-input__inner:focus-visible) {
+  @include tx-when-high-contrast {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
 .tx-search-input__icon {
   display: inline-flex;
   align-items: center;

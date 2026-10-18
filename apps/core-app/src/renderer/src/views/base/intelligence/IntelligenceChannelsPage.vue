@@ -2,7 +2,14 @@
 import type { IntelligenceProviderConfig, TestResult } from '@talex-touch/tuff-intelligence'
 import { IntelligenceProviderType } from '@talex-touch/tuff-intelligence'
 import { TxButton } from '@talex-touch/tuffex/button'
-import { TxIconPicker, type IconPickerShape } from '@talex-touch/tuffex/icon-picker'
+import {
+  ICON_PICKER_CATEGORY_LABELS,
+  ICON_PICKER_SHAPES,
+  isIconPickerShape,
+  provideIconPickerGlyphs,
+  TxIconPicker,
+  type IconPickerShape
+} from '@talex-touch/tuffex/icon-picker'
 import { TxSelectItem } from '@talex-touch/tuffex/select'
 import { useIntelligenceSdk } from '@talex-touch/utils/renderer'
 import { isOnDeviceAsrProvider } from '@talex-touch/utils/intelligence/voice-asr'
@@ -40,6 +47,7 @@ import { createRendererLogger } from '~/utils/renderer-log'
 
 const channelsLog = createRendererLogger('IntelligenceChannelsPage')
 const { t } = useI18n()
+provideIconPickerGlyphs()
 const aiClient = useIntelligenceSdk()
 const transport = useTuffTransport()
 
@@ -125,15 +133,25 @@ const providerIconLabels = computed(() => ({
   emoji: t('settings.intelligence.providerIconLabels.emoji'),
   icon: t('settings.intelligence.providerIconLabels.icon'),
   brand: t('settings.intelligence.providerIconLabels.brand'),
+  ai: t('settings.intelligence.providerIconLabels.ai'),
   file: t('settings.intelligence.providerIconLabels.file'),
   search: t('settings.intelligence.providerIconLabels.search'),
   empty: t('settings.intelligence.providerIconLabels.empty'),
   clear: t('settings.intelligence.providerIconLabels.clear'),
   chooseFile: t('settings.intelligence.providerIconLabels.chooseFile'),
   shape: t('settings.intelligence.providerIconLabels.shape'),
-  shapeCircle: t('settings.intelligence.providerIconLabels.shapeCircle'),
-  shapeRounded: t('settings.intelligence.providerIconLabels.shapeRounded'),
-  shapeSquare: t('settings.intelligence.providerIconLabels.shapeSquare')
+  shapes: Object.fromEntries(
+    ICON_PICKER_SHAPES.map((shape) => [
+      shape,
+      t(`settings.intelligence.providerIconLabels.shapes.${shape}`)
+    ])
+  ),
+  categories: Object.fromEntries(
+    Object.keys(ICON_PICKER_CATEGORY_LABELS).map((category) => [
+      category,
+      t(`settings.intelligence.providerIconLabels.categories.${category}`)
+    ])
+  )
 }))
 
 function createProviderCopy(provider: IntelligenceProviderConfig): IntelligenceProviderConfig {
@@ -177,10 +195,10 @@ function openBasicEditor(provider: IntelligenceProviderConfig): void {
     name: provider.name,
     channelType: getProviderChannelType(provider),
     icon: providerIconIdentifier(provider),
-    // Anything but the three known shapes — a hand-edited config, an older
+    // Anything but a shape the picker draws — a hand-edited config or an older
     // schema — falls back rather than reaching the picker as an unknown value
     // that matches no shape button and leaves the row with nothing selected.
-    iconShape: shape === 'circle' || shape === 'square' ? shape : 'rounded'
+    iconShape: isIconPickerShape(shape) ? shape : 'rounded'
   }
   basicEditorVisible.value = true
 }

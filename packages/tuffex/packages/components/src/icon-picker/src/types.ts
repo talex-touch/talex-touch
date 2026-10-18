@@ -3,14 +3,31 @@ import type { TxIconSource } from '../../icon/src/types'
 /**
  * The shape of the plate an icon is mounted on.
  *
- * Deliberately the same three words as `AvatarShape`: a picked icon is almost
- * always going to end up inside a `TxAvatar`, and two vocabularies for one
- * concept is how a host ends up writing a translation table.
+ * The first three are deliberately the same words as `AvatarShape`: a picked
+ * icon often ends up inside a `TxAvatar`, and two vocabularies for one concept
+ * is how a host ends up writing a translation table. The rest are shapes only
+ * the picker's own plate draws; a host handing the value to an avatar maps
+ * them down itself.
  */
-export type IconPickerShape = 'circle' | 'rounded' | 'square'
+export type IconPickerShape =
+  | 'circle'
+  | 'squircle'
+  | 'rounded'
+  | 'square'
+  | 'diamond'
+  | 'pentagon'
+  | 'hexagon'
+  | 'arch'
+  | 'cookie'
+  | 'clover'
+  | 'burst'
+  | 'heart'
 
 /** The catalog sections a panel can show, in tab order. */
-export type IconPickerSection = 'emoji' | 'icon' | 'brand' | 'file'
+export type IconPickerSection = 'emoji' | 'icon' | 'brand' | 'ai' | 'file'
+
+/** The sections that are a grid of rows, rather than the file action. */
+export type IconPickerCatalogSection = Exclude<IconPickerSection, 'file'>
 
 /**
  * One catalog row.
@@ -24,6 +41,11 @@ export interface IconPickerEntry {
   id: string
   icon: TxIconSource
   keywords: string
+  /**
+   * The heading the row is grouped under, and a search term in its own
+   * right. Rows without one are grouped after every named category.
+   */
+  category?: string
 }
 
 /**
@@ -47,10 +69,10 @@ export interface IconPickerProps {
   sections?: IconPickerSection[]
   /**
    * Replaces the bundled catalog for a section. The host owns the CSS that
-   * renders a `class:` icon, so a host with its own icon set replaces the rows
-   * rather than adding to a catalog it cannot style.
+   * renders a `class:` icon it supplies, so a host with its own icon set
+   * replaces the rows rather than adding to a catalog it cannot style.
    */
-  catalog?: Partial<Record<'emoji' | 'icon' | 'brand', IconPickerEntry[]>>
+  catalog?: Partial<Record<IconPickerCatalogSection, IconPickerEntry[]>>
   /** Offer the shape row. Off when the host renders the icon on its own plate. */
   shapeSelectable?: boolean
   fileChooser?: IconPickerFileChooser
@@ -62,7 +84,7 @@ export interface IconPickerProps {
   placeholder?: string
   /** Render the panel directly instead of behind a trigger. */
   inline?: boolean
-  /** Section labels, search placeholder and the clear/file actions. */
+  /** Section labels, search placeholder, headings and the clear/file actions. */
   labels?: Partial<IconPickerLabels>
 }
 
@@ -70,15 +92,23 @@ export interface IconPickerLabels {
   emoji: string
   icon: string
   brand: string
+  ai?: string
   file: string
   search: string
   empty: string
   clear: string
   chooseFile: string
   shape: string
-  shapeCircle: string
-  shapeRounded: string
-  shapeSquare: string
+  /** Shape names, for the shape row's tooltips and its current-shape caption. */
+  shapes?: Partial<Record<IconPickerShape, string>>
+  /** Category headings, keyed by `IconPickerEntry.category`. */
+  categories?: Partial<Record<string, string>>
+  /** @deprecated Use `shapes.circle`. */
+  shapeCircle?: string
+  /** @deprecated Use `shapes.rounded`. */
+  shapeRounded?: string
+  /** @deprecated Use `shapes.square`. */
+  shapeSquare?: string
 }
 
 export interface IconPickerEmits {

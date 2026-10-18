@@ -177,16 +177,16 @@ code: |
 
 ## Overview
 
-- The root is a native `<button role="switch">` with `aria-checked`.
+- The root is a native `<button role="switch">` with `aria-checked`; with visible text (`label` or the slot), no `aria-label` is rendered.
 - It is controlled: a toggle only emits, and the switch updates once the parent writes `modelValue` back.
 - `disabled` and `loading` both set the native `disabled` attribute; `loading` keeps full opacity and sets `aria-busy="true"`.
-- With visible text (`label` or the slot), no `aria-label` is rendered.
 - The thumb travels on the glide material: each end rides its own spring, so it stretches on the way and gathers as it lands; toggling mid-flight turns it around instead of restarting.
-- Under reduced motion, the thumb lands at once and the loading ring stops spinning.
+- Colour and visibility change at once, so a switch hides together with a closing popover. Only the hover glow, the loading morph, and the press feedback ease.
+- Under reduced motion those transitions are off too: the thumb lands at once and the loading ring stops spinning.
 
 ## Technologies
 
-- The state classes `is-active`, `is-disabled`, `is-loading`, and `has-label` sit on the root; the track and thumb are `.tuff-switch__track` and `.tuff-switch__thumb`.
+- The state classes `is-active`, `is-disabled`, `is-loading`, and `has-label` sit on the root; the track and thumb are `.tuff-switch__track` and `.tuff-switch__thumb`. The thumb's fill is its `::before` and the loading ring its `::after`; loading cross-fades them by opacity.
 - The stylesheet's `left` rests the thumb; while it travels the component writes `translate` and `width` each frame and clears them on landing, leaving `transform` to the press feedback.
 - Source: `packages/tuffex/packages/components/src/switch/`.
 

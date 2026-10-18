@@ -121,6 +121,12 @@ code: |
 | `setValue(v)` | `(v: string) => void` | Sets the input value. |
 | `getValue()` | `() => string` | Returns the input value. |
 
+## Overview
+
+- The root is `TuffInput`'s rounded frame and carries the `tx-search-input` class. `class` and `style` land on the frame; `aria-label`, `id`, and other attributes land on the inner `<input>`.
+- Focus is drawn on the frame only. Regular themes keep `TuffInput`'s border and ring; high-contrast themes use a `--tx-focus-ring-color` outline with `--tx-focus-ring-shadow`, and the inner `<input>` draws no rectangular focus box.
+- The high-contrast outline appears only while the inner input has focus; a focused clear button keeps its own focus ring.
+
 ## Technologies
 
 - Wraps `TuffInput` with a built-in search icon; clearing and the exposed methods forward to `TuffInput`.

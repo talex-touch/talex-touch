@@ -21,7 +21,6 @@ import {
   PROVIDER_ICON_CLASSES,
   PROVIDER_ID_ICON_CLASSES
 } from './src/renderer/src/modules/intelligence/provider-icons'
-import { ICON_CATALOG_CLASSES } from '../../packages/tuffex/packages/components/src/icon-picker/src/catalog'
 
 /**
  * Icon classes that only ever appear inside plain `.ts` modules.
@@ -74,12 +73,6 @@ const MODEL_SOURCE_ICONS_MODULE = fileURLToPath(
 const APP_DESTINATIONS_MODULE = fileURLToPath(
   new URL('./src/shared/app-destinations.ts', import.meta.url)
 )
-const ICON_PICKER_CATALOG_MODULE = fileURLToPath(
-  new URL(
-    '../../packages/tuffex/packages/components/src/icon-picker/src/catalog.ts',
-    import.meta.url
-  )
-)
 const MAIN_WINDOW_COMMAND_CATALOG_MODULE = fileURLToPath(
   new URL('./src/renderer/src/modules/shortcuts/main-window-command-catalog.ts', import.meta.url)
 )
@@ -101,7 +94,6 @@ export default defineConfig({
     MODEL_FAMILY_ICONS_MODULE,
     MODEL_SOURCE_ICONS_MODULE,
     APP_DESTINATIONS_MODULE,
-    ICON_PICKER_CATALOG_MODULE,
     MAIN_WINDOW_COMMAND_CATALOG_MODULE,
     HOME_PUSH_ICONS_MODULE,
     FLOW_TARGET_ICONS_MODULE,
@@ -125,11 +117,6 @@ export default defineConfig({
     // CoreBox destination icons, named only in the shared catalog (`src/shared/app-destinations.ts`).
     // Derived from that module so a new destination cannot ship an invisible glyph.
     ...APP_DESTINATION_ICON_CLASSES,
-    // The icon picker's bundled catalog. Same trap one layer out: these classes live in a
-    // TuffEx `.ts` table and appear in no template the extractor scans, so without them every
-    // cell in the picker grid draws an empty box. Spread from the module so a row added there
-    // cannot ship invisible.
-    ...ICON_CATALOG_CLASSES,
     // The MainWindow command catalog (`modules/shortcuts/main-window-command-catalog.ts`) — the
     // rows ⌘/ lists and the badge on each control. A row is rendered by v-for, so no template names
     // its icon; without these the whole palette draws empty boxes. Derived from the catalog so a

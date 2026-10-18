@@ -15,6 +15,7 @@ import { TxDataTable } from '@talex-touch/tuffex/data-table'
 import { TxFilterChips } from '@talex-touch/tuffex/filter-chips'
 import { TxIcon } from '@talex-touch/tuffex/icon'
 import { TxSkeleton } from '@talex-touch/tuffex/skeleton'
+import { provideIconPickerGlyphs } from '@talex-touch/tuffex/icon-picker'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -47,6 +48,7 @@ const props = defineProps<{
 
 const { t, locale } = useI18n()
 const labels = useAuditLabels()
+provideIconPickerGlyphs()
 
 const dimension = ref<Dimension>('channel')
 const activeSegment = ref<string | undefined>(undefined)

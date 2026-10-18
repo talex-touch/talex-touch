@@ -307,7 +307,7 @@ code: |
 ## 技术实现
 
 - `shouldRenderSvgAsMask` 检查 SVG 的绘制颜色是否都是中性色或 `currentColor`，以决定是否走遮罩。
-- `TX_ICON_CONFIG_KEY` 注入 `urlResolver`、`svgFetcher` 与 `fileProtocol`。
+- `TX_ICON_CONFIG_KEY` 注入 `urlResolver`、`svgFetcher`、`fileProtocol` 与 `classGlyph`；`classGlyph` 能解析的类改用路径数据绘制，不依赖宿主 CSS。
 - 源码：`packages/tuffex/packages/components/src/icon/`。
 
 <TuffDocSourceLink />

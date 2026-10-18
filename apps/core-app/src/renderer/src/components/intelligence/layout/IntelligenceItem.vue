@@ -14,6 +14,7 @@ import {
   TUFF_NEXUS_PROVIDER_ICON
 } from '~/modules/intelligence/nexus-provider'
 import { resolveProviderIcon } from '~/modules/intelligence/provider-icon-override'
+import { provideIconPickerGlyphs } from '@talex-touch/tuffex/icon-picker'
 import {
   getProviderChannelType,
   isLocalCliProvider
@@ -26,6 +27,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+provideIconPickerGlyphs()
 const localEnabled = ref(props.provider.enabled)
 
 // Watch for external changes to provider.enabled
