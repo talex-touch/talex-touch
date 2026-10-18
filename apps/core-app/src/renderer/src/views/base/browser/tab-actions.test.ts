@@ -88,6 +88,7 @@ function createWorkspace(
       }
     },
     navigate: unsupported,
+    moveTab: unsupported,
     back: unsupported,
     forward: unsupported,
     stop: unsupported,

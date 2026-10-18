@@ -262,6 +262,152 @@ describe('browser guest navigation confinement', () => {
   })
 })
 
+describe('browser tab order', () => {
+  const restored = () => ({
+    tabs: ['first', 'second', 'third', 'fourth'].map((id) => ({
+      id,
+      url: `https://${id}.example/`,
+      title: id
+    })),
+    activeTabId: 'second',
+    recent: [],
+    bookmarks: []
+  })
+
+  it.each([
+    {
+      name: 'moves right before a later anchor',
+      tabId: 'first',
+      beforeTabId: 'fourth',
+      expected: ['second', 'third', 'first', 'fourth']
+    },
+    {
+      name: 'moves left before an earlier anchor',
+      tabId: 'fourth',
+      beforeTabId: 'second',
+      expected: ['first', 'fourth', 'second', 'third']
+    },
+    {
+      name: 'moves to the first position',
+      tabId: 'third',
+      beforeTabId: 'first',
+      expected: ['third', 'first', 'second', 'fourth']
+    },
+    {
+      name: 'moves the active tab to the end',
+      tabId: 'second',
+      beforeTabId: null,
+      expected: ['first', 'third', 'fourth', 'second']
+    }
+  ])('$name and restores the exact committed order', async ({ tabId, beforeTabId, expected }) => {
+    const { manager, saved, revisions, guests } = createWorkspace(undefined, restored())
+    const before = manager.getState()
+
+    const result = await manager.moveTab(tabId, beforeTabId)
+
+    expect(result).toEqual({
+      ...before,
+      revision: before.revision + 1,
+      tabs: expected.map((id) => before.tabs.find((tab) => tab.id === id))
+    })
+    expect(manager.getState()).toEqual(result)
+    expect(revisions).toEqual([result.revision])
+    expect(saved).toEqual([
+      {
+        ...restored(),
+        tabs: expected.map((id) => restored().tabs.find((tab) => tab.id === id))
+      }
+    ])
+    const reopened = createWorkspace(undefined, saved[0])
+    expect(reopened.manager.getState()).toEqual({ ...result, revision: 0 })
+    expect(guests).toEqual([])
+    expect(reopened.guests).toEqual([])
+  })
+
+  it.each([
+    { name: 'before itself', tabId: 'second', beforeTabId: 'second' },
+    { name: 'before its existing successor', tabId: 'second', beforeTabId: 'third' },
+    { name: 'from the end to the end', tabId: 'fourth', beforeTabId: null }
+  ])('does not publish or persist a move $name', async ({ tabId, beforeTabId }) => {
+    const { manager, saved, revisions } = createWorkspace(undefined, restored())
+    const before = manager.getState()
+
+    expect(await manager.moveTab(tabId, beforeTabId)).toEqual(before)
+    expect(manager.getState()).toEqual(before)
+    expect(revisions).toEqual([])
+    expect(saved).toEqual([])
+  })
+
+  it.each([
+    { name: 'missing source', tabId: 'missing', beforeTabId: 'second' },
+    { name: 'missing source at the end', tabId: 'missing', beforeTabId: null },
+    { name: 'missing anchor', tabId: 'first', beforeTabId: 'missing' },
+    { name: 'missing source before itself', tabId: 'missing', beforeTabId: 'missing' },
+    { name: 'omitted anchor', tabId: 'first', beforeTabId: undefined },
+    { name: 'non-string anchor', tabId: 'first', beforeTabId: 1 }
+  ])('rejects $name before changing any state', async ({ tabId, beforeTabId }) => {
+    const { manager, saved, revisions, guests, owner } = createWorkspace(undefined, restored())
+    manager.setViewport(visibleViewport)
+    const before = manager.getState()
+    const activeGuest = guests[0]!
+
+    await expect(manager.moveTab(tabId, beforeTabId as string | null)).rejects.toThrow(
+      'BROWSER_TAB_NOT_FOUND'
+    )
+
+    expect(manager.getState()).toEqual(before)
+    expect(revisions).toEqual([])
+    expect(saved).toEqual([])
+    expect(guests).toHaveLength(1)
+    expect([...owner.attached]).toEqual([activeGuest])
+    expect(activeGuest.webContents.destroyed).toBe(false)
+    expect(activeGuest.webContents.loads.map((load) => load.url)).toEqual([
+      'https://second.example/'
+    ])
+  })
+
+  it('keeps the selected page and every existing guest alive without reloading on reorder', async () => {
+    const { manager, guests, owner, saved, revisions } = createWorkspace(undefined, restored())
+    manager.setViewport(visibleViewport)
+    for (const id of ['first', 'third', 'fourth']) await manager.activateTab(id)
+    for (const [index, guest] of guests.entries()) {
+      guest.webContents.finish(0, `Committed page ${index}`)
+    }
+    await manager.activateTab('second')
+    const originalGuests = [...guests]
+    const originalLoads = guests.map((guest) => guest.webContents.loads[0])
+    const before = manager.getState()
+    const writesBefore = saved.length
+    const notificationsBefore = revisions.length
+
+    const result = await manager.moveTab('second', null)
+
+    expect(result).toEqual({
+      ...before,
+      revision: before.revision + 1,
+      tabs: ['first', 'third', 'fourth', 'second'].map((id) =>
+        before.tabs.find((tab) => tab.id === id)
+      )
+    })
+    expect(saved).toHaveLength(writesBefore + 1)
+    expect(revisions.slice(notificationsBefore)).toEqual([result.revision])
+    expect([...owner.attached]).toEqual([originalGuests[0]])
+    expect(guests).toHaveLength(originalGuests.length)
+    for (const [index, guest] of guests.entries()) {
+      expect(guest).toBe(originalGuests[index])
+      expect(guest.webContents.destroyed).toBe(false)
+      expect(guest.webContents.loads).toHaveLength(1)
+      expect(guest.webContents.loads[0]).toBe(originalLoads[index])
+    }
+
+    await manager.activateTab('first')
+    expect([...owner.attached]).toEqual([originalGuests[1]])
+    expect(guests).toHaveLength(originalGuests.length)
+    expect(guests[1]!.webContents.loads).toHaveLength(1)
+    expect(tab(manager, 'first').title).toBe('Committed page 1')
+  })
+})
+
 describe('browser workspace guest ownership', () => {
   it('activation detaches the old guest; closing each tab destroys it and leaves a usable local page', async () => {
     const { manager, guests, owner } = createWorkspace()

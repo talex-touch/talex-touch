@@ -1,0 +1,52 @@
+{
+  "appName": { "message": "Tuff · Chrome 连接器" },
+  "appDescription": { "message": "经明确授权，将此 Chrome 用户的书签和普通标签页连接到本机 Tuff。" },
+  "intro": { "message": "仅将此 Chrome 用户连接到本机 Tuff。" },
+  "connectionHeading": { "message": "当前 Chrome 用户" },
+  "statusLabel": { "message": "连接状态" },
+  "profileLabel": { "message": "用户" },
+  "syncedLabel": { "message": "最近已接收快照" },
+  "loading": { "message": "正在加载…" },
+  "connected": { "message": "已连接" },
+  "connecting": { "message": "正在连接…" },
+  "offline": { "message": "离线" },
+  "disabled": { "message": "已在 Chrome 断开" },
+  "paused": { "message": "已在 Chrome 暂停" },
+  "notSynced": { "message": "尚未同步" },
+  "reconnect": { "message": "重新连接" },
+  "pause": { "message": "暂停" },
+  "resume": { "message": "继续" },
+  "disconnect": { "message": "断开" },
+  "pairHeading": { "message": "与 Tuff 配对" },
+  "pairHelp": {
+    "message": "在 Tuff 中打开头像 → Chrome 连接，安装本地桥接程序并生成配对码，然后在此输入一次性配对码。"
+  },
+  "profileName": { "message": "此 Chrome 用户的名称" },
+  "defaultProfileName": { "message": "我的 Chrome 用户" },
+  "pairingCode": { "message": "Tuff 配对码" },
+  "grantAndPair": { "message": "授权书签和标签页并配对" },
+  "privacy": {
+    "message": "配对后仅共享书签及普通标签页信息。不访问 Cookie、密码、历史记录、Google 身份或无痕内容。Tuff 中的网站登录状态与 Chrome 独立。"
+  },
+  "pauseHelp": {
+    "message": "断开会停止自动连接，不会删除 Chrome 数据；重新连接可恢复。如果已在 Tuff 暂停，请先在 Tuff 继续。需要永久撤销已授权密钥时，请在 Tuff 断开此用户。"
+  },
+  "connectionFailed": { "message": "无法连接。请打开 Tuff，按需安装本地桥接程序后重新连接。" },
+  "invalidServerProof": { "message": "本地端点的 Tuff 身份验证失败，连接已停止，不会继续共享用户签名或 Chrome 数据。请重新打开 Tuff 后连接。" },
+  "snapshotReceiptsPending": { "message": "正在等待 Tuff 接收先前的快照，旧书签库已保留。若持续出现，请重新连接。" },
+  "permissionsRequired": { "message": "需要书签和标签页权限。请通过配对或重新连接按钮授权。" },
+  "serverRejected": { "message": "Tuff 拒绝了连接。请确认未在 Tuff 暂停；如果之前已断开此用户，请使用新的配对码。" },
+  "invalidMessage": { "message": "连接器收到无效消息。请同时更新 Tuff 与扩展后重新连接。" },
+  "invalidPairingCode": { "message": "请输入 Tuff 生成的有效且未过期的配对码。" },
+  "invalidProfileLabel": { "message": "请输入 1–100 个字符的用户名称。" },
+  "snapshotTooLarge": { "message": "此用户的数据超过快照大小限制。旧书签库已保留，未发布不完整数据。" },
+  "frameTooLarge": { "message": "消息超过传输大小限制，旧书签库已保留。" },
+  "operationIdReused": { "message": "同一命令编号被用于不同内容，命令未执行。" },
+  "connectionChanged": { "message": "连接已变更，请重新连接以刷新状态。" },
+  "journalUnavailable": { "message": "Chrome 无法保存命令记录，不能安全地开始新的写入。" },
+  "bookmarkChanged": { "message": "Chrome 中的书签或文件夹已变更，请在 Tuff 处理冲突。" },
+  "readOnlyBookmark": { "message": "此书签或文件夹受管理或为只读。" },
+  "unsafeUrl": { "message": "新链接必须使用 HTTP 或 HTTPS，且不能包含账号或密码。" },
+  "interruptedOperation": { "message": "命令被中断，结果不确定。请先检查 Chrome，再在 Tuff 处理冲突。" },
+  "snapshotFailed": { "message": "无法读取完整快照，旧书签库已保留。" }
+}

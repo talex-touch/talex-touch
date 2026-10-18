@@ -27,6 +27,10 @@ export function registerBrowserHandlers(
       assertBrowserOwner(context, owner)
       return manager.closeTab(payload?.tabId)
     }),
+    transport.on(BrowserEvents.moveTab, (payload, context) => {
+      assertBrowserOwner(context, owner)
+      return manager.moveTab(payload?.tabId, payload?.beforeTabId)
+    }),
     transport.on(BrowserEvents.navigate, (payload, context) => {
       assertBrowserOwner(context, owner)
       return manager.navigate(payload?.tabId, payload?.input)

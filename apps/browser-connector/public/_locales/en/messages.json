@@ -1,0 +1,64 @@
+{
+  "appName": { "message": "Tuff · Chrome connector" },
+  "appDescription": {
+    "message": "Explicitly connect this Chrome profile's bookmarks and normal tabs to your local Tuff app."
+  },
+  "intro": { "message": "Connect only this Chrome profile to Tuff on this computer." },
+  "connectionHeading": { "message": "This profile" },
+  "statusLabel": { "message": "Connection" },
+  "profileLabel": { "message": "Profile" },
+  "syncedLabel": { "message": "Last accepted snapshot" },
+  "loading": { "message": "Loading…" },
+  "connected": { "message": "Connected" },
+  "connecting": { "message": "Connecting…" },
+  "offline": { "message": "Offline" },
+  "disabled": { "message": "Disconnected in Chrome" },
+  "paused": { "message": "Paused in Chrome" },
+  "notSynced": { "message": "Not synced" },
+  "reconnect": { "message": "Reconnect" },
+  "pause": { "message": "Pause" },
+  "resume": { "message": "Resume" },
+  "disconnect": { "message": "Disconnect" },
+  "pairHeading": { "message": "Pair with Tuff" },
+  "pairHelp": {
+    "message": "In Tuff, open the avatar → Chrome connections, install the local bridge, then generate a pairing code. Enter that one-use code here."
+  },
+  "profileName": { "message": "Name for this Chrome profile" },
+  "defaultProfileName": { "message": "My Chrome profile" },
+  "pairingCode": { "message": "Pairing code from Tuff" },
+  "grantAndPair": { "message": "Allow bookmarks & tabs, then pair" },
+  "privacy": {
+    "message": "Only bookmarks and normal-tab metadata are shared after pairing. No cookies, passwords, history, Google identity or incognito access. Tuff uses a separate website login session."
+  },
+  "pauseHelp": {
+    "message": "Disconnect disables automatic connection without deleting Chrome data. Reconnect enables it again. If paused in Tuff, resume there first. To revoke the approved key permanently, disconnect this profile in Tuff."
+  },
+  "connectionFailed": { "message": "Cannot connect. Open Tuff, install its local bridge if needed, and reconnect." },
+  "invalidServerProof": { "message": "The local endpoint's Tuff identity check failed. This connection was stopped; no further profile signatures or Chrome data will be shared. Reopen Tuff and reconnect." },
+  "snapshotReceiptsPending": {
+    "message": "Waiting for Tuff to accept earlier snapshots. The previous library is preserved; reconnect if this continues."
+  },
+  "permissionsRequired": { "message": "Bookmarks and tabs permission is required. Use Pair or Reconnect to grant it." },
+  "serverRejected": {
+    "message": "Tuff did not accept the connection. Check that it is not paused and use a fresh pairing code if this profile was disconnected."
+  },
+  "invalidMessage": {
+    "message": "The connector received an invalid message. Reconnect after updating Tuff and this extension together."
+  },
+  "invalidPairingCode": { "message": "Enter a valid, unexpired pairing code from Tuff." },
+  "invalidProfileLabel": { "message": "Enter a profile name of 1–100 characters." },
+  "snapshotTooLarge": {
+    "message": "This profile exceeds the snapshot size limit. The previous library is preserved; no partial library was published."
+  },
+  "frameTooLarge": { "message": "A message exceeds the transport limit. The previous library is preserved." },
+  "operationIdReused": { "message": "A command ID was reused with different content. The command was not applied." },
+  "connectionChanged": { "message": "The connection changed. Reconnect to refresh its state." },
+  "journalUnavailable": { "message": "Chrome could not save the command journal. No new write can start safely." },
+  "bookmarkChanged": { "message": "Chrome changed this bookmark or folder. Resolve the conflict in Tuff." },
+  "readOnlyBookmark": { "message": "This bookmark or folder is managed or read-only." },
+  "unsafeUrl": { "message": "New links must use HTTP or HTTPS without embedded credentials." },
+  "interruptedOperation": {
+    "message": "A command was interrupted; its result is uncertain. Review Chrome before resolving the conflict in Tuff."
+  },
+  "snapshotFailed": { "message": "Cannot read a complete snapshot. The previous library is preserved." }
+}

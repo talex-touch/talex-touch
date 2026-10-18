@@ -42,6 +42,7 @@ export const BrowserEvents = {
   createTab: api.event('create-tab').define<{ input?: string }, BrowserWorkspaceState>(),
   activateTab: api.event('activate-tab').define<{ tabId: string }, BrowserWorkspaceState>(),
   closeTab: api.event('close-tab').define<{ tabId: string }, BrowserWorkspaceState>(),
+  moveTab: api.event('move-tab').define<{ tabId: string, beforeTabId: string | null }, BrowserWorkspaceState>(),
   navigate: api.event('navigate').define<{ tabId: string, input: string }, BrowserWorkspaceState>(),
   back: api.event('back').define<{ tabId: string }, BrowserWorkspaceState>(),
   forward: api.event('forward').define<{ tabId: string }, BrowserWorkspaceState>(),
@@ -58,6 +59,7 @@ export interface BrowserSdk {
   createTab: (input?: string) => Promise<BrowserWorkspaceState>
   activateTab: (tabId: string) => Promise<BrowserWorkspaceState>
   closeTab: (tabId: string) => Promise<BrowserWorkspaceState>
+  moveTab: (tabId: string, beforeTabId: string | null) => Promise<BrowserWorkspaceState>
   navigate: (tabId: string, input: string) => Promise<BrowserWorkspaceState>
   back: (tabId: string) => Promise<BrowserWorkspaceState>
   forward: (tabId: string) => Promise<BrowserWorkspaceState>
@@ -75,6 +77,7 @@ export function createBrowserSdk(transport: Pick<ITuffTransport, 'send' | 'on'>)
     createTab: input => transport.send(BrowserEvents.createTab, input ? { input } : {}),
     activateTab: tabId => transport.send(BrowserEvents.activateTab, { tabId }),
     closeTab: tabId => transport.send(BrowserEvents.closeTab, { tabId }),
+    moveTab: (tabId, beforeTabId) => transport.send(BrowserEvents.moveTab, { tabId, beforeTabId }),
     navigate: (tabId, input) => transport.send(BrowserEvents.navigate, { tabId, input }),
     back: tabId => transport.send(BrowserEvents.back, { tabId }),
     forward: tabId => transport.send(BrowserEvents.forward, { tabId }),

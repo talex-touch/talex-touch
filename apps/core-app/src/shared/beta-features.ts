@@ -4,6 +4,7 @@ import {
 } from '@talex-touch/utils/common/storage/entity/app-settings'
 
 export type BetaFeature = keyof AppSetting['betaFeatures']
+export type BetaShortcutFeature = 'screenshot' | 'voiceDictation' | 'voiceQuickEdit' | 'omniPanel'
 
 type BetaFeatureSettings = {
   betaFeatures?: Partial<AppSetting['betaFeatures']>
@@ -14,7 +15,7 @@ export const BETA_FEATURE_SHORTCUTS = {
   voiceDictation: 'voice.dictation.toggle',
   voiceQuickEdit: 'voice.quickEdit',
   omniPanel: 'core.omniPanel.toggle'
-} as const satisfies Record<BetaFeature, string>
+} as const satisfies Record<BetaShortcutFeature, string>
 
 const shortcutFeatures: Readonly<Record<string, BetaFeature>> = {
   [BETA_FEATURE_SHORTCUTS.screenshot]: 'screenshot',

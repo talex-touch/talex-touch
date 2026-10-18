@@ -27,8 +27,16 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import MetaHintBadge from '~/components/shell/MetaHintBadge.vue'
+import ShellAccountAvatar from '~/components/shell/ShellAccountAvatar.vue'
+import {
+  isOpenableBrowserUrl,
+  useBrowserConnection
+} from '~/modules/browser-connection/useBrowserConnection'
 import { useConversationEntry } from '~/modules/conversation/useConversationEntry'
 import HomePage from '../home/HomePage.vue'
+import BrowserPluginToolbar from './BrowserPluginToolbar.vue'
+import ChromeBookmarkDialog from './ChromeBookmarkDialog.vue'
+import ChromeLibraryPanel from './ChromeLibraryPanel.vue'
 import type { BrowserTabMenuAction } from './tab-actions'
 import { runBrowserTabAction } from './tab-actions'
 
@@ -44,11 +52,20 @@ const addressFocused = ref(false)
 const addressInput = ref<HTMLInputElement | null>(null)
 const viewport = ref<HTMLElement | null>(null)
 const surfaceActive = ref(true)
-const panel = ref<'history' | 'bookmarks' | null>(null)
+const panel = ref<'history' | 'bookmarks' | 'chrome' | null>(null)
 const overlayOpen = ref(false)
 const tabMenu = ref<InstanceType<typeof TxContextMenu> | null>(null)
 const tabMenuOpen = ref(false)
 const tabMenuTargetId = ref('')
+const draggedTabId = ref<string | null>(null)
+const tabDropTarget = ref<{ id: string | null; before: boolean } | null>(null)
+const tabMovePending = ref(false)
+const pluginToolbarOpen = ref(false)
+// Floating layers outside this template's DOM observer reach: the shell avatar (popover and the
+// account dialog) and the "save to Chrome" form. Both report synchronously so the guest hides first.
+const accountOpen = ref(false)
+const chromeSaveOpen = ref(false)
+const { activeProfile: chromeProfile } = useBrowserConnection()
 const tabMenuIndex = computed(
   () => state.value?.tabs.findIndex((tab) => tab.id === tabMenuTargetId.value) ?? -1
 )
@@ -58,8 +75,15 @@ const activeTab = computed(() =>
 )
 const onRoute = computed(() => surfaceActive.value && route.path === '/browser')
 const localPage = computed(() => Boolean(activeTab.value && !activeTab.value.url))
+// Tuff's local bookmarks only; Chrome bookmarks are a separate library written back to Chrome.
 const bookmarked = computed(
   () => state.value?.bookmarks.some((page) => page.url === activeTab.value?.url) ?? false
+)
+const currentPage = computed(() =>
+  activeTab.value?.url ? { title: activeTab.value.title, url: activeTab.value.url } : null
+)
+const canSaveToChrome = computed(
+  () => Boolean(chromeProfile.value) && isOpenableBrowserUrl(currentPage.value?.url)
 )
 const savedPages = computed(() =>
   panel.value === 'bookmarks' ? (state.value?.bookmarks ?? []) : (state.value?.recent ?? [])
@@ -141,6 +165,76 @@ function selectTabMenuAction(action: BrowserTabMenuAction): void {
   void command(() => runBrowserTabAction(sdk, action, tabId))
 }
 
+function resetTabDrag(): void {
+  draggedTabId.value = null
+  tabDropTarget.value = null
+}
+
+async function moveTab(tabId: string, beforeTabId: string | null): Promise<void> {
+  if (tabMovePending.value) return
+  tabMovePending.value = true
+  try {
+    if (await command(() => sdk.moveTab(tabId, beforeTabId))) {
+      await nextTick()
+      if (onRoute.value) {
+        const element = document.getElementById(`browser-tab-${tabId}`)
+        element?.focus({ preventScroll: true })
+        element?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      }
+    }
+  } finally {
+    tabMovePending.value = false
+  }
+}
+
+function startTabDrag(tabId: string, event: DragEvent): void {
+  if (
+    tabMovePending.value ||
+    !onRoute.value ||
+    tabMenuOpen.value ||
+    pluginToolbarOpen.value ||
+    !event.dataTransfer
+  ) {
+    event.preventDefault()
+    return
+  }
+  draggedTabId.value = tabId
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('application/x-tuff-browser-tab', tabId)
+}
+
+function showTabDropTarget(event: DragEvent, tabId: string | null): void {
+  if (!draggedTabId.value || tabMovePending.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const before = tabId === null || event.clientX < bounds.left + bounds.width / 2
+  if (tabDropTarget.value?.id !== tabId || tabDropTarget.value.before !== before) {
+    tabDropTarget.value = { id: tabId, before }
+  }
+}
+
+function dropTab(event: DragEvent, targetId: string | null): void {
+  event.preventDefault()
+  event.stopPropagation()
+  const tabId = draggedTabId.value
+  if (!tabId || tabMovePending.value) return
+  const tabs = state.value?.tabs ?? []
+  let beforeTabId = targetId
+  if (targetId !== null) {
+    const index = tabs.findIndex((tab) => tab.id === targetId)
+    if (index < 0) {
+      resetTabDrag()
+      return
+    }
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    if (event.clientX >= bounds.left + bounds.width / 2) beforeTabId = tabs[index + 1]?.id ?? null
+  }
+  resetTabDrag()
+  void moveTab(tabId, beforeTabId)
+}
+
 function focusAddress(): void {
   if (!onRoute.value) return
   addressInput.value?.focus()
@@ -192,6 +286,13 @@ function dateLabel(page: BrowserSavedPage): string {
 
 async function openSaved(page: BrowserSavedPage): Promise<void> {
   if (await command(() => sdk.createTab(page.url))) panel.value = null
+}
+
+/** An explicit copy of a Chrome page in Tuff's own session (its own website sign-ins). */
+async function openCopyInTuff(url: string): Promise<boolean> {
+  const opened = await command(() => sdk.createTab(url))
+  if (opened) panel.value = null
+  return opened
 }
 
 // A guest view is above renderer DOM, regardless of z-index. DOM overlays therefore suspend it,
@@ -258,6 +359,9 @@ function measureViewport(): void {
     panel.value ||
     overlayOpen.value ||
     tabMenuOpen.value ||
+    pluginToolbarOpen.value ||
+    accountOpen.value ||
+    chromeSaveOpen.value ||
     !viewport.value
   ) {
     hideViewport()
@@ -277,6 +381,9 @@ function scheduleViewport(): void {
     document.hidden ||
     overlayOpen.value ||
     tabMenuOpen.value ||
+    pluginToolbarOpen.value ||
+    accountOpen.value ||
+    chromeSaveOpen.value ||
     panel.value ||
     !activeTab.value?.url ||
     activeTab.value.error ||
@@ -294,7 +401,10 @@ function onKeydown(event: KeyboardEvent): void {
     event.isComposing ||
     event.keyCode === 229 ||
     overlayOpen.value ||
-    tabMenuOpen.value
+    tabMenuOpen.value ||
+    pluginToolbarOpen.value ||
+    accountOpen.value ||
+    chromeSaveOpen.value
   )
     return
   const modifier = event.metaKey || event.ctrlKey
@@ -319,6 +429,17 @@ function onKeydown(event: KeyboardEvent): void {
 
 function tabKeydown(event: KeyboardEvent, index: number): void {
   const tabs = state.value?.tabs ?? []
+  if (event.altKey && event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+    event.preventDefault()
+    event.stopPropagation()
+    const tab = tabs[index]
+    if (!tab || tabMovePending.value) return
+    if (event.key === 'ArrowLeft' && index > 0) void moveTab(tab.id, tabs[index - 1]!.id)
+    else if (event.key === 'ArrowRight' && index < tabs.length - 1) {
+      void moveTab(tab.id, tabs[index + 2]?.id ?? null)
+    }
+    return
+  }
   if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
     const tab = tabs[index]
     if (tab) openTabMenu(tab.id, event)
@@ -352,7 +473,17 @@ watch(
   }
 )
 watch(
-  [onRoute, panel, overlayOpen, tabMenuOpen, error, () => activeTab.value?.error],
+  [
+    onRoute,
+    panel,
+    overlayOpen,
+    tabMenuOpen,
+    pluginToolbarOpen,
+    accountOpen,
+    chromeSaveOpen,
+    error,
+    () => activeTab.value?.error
+  ],
   scheduleViewport,
   {
     flush: 'sync'
@@ -365,6 +496,10 @@ watch(tabMenuOpen, (open) => {
     const tabId = tabMenuTarget.value?.id ?? activeTab.value?.id
     document.getElementById(`browser-tab-${tabId}`)?.focus()
   })
+})
+// A revoked or deselected profile unmounts the save form; its open flag must not keep the guest hidden.
+watch(chromeProfile, (profile) => {
+  if (!profile) chromeSaveOpen.value = false
 })
 onMounted(() => {
   unsubscribe = sdk.onChanged(applyState)
@@ -411,11 +546,15 @@ onActivated(() => {
 onDeactivated(() => {
   surfaceActive.value = false
   tabMenuOpen.value = false
+  pluginToolbarOpen.value = false
+  chromeSaveOpen.value = false
+  resetTabDrag()
   hideViewport()
 })
 onBeforeUnmount(() => {
   disposed = true
   surfaceActive.value = false
+  resetTabDrag()
   hideViewport()
   unsubscribe?.()
   unsubscribeFocus?.()
@@ -436,20 +575,27 @@ onBeforeUnmount(() => {
   >
     <div
       class="flex h-11 flex-none items-center gap-1 px-2 pt-1"
+      data-browser-tabbar
       style="background: var(--tx-fill-color-light); -webkit-app-region: drag"
     >
       <div
         class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
         role="tablist"
         :aria-label="t('browser.tabs')"
-        style="-webkit-app-region: no-drag"
+        style="-webkit-app-region: drag"
+        @dragover.self="showTabDropTarget($event, null)"
+        @drop.self="dropTab($event, null)"
       >
         <div
           v-for="(tab, index) in state?.tabs ?? []"
           :key="tab.id"
-          class="flex min-w-32 max-w-56 items-center rounded-t-lg"
+          class="relative flex min-w-32 max-w-56 items-center rounded-t-lg"
+          :class="{ 'opacity-50': draggedTabId === tab.id }"
+          style="-webkit-app-region: no-drag"
           :style="{ background: tab.id === state?.activeTabId ? 'var(--tx-bg-color)' : undefined }"
           @contextmenu="openTabMenu(tab.id, $event)"
+          @dragover="showTabDropTarget($event, tab.id)"
+          @drop="dropTab($event, tab.id)"
         >
           <button
             :id="`browser-tab-${tab.id}`"
@@ -459,9 +605,13 @@ onBeforeUnmount(() => {
             :tabindex="tab.id === state?.activeTabId ? 0 : -1"
             aria-controls="browser-viewport"
             aria-haspopup="menu"
+            :aria-description="t('browser.reorderTabsHint')"
             :aria-expanded="tabMenuOpen && tabMenuTargetId === tab.id"
             class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-t-lg px-3 text-sm outline-offset-[-3px]"
             :title="tab.url || t('browser.newTab')"
+            :draggable="!tabMovePending"
+            @dragstart="startTabDrag(tab.id, $event)"
+            @dragend="resetTabDrag"
             @click="command(() => sdk.activateTab(tab.id))"
             @keydown="tabKeydown($event, index)"
           >
@@ -478,6 +628,12 @@ onBeforeUnmount(() => {
             :label="t('browser.closeTab', { title: tab.title || t('browser.newTab') })"
             @click="command(() => sdk.closeTab(tab.id))"
           />
+          <span
+            v-if="draggedTabId && tabDropTarget?.id === tab.id"
+            aria-hidden="true"
+            class="pointer-events-none absolute inset-y-1 w-0.5 bg-[var(--tx-color-primary)]"
+            :class="tabDropTarget.before ? 'left-0' : 'right-0'"
+          />
         </div>
         <TxSkeleton v-if="connecting && !state" :width="150" :height="30" :radius="8" />
         <TxIconButton
@@ -486,7 +642,22 @@ onBeforeUnmount(() => {
           :label="t('browser.addTab')"
           :disabled="!state"
           class="flex-none"
+          style="-webkit-app-region: no-drag"
           @click="command(() => sdk.createTab())"
+        />
+      </div>
+      <div
+        data-browser-window-drag
+        aria-hidden="true"
+        :title="t('browser.dragWindow')"
+        class="relative h-full w-12 flex-none"
+        style="-webkit-app-region: drag"
+        @dragover="showTabDropTarget($event, null)"
+        @drop="dropTab($event, null)"
+      >
+        <span
+          v-if="draggedTabId && tabDropTarget?.id === null"
+          class="pointer-events-none absolute inset-y-1 left-0 w-0.5 bg-[var(--tx-color-primary)]"
         />
       </div>
       <TxButton
@@ -500,6 +671,13 @@ onBeforeUnmount(() => {
         {{ t('shell.newChat') }}
         <MetaHintBadge command="new-chat" />
       </TxButton>
+      <div
+        class="shell-chrome-safe-inline-end flex flex-none items-center gap-0.5"
+        style="-webkit-app-region: no-drag"
+      >
+        <BrowserPluginToolbar :active="onRoute" @overlay-change="pluginToolbarOpen = $event" />
+        <ShellAccountAvatar :active="onRoute" @overlay-change="accountOpen = $event" />
+      </div>
     </div>
 
     <div
@@ -547,6 +725,16 @@ onBeforeUnmount(() => {
         :pressed="bookmarked"
         :disabled="!activeTab?.url"
         @click="runActive('bookmark')"
+      />
+      <TxIconButton
+        icon="i-ri-chrome-line"
+        :label="
+          chromeProfile
+            ? t('browser.saveToChrome', { profile: chromeProfile.label })
+            : t('browser.saveToChromeUnavailable')
+        "
+        :disabled="!canSaveToChrome"
+        @click="chromeSaveOpen = true"
       />
       <TxIconButton
         icon="i-ri-layout-right-line"
@@ -654,7 +842,15 @@ onBeforeUnmount(() => {
       <section
         v-if="panel"
         class="absolute inset-0 overflow-y-auto bg-[var(--tx-bg-color)] px-6 py-5"
-        :aria-label="t(panel === 'history' ? 'browser.history' : 'browser.bookmarks')"
+        :aria-label="
+          t(
+            panel === 'history'
+              ? 'browser.history'
+              : panel === 'chrome'
+                ? 'browser.chromeLibrary'
+                : 'browser.bookmarks'
+          )
+        "
       >
         <div class="mx-auto max-w-3xl">
           <div class="mb-5 flex items-center justify-between gap-3">
@@ -673,6 +869,13 @@ onBeforeUnmount(() => {
                 @click="panel = 'bookmarks'"
                 >{{ t('browser.bookmarks') }}</TxButton
               >
+              <TxButton
+                :variant="panel === 'chrome' ? 'flat' : 'ghost'"
+                :aria-pressed="panel === 'chrome'"
+                icon="i-ri-chrome-line"
+                @click="panel = 'chrome'"
+                >{{ t('browser.chromeLibrary') }}</TxButton
+              >
             </div>
             <TxIconButton
               icon="i-ri-close-line"
@@ -680,34 +883,42 @@ onBeforeUnmount(() => {
               @click="panel = null"
             />
           </div>
+          <ChromeLibraryPanel
+            v-if="panel === 'chrome'"
+            :active="onRoute"
+            :current-page="currentPage"
+            :open-in-tuff="openCopyInTuff"
+          />
           <p
-            v-if="!savedPages.length"
+            v-else-if="!savedPages.length"
             class="py-8 text-center text-sm text-[var(--tx-text-color-regular)]"
           >
             {{ t(panel === 'bookmarks' ? 'browser.bookmarksEmpty' : 'browser.recentEmpty') }}
           </p>
-          <button
-            v-for="page in savedPages"
-            :key="page.url"
-            type="button"
-            class="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-[var(--tx-fill-color-light)] focus-visible:outline-2 focus-visible:outline-[var(--tx-color-primary)]"
-            @click="openSaved(page)"
-          >
-            <span
-              class="inline-flex h-5 w-5 flex-none"
-              :class="localIcon(page.url)"
-              aria-hidden="true"
-            />
-            <span class="min-w-0 flex-1"
-              ><span class="block truncate text-sm">{{ page.title || page.url }}</span
-              ><span class="block truncate text-xs text-[var(--tx-text-color-regular)]">{{
-                page.url
-              }}</span></span
+          <template v-else>
+            <button
+              v-for="page in savedPages"
+              :key="page.url"
+              type="button"
+              class="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-[var(--tx-fill-color-light)] focus-visible:outline-2 focus-visible:outline-[var(--tx-color-primary)]"
+              @click="openSaved(page)"
             >
-            <span class="flex-none text-xs text-[var(--tx-text-color-regular)]">{{
-              dateLabel(page)
-            }}</span>
-          </button>
+              <span
+                class="inline-flex h-5 w-5 flex-none"
+                :class="localIcon(page.url)"
+                aria-hidden="true"
+              />
+              <span class="min-w-0 flex-1"
+                ><span class="block truncate text-sm">{{ page.title || page.url }}</span
+                ><span class="block truncate text-xs text-[var(--tx-text-color-regular)]">{{
+                  page.url
+                }}</span></span
+              >
+              <span class="flex-none text-xs text-[var(--tx-text-color-regular)]">{{
+                dateLabel(page)
+              }}</span>
+            </button>
+          </template>
         </div>
       </section>
       <div
@@ -770,5 +981,12 @@ onBeforeUnmount(() => {
         </TxContextMenuItem>
       </template>
     </TxContextMenu>
+    <ChromeBookmarkDialog
+      v-if="chromeProfile"
+      v-model="chromeSaveOpen"
+      mode="save-page"
+      :profile="chromeProfile"
+      :page="currentPage"
+    />
   </section>
 </template>

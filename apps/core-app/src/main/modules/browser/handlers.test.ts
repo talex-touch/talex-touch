@@ -88,7 +88,7 @@ afterEach(async () => {
 })
 
 describe('browser command sender authority', () => {
-  it('allows the owning live top-level renderer to create, navigate and close real workspace tabs', async () => {
+  it('allows the owning live top-level renderer to create, reorder, navigate and close real workspace tabs', async () => {
     const { manager, transport, saved, context } = createHarness()
     const created = await transport.dispatch(
       BrowserEvents.createTab,
@@ -97,6 +97,14 @@ describe('browser command sender authority', () => {
     )
     const id = created.activeTabId
     expect(created.tabs.find((tab) => tab.id === id)?.url).toBe('https://two.example/')
+    const reordered = await transport.dispatch(
+      BrowserEvents.moveTab,
+      { tabId: id, beforeTabId: 'first' },
+      context
+    )
+    expect(reordered.tabs.map((tab) => tab.id)).toEqual([id, 'first'])
+    expect(reordered.activeTabId).toBe(id)
+    expect(saved.at(-1)?.tabs.map((tab) => tab.id)).toEqual([id, 'first'])
     const navigated = await transport.dispatch(
       BrowserEvents.navigate,
       { tabId: id, input: 'three.example/path' },
@@ -168,6 +176,7 @@ describe('browser command sender authority', () => {
       const payload = {
         input: 'https://two.example/',
         tabId: 'first',
+        beforeTabId: null,
         visible: true,
         bounds: { x: 0, y: 0, width: 800, height: 600 }
       }
@@ -176,6 +185,7 @@ describe('browser command sender authority', () => {
         BrowserEvents.createTab,
         BrowserEvents.activateTab,
         BrowserEvents.closeTab,
+        BrowserEvents.moveTab,
         BrowserEvents.navigate,
         BrowserEvents.back,
         BrowserEvents.forward,

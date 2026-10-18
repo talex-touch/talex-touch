@@ -231,6 +231,25 @@ export class BrowserWorkspaceManager {
     return this.getState()
   }
 
+  async moveTab(id: string, beforeTabId: string | null): Promise<BrowserWorkspaceState> {
+    const tab = this.tab(id)
+    if (beforeTabId !== null && typeof beforeTabId !== 'string')
+      throw new Error('BROWSER_TAB_NOT_FOUND')
+    const sourceIndex = this.tabs.indexOf(tab)
+    const beforeIndex =
+      beforeTabId === null
+        ? this.tabs.length
+        : this.tabs.findIndex((item) => item.id === beforeTabId)
+    if (beforeIndex < 0) throw new Error('BROWSER_TAB_NOT_FOUND')
+    const destinationIndex = beforeIndex > sourceIndex ? beforeIndex - 1 : beforeIndex
+    if (destinationIndex === sourceIndex) return this.getState()
+    this.tabs.splice(sourceIndex, 1)
+    this.tabs.splice(destinationIndex, 0, tab)
+    this.changed()
+    await this.persist()
+    return this.getState()
+  }
+
   async navigate(id: string, input: string): Promise<BrowserWorkspaceState> {
     const tab = this.tab(id)
     const url = normalizeBrowserInput(input)

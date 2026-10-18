@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tuff</title>
+    <link rel="stylesheet" href="popup.css" />
+    <script type="module" src="popup.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1 data-i18n="appName"></h1>
+        <p data-i18n="intro"></p>
+      </header>
+      <section aria-labelledby="connectionHeading" aria-busy="true" id="connection">
+        <h2 id="connectionHeading" data-i18n="connectionHeading"></h2>
+        <dl>
+          <div>
+            <dt data-i18n="statusLabel"></dt>
+            <dd id="status" role="status" aria-live="polite" data-i18n="loading"></dd>
+          </div>
+          <div>
+            <dt data-i18n="profileLabel"></dt>
+            <dd id="profile">—</dd>
+          </div>
+          <div>
+            <dt data-i18n="syncedLabel"></dt>
+            <dd id="synced">—</dd>
+          </div>
+        </dl>
+        <p id="error" role="alert" hidden></p>
+        <div class="actions">
+          <button id="reconnect" type="button" data-i18n="reconnect" disabled></button>
+          <button id="pause" type="button" data-i18n="pause" disabled></button>
+          <button id="disconnect" type="button" data-i18n="disconnect" disabled></button>
+        </div>
+      </section>
+      <form id="pair" novalidate>
+        <h2 data-i18n="pairHeading"></h2>
+        <p data-i18n="pairHelp"></p>
+        <label for="label" data-i18n="profileName"></label>
+        <input id="label" name="label" maxlength="100" autocomplete="off" required />
+        <label for="code" data-i18n="pairingCode"></label>
+        <input
+          id="code"
+          name="code"
+          type="text"
+          maxlength="64"
+          minlength="4"
+          pattern="[A-Za-z0-9_\-]+"
+          autocomplete="off"
+          spellcheck="false"
+          required
+        />
+        <button id="pairButton" class="primary" type="submit" data-i18n="grantAndPair" disabled></button>
+      </form>
+      <footer>
+        <p data-i18n="privacy"></p>
+        <p data-i18n="pauseHelp"></p>
+      </footer>
+    </main>
+  </body>
+</html>
