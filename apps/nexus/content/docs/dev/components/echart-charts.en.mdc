@@ -33,7 +33,7 @@ import { TxEChart, TxLineChart } from '@talex-touch/tuffex/charts'
 
 ## API Reference
 
-Every chart in the family accepts the shared props below plus its own data props, and every one forwards a raw `option` that is merged over the built option — `series` arrays are replaced, every other key merges deep.
+Every chart in the family accepts the shared props below plus its own data props, and every one forwards a raw `option` that is merged over the built option — objects merge deep, arrays are replaced whole. That covers `series` and `dataZoom`: a `dataZoom` list you pass stands in for the built-in zoom.
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
@@ -45,19 +45,21 @@ Every chart in the family accepts the shared props below plus its own data props
 
 `update` only exists on `TxEChart`: `'replace'` (default) swaps the series array so removed series stop being drawn, `'merge'` keeps ECharts' own merge semantics.
 
+`cooperativeWheel` (default `true`) exists on `TxEChart` and on the wrappers that zoom: line, bar, scatter and treemap. See Pointer Input.
+
 ### Per-chart props
 
 | Chart | Props |
 |------|------|
-| `TxLineChart` | `series` (`name`, `data`, `color?`, `area?`, `smooth?`, `stack?`, `dashed?`), `categories?`, `xAxisName?`, `yAxisName?`, `showLegend?`, `grid?` |
-| `TxBarChart` | `series` (`name`, `data`, `color?`, `stack?`), `categories?`, `xAxisName?`, `yAxisName?`, `showLegend?`, `grid?`, `stacked?`, `horizontal?`, `barWidth?`, `showLabel?` |
+| `TxLineChart` | `series` (`name`, `data`, `color?`, `area?`, `smooth?`, `stack?`, `dashed?`), `categories?`, `xAxisName?`, `yAxisName?`, `showLegend?`, `grid?`, `zoom?`, `cooperativeWheel?` |
+| `TxBarChart` | `series` (`name`, `data`, `color?`, `stack?`), `categories?`, `xAxisName?`, `yAxisName?`, `showLegend?`, `grid?`, `stacked?`, `horizontal?`, `barWidth?`, `showLabel?`, `zoom?`, `cooperativeWheel?` |
 | `TxPieChart` | `data` (`name`, `value`, `color?`), `donut?`, `roseType?`, `showLegend?`, `labelPosition?`, `centerLabel?`, `unit?` |
 | `TxFunnelChart` | `data` (`name`, `value`, `color?`), `sort?`, `gap?`, `minSize?`, `maxSize?`, `labelPosition?`, `showLabel?`, `showLegend?`, `unit?` |
 | `TxRadarChart` | `indicators` (`name`, `max`, `min?`), `series` (`name`, `data`, `color?`, `area?`), `shape?`, `splitNumber?`, `showLegend?`, `showAxisName?` |
 | `TxGaugeChart` | `value`, `min?`, `max?`, `name?`, `unit?`, `precision?`, `progress?`, `segments?`, `color?` |
-| `TxScatterChart` | `series` (`name`, `data`, `color?`, `symbolSize?`), `xAxisName?`, `yAxisName?`, `symbolSize?`, `showLegend?`, `grid?`, `xMin?`, `xMax?`, `yMin?`, `yMax?` |
-| `TxHeatmapChart` | `values`, `rows`, `columns`, `xAxisName?`, `yAxisName?`, `visualMap?`, `min?`, `max?`, `showLabel?`, `unit?` |
-| `TxTreemapChart` | `data` (`name`, `value?`, `color?`, `children?`), `maxDepth?`, `showBreadcrumb?`, `showLabel?`, `unit?`, `roam?` |
+| `TxScatterChart` | `series` (`name`, `data`, `color?`, `symbolSize?`), `xAxisName?`, `yAxisName?`, `symbolSize?`, `showLegend?`, `grid?`, `xMin?`, `xMax?`, `yMin?`, `yMax?`, `zoom?`, `cooperativeWheel?` |
+| `TxHeatmapChart` | `values`, `rows`, `columns`, `xAxisName?`, `yAxisName?`, `visualMap?`, `min?`, `max?`, `showLabel?`, `unit?`, `selectable?`, `labels?` |
+| `TxTreemapChart` | `data` (`name`, `value?`, `color?`, `children?`), `maxDepth?`, `showBreadcrumb?`, `showLabel?`, `unit?`, `roam?`, `cooperativeWheel?` |
 
 The builders themselves are public too — `buildBarChartOption`, `buildLineChartOption`, and the rest return a plain `EChartsOption`. Use one when a chart has to mix mark types: build the options you want and hand the merged result to `TxEChart`.
 
@@ -92,7 +94,7 @@ const option: EChartsOption = {
 
 ### Line chart
 
-`TxLineChart` draws one or more series over a category axis, with optional area fill, stacking and smooth curves. Multiple series share the axis; the tooltip triggers by axis so every series at the hovered category is listed.
+`TxLineChart` draws one or more series over a category axis, with optional area fill, stacking and smooth curves. Multiple series share the axis; the tooltip triggers by axis so every series at the hovered category is listed. `zoom` (on by default) adds zoom and pan along the categories; Pointer Input has the gestures.
 
 :::TuffDemoWrapper{demo="EChartLineChartDemo" code-lang="vue" title="Typed wrapper" description="TxLineChart is the thin typed wrapper over the same host."}
 ---
@@ -113,7 +115,7 @@ code: |
 
 ### Bar chart
 
-`TxBarChart` draws grouped or stacked bars on a category axis, vertical by default. `stacked` gives every series that declares no `stack` of its own the shared id `total`, so stacked and independent series can share one chart; `showLabel` writes the value on each bar (to its `right` when `horizontal`).
+`TxBarChart` draws grouped or stacked bars on a category axis, vertical by default. `stacked` gives every series that declares no `stack` of its own the shared id `total`, so stacked and independent series can share one chart; `showLabel` writes the value on each bar (to its `right` when `horizontal`). `zoom` (on by default) zooms and pans the categories the same way.
 
 :::TuffDemoWrapper{demo="EChartBarChartDemo" code-lang="vue" title="Grouped bars" description="Two series share the category axis; the legend toggles either one."}
 ---
@@ -220,7 +222,7 @@ code: |
 
 ### Scatter chart
 
-Points on a numeric plane, one axis pair per series. `symbolSize` sets the mark size for the whole chart and a series-level value wins; the optional `xMin` / `xMax` / `yMin` / `yMax` pin the domain when several charts have to share one scale.
+Points on a numeric plane, one axis pair per series. `symbolSize` sets the mark size for the whole chart and a series-level value wins; the optional `xMin` / `xMax` / `yMin` / `yMax` pin the domain when several charts have to share one scale. `zoom` (on by default) zooms and pans both axes.
 
 :::TuffDemoWrapper{demo="EChartScatterChartDemo" code-lang="vue" title="Latency vs throughput" description="Two clusters on one numeric plane."}
 ---
@@ -242,7 +244,9 @@ code: |
 
 A matrix of intensities. Pass `values` row-major (`values[row][column]`) with `rows` and `columns` naming the two category axes. The builder hands both arrays to ECharts untouched, and ECharts plots the first category at the bottom — so `rows[0]` is the bottom band, not the top one. The declared `visualMap` takes the sequential token ramp unless you pass your own `inRange.color`.
 
-:::TuffDemoWrapper{demo="EChartHeatmapChartDemo" code-lang="vue" title="Activity by hour" description="Five time buckets across the week."}
+Drag across the plot to select a block of cells. `select` reports a `HeatmapSelection` — `rows` and `columns` as inclusive index ranges, plus the `cells` inside — and `null` once it is cleared. The `cells` are a snapshot: new `values` under the same labels keep the block without a new `select`, while new `rows` or `columns` clear it. A drag never fires `click`; `:selectable="false"` turns the selection off. Instructions and announcements come from `labels`, merged over `HEATMAP_DEFAULT_LABELS`.
+
+:::TuffDemoWrapper{demo="EChartHeatmapChartDemo" code-lang="vue" title="Activity by hour" description="Five time buckets across the week; drag across the cells to select a block."}
 ---
 code: |
   <script setup lang="ts">
@@ -266,6 +270,8 @@ code: |
 ### Treemap chart
 
 Part-to-whole for a hierarchy. Nodes nest through `children`, a node's `color` becomes its fill, and `showBreadcrumb` turns on ECharts' breadcrumb bar for drilling down. `maxDepth` renders only the first N levels and enables that drill-down; leave it out to draw the whole tree. Without `children` the same prop draws a flat treemap.
+
+`roam` is on by default: a drag pans, `⌘` / `Ctrl` + wheel or a pinch zooms in from the fitted size, and a double-click lays the tiles out afresh. `:roam="false"` keeps the tiles still and gives touch swipes back to the page.
 
 :::TuffDemoWrapper{demo="EChartTreemapChartDemo" code-lang="vue" title="Nested areas" description="Two areas, each split into its own sections."}
 ---
@@ -291,6 +297,33 @@ code: |
 ---
 :::
 
+## Pointer Input
+
+Line, bar, scatter and treemap zoom and pan; the heatmap selects. The page keeps its scroll: a plain wheel never zooms.
+
+| Chart | Input | Effect |
+|------|------|------|
+| Line, bar, scatter | `⌘` / `Ctrl` + wheel, pinch | Zooms around the pointer. |
+| Line, bar, scatter | Drag | Pans once zoomed in. |
+| Line, bar, scatter | Double-click the plot | Animates back to the full range. |
+| Treemap | `⌘` / `Ctrl` + wheel, pinch | Zooms around the pointer, never below the fitted size. |
+| Treemap | Drag | Pans the tiles. |
+| Treemap | Double-click | Lays the tiles out afresh. |
+| Heatmap | Drag across the plot | Selects a block of whole cells and emits `select`. |
+| Heatmap | Click, `Escape` | Clears the selection. |
+
+`cooperativeWheel` (default `true`) is what keeps a plain wheel scrolling the page. `false` gives the wheel back to ECharts, which zooms on every wheel turn over the plot and stops the page from scrolling.
+
+A zoomed window stays through a new `option`, a theme change and `redraw()`. The exception is a `dataZoom` entry that sets its own `start`, `end`, `startValue` or `endValue`: that one opens on the window it names every time.
+
+Compared with the native maps and Sankey:
+
+- Zoom moves in ECharts' fixed steps (1.1×, 1.2× or 1.4× per event) instead of following the gesture. There are no springs, no release glide and no rubber band: a pan stops where the pointer stops.
+- Resets animate over 350 ms, and jump under `prefers-reduced-motion: reduce`.
+- There is no keyboard zoom or pan. The heatmap is the only chart with a focus target: a tab stop while a selection exists, so `Escape` can clear it. Its `labels` carry the instructions and the `{count}` / `{total}` announcements.
+- On touch a pinch zooms. An unzoomed line, bar or scatter chart lets a swipe scroll the page, and once zoomed in a swipe pans. A treemap with `roam` always keeps the swipe, so leave it a margin of page to scroll from or set `:roam="false"`. A selectable heatmap keeps every swipe too, since a swipe is how a touch selects: set `:selectable="false"` where the page should scroll through it.
+- A treemap pans without bounds, as ECharts does; double-click brings it back. Heatmap selections snap to whole cells.
+
 ## Events
 
 | Event | Payload | Description |
@@ -299,13 +332,15 @@ code: |
 | `click` / `dblclick` | `(params: EChartEventParams)` | Pointer events on series and marks. |
 | `mouseover` / `mouseout` | `(params: EChartEventParams)` | Hover on series and marks. |
 | `legendselectchanged` | `(params: EChartEventParams)` | A legend entry was toggled. |
-| `datazoom` | `(params: EChartEventParams)` | A dataZoom range changed. |
+| `datazoom` | `(params: EChartEventParams)` | A dataZoom range changed, the built-in zoom included. |
+| `select` | `(selection: HeatmapSelection \| null)` | `TxHeatmapChart` only: a drag selected a block of cells, or the selection was cleared. |
 
 ## Technologies
 
 - Component source: `packages/tuffex/packages/components/src/charts/src/echart/src/`.
 - Option builders: `packages/tuffex/packages/components/src/charts/src/echart/src/options/`.
 - Theme and tokens: `packages/tuffex/packages/components/src/charts/src/echart/src/core/theme.ts`.
+- Pointer input: `packages/tuffex/packages/components/src/charts/src/echart/src/core/interaction.ts`.
 - Adapted from Cloudflare kumo (https://github.com/cloudflare/kumo), © Cloudflare, Inc., MIT — `EChart.tsx`.
 
 <TuffDocSourceLink />

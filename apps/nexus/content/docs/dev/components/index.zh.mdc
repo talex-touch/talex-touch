@@ -330,6 +330,7 @@ code: |
 - [Chart Colors 图表色板](./chart-colors.zh.mdc)
 - [ECharts 图表](./echart-charts.zh.mdc)
 - [TimeseriesChart 时序图](./timeseries-chart.zh.mdc)
+- [LearningCurve 学习曲线](./learning-curve.zh.mdc)
 - [Maps 地图](./maps.zh.mdc)
 - [MonoChart 单色图表](./mono-chart.zh.mdc)
 - [SankeyChart 桑基图](./sankey-chart.zh.mdc)

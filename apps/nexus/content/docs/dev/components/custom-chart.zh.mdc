@@ -105,10 +105,13 @@ const enterWidth = computed(() => plot.value.width * enter.value)
 | `aspectRatio` | `number \| string` | — | 容器宽高比。 |
 | `width` | `number` | 容器实测 | 显式宽度（SSR/测试用）。 |
 | `padding` | `number \| Partial<ChartPadding>` | `24` | 留给轴与标签的内边距。 |
-| `xType` | `'linear' \| 'time' \| 'band'` | `'linear'` | x 比例尺类型。 |
+| `xType` | `'linear' \| 'log' \| 'time' \| 'band'` | `'linear'` | x 比例尺类型；`log` 轴不画 x ≤ 0 的数据。 |
 | `xDomain` / `yDomain` | 数组 | 自动并集 | 显式值域。 |
 | `yNice` | `boolean` | `true` | y 值域取整。 |
-| `ariaDescription` | `string` | — | 无障碍描述。 |
+| `ariaDescription` | `string` | — | 无障碍名称，缺省用 `labels.chart`；图表不可聚焦时以 `role="img"` 朗读。 |
+| `interactive` | `boolean` | `true` | 悬停、按住拖动与方向键读数；`false` 只留一张静态图，不可聚焦也不读数。 |
+| `announce` | `(x: string \| number) => string` | 按 x 轴刻度格式化 | 键盘读到某个 x 值时播报的文本。 |
+| `labels` | `Partial<ChartLabels>` | 英文 | 无障碍名称与按键说明：`chart`、`instructions`，会缩放的图表改读 `zoomInstructions`。 |
 
 ### 系列 Props（共同）
 
@@ -118,7 +121,7 @@ const enterWidth = computed(() => plot.value.width * enter.value)
 | `x` / `y` | `keyof T \| (d, i) => v` | accessor。 |
 | `color` | `string` | 缺省按挂载顺序取分类色。 |
 
-`TxLineSeries` 另有 `curve`（`linear/monotone/natural/step`）、`strokeWidth`、`showSymbol`、`dashed`，以及 `enter`（默认 `clip` 从左向右擦开；`draw` 沿线描出、描到哪个点才显示该点的标记，虚线仍用 `clip`）；`TxAreaSeries` 有 `gradient`（默认开）与 `fillOpacity`；`TxBarSeries` 有 `stack`、`barWidth`、`radius`；`TxScatterSeries` 有 `r`（常量或 accessor）；`TxArcSeries` 用 `value/name?/color?` accessor 加 `innerRadius/padAngle/cornerRadius`，点击发 `slice-click`，悬停发 `slice-hover`（带 `{ datum, index, name, value }`，指针移出弧形时为 `null`）——无轴弧形没有坐标系可读，`#overlay` 里的 `<TxChartTooltip>` 就靠它取数。
+`TxLineSeries` 另有 `curve`（`linear/monotone/natural/step`）、`strokeWidth`、`showSymbol`、`dashed`，以及 `enter`（默认 `clip` 从左向右擦开；`draw` 沿线描出、描到哪个点才显示该点的标记，虚线仍用 `clip`）；`TxAreaSeries` 有 `gradient`（默认开）与 `fillOpacity`；`TxBarSeries` 有 `stack`、`barWidth`、`radius`；`TxScatterSeries` 有 `r`（常量或 accessor）；`TxArcSeries` 用 `value/name?/color?` accessor 加 `innerRadius/padAngle/cornerRadius`，点击发 `slice-click`，悬停发 `slice-hover`（带 `{ datum, index, name, value }`，指针移出弧形时为 `null`）——无轴弧形没有坐标系可读，`#overlay` 里的 `<TxChartTooltip>` 就靠它取数。弧形按住拖动时像转盘一样按角度逐片读数，松手不触发 `slice-click`；聚焦后 ← / → 逐片读数、Home / End 跳到首尾、Escape 清除，`announce` 改播报文案（默认 `name: value`）。
 
 ### ChartTooltip Props
 
@@ -132,6 +135,16 @@ const enterWidth = computed(() => plot.value.width * enter.value)
 | `title` / `rows` / `hiddenCount` | — | — | 默认内容；插槽整体替换。 |
 
 提示框的节奏同样对齐 ECharts：`hideDelay` 100ms 之后才开始 200ms 淡出并移除 DOM，指针短暂划出图表不会闪断；位移交给 `transform: translate3d()` 的 400ms 过渡由浏览器补间；指针追踪按 50ms 节流（首次与最后一次各补一次采样）。
+
+## 读数
+
+`TxChart` 自带读数，自定义图层只需读 `pointer`：
+
+- 鼠标悬停把读数放在指针处；按住拖动（鼠标、触屏、触控笔）超过 4px 后持续读数，拖出绘图区时停在边缘。拖动松手产生的点击会被吞掉，不会落到图表或外层元素上。
+- 触屏单指按下即读数；图表设了 `touch-action: pan-y`，纵向滑动仍滚动页面。
+- 聚焦图表后 ← / → 按 x 逐个数据点读数，Home / End 跳到首尾，Escape 清除；读数写进礼貌的 live region，`announce` 可改文案。
+- `useChartContext().pointer` 的 `x` / `y` 是容器像素坐标，`inside` 表示正在显示读数，`pressed` 表示正在按住拖动，`source` 为 `'keyboard'` 时读数来自按键：落在数据点的 x、绘图区垂直居中，没有指针高度。
+- `nearestXStop(px)` 返回离某个像素最近的数据 x，十字线据此吸附到数据上；`registerKeyLayer({ key, clear })` 注册的按键层先于逐点读数收到按键，返回 `true` 即已处理，`TxArcSeries` 的逐片读数就是这样接入的。
 
 ## 组合规则
 

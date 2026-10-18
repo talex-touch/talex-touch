@@ -1,6 +1,6 @@
 ---
 title: "Charts 图表"
-description: "@talex-touch/tuffex/charts 总览：kumo 同构的 API 面，Vue 直渲 SVG，无 echarts。"
+description: "图表家族总览：原生 SVG 图表与按需加载的 ECharts 图表"
 category: Charts
 status: beta
 since: 0.6.0
@@ -54,10 +54,14 @@ import '@talex-touch/tuffex/charts/style.css'
 
 | 组件 | 板块 | 说明 |
 |------|------|------|
-| `TxTimeseriesChart` | [Timeseries](/docs/dev/components/timeseries-chart) | 时序折线/堆叠柱，标记、阈值、刷选、tooltip 全家桶。 |
+| `TxTimeseriesChart` | [Timeseries](/docs/dev/components/timeseries-chart) | 时序折线/堆叠柱，标记、阈值、缩放与刷选、tooltip 全家桶。 |
+| `TxLearningCurve` | [LearningCurve](/docs/dev/components/learning-curve) | 训练曲线：多种子均值与区间、EMA 平滑、缩放与实时增长。 |
 | `TxBubbleMap` / `TxChoroplethMap` | [Maps](/docs/dev/components/maps) | GeoJSON 地图：气泡与分级填色。 |
 | `TxSankeyChart` | [Sankey](/docs/dev/components/sankey-chart) | 桑基流向图。 |
 | `TxChart` + 系列原语 | [Custom Chart](/docs/dev/components/custom-chart) | 组合式逃生舱：折线/面积/柱/散点/环形自由拼装。 |
+| `TxMonoChart` | [MonoChart](/docs/dev/components/mono-chart) | 30 种单色图表变体与活动日历。 |
+| `TxDitherChart` | [DitherChart](/docs/dev/components/dither-chart) | 抖动质感的展示型图表，文档归在动效套件。 |
+| `TxEChart` + 九个预设 | [ECharts](/docs/dev/components/echart-charts) | 其余图表类型；挂载时按需加载可选 peer `echarts`。 |
 | `ChartPalette` / CSS 变量 | [Colors](/docs/dev/components/chart-colors) | 分类、语义、顺序、地图色板，明暗自动。 |
 
 ## 图例

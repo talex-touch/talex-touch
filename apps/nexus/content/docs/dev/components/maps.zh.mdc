@@ -15,9 +15,9 @@ verified: true
 
 ### 气泡图
 
-开启 `roam` 后仍可点击气泡，事件返回对应的数据行。拖拽底图可平移，滚轮可缩放。点位标签按文本显示，不执行 HTML。
+点击气泡返回对应的数据行；按下后移动超过 4 px 则改为平移地图。拖拽底图平移，⌘/Ctrl + 滚轮或双指捏合以指针为中心缩放。点位标签按文本显示，不执行 HTML。
 
-:::TuffDemoWrapper{demo="MapsBubbleMapDemo" code-lang="vue" title="BubbleMap + roam" description="气泡面积正比于值；开了 roam 可滚轮缩放、拖拽平移。"}
+:::TuffDemoWrapper{demo="MapsBubbleMapDemo" code-lang="vue" title="BubbleMap + 平移缩放" description="气泡面积正比于值；拖拽平移，⌘/Ctrl + 滚轮缩放。"}
 ---
 code: |
   <template>
@@ -28,7 +28,6 @@ code: |
       lat="lat"
       value="requests"
       name="city"
-      roam
       :value-format="(v) => `${v.toLocaleString()} req/s`"
     />
   </template>
@@ -36,6 +35,8 @@ code: |
 :::
 
 ### 分级填色图
+
+有数据的地区响应悬停与点击；拖拽只平移地图，不会选中地区。
 
 :::TuffDemoWrapper{demo="MapsChoroplethDemo" code-lang="vue" title="ChoroplethMap + 图例" description="连续色阶按值插值；无数据地区保持陆地底色。"}
 ---
@@ -62,13 +63,14 @@ code: |
 | `geoJson` | `MapGeoJson` | — | `FeatureCollection`，调用方提供。 |
 | `center` | `[lng, lat]` | 自适应 | 地图中心。 |
 | `zoom` | `number` | `1.25` | 自适应缩放倍率。 |
-| `roam` | `boolean` | `false` | 滚轮缩放 + 拖拽平移。 |
+| `roam` | `boolean` | `true` | 拖拽平移；⌘/Ctrl + 滚轮或双指捏合缩放；双击与 `0` 复位。`false` 固定地图。 |
 | `projection` | `GeoProjection \| null` | 钳制 Mercator | d3-geo 投影；`null` 为裸经纬度。 |
 | `showTooltip` | `boolean` | `true` | 悬停提示框。 |
 | `valueFormat` | `(v: number) => string` | `toLocaleString` | 默认 tooltip 的数值格式。 |
 | `aspectRatio` | `number \| string` | 投影窗口比 | 容器宽高比。 |
 | `height` | `number` | — | 固定像素高，优先于 `aspectRatio`。 |
 | `width` | `number` | 容器实测 | 显式宽度（SSR/测试用）。 |
+| `labels` | `Partial<MapLabels>` | 英文 | `{ map, instructions }`：无障碍名称，以及紧随其后朗读的操作说明。 |
 
 ### BubbleMap 专有
 
@@ -97,7 +99,25 @@ ChoroplethMap 事件：`region-hover(row \| undefined)`、`region-click(row)`（
 
 ## 投影与缩放
 
-`projection` 接 d3-geo 投影实例（如 `geoNaturalEarth1()`），`null` 退化为裸经纬度（equirectangular）。实例会被原地 `fitExtent`，务必传稳定引用。`zoom`（默认 1.25）是自适应缩放的倍率；`roam` 开启滚轮缩放 + 拖拽平移，缩放范围被限制在 `[min(1, zoom), zoom × 8]`，气泡与描边在缩放下保持恒定像素尺寸。
+`projection` 接 d3-geo 投影实例（如 `geoNaturalEarth1()`），`null` 退化为裸经纬度（equirectangular）。实例会被原地 `fitExtent`，务必传稳定引用。`zoom`（默认 1.25）是自适应缩放的倍率，也是双击与 `0` 复位回到的视图。`roam` 默认开启，缩放范围被限制在 `[min(1, zoom), zoom × 8]`；气泡与描边在缩放下保持恒定像素尺寸。
+
+## 平移与缩放输入
+
+普通滚轮始终属于页面：地图不会截走滚动。触屏则不同：单指平移地图、双指捏合缩放，从地图上开始的滑动不会滚动页面；请在地图周围留出页面边距，或设 `:roam="false"`。
+
+| 输入 | 效果 |
+|------|------|
+| 拖拽 | 从抓取点起 1:1 平移。超过 4 px 即为拖拽，不会点击气泡或地区。 |
+| 拖动中松手 | 沿惯性滑行至停下，不越出地图边界。 |
+| ⌘/Ctrl + 滚轮、双指捏合 | 以指针（或两指中点）为中心缩放。 |
+| 双击、双击触屏、`0` | 弹回初始视图。 |
+| `←` `→` `↑` `↓` | 平移地图尺寸的 10%。 |
+| `+` / `−` | 以中心为基点缩放 √2 倍。 |
+| `Escape` | 取消正在进行的拖拽或捏合。 |
+
+视图始终留在地图之内：地图大于容器时覆盖整个容器，小于容器时留在容器内，`zoom` 与 `center` 指定的初始视图在任何缩放下都可到达。拖过边缘时像橡皮筋一样越拉越沉，松手后弹回。`prefers-reduced-motion: reduce` 下，惯性滑行、回弹与按键步进直接落到终点；拖拽仍跟随指针。
+
+可平移的地图是可聚焦的 `role="application"`：`labels.map` 给出名称，`labels.instructions` 在名称之后朗读，二者都合并到 `MAP_DEFAULT_LABELS` 之上。`:roam="false"` 会去掉焦点停靠点与朗读说明，地图不再响应任何平移、缩放与按键，滑动又回到页面。
 
 ## 分级色阶
 
@@ -108,7 +128,7 @@ ChoroplethMap 事件：`region-hover(row \| undefined)`、`region-click(row)`（
 地图沿用 ECharts 的 `emphasis` / `blur` 与 `stateAnimation`，默认值按 kumo 复刻，只有分级填色的变淡例外：
 
 - 气泡基础不透明度 0.8；悬停的气泡放大到 1.2 倍、不透明度升到 1，切换走 300ms `cubicOut`。首帧入场时气泡从自身中心放大、从 0 淡入，时长 1000ms `cubicInOut`；数据超过 2000 条时跳过入场，直接落终帧。
-- 开启 `roam` 后，按下气泡仍是点位操作，不会启动底图拖拽。
+- 按下气泡在移动超过 4 px 之前是点击；之后改为平移地图，气泡不会被点击。
 - 分级填色悬停时保留该地区自己的色阶颜色，其余地区按 `blur.itemStyle.opacity` 降到 0.45，在指针到达的那一帧完成：变淡属于悬停换色，TuffEx 的悬停规则不给它过渡；无数据地区不参与高亮。
 - 与 ECharts 的地图一致，两个组件都**没有几何动画**（`animationDurationUpdate: 0`）：缩放平移只改 SVG `transform`，不补间路径与坐标。
 - `prefers-reduced-motion: reduce` 下补间直接落终帧：气泡以最终尺寸与不透明度出现，高亮瞬时切换。
@@ -117,4 +137,5 @@ ChoroplethMap 事件：`region-hover(row \| undefined)`、`region-click(row)`（
 
 - `projection` 直接接 d3-geo 实例（kumo 是 `{ project, unproject }` 包装给 echarts 用）；`null` 实现为 equirectangular。
 - 缩放实现为 SVG transform，气泡/描边按缩放系数反缩，视觉尺寸恒定。
+- `roam` 默认开启，滚轮是协作式的：普通滚轮滚动页面，⌘/Ctrl + 滚轮与双指捏合才缩放。
 - `tooltipFormatter`（HTML 字符串）→ `tooltip` 插槽。

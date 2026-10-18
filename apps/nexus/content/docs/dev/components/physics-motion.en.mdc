@@ -1,6 +1,6 @@
 ---
 title: "Physics motion"
-description: "61 independently retained folding, stroke, stacking and mechanical motion scenes."
+description: "61 independently retained folding, stroke, stacking and mechanical motion scenes you can grab and throw."
 category: MotionPhysics
 status: beta
 since: 0.7.0
@@ -14,6 +14,8 @@ verified: false
 `TxPhysicsMotion` preserves every named non-loader whimsical implementation as its own scene. Paper folds use actual hinged layers and clipping; stroke scenes retain their original SVG coordinates; mechanical scenes retain their own pivot, motion vector, scale sequence and phase offsets. `TxMotionDock` owns the separate caller-driven dock. The CSS loaders and UI-kit controls are documented under their own components.
 
 Artwork has an explicit assembled pose. Pausing, disabling, leaving the viewport, hiding the document, KeepAlive deactivation or reduced motion cancels native animations and timers, revealing that readable pose. Decorative playback does not announce or simulate business completion.
+
+Grab the scene and throw it: the artwork follows the pointer 1:1 from the point you grabbed and springs back with the velocity of the release, while its choreography keeps playing. With reduced motion the artwork still follows the pointer and then jumps back.
 
 ## Usage
 
@@ -50,6 +52,12 @@ code: |
 
 `loop=true` retains the upstream automatic repeating preview, including for hover/click scenes. Use `loop=false` for a strictly input-triggered one-shot. Each scene restarts at its original `useLoopFlg` cadence; tracks with a distinct duration keep that duration, such as the one-second metronome or four-second gear tracks. A one-shot completes its longest track and then shows the assembled pose.
 
+### Dragging
+
+Press the stage and move 4 px to pick the scene up: the artwork lifts to 1.04× and follows the pointer 1:1 from the point you grabbed, while its choreography keeps playing. It can travel as far as the edges of its stage; beyond them a rubber band holds it. On release the scene inherits the pointer's velocity over the last 100ms and springs home. A release that carried speed swings past home with a damping ratio near 0.8, a slow one settles without bounce. There is a single place to rest, so nothing is projected from the release.
+
+Grabbing the scene again while it is returning continues from where it is drawn. Escape, or a cancelled pointer, sends it home without overshoot. A drag never replays the scene: only a click, Enter or Space does. A `paused` scene can still be thrown; a `disabled` one cannot. The stage declares `touch-action: pan-y`, and a touch that sets off vertically scrolls the page instead of picking the scene up.
+
 ## API Reference
 
 ### Props
@@ -60,7 +68,8 @@ code: |
 | `trigger` | `'auto' \| 'hover' \| 'click' \| 'manual'` | `'auto'` | Automatic visibility playback, input replay or API-only playback. |
 | `loop` | `boolean` | `true` | Retain the scene's own restart cadence and internal track durations. |
 | `paused` | `boolean` | `false` | Cancel playback and reveal the assembled pose. A queued replay can start on resume. |
-| `disabled` | `boolean` | `false` | Stop animation and disable the native interactive stage. |
+| `disabled` | `boolean` | `false` | Stop animation, disable dragging and the native interactive stage. |
+| `draggable` | `boolean` | `true` | Grab the scene and throw it; it springs home with the release's velocity. Replays by click, Enter, Space or the API are unaffected; `false` leaves pointer drags to the host. |
 | `replayKey` | `string \| number` | — | Changing the key requests another run without remounting. |
 | `speed` | `number` | `1` | Playback multiplier, clamped to 0.1–5; non-finite values use 1. |
 | `size` | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'` | 96, 128, 160 or 192px stage, with proportionally scaled geometry. |
@@ -184,9 +193,12 @@ The table lists the source scene restart cadence, not a replacement universal an
 - Drive business state from real data. `finish` and `covered` are visual milestones only.
 - Let the component own visibility and reduced-motion suspension. No caller timer is needed to replay the source rhythm.
 - Import `PHYSICS_MOTION_SOURCES` for an accurate catalogue rather than maintaining a second ID list.
+- Set `draggable=false` for a scene that must stay put, or one inside a surface that owns pointer drags. Clicks, keys and `replay()` keep working.
 
 ## Technologies
 
 The port uses native HTML/SVG and Web Animations, with source-specific keyframes, clipping and nested pivots. Spring-shaped legs use the existing liquid `resolveTransition` compiler; there is no second integrator. Width/height reveals keep their glyphs unstretched through clipping and translated edges. The shared `useMotionActivity` gates all animation and source-cycle timers. No SVG definitions or global counters are required; caption identifiers use Vue `useId`.
+
+Dragging moves the canvas with the individual CSS `translate` and `scale` properties, so the source keyframes and Web Animations on its parts keep running underneath. The pose is measured from the unlifted, unmoved artwork, so the grabbed point stays under the pointer through the lift. On release the pointer velocity (a 100ms window, `createVelocityTracker`) goes to a 0.35s response spring (`responseSpring`), advanced by one demand-driven animation frame loop that stops at rest. The stage takes native pointer capture only once movement passes 4 px, so a click keeps its target and replay behavior.
 
 Adapted under MIT. Copyright (c) 2026 SYED  SUBHAN UDDIN. This page records implementation contracts; it does not claim a completed browser or package verification run.

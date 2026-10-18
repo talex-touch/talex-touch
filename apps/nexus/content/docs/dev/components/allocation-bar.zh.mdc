@@ -64,15 +64,16 @@ code: |
 
 ## 选中即检查
 
-分段条不是只读图表：点任意一段（或它的图例胶囊）就把检查对象换成那一段，条子本身不动。这是它与进度条的根本区别——它表达的是「整体由哪些部分构成」，而不是「完成了多少」。
+分段条不是只读图表：点任意一段（或它的图例胶囊），或在条上拖过它，就把检查对象换成那一段，条子本身不动。这是它与进度条的根本区别——它表达的是「整体由哪些部分构成」，而不是「完成了多少」。
 
-选中值完全受控。`modelValue` 不传时默认高亮第一段，但点击仍然只发事件、不自行改变——宿主要么绑 `v-model`，要么自己处理 `change`。
+选中值完全受控。`modelValue` 不传时默认高亮第一段，但点击和拖动仍然只发事件、不自行改变——宿主要么绑 `v-model`，要么自己处理 `change`。
 
 `amount` 留在数据里但**条子不渲染它**：它属于卡片顶部的主数字，由宿主排版（见示例）。
 
 ## 概述
 
 - 分段与图例是**同一个单选组的两套控件**，共同持有同一个值：整组是 `role="radiogroup"` 并带 `aria-label`，每个分段与图例胶囊是 `role="radio"`、以 `aria-checked` 表达选中，`tabindex` 只在选中项上为 0；方向键在当前这套控件内移动焦点并同步选中（循环）。分段另带 `aria-label="{label}: {percent}"`。
+- 在分段条上按住拖动会逐段选中指针下的分段：每越过一段发一次事件，间隙归较近的一段，拖出两端停在首尾段；焦点在组内时随之移动。松手保留最后的选中且不再触发点击，Escape 或指针被取消时退回拖动起点。触屏横向拖动选择，纵向滑动仍滚动页面；拖动期间关闭过渡，选中 1:1 跟手。
 - 再次点击当前段不发事件——选中态没有「取消」语义。
 - 未指定 `color` 的分段按位置落到「强调色 → 向轨道底色逐级淡出的墨色」阶梯：`--tx-bui-accent` → `--tx-bui-ink` → `--tx-bui-ink-2` → `--tx-bui-ink-3`，超过四段会重用到最后一档。这是上游「主份额着色、其余留灰」的表达方式；灰阶取 ink 系而不是 `--tx-bui-line*`，因为后两者与轨道底色 `--tx-bui-field` 只差 ΔRGB 5–18（约 1.03:1），两套主题下都读成空轨道。
 - 分段宽度与 `percent` 严格成比例：轨道留出 2px 内边距与 2px 间隙，间隙预算按各段 `percent` 的比例预先从其宽度里扣除（`width: calc(percent% - 该段分摊的间隙)`），所以间隙只花固定像素、不会改写数据；总和略超 100% 时仍由 flex 等比收缩，不会裁切最后一段。
@@ -83,6 +84,7 @@ code: |
 
 - 组件源码：`packages/tuffex/packages/components/src/allocation-bar/src/TxAllocationBar.vue`。
 - 类型：`packages/tuffex/packages/components/src/allocation-bar/src/types.ts`。
+- 拖动选择：`packages/tuffex/packages/utils/press-scrub.ts`，与 MonoChart、DitherChart 共用。
 - **实测覆盖:** `packages/tuffex/packages/components/src/allocation-bar/__tests__/allocation-bar.test.ts`（17 项）覆盖示例宽度下扣除间隙后的精确渲染宽度、可访问名与单选组语义、方向键选中、颜色阶梯回退与两套主题下的阶梯对比度、明细标签的解析色、受控选中、重复点击静默、图例与分段同源、格式化器、明细面板开关，以及编译后 CSS 的减弱动效契约。
 - 移植自 Beautiful UI（https://www.beautifului.dev），© 2026 Shane Levine，MIT。
 

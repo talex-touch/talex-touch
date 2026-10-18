@@ -1,6 +1,6 @@
 ---
 title: "TimeseriesChart 时序图"
-description: "时序折线与堆叠柱：标记聚簇、阈值线、刷选时间范围、tooltip 全功能。"
+description: "时序折线与堆叠柱：标记聚簇、阈值线、缩放与刷选、tooltip 全功能。"
 category: Charts
 status: beta
 since: 0.1.0
@@ -90,16 +90,20 @@ code: |
 | `highlightedSeries` | `string \| null` | — | 高亮序列，其余降到 10% 不透明度。 |
 | `height` | `number` | `350` | 像素高度。 |
 | `width` | `number` | 容器实测 | 显式宽度（SSR/测试用）。 |
-| `ariaDescription` | `string` | — | 无障碍描述（svg `role="img"`）。 |
+| `ariaDescription` | `string` | — | 图表的无障碍名称（svg `role="group"`，按键说明作为描述）；缺省用 `labels.chart`。 |
 | `clusterLabel` | `(n: number) => string` | `` n => `${n} changes` `` | 聚簇标签文案。 |
 | `timestampFormat` | `(ts: number) => string` | 紧凑本地化 | tooltip 时间行格式。 |
+| `zoom` | `boolean` | `true` | 在图上缩放、平移时间轴；`false` 固定视图，此时挂上 `time-range-change` 仍可刷选。 |
+| `window` | `[number, number] \| null` | `null` | 显示的时间窗口（毫秒时间戳），支持 `v-model:window`；`null` 显示全部。 |
+| `labels` | `Partial<ChartLabels>` | 英文 | 无障碍名称与按键说明：`chart`、`instructions`、`zoomInstructions`。 |
 
 ### TimeseriesChart Events
 
 | 事件名 | 回调参数 | 说明 |
 |------|------|------|
-| `time-range-change` | `(from: number, to: number)` | 刷选完成。挂上即启用刷选。 |
+| `time-range-change` | `(from: number, to: number)` | 刷选松手时回调所选范围，默认同时放大到这段；`zoom` 为 `false` 时挂上它才能刷选。 |
 | `update:hiddenSeries` | `(names: string[])` | `v-model:hidden-series` 写回。 |
+| `update:window` | `(window: [number, number] \| null)` | 缩放、平移、复位或跟随新数据后写回 `v-model:window`。 |
 
 ## 标记与阈值
 
@@ -161,9 +165,11 @@ code: |
 ---
 :::
 
-## 刷选时间范围
+## 缩放与刷选
 
-监听 `time-range-change` 即自动启用横向刷选：在绘图区拖拽出选区，松手回调 `(from, to)` 毫秒时间戳并清除选区。太短的拖拽（< 3px）视为点击不触发。选区矩形填充 `rgba(120, 140, 180, 0.3)`、1px 描边 `rgba(120, 140, 180, 0.8)`。拖拽过程中选区外的绘图区同步变淡：一层覆盖整个绘图区的亮度 `<mask>`（白色绘图区矩形加两条 `#4D4D4D` 条带）把选区外压到 30%，每条序列因此只挂载一次 —— 与 ECharts `outOfBrush.colorAlpha: 0.3` 等价。
+时间轴默认可缩放：在绘图区拖出一段，松手放大到这段；放大后拖动平移，越过两端回弹，松手后按速度滑行，按住 Shift 拖动仍是刷选。⌘/Ctrl + 滚轮或触控板捏合以指针为中心缩放，触屏双指捏合同理；触控板横向滑动平移放大后的视图，普通滚轮照常滚动页面；双击显示全部。聚焦图表后 `+` / `-` 缩放、Shift + ← / → 平移、`0` 显示全部。窗口停在最后一个时间点时随新数据前进。`v-model:window` 读写当前窗口，`null` 为全部。
+
+监听 `time-range-change` 可在松手时拿到所选的 `(from, to)` 毫秒时间戳，选区随即清除；`:zoom="false"` 固定视图，此时挂上监听器只刷选、不缩放。拖动不足 4px 视为点击。选区矩形填充 `rgba(120, 140, 180, 0.3)`、1px 描边 `rgba(120, 140, 180, 0.8)`。拖拽过程中选区外的绘图区同步变淡：一层覆盖整个绘图区的亮度 `<mask>`（白色绘图区矩形加两条 `#4D4D4D` 条带）把选区外压到 30%，每条序列因此只挂载一次 —— 与 ECharts `outOfBrush.colorAlpha: 0.3` 等价。
 
 ### 拖拽选段
 
@@ -227,6 +233,8 @@ code: |
 - `animationThreshold` 2000：单序列点数超过它时直接渲染终态几何，不播动画。
 - tooltip：隐藏前先延迟 100ms，再用 200ms 淡出并移除 DOM，短暂划过不会闪烁；位置通过 `transform: translate3d()` 交给浏览器插值出 400ms 位移（`cubic-bezier(0.23, 1, 0.32, 1)`）；指针跟踪按 50ms 节流，取 leading + trailing 两个采样。
 - 刷选拖拽期间选区外变淡，松手立即恢复，见上节的单层 `<mask>`。
+- 缩放：刷选、鼠标滚轮与按键以临界阻尼弹簧（响应 0.35s）过渡到新窗口；触控板捏合与拖动平移 1:1 跟手，平移松手后按速度滑行。
+- 读数：悬停或按住拖动时十字线吸附到最近的采样时间戳；聚焦图表后 ← / → 逐点读数、Home / End 跳到首尾、Escape 清除，读屏播报时间与各序列的值。触屏单指按住拖动读数，纵向滑动仍滚动页面。
 - 悬停绘图区时，除最接近光标所在时间戳取值的那条序列外，其余序列都降到 10% 不透明度；这是 ECharts `emphasis.focus: 'series'`（只在真正命中数据项时强调）的文档化近似。
 - `prefers-reduced-motion: reduce` 下所有补间直接落到终态，CSS 过渡统一包在 `@media (prefers-reduced-motion: no-preference)` 内。
 
@@ -237,6 +245,7 @@ code: |
 - `enableLegendSelection` + echarts 命令式 action → `v-model:hidden-series` 声明式绑定；高亮用 `highlighted-series`。
 - `tooltipBoundary` 走真实的 clipping-ancestors 碰撞：沿裁剪祖先（`overflow` 非 `visible` 的 offsetParent）与视口求交，越界时翻转，默认 `'clipping-ancestors'`。
 - 刷选拖拽过程中选区外不再只是画矩形：单层亮度 `<mask>` 把选区外压到 30%，序列仍只挂载一次。
+- kumo 的刷选只回调范围；这里默认同时放大，并可平移、捏合与键盘缩放，`:zoom="false"` 回到只刷选。
 - 几何动画与 ECharts 对齐：饼图用 `animationType: 'expansion'` 角向生长、悬停外推 `scaleSize` 5px；sankey 与地图没有几何动画（`SankeyView` 无 `initProps`/`updateProps`，地图 `animationDurationUpdate: 0`），不是缺口。
 - 绘图区悬停的系列级强调是近似：ECharts 只在真正命中数据项时 blur 其余序列，这里按光标时间戳取最近的一条。
 - 建议每条序列 ≤ 5k 点：SVG 渲染在万点级会出现掉帧。

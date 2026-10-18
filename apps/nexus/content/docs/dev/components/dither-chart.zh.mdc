@@ -14,7 +14,7 @@ syncStatus: reviewed
 
 ### 遍历全部来源图形
 
-演示包含11个目录图表、8个额外图形与卡片、10种纹理、来源等价说明以及书页与指标组合。周期、系列过滤、仪表/存储/指标选择、悬停、键盘和范围输入都操作当前画面的数据。点击缩略图可进入对应完整图表。
+演示包含11个目录图表、8个额外图形与卡片、10种纹理、来源等价说明以及书页与指标组合。周期、系列过滤、仪表/存储/指标选择、悬停、按住拖动和键盘都操作当前画面的数据。点击缩略图可进入对应完整图表。
 
 :::TuffDemoWrapper{demo="DitherChartDemo" code-lang="vue" title="抖动图表目录"}
 ---
@@ -76,10 +76,10 @@ code: |
 | `activeKeys` | `readonly string[]` | 全部系列/节点 | 可选受控可见性模型；`[]` 隐藏全部。 |
 | `selectedSeries` | `string` | 第一个可见系列 | 控制半圆/径向仪表、存储和迷你图的指标选择。 |
 | `hover` | `DitherHover \| null` | 本地悬停值 | 受控数据项，含 `id`、可选 `seriesId`、`label`、`value`。 |
-| `dateCursor` | `number \| null` | `null` | 受控点索引，可由指针、键盘和范围输入更新。 |
+| `dateCursor` | `number \| null` | `null` | 受控点索引；在绘图区悬停、按住拖动或按方向键时更新，指针离开或按Escape时为 `null`。 |
 | `title` | `string` | `''` | 标题与无障碍名称。 |
 | `description` | `string` | `''` | 说明与无障碍描述。 |
-| `labels` | `DitherChartLabels` | 英文标签 | `empty`、`period`、`series`、`chart`、`total`、`capacity`、`less`、`more`、`cursor`；传入本地化文案。 |
+| `labels` | `DitherChartLabels` | 英文标签 | `empty`、`period`、`series`、`chart`、`total`、`capacity`、`less`、`more`；传入本地化文案。`cursor` 已弃用：它命名的日期滑块已由图上拖动取代。 |
 | `height` | `number` | `180` | 绘图区CSS像素高度，至少32；宽度跟随容器。 |
 | `compact` | `boolean` | `false` | 只显示图形的缩略图。 |
 | `animated` | `boolean` | `true` | 活跃状态允许时播放数据插值和像素纹理。 |
@@ -126,9 +126,9 @@ code: |
 | `update:selectedSeries` | 所选指标ID。 |
 | `update:hover` | `DitherHover \| null`。 |
 | `update:dateCursor` | 点索引或 `null`。 |
-| `select` | 指针点击或Enter/空格选中的数据项。 |
+| `select` | 指针点击或Enter/空格选中的数据项；拖动结束时不触发。 |
 
-插槽：`header({ total, period })`、`tooltip({ hover })`、`footer({ dataset })`。tooltip复用现有charts core上下文与 `TxChartTooltip` 定位。默认tooltip以悬停的数据点（日期或类目）为标题，数据行写所属系列名与数值；数据项本身就是系列时（环图、仪表、图例聚焦）两者相同，只保留数据行。`dot`、`line`、`dashed` 保留不同标记结构。绘图区支持方向键、Home/End、Enter/空格和Escape；图例与周期使用原生按钮。
+插槽：`header({ total, period })`、`tooltip({ hover })`、`footer({ dataset })`。tooltip复用现有charts core上下文与 `TxChartTooltip` 定位。默认tooltip以悬停的数据点（日期或类目）为标题，数据行写所属系列名与数值；数据项本身就是系列时（环图、仪表、图例聚焦）两者相同，只保留数据行。`dot`、`line`、`dashed` 保留不同标记结构。在绘图区按住拖动即可连续读数：时间类图形的日期游标逐点吸附指针、不做缓动，拖出绘图区时停在首尾数据点；其他图形读取指针下的数据项，与悬停相同。触屏横向拖动读数，纵向滑动仍滚动页面。绘图区还支持方向键（尚无读数时向左从最后一点开始）、Home/End、Enter/空格和Escape（取消拖动并清除读数），读数经礼貌型实时区域播报；图例与周期使用原生按钮。
 
 ### CSS 变量
 
@@ -142,10 +142,15 @@ code: |
 
 另外11对**没有按同名静默合并**。它们的可见几何公式相同，但 `dither-charts` 给全部11项添加缓存的 `ResizeObserver` 尺寸与可见性/减少动态效果保护；活动、设备、漏斗、收入、半圆仪表、存储、气泡、在线图还限制DPR≤2，而环图、堆叠、增长在两个副本中已经限制DPR。漏斗、存储、在线图额外限制30fps。差异通过 `DITHER_SOURCE_DIFFERENCES` 与演示逐项记录。两来源共用受保护的运行方式，不重新引入每帧布局读取、隐藏后台循环或违背用户偏好的动效。
 
-Canvas后备尺寸响应resize与DPR变化。数据插值使用公共spring，几何未变化时缓存路径，颜色与布局读取不进入逐帧循环；失活和卸载释放计时器、监听器、observer与RAF。SSR以及SVG纹理选择也能显示真实SVG几何。不引入React、Motion、Recharts或ECharts渲染器。
+Canvas后备尺寸响应resize与DPR变化。数据插值使用公共spring，几何未变化时缓存路径，颜色与布局读取不进入逐帧循环；失活和卸载释放计时器、监听器、observer与RAF。SSR以及SVG纹理选择也能显示真实SVG几何。按住拖动由共用的 `utils/press-scrub.ts` 处理：越过4px阈值才捕获指针，吞掉拖动结束时的点击，Escape取消；绘图区按夹在自身边界内的指针读数，取代了原来的日期滑块。不引入React、Motion、Recharts或ECharts渲染器。
 
 ### 组合与归属
 
 `DitherChartsGrid` 对应可遍历的演示目录。独立 `Book`、`DitherBook` 归 `TxFlipBook`，不是图表别名。演示通过真实flip-book与 `plan-card`、`payments`、`members-growth` API组合原提取页面；页内容使用调用方自制图形，不分发上游第三方照片。
 
 图表和pattern移植保留MIT及 `Copyright (c) 2026 SYED  SUBHAN UDDIN`。提取组合的来源显式声明Apache-2.0，其衍生演示保留该头和Vue/TuffEx修改通知。真实运行与浏览器验收由集成负责人统一执行，本页不宣称已运行这些检查。
+
+## 相关组件
+
+- [MonoChart](/docs/dev/components/mono-chart)：数据套件里的圆角单色图表，没有抖动纹理。
+- [Charts 图表](/docs/dev/components/charts)：图表家族总览与选型。

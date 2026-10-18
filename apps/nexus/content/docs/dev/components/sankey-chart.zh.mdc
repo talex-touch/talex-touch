@@ -15,7 +15,7 @@ verified: true
 
 ### 流量分发
 
-:::TuffDemoWrapper{demo="SankeyChartBasicDemo" code-lang="vue" title="渐变连线 + tooltip" description="悬停节点可见 value 与 tooltipData 行；带 isDrillable 的节点是 pointer 光标。"}
+:::TuffDemoWrapper{demo="SankeyChartBasicDemo" code-lang="vue" title="渐变连线 + tooltip" description="悬停可见 value 与 tooltipData 行；拖动节点可移动它，带 isDrillable 的连线是 pointer 光标。"}
 ---
 code: |
   <script setup lang="ts">
@@ -81,6 +81,7 @@ code: |
 | `left` / `right` | `number \| string` | `'5%'` | 布局左右留白（px 或百分比）。 |
 | `linkColor` | `'gradient' \| 'gray'` | `'gradient'` | 连线填充模式。 |
 | `linkOpacity` | `number` | `0.5` | 渐变连线不透明度。 |
+| `labels` | `Partial<SankeyLabels>` | 英文 | `{ instructions }`：在每个节点名称之后朗读。 |
 
 ### SankeyChart Events
 
@@ -95,6 +96,21 @@ code: |
 |------|------|------|
 | `tooltip` | `{ params: SankeyTooltipParams }` | 整体替换提示框内容；`params.type` 为 `'node' \| 'link'`。 |
 
+## 拖动节点
+
+节点只做垂直移动，仍留在自己的列里，连线实时重排。
+
+| 输入 | 效果 |
+|------|------|
+| 拖动节点 | 从抓取点起 1:1 跟随指针，限制在图表高度之内。超过 4 px 后不会触发 `node-click`。 |
+| 松手 | 节点留在放下的位置。 |
+| 拖动中按 `Escape` | 取消；节点弹回拾起时的位置。 |
+| 双击空白背景 | 所有节点弹回计算出的布局。 |
+| 聚焦节点时 `Alt` + `↑` / `↓` | 移动 8 px。 |
+| 聚焦节点时 `Enter` / `Space` | 选中（`node-click`）。 |
+
+节点可聚焦（`role="button"`，以节点名命名），名称之后朗读 `labels.instructions`，它合并到 `SANKEY_DEFAULT_LABELS` 之上。从节点开始的触摸拖动移动节点而不是滚动页面；从连线或背景开始的触摸仍然滚动。`nodes`（名称、数值）、`links`（端点、数值）或 `height` 的内容变化会回到计算出的布局并丢弃所有移动；内容相同的新数组会保留它们。`prefers-reduced-motion: reduce` 下弹簧直接落到终点；被拖动的节点仍跟随指针。
+
 ## 容错
 
 环形连接会让 d3-sankey 抛错——组件捕获后渲染空态并在控制台给出 dev 警告，不会拖垮宿主页面。
@@ -103,9 +119,10 @@ code: |
 
 悬停节点或连线时，只有邻接元素保持原样：节点、连线与标签里不相邻的部分一起降到 10% 不透明度，对应 ECharts 的 `emphasis.focus: 'adjacency'`（blur 取 `fromState.opacity * 0.1`），在指针到达的那一帧切换，不走 ECharts 的 300ms `cubicOut`（TuffEx 的悬停规则）。节点的邻域是它自己、所有与它相连的连线和这些连线另一端的节点；连线的邻域是它自己、两端节点以及触及任一端点的所有连线。
 
-桑基图**没有几何动画**，这一点与 kumo 一致而非缺失：ECharts 的 `SankeyView` 既没有 `initProps` 也没有 `updateProps`，所以 d3-sankey 布局变化时节点与连线直接落到新位置，不做补间。`prefers-reduced-motion: reduce` 下 300ms 过渡被去掉，高亮瞬时切换。
+桑基图在数据变化时**没有几何动画**，这一点与 kumo 一致而非缺失：ECharts 的 `SankeyView` 既没有 `initProps` 也没有 `updateProps`，所以 d3-sankey 布局变化时节点与连线直接落到新位置，不做补间。只有拖动自带的弹簧（Escape、复位）会运动。`prefers-reduced-motion: reduce` 下 300ms 过渡被去掉，高亮瞬时切换。
 
 ## 与 kumo 的差异
 
 - `tooltipFormatter`（HTML 字符串 + 手工 XSS 转义）→ `tooltip` 插槽（VNode）。
+- kumo 的节点是固定的；这里的节点可以拖动、用 `Alt` + 方向键微调并复位。
 - kumo 遇环形输入直接抛错；这里降级为空渲染 + dev 警告。
