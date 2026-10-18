@@ -11,7 +11,7 @@ const copy = computed(() => locale.value === 'zh' ? {
   animate: '启用动画', compact: '紧凑版', loop: '循环翻页', current: '当前右页',
   core: 'Book：文字页', dither: 'DitherBook：自制插槽图形页',
   extracted: 'SimpleCompExtracted：宽屏书页与侧向导航',
-  hint: '点击书页或前后按钮翻页。展开设置可修改真实留白、圆角、折痕、纸色和阴影。减少动态效果仍会立即完成翻页。',
+  hint: '点击书页或前后按钮翻页，也可以拖动书页：越过中点或甩动即翻过，否则弹回。展开设置可修改真实留白、圆角、折痕、纸色和阴影。减少动态效果时书页仍跟随指针，释放后立即完成翻页。',
   page: '纸页', prose: ['晨光从左侧照进来，纸面泛着暖白。', '铅笔先勾出山的轮廓，天空留白。', '水彩一层层叠上去，每层都等它干透。', '折痕处的阴影比想象中更深。', '最后一页留给潦草的笔记。', '合上本子，纸边已经起了毛。'],
   started: '翻页开始', ended: '翻页结束',
 } : {
@@ -21,7 +21,7 @@ const copy = computed(() => locale.value === 'zh' ? {
   animate: 'Animate', compact: 'Compact', loop: 'Loop pages', current: 'Current right page',
   core: 'Book: text pages', dither: 'DitherBook: original slotted drawings',
   extracted: 'SimpleCompExtracted: wide pages and side navigation',
-  hint: 'Click pages or previous/next buttons to turn. The settings edit real padding, radius, crease, paper color and shadow. Reduced motion still completes every page turn immediately.',
+  hint: 'Click pages or previous/next buttons to turn, or drag a page: past the middle or with a flick it turns, otherwise it falls back. The settings edit real padding, radius, crease, paper color and shadow. With reduced motion a dragged page still follows the pointer, and every turn completes immediately on release.',
   page: 'Page', prose: ['Morning light from the left warms the paper.', 'Pencil first: the ridge line, the sky left blank.', 'Watercolor in layers, each one left to dry.', 'The shadow in the crease runs deeper than expected.', 'The last page is saved for quick notes.', 'Closed again, the edges already soft with use.'],
   started: 'Flip started', ended: 'Flip completed',
 })

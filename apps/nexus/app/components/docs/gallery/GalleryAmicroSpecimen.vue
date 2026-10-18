@@ -41,10 +41,10 @@ const copy = computed(() => zh.value
       loader: '正在同步照片', pause: '暂停', resume: '继续', replay: '重放',
       chart: '每周输出', series: '输出', target: '目标', weeks: ['第一周', '第二周', '第三周', '第四周', '第五周'],
       growth: '社区增长', members: '新增成员', legend: '系列', months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月'],
-      period: '时间范围', total: '合计', cursor: '月份', less: '较少', more: '较多',
+      period: '时间范围', total: '合计', less: '较少', more: '较多',
       single: '单序列', dual: '双序列', col: '列', row: '行', monotone: '单调曲线', natural: '自然曲线',
       showLine: '显示线条', hideLine: '隐藏线条', empty: '暂无数据',
-      motionText: '雾散之后，湖面亮了起来', physics: '轨道万向环', dock: '项目 Dock', home: '首页', search: '搜索', settings: '设置',
+      motionText: '雾散之后，湖面亮了起来', physics: '轨道万向环', dock: '应用栏', home: '首页', search: '搜索', files: '文件', calendar: '日历', settings: '设置',
       dockInstructions: '左右方向键移动焦点，Home 和 End 到首尾。按住 Alt 重排条目，Enter 或空格激活，Escape 取消拖动。',
       dockReordered: '已将 {label} 移到第 {position} 项，共 {total} 项。',
       hover: '悬停或聚焦卡片', hoverBody: '指针位置控制卡片倾斜。',
@@ -63,10 +63,10 @@ const copy = computed(() => zh.value
       loader: 'Syncing photos', pause: 'Pause', resume: 'Resume', replay: 'Replay',
       chart: 'Weekly output', series: 'Output', target: 'Target', weeks: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5'],
       growth: 'Community growth', members: 'New members', legend: 'Series', months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'],
-      period: 'Period', total: 'Total', cursor: 'Month', less: 'Less', more: 'More',
+      period: 'Period', total: 'Total', less: 'Less', more: 'More',
       single: 'Single series', dual: 'Dual series', col: 'Column', row: 'Row', monotone: 'Monotone', natural: 'Natural',
       showLine: 'Show line', hideLine: 'Hide line', empty: 'No data',
-      motionText: 'The mist lifts and the lake lights up', physics: 'Orbital gimbal', dock: 'Project dock', home: 'Home', search: 'Search', settings: 'Settings',
+      motionText: 'The mist lifts and the lake lights up', physics: 'Orbital gimbal', dock: 'App dock', home: 'Home', search: 'Search', files: 'Files', calendar: 'Calendar', settings: 'Settings',
       dockInstructions: 'Left and Right move focus; Home and End reach the ends. Hold Alt to reorder. Enter or Space activates; Escape cancels a drag.',
       dockReordered: 'Moved {label} to position {position} of {total}.',
       hover: 'Hover or focus the card', hoverBody: 'Pointer position controls the card tilt.',
@@ -91,16 +91,17 @@ const toggleValue = ref<MotionToggleValue>(false)
 const controlValue = ref<MotionControlValue>(false)
 const formValue = ref<MotionFormValue>('')
 const transitionKey = ref('one')
-const dockOrder = ref<MotionDockId[]>(['home', 'search', 'settings'])
+const dockOrder = ref<MotionDockId[]>(['home', 'search', 'files', 'calendar', 'settings'])
 const dockActive = ref<MotionDockId>('home')
 const monoMode = ref<MonoChartSeriesMode>('single')
 const ditherKeys = ref(['members'])
 const ditherCursor = ref<number | null>(null)
+// Whole class names, so UnoCSS finds every icon in the source.
+const dockIcons: Record<string, string> = {
+  home: 'i-carbon-home', search: 'i-carbon-search', files: 'i-carbon-folder', calendar: 'i-carbon-calendar', settings: 'i-carbon-settings',
+}
 const dockItems = computed<MotionDockItem[]>({
-  get: () => dockOrder.value.map(id => ({
-    id,
-    label: id === 'home' ? copy.value.home : id === 'search' ? copy.value.search : copy.value.settings,
-  })),
+  get: () => dockOrder.value.map(id => ({ id, label: copy.value[id as 'home' | 'search' | 'files' | 'calendar' | 'settings'] })),
   set: items => { dockOrder.value = items.map(item => item.id) },
 })
 const cards = computed(() => copy.value.cardTitles.map((title, index) => ({
@@ -187,7 +188,7 @@ const metricData = computed(() => ({
       :series="ditherSeries"
       :title="copy.growth"
       :height="160"
-      :labels="{ chart: copy.growth, series: copy.legend, period: copy.period, total: copy.total, cursor: copy.cursor, less: copy.less, more: copy.more, empty: copy.empty }"
+      :labels="{ chart: copy.growth, series: copy.legend, period: copy.period, total: copy.total, less: copy.less, more: copy.more, empty: copy.empty }"
     />
     <TxMonoChart
       v-else-if="kind === 'mono-chart'"
@@ -221,11 +222,11 @@ const metricData = computed(() => ({
       v-model:items="dockItems"
       v-model:active-id="dockActive"
       reorderable
-      size="sm"
+      size="lg"
       :labels="{ dock: copy.dock, instructions: copy.dockInstructions, reordered: copy.dockReordered }"
     >
       <template #icon="{ item }">
-<span class="gallery-amicro__dock-icon" :class="item.id === 'home' ? 'i-carbon-home' : item.id === 'search' ? 'i-carbon-search' : 'i-carbon-settings'" aria-hidden="true" />
+<span class="gallery-amicro__dock-icon" :class="dockIcons[item.id]" aria-hidden="true" />
 </template>
     </TxMotionDock>
     <TxMotion v-else-if="kind === 'motion'" variant="tilt-card" :max-tilt="14" :label="copy.hover" tabindex="0" class="gallery-amicro__tilt">
@@ -316,9 +317,9 @@ const metricData = computed(() => ({
   display: inline-flex;
   font-size: 28px;
 }
+/* 1em, so the glyph keeps to the dock's tile as it magnifies. */
 .gallery-amicro__dock-icon {
   display: inline-flex;
-  font-size: 22px;
 }
 .gallery-amicro__transition {
   display: flex;

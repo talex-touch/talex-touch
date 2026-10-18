@@ -30,11 +30,18 @@ const data = computed(() => locale.value === 'zh'
     ])
 
 const unit = computed(() => locale.value === 'zh' ? '次' : 'visits')
+
+const hint = computed(() => locale.value === 'zh'
+  ? '拖拽平移；⌘/Ctrl + 滚轮或双指捏合缩放；双击复位。'
+  : 'Drag to pan; ⌘/Ctrl + scroll or pinch to zoom; double-click to reset.')
 </script>
 
 <template>
-  <div class="echart-demo">
+  <div class="echart-demo not-prose">
     <TxTreemapChart :data="data" :unit="unit" :height="260" />
+    <p class="echart-demo__hint">
+      {{ hint }}
+    </p>
   </div>
 </template>
 
@@ -42,5 +49,11 @@ const unit = computed(() => locale.value === 'zh' ? '次' : 'visits')
 .echart-demo {
   width: 100%;
   max-width: 560px;
+}
+
+.echart-demo__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--tx-chart-text-primary, #6b7280);
 }
 </style>

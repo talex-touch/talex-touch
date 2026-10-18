@@ -7,12 +7,12 @@ const { locale } = useI18n()
 const copy = computed(() => locale.value === 'zh' ? {
   all: '全部变体', variant: '变体', expand: '展开卡片', collapse: '收起卡片', animated: '启用动画',
   arc: '邮票弧度', gap: '邮票间距', offset: '邮票垂直偏移', colorful: '彩色邮票',
-  selected: '当前项', item: '手绘卡片', hint: '悬停或聚焦以展开，点击真实卡片改变当前项。方向键、Home 和 End 也可选择。',
+  selected: '当前项', item: '手绘卡片', hint: '悬停或聚焦以展开，点击真实卡片改变当前项；也可以把卡片沿自身朝上的方向抽出再松手来选择。方向键、Home 和 End 也可选择。',
   blur: '模糊强度', opacity: '非当前项不透明度', brackets: '显示聚焦括号',
 } : {
   all: 'All variants', variant: 'Variant', expand: 'Expand cards', collapse: 'Collapse cards', animated: 'Animate',
   arc: 'Stamp arc', gap: 'Stamp gap', offset: 'Stamp vertical offset', colorful: 'Colorful stamps',
-  selected: 'Current item', item: 'Original card', hint: 'Hover or focus to expand; selecting a real card changes the current item. Arrow keys, Home and End work too.',
+  selected: 'Current item', item: 'Original card', hint: 'Hover or focus to expand; selecting a real card changes the current item. Pull a card out along its own upright and let go to choose it. Arrow keys, Home and End work too.',
   blur: 'Blur amount', opacity: 'Inactive opacity', brackets: 'Show focus brackets',
 })
 const filter = ref<CardSpreadVariant | 'all'>('all')

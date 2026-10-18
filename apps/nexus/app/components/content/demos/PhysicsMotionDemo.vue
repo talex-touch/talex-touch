@@ -22,7 +22,7 @@ const copy = computed(() => locale.value === 'zh' ? {
   replay: '重放所选效果', reset: '显示静止终态', all: '重放筛选结果', pause: '暂停', resume: '继续',
   loop: '循环：开启', once: '循环：关闭', speed: '播放速度', catalog: '全部独立效果',
   source: '来源', plays: '实际开始', finishes: '实际结束', covered: '积木覆盖事件',
-  hint: '每个画面都能点击或用 Enter / 空格重放。筛选不会改变来源 ID；滚动到可见范围才播放。',
+  hint: '每个画面都能点击或用 Enter / 空格重放，也可以抓住它甩出去。筛选不会改变来源 ID；滚动到可见范围才播放。',
   triggers: { auto: '进入可见区域', hover: '悬停或聚焦', click: '点击或键盘', manual: '仅 API 重放' },
   labels: { replay: '重放动画', content: content.value, north: '北', south: '南' },
 } : {
@@ -30,7 +30,7 @@ const copy = computed(() => locale.value === 'zh' ? {
   replay: 'Replay selected', reset: 'Show settled pose', all: 'Replay filtered scenes', pause: 'Pause', resume: 'Resume',
   loop: 'Loop: on', once: 'Loop: off', speed: 'Playback speed', catalog: 'All independent effects',
   source: 'Source', plays: 'Actual starts', finishes: 'Actual finishes', covered: 'Stack covered events',
-  hint: 'Click any specimen, or use Enter / Space, to replay. Filtering retains source IDs; offscreen specimens wait until visible.',
+  hint: 'Click any specimen, or use Enter / Space, to replay; grab one and throw it. Filtering retains source IDs; offscreen specimens wait until visible.',
   triggers: { auto: 'When visible', hover: 'Hover or focus', click: 'Click or keyboard', manual: 'API replay only' },
   labels: { replay: 'Replay animation', content: content.value, north: 'N', south: 'S' },
 })

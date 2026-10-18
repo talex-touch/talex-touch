@@ -25,22 +25,22 @@ watch(variant, () => { hovered.value = null; cursor.value = null })
 const copy = computed(() => locale.value === 'zh' ? {
   variant: '图形', pattern: '纹理', animated: '播放粒子纹理', compact: '紧凑视图', scale: '输入数据倍率', indicator: '图例标记',
   gallery: '全部独立图形', compare: '来源差异与去重', composition: '书页与指标组合', copy: '复制Vue用法', copied: '已复制', failed: '复制失败',
-  note: '每个缩略图使用同一真实输入API。选择图形后操作周期、图例、指标或日期游标；倍率同时修改图形和读数。',
+  note: '每个缩略图使用同一真实输入API。选择图形后操作周期、图例或指标；在时间类图形上按住拖动，或聚焦图表后按方向键，可移动日期游标。倍率同时修改图形和读数。',
   difference: '两个来源目录的11份同字节文件共用实现；另外11份已逐文件核对，图形公式相同，差异是以下运行时保护，而不是另一种图形。',
   noDifference: '该非目录变体在两个来源目录中为同字节副本。',
   dither: 'dither-charts：缓存尺寸、DPR上限、可见性、减少动态效果与低帧率保护', simple: 'simple-comp：相同几何，旧的每帧布局读取和后台播放不被重新引入',
   selected: '当前读数', cursor: '游标', previous: '上一页', next: '下一页', settings: '书页设置', padding: '内容留白', imageRadius: '内容圆角', creaseOpacity: '折痕强度', paperColor: '纸张颜色', shadowIntensity: '阴影强度', intro: '播放开场翻页',
-  labels: { empty: '暂无数据', period: '周期', series: '系列与指标', chart: '抖动图表', total: '合计', capacity: '容量', less: '少', more: '多', cursor: '日期游标' },
+  labels: { empty: '暂无数据', period: '周期', series: '系列与指标', chart: '抖动图表', total: '合计', capacity: '容量', less: '少', more: '多' },
   names: ['计划分布环图', '区域堆叠柱图', '新增面积图', '贡献活动矩阵', '服务器半圆仪表', '流量气泡', '转化漏斗', '设备环图', '存储容量条', '收入折线', '服务在线矩阵', '垂直柱图', '目标径向仪表', '节点趋势散点', '时段热力网格', '指标迷你图矩阵', '新增成员卡片', '支付卡片', '计划成员卡片'],
 } : {
   variant: 'Geometry', pattern: 'Texture', animated: 'Animate particles', compact: 'Compact view', scale: 'Input multiplier', indicator: 'Legend indicator',
   gallery: 'Every independent geometry', compare: 'Source differences and deduplication', composition: 'Book and metric composition', copy: 'Copy Vue usage', copied: 'Copied', failed: 'Copy failed',
-  note: 'Every thumbnail uses the same real data API. Choose a geometry and interact with its periods, legend, metric selection or date cursor; the multiplier changes both geometry and readings.',
+  note: 'Every thumbnail uses the same real data API. Choose a geometry and interact with its periods, legend or metric selection; on a time chart, press and drag across it, or focus it and use the arrow keys, to move the date cursor. The multiplier changes both geometry and readings.',
   difference: 'Eleven byte-identical files share an implementation. The other eleven pairs were reviewed individually: their geometry formulas are equal and their differences are runtime protections, not additional chart shapes.',
   noDifference: 'This non-catalog variant is a byte-identical copy in both source directories.',
   dither: 'dither-charts: cached size, DPR cap, visibility, reduced motion and low-frame-rate protections', simple: 'simple-comp: equal geometry; its old per-frame layout reads and background playback are not reintroduced',
   selected: 'Current reading', cursor: 'Cursor', previous: 'Previous page', next: 'Next page', settings: 'Book settings', padding: 'Content padding', imageRadius: 'Content radius', creaseOpacity: 'Crease intensity', paperColor: 'Paper colour', shadowIntensity: 'Shadow intensity', intro: 'Replay opening flips',
-  labels: { empty: 'No data', period: 'Period', series: 'Series and metrics', chart: 'Dither chart', total: 'Total', capacity: 'Capacity', less: 'Less', more: 'More', cursor: 'Date cursor' },
+  labels: { empty: 'No data', period: 'Period', series: 'Series and metrics', chart: 'Dither chart', total: 'Total', capacity: 'Capacity', less: 'Less', more: 'More' },
   names: ['Plan distribution donut', 'Regional stacked bars', 'Growth area', 'Contribution activity matrix', 'Server semicircle gauge', 'Traffic bubbles', 'Conversion funnel', 'Device donut', 'Storage capacity', 'Revenue line', 'System uptime matrix', 'Vertical bars', 'Target radial gauge', 'Node trend scatter', 'Hourly heatmap grid', 'Metric sparkline matrix', 'Member growth card', 'Payment card', 'Plan member card'],
 })
 const title = computed(() => copy.value.names[DITHER_CHART_VARIANTS.indexOf(variant.value)] ?? variant.value)
