@@ -203,9 +203,9 @@ Manages application updates and integrates with DownloadCenter.
 /\*\*
 
 - Verify a completed update task without triggering installation.
-- Lifecycle moves to `ready` only after this succeeds.
+- Returns verified package metadata. macOS must additionally finish background bundle preparation before `ready`.
   \*/
-  async verifyDownloadedUpdate(taskId: string): Promise<void>
+  async verifyDownloadedUpdate(taskId: string): Promise<VerifiedUpdatePackage>
 
 /\*\*
 

@@ -50,6 +50,37 @@ afterEach(async () => {
 })
 
 describe('UpdateRecoveryStore', () => {
+  it.each(['wrong-stage', 'wrong-platform'] as const)(
+    'rejects a macOS transaction with %s before persisting it',
+    async (invalid) => {
+      const { store } = await createStore()
+      const plan = createPlan(store)
+      const applications = path.resolve(store.storageRoot, '..', 'Applications')
+      plan.platform = invalid === 'wrong-platform' ? 'linux' : 'darwin'
+      plan.macosTransaction = {
+        appBundlePath: path.join(applications, 'Tuff.app'),
+        stageRoot:
+          invalid === 'wrong-stage'
+            ? path.join(applications, 'unrelated')
+            : path.join(applications, '.tuff-update-attempt-1')
+      }
+      await expect(store.writePlan(plan)).rejects.toThrow()
+      await expect(store.readPlan(plan.attemptId)).resolves.toBeNull()
+    }
+  )
+
+  it('rejects external stage deletion smuggled through internal cleanup paths', async () => {
+    const { store } = await createStore()
+    const plan = createPlan(store)
+    const applications = path.resolve(store.storageRoot, '..', 'Applications')
+    plan.platform = 'darwin'
+    plan.macosTransaction = {
+      appBundlePath: path.join(applications, 'Tuff.app'),
+      stageRoot: path.join(applications, '.tuff-update-attempt-1')
+    }
+    plan.cleanupPaths = [plan.macosTransaction.stageRoot]
+    await expect(store.writePlan(plan)).rejects.toThrow('escapes the storage root')
+  })
   it('rejects plans whose package or coordination paths escape its storage root', async () => {
     const { store } = await createStore()
     const escapedPackage = createPlan(store)

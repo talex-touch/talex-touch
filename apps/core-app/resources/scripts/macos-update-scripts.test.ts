@@ -1,69 +1,138 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { prepareMacUpdate } from '../../src/main/modules/update/services/macos-update-preparation'
+import {
+  createSignedMacUpdateFixture,
+  readMacBundleVersion,
+  swapHelperPath
+} from './fixtures/macos-update-fixture'
 
-const execFileAsync = promisify(execFile)
-const applyScriptPath = new URL('./macos-apply-update.sh', import.meta.url)
-const restoreScriptPath = new URL('./macos-restore-update.sh', import.meta.url)
-const applyScript = await readFile(applyScriptPath, 'utf8')
-const restoreScript = await readFile(restoreScriptPath, 'utf8')
+const exec = promisify(execFile)
+const roots: string[] = []
+const applyScript = new URL('./macos-apply-update.sh', import.meta.url).pathname
+const restoreScript = new URL('./macos-restore-update.sh', import.meta.url).pathname
 
-function readShellFunction(source: string, name: string): string {
-  const match = source.match(new RegExp(`${name}\\(\\) \\{([\\s\\S]*?)\\n\\}`))
-  if (!match?.[1]) {
-    throw new Error(`Missing shell function: ${name}`)
-  }
-  return match[1]
-}
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+})
 
-describe('macOS update scripts', () => {
-  it.runIf(process.platform !== 'win32')('remain valid Bash', async () => {
-    await Promise.all([
-      execFileAsync('/bin/bash', ['-n', applyScriptPath.pathname]),
-      execFileAsync('/bin/bash', ['-n', restoreScriptPath.pathname])
-    ])
+describe.runIf(process.platform === 'darwin')('macOS atomic update scripts', () => {
+  it('swaps real signed bundles, never reverses an apply replay, and restores exactly once', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'tuff-macos-swap-'))
+    roots.push(root)
+    const fixture = await createSignedMacUpdateFixture(root)
+    const receipt = await prepareMacUpdate(fixture.input)
+    const prepared = path.join(receipt.stageRoot, 'prepared.app')
+    const oldInode = (await stat(fixture.appBundlePath)).ino
+    const newInode = (await stat(prepared)).ino
+    const bin = path.join(root, 'bin')
+    const launches = path.join(root, 'launches.txt')
+    await mkdir(bin)
+    await writeFile(path.join(bin, 'open'), '#!/bin/sh\nprintf "%s\\n" "$1" >> "$OTA_LAUNCHES"\n')
+    await chmod(path.join(bin, 'open'), 0o755)
+    const options = {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, OTA_LAUNCHES: launches }
+    }
+    const log = path.join(fixture.attemptRoot, 'script.log')
+    const applyArgs = [
+      applyScript,
+      '--prepared',
+      prepared,
+      '--dest',
+      fixture.appBundlePath,
+      '--swap-helper',
+      swapHelperPath,
+      '--version',
+      '2.4.10',
+      '--previous-version',
+      '2.4.9',
+      '--pid',
+      '999999999',
+      '--log',
+      log
+    ]
+    await exec('/bin/bash', applyArgs, options)
+    expect(await readMacBundleVersion(fixture.appBundlePath)).toBe('2.4.10')
+    expect(await readMacBundleVersion(prepared)).toBe('2.4.9')
+    expect((await stat(fixture.appBundlePath)).ino).toBe(newInode)
+    expect((await stat(prepared)).ino).toBe(oldInode)
+    await exec('/bin/bash', applyArgs, options)
+    expect((await stat(fixture.appBundlePath)).ino).toBe(newInode)
+    expect((await stat(prepared)).ino).toBe(oldInode)
+    const restoreArgs = [
+      restoreScript,
+      '--backup',
+      prepared,
+      '--dest',
+      fixture.appBundlePath,
+      '--swap-helper',
+      swapHelperPath,
+      '--version',
+      '2.4.9',
+      '--failed-version',
+      '2.4.10',
+      '--log',
+      log
+    ]
+    await exec('/bin/bash', restoreArgs, options)
+    expect(await readMacBundleVersion(fixture.appBundlePath)).toBe('2.4.9')
+    expect(await readMacBundleVersion(prepared)).toBe('2.4.10')
+    expect((await stat(fixture.appBundlePath)).ino).toBe(oldInode)
+    await exec('/bin/bash', restoreArgs, options)
+    expect((await stat(fixture.appBundlePath)).ino).toBe(oldInode)
+    expect((await stat(prepared)).ino).toBe(newInode)
+    expect(await readFile(launches, 'utf8')).toBe(`${fixture.appBundlePath}\n`.repeat(4))
   })
 
-  it('detaches the DMG mount without a /tmp path spelling precheck', async () => {
-    const cleanupMount = readShellFunction(applyScript, 'cleanup_mount')
-
-    expect(cleanupMount).toContain('/usr/bin/hdiutil detach "$MOUNT_DIR" -quiet')
-    expect(cleanupMount).not.toMatch(/(?:^|\n)\s*(?:\/usr\/bin\/)?mount(?:\s|$)/)
-    expect(cleanupMount).not.toContain('grep')
-
-    const root = await mkdtemp(path.join(tmpdir(), 'tuff-macos-cleanup-test-'))
-    const capturePath = path.join(root, 'hdiutil-args.txt')
-    const mountDir = '/tmp/tuff-update-stage-spelling-probe/mount'
-    const executableFunction = cleanupMount.replace('/usr/bin/hdiutil', 'hdiutil_probe')
-
-    try {
-      await execFileAsync(
-        '/bin/bash',
-        [
-          '-c',
-          `hdiutil_probe() { printf '%s\\n' "$@" > "$CAPTURE_FILE"; }\ncleanup_mount() {${executableFunction}\n}\ncleanup_mount`
-        ],
-        {
-          env: {
-            ...process.env,
-            CAPTURE_FILE: capturePath,
-            MOUNT_DIR: mountDir
-          }
-        }
-      )
-
-      await expect(readFile(capturePath, 'utf8')).resolves.toBe(`detach\n${mountDir}\n-quiet\n`)
-    } finally {
-      await rm(root, { recursive: true, force: true })
+  it.each(['same-directory', 'symlink', 'file', 'missing'] as const)(
+    'refuses a %s swap operand without changing either tree',
+    async (invalid) => {
+      const root = await mkdtemp(path.join(tmpdir(), 'tuff-native-swap-reject-'))
+      roots.push(root)
+      const left = path.join(root, 'left')
+      const right = path.join(root, 'right')
+      await mkdir(left)
+      await writeFile(path.join(left, 'sentinel'), 'installed')
+      if (invalid === 'symlink') await symlink(left, right)
+      if (invalid === 'file') await writeFile(right, 'not a bundle')
+      await expect(
+        exec(swapHelperPath, ['--swap', left, invalid === 'same-directory' ? left : right])
+      ).rejects.toThrow()
+      expect(await readFile(path.join(left, 'sentinel'), 'utf8')).toBe('installed')
+      if (invalid === 'file') expect(await readFile(right, 'utf8')).toBe('not a bundle')
     }
-  })
+  )
 
-  it('keeps apply and recovery free of privilege-escalation fallbacks', () => {
-    for (const source of [applyScript, restoreScript]) {
-      expect(source).not.toMatch(/\b(?:sudo|osascript)\b/)
-    }
+  it('refuses to swap while the parent is still alive', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'tuff-macos-parent-'))
+    roots.push(root)
+    const fixture = await createSignedMacUpdateFixture(root)
+    const receipt = await prepareMacUpdate(fixture.input)
+    const prepared = path.join(receipt.stageRoot, 'prepared.app')
+    await expect(
+      exec('/bin/bash', [
+        applyScript,
+        '--prepared',
+        prepared,
+        '--dest',
+        fixture.appBundlePath,
+        '--swap-helper',
+        swapHelperPath,
+        '--version',
+        '2.4.10',
+        '--previous-version',
+        '2.4.9',
+        '--pid',
+        String(process.pid),
+        '--log',
+        path.join(fixture.attemptRoot, 'script.log')
+      ])
+    ).rejects.toThrow()
+    expect(await readMacBundleVersion(fixture.appBundlePath)).toBe('2.4.9')
+    expect(await readMacBundleVersion(prepared)).toBe('2.4.10')
   })
 })

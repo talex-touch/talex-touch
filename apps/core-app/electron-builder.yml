@@ -77,6 +77,8 @@ extraResources:
     to: resources/tray_icon_22x22.png
   - from: resources/keys/release-signing-public.pem
     to: resources/keys/release-signing-public.pem
+  - from: resources/scripts/macos-prepare-update.sh
+    to: resources/scripts/macos-prepare-update.sh
   - from: resources/scripts/macos-apply-update.sh
     to: resources/scripts/macos-apply-update.sh
   - from: resources/scripts/macos-restore-update.sh

@@ -160,6 +160,7 @@ export const UPDATE_LIFECYCLE_PHASES = [
   'available',
   'downloading',
   'verifying',
+  'preparing',
   'ready',
   'install-scheduled',
   'handoff-started',

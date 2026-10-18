@@ -378,6 +378,7 @@ type UpdateLifecyclePhase =
   | 'available'
   | 'downloading'
   | 'verifying'
+  | 'preparing'
   | 'ready'
   | 'install-scheduled'
   | 'handoff-started'
@@ -400,7 +401,7 @@ shouldAcceptUpdateLifecycleSnapshot(current, incoming): boolean
 - `app_update_attempts` is the lifecycle source of truth. Release records own discovery/user decisions; DownloadCenter owns bytes and progress only.
 - One partial unique SQLite index permits exactly one non-terminal attempt. Every transition is an atomic compare-and-transition on attempt id, revision, and expected phase.
 - Revisions increase once per committed transition. Invalid edges, stale revisions, cross-attempt commands, and terminal resurrection fail closed.
-- Download completion enters `verifying`; only streamed checksum and pinned detached-signature success enters `ready`. Completion alone never launches an installer.
+- Download completion enters `verifying`. Streamed checksum and pinned detached-signature verification are mandatory. macOS then enters persisted `preparing`, extracts the signed application on the destination volume while the old app stays usable, and commits `ready` only after version/bundle identity/signature verification and a package-bound preparation receipt. Other platforms retain `verifying -> ready`; completion alone never launches an installer.
 - `update:get-status` and update action responses expose the authoritative snapshot. Renderer accepts a same-attempt snapshot only when its revision is not older, and orders different attempts by `createdAt`.
 - `installOnNormalQuit` replaces the legacy immediate-handoff setting and defaults true. New-key values win; legacy true/false values migrate once; unlinked pending-version strings are removed, not promoted to `ready`.
 - Automatic download starts from every check path that leaves an attempt in `available`: a network result and a cached or persisted result alike. `synchronizeCachedCheckResult` calls the same `maybeAutoDownloadLifecycle` as the network path, with the same gates (packaged app, `autoDownload === true`, tag not already in flight). It does so only when the returned phase is `available`: a cached result must never reach a `ready` or `downloading` attempt. Before this, a restart inside the check-frequency window left auto-download users on "update available".
@@ -416,6 +417,7 @@ shouldAcceptUpdateLifecycleSnapshot(current, incoming): boolean
 | Checksum/signature fails                                    | `failed`; installer handoff forbidden                   |
 | Process restarts during DownloadCenter task                 | Restore attempt by task id and resume status monitoring |
 | Process restarts during verification                        | Re-run verification before `ready`                      |
+| macOS restarts in `preparing` or restores a previous `ready` | Revalidate package and prepared bundle in background; no ready notification until complete |
 | Incoming renderer snapshot is stale                         | Retain the newer snapshot                               |
 | Legacy pending version lacks trusted task/integrity linkage | Remove it and require a new download                    |
 | Cached/persisted result marks `available`, auto-download on | Auto-download starts, same gates as a network result    |
@@ -423,7 +425,7 @@ shouldAcceptUpdateLifecycleSnapshot(current, incoming): boolean
 
 ### 5. Good / Base / Bad Cases
 
-- **Good:** a persisted attempt survives process restart, DownloadCenter reports completion, verification commits `ready`, and all consumers observe the same revisioned snapshot.
+- **Good:** a persisted attempt survives process restart, DownloadCenter reports completion, verification and platform preparation commit `ready`, and all consumers observe the same revisioned snapshot.
 - **Base:** a download is cancelled, the attempt returns to `available`, and a later explicit download can retry without another active row.
 - **Bad:** infer ready from a completed task, keep lifecycle in renderer refs, update phase without CAS, resurrect a terminal attempt, or treat a pending version string as verified state.
 
@@ -445,6 +447,8 @@ await installUpdate(taskId); // completion path launches installer
 ```
 
 #### Correct
+
+The following direct `verifying -> ready` example applies to Windows/Linux. macOS commits `preparing`, awaits `UpdateInstallCoordinator.prepareDownloadedUpdate(snapshot, verifiedPackage)`, then commits `preparing -> ready` using the new revision.
 
 ```ts
 const verifying = await attempts.transition({
@@ -504,12 +508,14 @@ HelperChildEnv := process.env - { ELECTRON_RUN_AS_NODE }
 
 - `UpdateInstallCoordinator` is the only application-update installer owner. Transport actions schedule a verified task and request typed quit; they never spawn/open an installer directly.
 - `user-normal` may hand off only when `installOnNormalQuit=true`; `update-now` may hand off only an `install-now` lifecycle. System shutdown, startup failure, duplicate instance, and other exits never prepare or launch OTA.
-- `ModuleManager` awaits `BEFORE_MODULES_UNLOAD` before stop/destroy. OTA hash, cached detached-signature verification, plan persistence, previous selection, and `handoff-started` CAS complete there while SQLite is writable.
+- Install-now completes package/prepared-bundle validation, source helper/script retention, plan persistence and `handoff-started` CAS before requesting quit; a failed prepared artifact becomes `failed` without quitting. Normal-quit preparation completes in `BEFORE_MODULES_UNLOAD`, while SQLite remains writable. Neither path extracts macOS bundles during shutdown.
 - Actual `will-quit` performs only detached helper spawn/unref. The helper waits for the parent PID to exit, rejects escaped/stale/mismatched/replayed plans, and performs at most one recovery.
 - The installed source version owns and launches the helper for both handoff and recovery. A helper fix shipped only inside target N+1 cannot change the N -> N+1 transition; packaged acceptance for a helper change requires an official source N containing the fix and a distinct official target N+1.
 - Every waited or detached helper child inherits the source environment except `ELECTRON_RUN_AS_NODE`, which must be deleted before spawn. Preserve unrelated variables, including isolated profile paths; otherwise Electron may execute the target app in Node mode and exit without startup health.
-- macOS uses DownloadCenter plus apply/restore scripts and a retained `.app` backup. Windows resolves interactive NSIS/MSI commands. Linux accepts only executable AppImage or `xdg-open` deb handoff. Unsupported formats fail closed.
+- macOS uses DownloadCenter plus separate preparation/apply/restore scripts. The private `.tuff-update-<attemptId>` directory is a sibling of the installed app, including when the profile is on another volume. Apply and recovery use the bundled `tuff-native-update --swap` helper (`renameatx_np(RENAME_SWAP)`) without copy/delete fallback. Each operation is atomic; version pairs prevent replay from reversing an earlier swap. The displaced app remains in `prepared.app` until a matching healthy/recovered acknowledgement. Windows resolves interactive NSIS/MSI commands; Linux keeps its AppImage/deb handoff.
 - macOS mount cleanup always attempts best-effort `hdiutil detach "$MOUNT_DIR"`; it must not preflight with textual `mount` output because the same path may be rendered as `/tmp/...` or `/private/tmp/...`.
+- Preparation records mount, source-copy/extraction, unmount and bundle-verification timestamps. Main records preparation duration; the detached helper records parent-exit, platform handoff and startup-health durations in `handoff.log`. The Settings preparing row has indeterminate progress and elapsed time, not invented byte percentages; it cannot install, pauses its clock while hidden and excludes elapsed ticks from the live announcement region.
+- Apply/restore scripts and the native swap helper are copied from the trusted source app into the attempt directory before quit, so replacing the source bundle cannot change recovery code. External stage cleanup accepts only the exact attempt-derived sibling path, rejects symlinks, and requires a token/version/attempt-matching acknowledgement.
 - A detached signature is fetched and cached during verification; install preflight re-verifies package bytes against the local cache and pinned key without network access.
 - Target startup moves `handoff-started -> awaiting-health`; only target-version match plus completed renderer/main/module readiness and writable repository moves to `healthy` and writes the token-bound ack.
 - Healthy startup atomically promotes exactly one verified package as future previous. A recovery marker plus old-version startup moves `recovery-required -> recovering -> recovered`; helper/runtime JSON never overrides another SQLite attempt or token.
@@ -546,7 +552,7 @@ HelperChildEnv := process.env - { ELECTRON_RUN_AS_NODE }
 - macOS/NSIS/MSI/AppImage/deb command selection and unsupported-format rejection.
 - Helper parent wait, matching healthy/recovered ack, timeout recovery once, and no-previous marker using only temp fixtures.
 - Waited and detached child tests set `ELECTRON_RUN_AS_NODE=1`, assert the child observes it as absent, and assert an unrelated isolated-profile sentinel survives. Mutation must prove removing the env scrub makes the test fail.
-- macOS script contracts assert detach is attempted without a `mount | grep` gate and exercise a `/tmp` stage path whose system projection may be `/private/tmp`.
+- macOS preparation uses real signed fixture bundles and DMG detach without a `mount | grep` gate. Apply/restore exercise native inode exchange, replay, rejection while the parent is alive, and preservation of both versions. Cross-volume swaps must fail without copying.
 - Packaged helper changes are accepted only with two post-fix official versions: the source package proves it owns the fixed helper, and the target package proves startup reaches token-bound `healthy`.
 - Detached-signature cache proves first download plus second offline verification and tamper failures.
 
@@ -608,13 +614,13 @@ type UpdateInstallPreflightErrorCode =
 ### 3. Contracts
 
 - `DownloadCenter.completed` advances the attempt to `verifying`; it never emits an update-ready notification and never starts installation.
-- A committed `verifying -> ready` transition is the sole ready notification boundary. Repository observers run only after the SQLite transaction commits; observer failure cannot rewrite or reject the committed lifecycle.
+- A committed transition into `ready` is the sole ready notification boundary (`preparing -> ready` on macOS). Repository observers run only after the SQLite transaction commits; observer failure cannot rewrite or reject the committed lifecycle.
 - Main broadcasts every committed snapshot through the typed lifecycle event. Renderer applies the existing revision guard and never rebuilds phase from download events.
 - With `autoDownload=true`, `available` starts or restores background preparation without a blocking release dialog. Manual-download mode may still show an explicit Download Update action.
 - A ready native notification owns a main-process callback. One click schedules the matching verified task through `UpdateInstallCoordinator`; it does not open Settings and does not require a second in-app confirmation.
 - macOS install-now requires an official verified build, pinned official key, no attestation failure, and direct read/execute access to the current app plus write/execute access to its parent directory.
-- macOS preflight failure leaves the attempt at `ready`, sets no update quit intent, and does not call `app.quit()`.
-- macOS apply and restore scripts must not call AppleScript, `sudo`, or any administrator-prompt fallback. A direct replacement failure restores the backup and reopens the old app; an unrecoverable restore preserves the marker/backup for diagnosis.
+- macOS build-trust/writability preflight failure leaves `ready` and does not request quit. Missing or altered prepared bytes fail install-now preflight before quit, with `UPDATE_INSTALL_PREFLIGHT_FAILED`; background preparation errors use `UPDATE_PREPARATION_FAILED` and leave the current app running.
+- macOS preparation/apply/restore must not elevate privileges or request an administrator password. Atomic swap failure leaves the installed app intact; startup failure restores the retained app only when manifest rollback compatibility permits it. Unrecoverable attempts retain their marker/backup for diagnosis.
 - Windows NSIS/MSI and Linux AppImage/deb reuse the same ready-click lifecycle, but installer/UAC/package-manager interaction remains explicit and is not reported as healthy until startup health passes.
 - `ShellUpdateNotice` lives outside the sidebar route transition and reads the shared `useUpdateRuntime.lifecycleSnapshot`; its mount-time `getUpdateStatus()` hydrates restored ready state without adding another lifecycle subscription. Only `ready + attemptId + taskId + targetVersion` displays the notice.
 - Deferring a notice records only its attemptId in component-local presentation state. The quiet entry survives route changes and rail mode; reopening/defer moves keyboard focus to the remaining action after `nextTick()`. Installation reuses `installDownloadedUpdate(taskId)` with a pending-click guard; macOS unavailable/untrusted public build status routes to `/setting/update` rather than exposing a restart action.
@@ -626,7 +632,7 @@ type UpdateInstallPreflightErrorCode =
 | Download task reports completed but integrity verification is pending           | `verifying`; no ready notification                                                   |
 | Ready transition commits                                                        | typed lifecycle push; at most one ready notification per attempt/process             |
 | Duplicate notification click or concurrent Settings click                       | one `ready -> install-scheduled`; stale caller receives lifecycle conflict           |
-| Restored process starts with an active ready attempt                            | publish ready again and offer one notification in the new process; do not redownload |
+| Restored process starts with an active macOS ready attempt | Revalidate prepared bytes through `preparing`; notify only after readiness is restored |
 | macOS build is unofficial, unattested, key-inconsistent, or verification failed | `MAC_UPDATE_BUILD_UNTRUSTED`; remain ready; do not quit                              |
 | macOS app or parent directory is not directly writable                          | `MAC_UPDATE_DESTINATION_NOT_WRITABLE`; remain ready; no password prompt              |
 | macOS direct replacement fails after quit                                       | restore backup and reopen old app; helper records failure/recovery state             |

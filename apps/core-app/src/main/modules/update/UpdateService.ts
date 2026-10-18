@@ -113,6 +113,7 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
   private updateSystemInitListener: (() => void) | null = null
   private autoDownloadTasks: Map<string, string> = new Map()
   private readonly lifecycleMonitorTaskIds = new Set<string>()
+  private readonly downloadPreparationTasks = new Map<string, Promise<void>>()
   private transport: ITuffTransportMain | null = null
   private transportDisposers: Array<() => void> = []
   private downloadAdapter: UpdateDownloadAdapter
@@ -323,6 +324,7 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
    */
   async onDestroy(): Promise<void> {
     this.destroyed = true
+    this.installCoordinator?.cancelPreparation()
     updateLog.info('Destroying update service')
 
     this.clearStartupBackgroundTasks()
@@ -1165,6 +1167,18 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
   }
 
   private async markCenterDownloadReady(taskId: string): Promise<void> {
+    const running = this.downloadPreparationTasks.get(taskId)
+    if (running) return await running
+    const preparation = this.verifyAndPrepareDownloadedUpdate(taskId)
+    this.downloadPreparationTasks.set(taskId, preparation)
+    try {
+      await preparation
+    } finally {
+      this.downloadPreparationTasks.delete(taskId)
+    }
+  }
+
+  private async verifyAndPrepareDownloadedUpdate(taskId: string): Promise<void> {
     const repository = this.updateAttemptRepository
     if (!repository) {
       return
@@ -1181,23 +1195,46 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
         to: 'verifying'
       })
     }
-    if (lifecycle.phase !== 'verifying') {
+    if (lifecycle.phase !== 'verifying' && lifecycle.phase !== 'preparing') {
       return
     }
 
     try {
-      await this.downloadAdapter.verifyWithCenter(taskId)
+      const verifiedPackage = await this.downloadAdapter.verifyWithCenter(taskId)
+      if (this.destroyed) return
+      if (process.platform === 'darwin') {
+        if (!this.installCoordinator)
+          throw new Error('Update preparation coordinator is unavailable')
+        if (lifecycle.phase !== 'preparing') {
+          lifecycle = await repository.transition({
+            attemptId: lifecycle.attemptId!,
+            expectedRevision: lifecycle.revision,
+            expectedPhase: 'verifying',
+            to: 'preparing'
+          })
+        }
+        await this.installCoordinator.prepareDownloadedUpdate(lifecycle, verifiedPackage)
+      }
+      if (this.destroyed) return
       await repository.transition({
         attemptId: lifecycle.attemptId!,
         expectedRevision: lifecycle.revision,
-        expectedPhase: 'verifying',
+        expectedPhase: lifecycle.phase,
         to: 'ready'
       })
     } catch (error) {
+      if (this.destroyed) return
       if (lifecycle.releaseTag) {
         this.autoDownloadTasks.delete(lifecycle.releaseTag)
       }
-      await this.failLifecycle(lifecycle, 'UPDATE_VERIFICATION_FAILED', error, false)
+      await this.failLifecycle(
+        lifecycle,
+        lifecycle.phase === 'preparing'
+          ? 'UPDATE_PREPARATION_FAILED'
+          : 'UPDATE_VERIFICATION_FAILED',
+        error,
+        true
+      )
     }
   }
 
@@ -1317,6 +1354,18 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
         )
         return
       }
+      if (process.platform === 'darwin' && active.taskId) {
+        await this.updateAttemptRepository!.transition({
+          attemptId: active.attemptId!,
+          expectedRevision: active.revision,
+          expectedPhase: 'ready',
+          to: 'preparing'
+        })
+        void this.markCenterDownloadReady(active.taskId).catch((error) => {
+          updateLog.warn('Failed to restore prepared update', { error })
+        })
+        return
+      }
       this.publishLifecycleSnapshot(active)
       this.maybeShowReadyNotification(active)
       return
@@ -1346,8 +1395,10 @@ export class UpdateServiceModule extends BaseModule<TalexEvents> {
       }
       return
     }
-    if (active.phase === 'verifying' && active.taskId) {
-      await this.markCenterDownloadReady(active.taskId)
+    if ((active.phase === 'verifying' || active.phase === 'preparing') && active.taskId) {
+      void this.markCenterDownloadReady(active.taskId).catch((error) => {
+        updateLog.warn('Failed to resume update preparation', { error })
+      })
       return
     }
   }

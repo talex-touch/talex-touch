@@ -1,68 +1,43 @@
 #!/bin/bash
-set -u
-
+set -eu
 BACKUP_APP=""
 DEST_APP=""
+SWAP_HELPER=""
+OLD_VERSION=""
+FAILED_VERSION=""
 LOG_FILE=""
-
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --backup) BACKUP_APP="$2"; shift 2 ;;
+    --dest) DEST_APP="$2"; shift 2 ;;
+    --swap-helper) SWAP_HELPER="$2"; shift 2 ;;
+    --version) OLD_VERSION="$2"; shift 2 ;;
+    --failed-version) FAILED_VERSION="$2"; shift 2 ;;
+    --log) LOG_FILE="$2"; shift 2 ;;
+    *) echo "Unknown restore argument: $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$BACKUP_APP" ] && [ -n "$DEST_APP" ] && [ -x "$SWAP_HELPER" ] && [ -n "$OLD_VERSION" ] && [ -n "$FAILED_VERSION" ] && [ -n "$LOG_FILE" ] || exit 2
+[ "$OLD_VERSION" != "$FAILED_VERSION" ] || exit 2
+[ -d "$DEST_APP" ] && [ ! -L "$DEST_APP" ] && [ -d "$BACKUP_APP" ] && [ ! -L "$BACKUP_APP" ] || exit 1
 log() {
   printf '[self-update] %s %s\n' "$(/bin/date +%s)" "$*" >> "$LOG_FILE"
 }
-
-usage() {
-  echo "Usage: macos-restore-update.sh --backup <app> --dest <app> --log <file>" >&2
+version() {
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Contents/Info.plist"
 }
-
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --backup)
-      BACKUP_APP="$2"
-      shift 2
-      ;;
-    --dest)
-      DEST_APP="$2"
-      shift 2
-      ;;
-    --log)
-      LOG_FILE="$2"
-      shift 2
-      ;;
-    *)
-      usage
-      exit 2
-      ;;
-  esac
-done
-
-if [ -z "$BACKUP_APP" ] || [ -z "$DEST_APP" ] || [ -z "$LOG_FILE" ]; then
-  usage
-  exit 2
-fi
-
-mkdir -p "$(dirname "$LOG_FILE")" >/dev/null 2>&1 || exit 1
-log "recovery started"
-
-if [ ! -d "$BACKUP_APP/Contents" ]; then
-  log "recovery backup is missing or invalid: $BACKUP_APP"
-  exit 1
-fi
-
-
-restore_direct() {
-  rm -rf "$DEST_APP" >> "$LOG_FILE" 2>&1 || return 1
-  if /bin/cp -cR "$BACKUP_APP" "$DEST_APP" >> "$LOG_FILE" 2>&1; then
-    return 0
-  fi
-  /usr/bin/ditto "$BACKUP_APP" "$DEST_APP" >> "$LOG_FILE" 2>&1
-}
-
-
-if restore_direct; then
-  log "recovery restored without elevated privileges"
+log "phase=recovery status=started"
+current=$(version "$DEST_APP")
+backup=$(version "$BACKUP_APP")
+if [ "$current" = "$OLD_VERSION" ] && [ "$backup" = "$FAILED_VERSION" ]; then
+  log "phase=recovery status=already-restored"
+elif [ "$current" = "$FAILED_VERSION" ] && [ "$backup" = "$OLD_VERSION" ]; then
+  started=$SECONDS
+  "$SWAP_HELPER" --swap "$BACKUP_APP" "$DEST_APP" >> "$LOG_FILE" 2>&1
+  log "phase=recovery status=restored durationSeconds=$((SECONDS - started))"
 else
-  log "recovery failed; privilege escalation is disabled"
+  log "phase=recovery status=failed reason=version-mismatch"
   exit 1
 fi
-
-open "$DEST_APP" >> "$LOG_FILE" 2>&1 || true
-exit 0
+# Keep the failed target for diagnosis until recovery startup has acknowledged this attempt.
+open "$DEST_APP" >> "$LOG_FILE" 2>&1

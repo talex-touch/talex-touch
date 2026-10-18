@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -19,7 +19,7 @@ type HelperPlan = {
   attemptId: string
   token: string
   parentPid: number
-  platform: 'linux'
+  platform: 'linux' | 'darwin'
   currentVersion: string
   targetVersion: string
   taskId: string
@@ -33,6 +33,7 @@ type HelperPlan = {
   handoff: HelperCommand
   recovery: HelperCommand | null
   recoveryAvailable: boolean
+  macosTransaction?: { appBundlePath: string; stageRoot: string }
 }
 
 interface HelperCommand {
@@ -97,6 +98,81 @@ afterEach(async () => {
 })
 
 describe('update handoff helper', () => {
+  it.each([
+    { name: 'token', change: { token: 'wrong-token'.repeat(4) } },
+    { name: 'attempt', change: { attemptId: 'different-attempt' } },
+    { name: 'version', change: { version: '2.4.11' } },
+    { name: 'status', change: { status: 'pending' } }
+  ])(
+    'preserves the external old app for a mismatched $name ack, then cleans only after a matching ack',
+    async ({ change }) => {
+      const { root, planPath, plan } = await createPlan({ platform: 'darwin' })
+      const applications = await realpath(await mkdtemp(path.join(tmpdir(), 'tuff-ota-external-')))
+      temporaryRoots.push(applications)
+      const stageRoot = path.join(applications, '.tuff-update-attempt-1')
+      const oldPayload = path.join(stageRoot, 'prepared.app', 'old.txt')
+      await mkdir(path.dirname(oldPayload), { recursive: true })
+      await writeFile(oldPayload, 'old application')
+      plan.macosTransaction = { appBundlePath: path.join(applications, 'Tuff.app'), stageRoot }
+      await writeFile(planPath, JSON.stringify(plan))
+      const acknowledgement = {
+        schemaVersion: 1,
+        attemptId: plan.attemptId,
+        token: plan.token,
+        status: 'healthy',
+        version: plan.targetVersion
+      }
+      await writeFile(plan.ackPath, JSON.stringify({ ...acknowledgement, ...change }))
+      await writeFile(
+        plan.markerPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          attemptId: plan.attemptId,
+          token: plan.token,
+          status: 'recovery-required',
+          recoveryAttempted: true
+        })
+      )
+      await expect(runHelper(root, planPath)).resolves.toEqual({ status: 'recovery-required' })
+      expect(await readFile(oldPayload, 'utf8')).toBe('old application')
+      await writeFile(plan.ackPath, JSON.stringify(acknowledgement))
+      await expect(runHelper(root, planPath)).resolves.toEqual({ status: 'healthy' })
+      await expect(stat(stageRoot)).rejects.toMatchObject({ code: 'ENOENT' })
+    }
+  )
+
+  it.each(
+    ['wrong-sibling', 'symlink', 'cleanup-escape'].filter(
+      (escape) => process.platform !== 'win32' || escape !== 'symlink'
+    )
+  )('does not delete an external path through %s', async (escape) => {
+    const { root, planPath, plan } = await createPlan({ platform: 'darwin' })
+    const applications = await realpath(await mkdtemp(path.join(tmpdir(), 'tuff-ota-escape-')))
+    temporaryRoots.push(applications)
+    const victim = path.join(applications, 'unrelated')
+    await mkdir(victim)
+    await writeFile(path.join(victim, 'sentinel'), 'keep')
+    const stageRoot = path.join(applications, '.tuff-update-attempt-1')
+    if (escape === 'symlink') await symlink(victim, stageRoot)
+    plan.macosTransaction = {
+      appBundlePath: path.join(applications, 'Tuff.app'),
+      stageRoot: escape === 'wrong-sibling' ? victim : stageRoot
+    }
+    if (escape === 'cleanup-escape') plan.cleanupPaths = [victim]
+    await writeFile(planPath, JSON.stringify(plan))
+    await writeFile(
+      plan.ackPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        attemptId: plan.attemptId,
+        token: plan.token,
+        status: 'healthy',
+        version: plan.targetVersion
+      })
+    )
+    await expect(runHelper(root, planPath)).rejects.toThrow()
+    expect(await readFile(path.join(victim, 'sentinel'), 'utf8')).toBe('keep')
+  })
   it.each([true, false])(
     'does not leak ELECTRON_RUN_AS_NODE into a waitForExit=%s child',
     async (waitForExit) => {

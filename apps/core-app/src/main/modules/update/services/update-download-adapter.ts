@@ -20,8 +20,8 @@ export class UpdateDownloadAdapter {
     return await this.requireUpdateSystem().downloadUpdate(release)
   }
 
-  async verifyWithCenter(taskId: string): Promise<void> {
-    await this.requireUpdateSystem().verifyDownloadedUpdate(taskId)
+  async verifyWithCenter(taskId: string): Promise<VerifiedUpdatePackage> {
+    return await this.requireUpdateSystem().verifyDownloadedUpdate(taskId)
   }
 
   async prepareInstallHandoff(taskId: string): Promise<VerifiedUpdatePackage> {

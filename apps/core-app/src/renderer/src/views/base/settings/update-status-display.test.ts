@@ -78,6 +78,40 @@ const checkAction: UpdateStatusAction = {
 }
 
 describe('resolveUpdateStatusView', () => {
+  it.each([
+    { elapsed: 0, seconds: '0' },
+    { elapsed: 999, seconds: '0' },
+    { elapsed: 1_000, seconds: '1' },
+    { elapsed: 61_999, seconds: '61' },
+    { elapsed: -1_000, seconds: '0' }
+  ])(
+    'keeps preparing indeterminate with no install action at elapsed=$elapsed',
+    ({ elapsed, seconds }) => {
+      const row = resolveRow({
+        snapshot: buildSnapshot({
+          phase: 'preparing',
+          taskId: 'task-1',
+          updatedAt: NOW - elapsed,
+          ...target
+        }),
+        downloadProgress: { downloadedSize: 100, totalSize: 100, speed: 0, percentage: 100 },
+        installRequestPending: true
+      })
+      expect(row).toMatchObject({
+        phase: 'preparing',
+        title: { key: `${K}.status.preparingInstall`, params: { version: 'v2.4.14-beta.47' } },
+        detail: {
+          kind: 'message',
+          message: {
+            key: `${K}.status.preparingInstallElapsed`,
+            params: { seconds }
+          }
+        },
+        progress: { kind: 'indeterminate', tone: 'default' },
+        action: null
+      })
+    }
+  )
   it('shows a skeleton until the first snapshot answers', () => {
     expect(resolveUpdateStatusView(buildInput({ snapshot: null, loading: true }))).toEqual({
       kind: 'skeleton'

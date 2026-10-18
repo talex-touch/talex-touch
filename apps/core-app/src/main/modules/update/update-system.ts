@@ -740,8 +740,8 @@ export class UpdateSystem {
    * Install update package
    * @param taskId - Download task ID
    */
-  async verifyDownloadedUpdate(taskId: string): Promise<void> {
-    await this.resolveVerifiedInstallTask(taskId)
+  async verifyDownloadedUpdate(taskId: string): Promise<VerifiedUpdatePackage> {
+    return await this.resolveVerifiedInstallTask(taskId)
   }
 
   async prepareInstallHandoff(taskId: string): Promise<VerifiedUpdatePackage> {
