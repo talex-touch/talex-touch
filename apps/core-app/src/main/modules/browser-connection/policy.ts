@@ -3,6 +3,8 @@ import type {
   BrowserBookmarkExpectation,
   BrowserChromeTabCommand,
   ChromeBookmarkNode,
+  ChromeCookieFilter,
+  ChromeCookieRecord,
   ChromeTab
 } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
 import { isAllowedBrowserUrl } from '../browser/policy'
@@ -208,4 +210,37 @@ export function bookmarkExpectation(
       .sort((a, b) => a.index - b.index)
       .map((node) => node.id)
   return { nodes: nodes.filter((node) => selected.has(node.id)), children }
+}
+export function validateCookieFilter(input: unknown): ChromeCookieFilter {
+  const obj = object(input)
+  const filter: ChromeCookieFilter = {}
+  if (obj.domain !== undefined) filter.domain = text(obj.domain, 256)
+  if (obj.url !== undefined) filter.url = text(obj.url, 4096)
+  if (obj.domains !== undefined) {
+    if (!Array.isArray(obj.domains) || obj.domains.length > 50)
+      throw new Error('BROWSER_INVALID_COOKIE_DOMAINS')
+    filter.domains = obj.domains.map((d) => text(d, 256))
+  }
+  return filter
+}
+
+export function validateCookieRecord(input: unknown): ChromeCookieRecord {
+  const obj = object(input)
+  const sameSite =
+    obj.sameSite === 'no_restriction' || obj.sameSite === 'strict' || obj.sameSite === 'lax'
+      ? obj.sameSite
+      : 'unspecified'
+  return {
+    name: text(obj.name, 4096),
+    value: text(obj.value, 65536),
+    domain: text(obj.domain, 256),
+    path: text(obj.path, 1024),
+    secure: Boolean(obj.secure),
+    httpOnly: Boolean(obj.httpOnly),
+    sameSite,
+    ...(typeof obj.expirationDate === 'number' && Number.isFinite(obj.expirationDate)
+      ? { expirationDate: obj.expirationDate }
+      : {}),
+    ...(typeof obj.storeId === 'string' ? { storeId: text(obj.storeId, 128) } : {})
+  }
 }
