@@ -49,8 +49,10 @@ export const BrowserEvents = {
   reload: api.event('reload').define<{ tabId: string }, BrowserWorkspaceState>(),
   stop: api.event('stop').define<{ tabId: string }, BrowserWorkspaceState>(),
   setViewport: api.event('set-viewport').define<BrowserViewportRequest, void>(),
+  captureSnapshot: api.event('capture-snapshot').define<{ tabId?: string }, { snapshot: string | null }>(),
   toggleBookmark: api.event('toggle-bookmark').define<{ tabId: string }, BrowserWorkspaceState>(),
   changed: defineEvent('browser').module('push').event('changed').define<BrowserWorkspaceState, void>(),
+  snapshot: defineEvent('browser').module('push').event('snapshot').define<{ tabId: string, snapshot: string }, void>(),
   focusAddress: defineEvent('browser').module('push').event('focus-address').define<void, void>(),
 } as const
 
@@ -66,8 +68,10 @@ export interface BrowserSdk {
   reload: (tabId: string) => Promise<BrowserWorkspaceState>
   stop: (tabId: string) => Promise<BrowserWorkspaceState>
   setViewport: (request: BrowserViewportRequest) => Promise<void>
+  captureSnapshot: (tabId?: string) => Promise<{ snapshot: string | null }>
   toggleBookmark: (tabId: string) => Promise<BrowserWorkspaceState>
   onChanged: (listener: (state: BrowserWorkspaceState) => void) => () => void
+  onSnapshot: (listener: (payload: { tabId: string, snapshot: string }) => void) => () => void
   onFocusAddress: (listener: () => void) => () => void
 }
 
@@ -84,8 +88,10 @@ export function createBrowserSdk(transport: Pick<ITuffTransport, 'send' | 'on'>)
     reload: tabId => transport.send(BrowserEvents.reload, { tabId }),
     stop: tabId => transport.send(BrowserEvents.stop, { tabId }),
     setViewport: request => transport.send(BrowserEvents.setViewport, request),
+    captureSnapshot: tabId => transport.send(BrowserEvents.captureSnapshot, { tabId }),
     toggleBookmark: tabId => transport.send(BrowserEvents.toggleBookmark, { tabId }),
     onChanged: listener => transport.on(BrowserEvents.changed, listener),
+    onSnapshot: listener => transport.on(BrowserEvents.snapshot, listener),
     onFocusAddress: listener => transport.on(BrowserEvents.focusAddress, listener),
   }
 }

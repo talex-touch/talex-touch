@@ -93,7 +93,9 @@ function createWorkspace(
     forward: unsupported,
     stop: unsupported,
     setViewport: unsupported,
+    captureSnapshot: unsupported,
     toggleBookmark: unsupported,
+    onSnapshot: unsupported,
     onFocusAddress: unsupported
   }
 }

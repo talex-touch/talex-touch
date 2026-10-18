@@ -79,6 +79,9 @@ export class BrowserModule extends BaseModule<TalexEvents> {
         },
         notify: (state) => {
           runtime.transport.notifyTo(owner.webContents, BrowserEvents.changed, state)
+        },
+        notifySnapshot: (tabId, snapshot) => {
+          runtime.transport.notifyTo(owner.webContents, BrowserEvents.snapshot, { tabId, snapshot })
         }
       },
       storage.getConfig(BROWSER_WORKSPACE_STORAGE_KEY)

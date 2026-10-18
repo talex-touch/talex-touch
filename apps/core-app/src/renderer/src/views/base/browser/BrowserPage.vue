@@ -143,6 +143,35 @@ watch(
     }
   }
 )
+const snapshots = ref<Record<string, string>>({})
+const currentSnapshot = computed(() => {
+  const tabId = activeTab.value?.id
+  return tabId ? snapshots.value[tabId] || null : null
+})
+const isSuspended = computed(() => {
+  return Boolean(
+    !onRoute.value ||
+    document.hidden ||
+    overlayOpen.value ||
+    tabMenuOpen.value ||
+    pluginToolbarOpen.value ||
+    accountOpen.value ||
+    chromeSaveOpen.value ||
+    cookieDialogOpen.value ||
+    Boolean(panel.value)
+  )
+})
+watch(isSuspended, (suspended) => {
+  if (suspended && activeTab.value?.id) {
+    const tabId = activeTab.value.id
+    void sdk.captureSnapshot(tabId).then((res) => {
+      if (res?.snapshot) {
+        snapshots.value[tabId] = res.snapshot
+      }
+    })
+  }
+})
+let unsubscribeSnapshot: (() => void) | undefined
 const tabMenuIndex = computed(
   () => state.value?.tabs.findIndex((tab) => tab.id === tabMenuTargetId.value) ?? -1
 )
@@ -581,6 +610,9 @@ watch(chromeProfile, (profile) => {
 onMounted(() => {
   unsubscribe = sdk.onChanged(applyState)
   unsubscribeFocus = sdk.onFocusAddress(focusAddress)
+  unsubscribeSnapshot = sdk.onSnapshot(({ tabId, snapshot }) => {
+    snapshots.value[tabId] = snapshot
+  })
   void refreshState()
   resizeObserver = new ResizeObserver(scheduleViewport)
   if (viewport.value) resizeObserver.observe(viewport.value)
@@ -635,6 +667,7 @@ onBeforeUnmount(() => {
   hideViewport()
   unsubscribe?.()
   unsubscribeFocus?.()
+  unsubscribeSnapshot?.()
   resizeObserver?.disconnect()
   overlayObserver?.disconnect()
   window.removeEventListener('resize', scheduleViewport)
@@ -851,6 +884,37 @@ onBeforeUnmount(() => {
       :aria-busy="connecting || activeTab?.loading || undefined"
       class="relative min-h-0 min-w-0 flex-1 overflow-hidden"
     >
+      <!-- Frozen snapshot layer: seamlessly shows the last frame when WebContentsView is suspended/hidden -->
+      <div
+        v-if="currentSnapshot && isSuspended"
+        class="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+        aria-hidden="true"
+      >
+        <img
+          :src="currentSnapshot"
+          class="h-full w-full object-cover select-none transition-all duration-200"
+          :class="{
+            'filter blur-md brightness-90 scale-[1.02]':
+              overlayOpen ||
+              cookieDialogOpen ||
+              chromeSaveOpen ||
+              panel ||
+              accountOpen ||
+              pluginToolbarOpen
+          }"
+        />
+        <div
+          v-if="
+            overlayOpen ||
+            cookieDialogOpen ||
+            chromeSaveOpen ||
+            panel ||
+            accountOpen ||
+            pluginToolbarOpen
+          "
+          class="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        />
+      </div>
       <div
         v-if="connecting && !state"
         class="mx-auto flex h-full max-w-3xl flex-col items-center justify-center gap-7 px-8"

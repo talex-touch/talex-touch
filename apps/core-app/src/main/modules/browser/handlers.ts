@@ -55,6 +55,11 @@ export function registerBrowserHandlers(
       assertBrowserOwner(context, owner)
       manager.setViewport(payload)
     }),
+    transport.on(BrowserEvents.captureSnapshot, async (payload, context) => {
+      assertBrowserOwner(context, owner)
+      const snapshot = await manager.captureSnapshot(payload?.tabId)
+      return { snapshot }
+    }),
     transport.on(BrowserEvents.toggleBookmark, (payload, context) => {
       assertBrowserOwner(context, owner)
       return manager.toggleBookmark(payload?.tabId)

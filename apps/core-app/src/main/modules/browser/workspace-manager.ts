@@ -28,6 +28,7 @@ export interface BrowserWorkspaceDependencies {
   createView: () => WebContentsView
   persist: (state: BrowserPersistedWorkspace) => Promise<void>
   notify: (state: BrowserWorkspaceState) => void
+  notifySnapshot?: (tabId: string, snapshot: string) => void
   focusAddress?: () => void
   now?: () => number
 }
@@ -342,10 +343,31 @@ export class BrowserWorkspaceManager {
     return this.getState()
   }
 
+  async captureSnapshot(tabId?: string): Promise<string | null> {
+    const id = tabId ?? this.activeTabId
+    const guest = this.guests.get(id)
+    if (!guest || guest.view.webContents.isDestroyed()) return null
+    try {
+      const image = await guest.view.webContents.capturePage()
+      if (image.isEmpty()) return null
+      return `data:image/jpeg;base64,${image.toJPEG(82).toString('base64')}`
+    } catch {
+      return null
+    }
+  }
+
   setViewport(request: BrowserViewportRequest): void {
     if (this.disposed) throw new Error('BROWSER_DISPOSED')
     const [width, height] = this.deps.owner.getContentSize()
     clampBrowserViewport(request, { width, height })
+    if (!request.visible && this.viewport.visible && this.deps.notifySnapshot) {
+      const activeId = this.activeTabId
+      void this.captureSnapshot(activeId).then((snapshot) => {
+        if (snapshot && this.deps.notifySnapshot) {
+          this.deps.notifySnapshot(activeId, snapshot)
+        }
+      })
+    }
     this.viewport = { visible: request.visible, bounds: { ...request.bounds } }
     this.refreshViewport()
   }
@@ -428,6 +450,13 @@ export class BrowserWorkspaceManager {
         tab.loading = false
         this.updateHistory(tab)
         this.changed()
+        if (this.deps.notifySnapshot) {
+          void this.captureSnapshot(tab.id).then((snapshot) => {
+            if (snapshot && current() && this.deps.notifySnapshot) {
+              this.deps.notifySnapshot(tab.id, snapshot)
+            }
+          })
+        }
       }
     })
     on('page-title-updated', (_event: unknown, title: string) => {
