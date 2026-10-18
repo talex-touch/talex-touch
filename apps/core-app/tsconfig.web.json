@@ -38,6 +38,7 @@
     "src/preload/*.d.ts",
     "src/renderer/auto-imports.d.ts",
     "src/renderer/components.d.ts",
+    "../browser-connector/src/**/*.ts",
     "../../packages/tuff-business/src/**/*.ts",
     "../../packages/tuff-business/src/**/*.vue",
     "../../packages/tuff-intelligence/src/**/*.ts",

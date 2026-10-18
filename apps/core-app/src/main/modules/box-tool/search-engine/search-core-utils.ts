@@ -37,6 +37,22 @@ const FILE_PROVIDER_FILTERS = new Set([
 ])
 const FILE_CATEGORY_FILTERS = new Set(['file', 'files', 'fs', 'document'])
 
+const EPHEMERAL_QUERY_KEYS = new Set([
+  'text',
+  'inputs',
+  'sessionId',
+  'requestId',
+  'reqId',
+  'timestamp',
+  'timestampMs',
+  'time',
+  'traceId',
+  '_traceId',
+  'callerId',
+  'id',
+  'uuid',
+  'trace'
+])
 export interface ParsedSearchQuery {
   raw: string
   text: string
@@ -145,15 +161,32 @@ export function buildSearchCacheKey(
   const rawQuery = query as unknown as Record<string, unknown>
   const queryExtras: Record<string, unknown> = {}
   for (const key of Object.keys(rawQuery).sort()) {
-    if (key === 'text' || key === 'inputs') continue
+    if (EPHEMERAL_QUERY_KEYS.has(key) || key.startsWith('_')) continue
     queryExtras[key] = rawQuery[key]
   }
 
   const inputs = (query.inputs ?? []).map((input) => {
     const rawInput = input as unknown as Record<string, unknown>
+    let contentValue = rawInput.content ?? ''
+    if (typeof contentValue === 'string') {
+      const trimmed = contentValue.trim()
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        try {
+          const parsed = JSON.parse(trimmed)
+          if (parsed && typeof parsed === 'object') {
+            contentValue = parsed
+          }
+        } catch {
+          // preserve literal string
+        }
+      }
+    }
     return {
       type: input.type,
-      contentHash: hashCachePart(rawInput.content ?? ''),
+      contentHash: hashCachePart(contentValue),
       metaHash: hashCachePart(
         Object.fromEntries(Object.entries(rawInput).filter(([key]) => key !== 'content'))
       )

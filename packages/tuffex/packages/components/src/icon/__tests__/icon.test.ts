@@ -48,6 +48,39 @@ describe('txIcon', () => {
     expect(halfStarPath).not.toContain('V2z')
   })
 
+  it('draws a resolved class glyph with its non-square viewBox and falls back to CSS classes', () => {
+    const resolved = mount(TxIcon, {
+      props: { icon: { type: 'class', value: 'runtime-wide-glyph' } },
+      global: {
+        provide: {
+          [TX_ICON_CONFIG_KEY as symbol]: {
+            classGlyph: (className: string) => className === 'runtime-wide-glyph'
+              ? { d: 'M0 0H32V16H0Z', viewBox: '0 0 32 16' }
+              : null,
+          },
+        },
+      },
+    })
+
+    expect(resolved.find('svg').attributes('viewBox')).toBe('0 0 32 16')
+    expect(resolved.find('path').attributes('d')).toBe('M0 0H32V16H0Z')
+    expect(resolved.find('i').exists()).toBe(false)
+
+    const unresolved = mount(TxIcon, {
+      props: { icon: { type: 'class', value: 'host-only-glyph' } },
+      global: {
+        provide: {
+          [TX_ICON_CONFIG_KEY as symbol]: {
+            classGlyph: () => null,
+          },
+        },
+      },
+    })
+
+    expect(unresolved.find('i').classes()).toContain('host-only-glyph')
+    expect(unresolved.find('svg').exists()).toBe(false)
+  })
+
   it('hides decorative icons (no alt) from the a11y tree instead of exposing a nameless image', () => {
     // alt defaults to '' — a decorative icon must drop role="img"/title and become aria-hidden,
     // otherwise screen readers announce an unlabeled graphic.

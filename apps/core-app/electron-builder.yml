@@ -14,6 +14,8 @@ asarUnpack:
   - '**/*.so'
   - '**/tuff-native-translation'
   - '**/tuff-native-update'
+  - '**/tuff-browser-bridge'
+  - '**/tuff-browser-bridge.exe'
   - '**/node_modules/sharp/**'
   - '**/node_modules/@img/**'
   - '**/node_modules/ffmpeg-static/**'
@@ -29,6 +31,7 @@ files:
   - '!out/legal/**'
   - resources/**
   - '!resources/licenses/**'
+  - '!resources/browser-connector/**'
   - package.json
   - '!resources/bundled-plugins/**'
   - node_modules/**
@@ -59,6 +62,8 @@ files:
   # which resolves to dist/lite.js from the package exports map in packaged builds.
 extraFiles: []
 extraResources:
+  - from: resources/browser-connector
+    to: resources/browser-connector
   # Tuff's pi tool forwarder, loaded per spawn via `-e` (see pi-cli-provider);
   # never installed into the user's own pi setup.
   - from: ../../packages/pi-extension-tuff/index.ts
@@ -133,6 +138,7 @@ mac:
   # The required resources copy is explicit; osx-sign also discovers any unpacked Mach-O copy.
   binaries:
     - Contents/Resources/node_modules/@talex-touch/tuff-native/build/Release/tuff-native-update
+    - Contents/Resources/node_modules/@talex-touch/tuff-native/build/Release/tuff-browser-bridge
   extendInfo:
     LSUIElement: true
     NSCameraUsageDescription: Application requests access to the device's camera.

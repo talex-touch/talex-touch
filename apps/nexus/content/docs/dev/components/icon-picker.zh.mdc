@@ -4,7 +4,7 @@ description: "选取图标并返回标识符字符串的选择器"
 category: Form
 status: beta
 since: 0.6.0
-tags: [icon, picker, emoji, brand, file]
+tags: [icon, picker, emoji, brand, ai, file]
 syncStatus: reviewed
 verified: true
 ---
@@ -27,7 +27,7 @@ code: |
 
   <template>
     <TxIconPicker v-model="identifier" v-model:shape="shape" shape-selectable />
-    <TxIconPicker v-model="identifier" inline :sections="['icon', 'brand']" />
+    <TxIconPicker v-model="identifier" inline :sections="['ai', 'icon', 'brand']" />
   </template>
 ---
 :::
@@ -36,6 +36,7 @@ code: |
 
 - 原样存储标识符，渲染时用 `parseIconIdentifier` 解析；不要拆成两列，否则两列可能互相矛盾。
 - 只读取存量值的模块从 `@talex-touch/tuffex/icon-picker` 单独引入 `parseIconIdentifier`，不必加载面板。
+- 收窄 `sections` 时，若用户要选模型厂商，记得保留 `ai`：厂商标志与 AI 图形都在这个分区，不在品牌或图标里。
 - 宿主自己画底板时关闭 `shapeSelectable`，否则用户选中的形状看不到。
 - 展示小图标底板用 `TxIconChip`；本组件只负责选择。
 
@@ -46,9 +47,9 @@ code: |
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `modelValue` | `string` | `''` | 图标标识符，配合 `v-model`。 |
-| `shape` | `'circle' \| 'rounded' \| 'square'` | `'rounded'` | 底板形状，配合 `v-model:shape`。 |
-| `sections` | `IconPickerSection[]` | 四个分区 | 开放的分区，按标签顺序；`file` 显示为选择文件的按钮。 |
-| `catalog` | `Partial<Record<'emoji' \| 'icon' \| 'brand', IconPickerEntry[]>>` | - | 替换分区的内置行；自带图标集的宿主整组替换。 |
+| `shape` | `IconPickerShape` | `'rounded'` | 底板形状，配合 `v-model:shape`；全部十二种见 `ICON_PICKER_SHAPES`。 |
+| `sections` | `IconPickerSection[]` | 五个分区 | 开放的分区，按标签顺序：`emoji`、`icon`、`brand`、`ai`，`file` 显示为选择文件的按钮。 |
+| `catalog` | `Partial<Record<IconPickerCatalogSection, IconPickerEntry[]>>` | - | 替换分区的内置行；条目的 `category` 决定它归在哪个分组标题下。 |
 | `shapeSelectable` | `boolean` | `true` | 显示形状选择行；宿主自己画底板时关闭。 |
 | `fileChooser` | `() => Promise<string \| null>` | - | 宿主的文件对话框，返回绝对路径，取消时为 `null`。 |
 | `accept` | `string` | `'image/*'` | 文件对话框与回退 input 的接受列表。 |
@@ -56,7 +57,7 @@ code: |
 | `size` | `number` | `44` | 触发器底板边长（px）。 |
 | `placeholder` | `string` | `''` | 触发器的 `aria-label`；为空时使用搜索文案。 |
 | `inline` | `boolean` | `false` | 直接渲染面板，不收在触发器后。 |
-| `labels` | `Partial<IconPickerLabels>` | 英文默认值 | 分区标题、搜索占位与清除、选择文件等文案。 |
+| `labels` | `Partial<IconPickerLabels>` | 英文默认值 | 分区、形状与分类名称，搜索占位，以及各操作文案。 |
 
 ### 事件
 
@@ -95,9 +96,16 @@ parseIconIdentifier('rocket.png')             // null
 parseIconIdentifier('🚀')                      // { type: 'emoji', value: '🚀' }
 ```
 
-## 安全名单（Safelist）
+## 在选择器外渲染
 
-使用原子化 CSS 引擎的宿主必须把 `ICON_CATALOG_CLASSES` 加入 safelist，否则网格中的图标都渲染为空白方块。直接展开模块导出，不要复制字符串。
+选择器用随包附带的路径数据绘制内置类名，网格不依赖宿主的图标 CSS。离开选择器后，选中的 `class:` 值只是一个类名：通过 `classGlyph` 把选择器的字形交给 `TxIcon`，或在宿主的原子化 CSS 引擎里把 `ICON_CATALOG_CLASSES` 加入 safelist。
+
+```ts
+import { TX_ICON_CONFIG_KEY } from '@talex-touch/tuffex'
+import { resolveIconPickerGlyph } from '@talex-touch/tuffex/icon-picker'
+
+app.provide(TX_ICON_CONFIG_KEY, { classGlyph: resolveIconPickerGlyph })
+```
 
 ```ts
 import { ICON_CATALOG_CLASSES } from '@talex-touch/tuffex/icon-picker'
@@ -109,11 +117,17 @@ export default defineConfig({
 
 ## 概述
 
+- 搜索同时覆盖所有分区，当前标签页的结果在前；匹配关键词、类名与分类标题，容忍一处拼写错误，也接受中文、全拼与首字母（`火箭`、`huojian`、`hj`）。
+- 焦点始终留在搜索框：方向键在网格中移动，Enter 选中高亮的格子（搜索时选第一条结果），Esc 先清空搜索词，再关闭面板。
+- 浏览时按分类分组，顶部的快捷行可在分类间跳转。
+- 触发器在形状之间做轮廓变形；开启减弱动态效果时直接切换。
 - 文件分区由宿主提供能力：传入 `fileChooser`（如 Electron 的 `dialog.showOpenDialog` 桥接）；未传时回退到隐藏的 `<input type="file">`，结果为 data URL。
-- 搜索匹配 `keywords` 而不是 id；内置目录的关键词为中英双语。
 - `shape` 只是表现，单独存储，不属于标识符。
 
 ## 技术实现
 
-- 标识符工具：`src/identifier.ts`。
+- 字形路径数据由 `scripts/generate-icon-picker-data.mjs` 生成，按分区在首次展示时加载；底板变形复用 TxIconMorph 的引擎。
+- Remix Icon 4.8.0 数据随 Apache-2.0 许可分发（`REMIXICON-LICENSE`），Simple Icons 数据为 CC0-1.0；品牌标志仍是各自所有者的商标。
 - 源码：`packages/tuffex/packages/components/src/icon-picker/`。
+
+<TuffDocSourceLink />

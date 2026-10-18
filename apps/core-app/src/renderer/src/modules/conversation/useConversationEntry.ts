@@ -4,9 +4,8 @@ import { useProjectStore } from '~/stores/projects'
 /**
  * The one way into a conversation.
  *
- * Three call sites had grown their own copy of "claim the owner, then go Home" — the sidebar's two
- * nav items, the project rows' New Chat, and now the ⌘N command. Four copies is where a rule starts
- * to differ; this one is small enough to live in one place instead.
+ * Browser header, project rows, the chats section and keyboard commands share the same
+ * "claim the owner, then go Home" sequence so project ownership cannot drift between entries.
  */
 export function useConversationEntry() {
   const router = useRouter()
@@ -15,7 +14,7 @@ export function useConversationEntry() {
   /**
    * A blank conversation, owned by `projectId` when the caller has one.
    *
-   * The push is unconditional, which is what all three copies did: HomePage's watcher is what
+   * The push is unconditional: HomePage's watcher is what
    * consumes the pending owner, and `push('/home')` while already there is a duplicate navigation
    * Vue Router discards. Deciding "are we already Home?" here would mean duplicating HomePage's
    * route test (`/home` and `/home/c/:id`), and getting that wrong strands the new conversation —

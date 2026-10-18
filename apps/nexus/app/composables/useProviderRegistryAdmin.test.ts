@@ -122,7 +122,7 @@ function installRegistryApi(requests: Request[], state = { revision: 0 }) {
 
     if (url === '/api/dashboard/provider-registry/providers' && options?.method === 'POST') {
       state.revision += 1
-      return {}
+      return { provider: providerRecord(`provider-${state.revision}`) }
     }
 
     if (url === '/api/dashboard/provider-registry/scenes' && options?.method === 'POST') {
@@ -444,17 +444,12 @@ describe('useProviderRegistryAdmin', () => {
     await registry.refresh()
     const provider = registry.providers.value[0]!
     const scene = registry.scenes.value[0]!
-    const blankCapability = { capability: ' ', schemaRef: '', meteringUnit: 'token', maxImageBytes: '', providerModel: '', meteringText: '', constraintsText: '', metadataText: '' }
-    const providerPanel = registry.getProviderEditPanel(provider)
-    providerPanel.capabilities.splice(0, providerPanel.capabilities.length, blankCapability, { ...blankCapability, capability: 'text.chat', constraintsText: '{ not json' })
     const blankBinding: BindingEditRow = { providerId: '', capability: '', model: '', priority: 10, weightText: '', status: 'enabled', constraintsText: '', metadataText: '' }
     const scenePanel = registry.getSceneEditPanel(scene)
     scenePanel.bindings.splice(0, scenePanel.bindings.length, blankBinding, { ...blankBinding, providerId: provider.id, capability: 'text.chat', metadataText: '[1]' })
 
-    await registry.saveProviderEdit(provider)
     await registry.saveSceneEdit(scene)
 
-    expect(providerPanel.error).toBe('Constraints JSON, row 2 is not valid JSON.')
     expect(scenePanel.error).toBe('Metadata JSON, row 2 must be a JSON object.')
   })
 
@@ -489,26 +484,42 @@ describe('useProviderRegistryAdmin', () => {
     expect(registry.providerCreateError.value).toBe('Provider name is taken.')
   })
 
-  it('stores an API key through the credential boundary before enabling the requested provider', async () => {
+  it('uses the created provider id, not a same-name list row, to bind credentials before enabling it', async () => {
     installComposableRuntime()
     const requests: Request[] = []
-    const credentialProvider = providerRecord('provider-credential')
-    credentialProvider.authRef = 'secure://providers/credential-boundary'
+    const older: ProviderRegistryRecord = { ...providerRecord('older-same-name'), name: 'duplicate-name', status: 'disabled' }
+    const created: ProviderRegistryRecord = { ...providerRecord('new-server-id'), name: 'duplicate-name', status: 'disabled' }
+    const records: ProviderRegistryRecord[] = [older]
     fetchMock.mockImplementation(async (url: string, options?: Request['options']) => {
       requests.push({ url, options })
-
-      if (url === '/api/dashboard/provider-registry/providers' && options?.method === 'POST')
-        return {}
-      if (url === '/api/dashboard/provider-registry/credentials' && options?.method === 'POST')
-        return {}
-      if (url === '/api/dashboard/provider-registry/providers' && options?.query?.vendor)
-        return { providers: [credentialProvider] }
-      if (url.startsWith('/api/dashboard/provider-registry/providers/provider-credential') && options?.method === 'PATCH')
-        return {}
+      if (url === '/api/dashboard/provider-registry/providers' && options?.method === 'POST') {
+        records.push(created)
+        return { provider: created }
+      }
+      if (url === '/api/dashboard/provider-registry/credentials' && options?.method === 'POST') {
+        const body = options.body
+        if (!body || typeof body !== 'object' || !('providerId' in body) || typeof body.providerId !== 'string')
+          throw new Error('Expected providerId credential boundary')
+        const target = records.find(record => record.id === body.providerId)
+        if (!target)
+          throw new Error('Unknown credential target')
+        target.authRef = 'secure://providers/server-rotated-slot'
+        return { success: true, hasCredential: true }
+      }
+      if (url.startsWith('/api/dashboard/provider-registry/providers/') && options?.method === 'PATCH') {
+        const target = records.find(record => url.endsWith(`/${record.id}`))
+        if (!target)
+          throw new Error('Unknown enable target')
+        const body = options.body
+        if (!body || typeof body !== 'object' || !('status' in body) || body.status !== 'enabled')
+          throw new Error('Expected explicit provider enable')
+        target.status = body.status
+        return { provider: target }
+      }
+      if (url === '/api/dashboard/provider-registry/providers')
+        return { providers: [...records] }
       if (url === '/api/dashboard/provider-registry/seed')
         return {}
-      if (url === '/api/dashboard/provider-registry/providers')
-        return { providers: [credentialProvider] }
       if (url === '/api/dashboard/provider-registry/capabilities')
         return { capabilities: [] }
       if (url === '/api/dashboard/provider-registry/scenes')
@@ -517,95 +528,124 @@ describe('useProviderRegistryAdmin', () => {
         return { entries: [] }
       if (url.endsWith('/quota'))
         return { quota: null, quotas: [] }
-
       throw new Error(`Unexpected provider registry request: ${url}`)
     })
     const registry = useProviderRegistryAdmin()
-    registry.providerForm.name = 'credential-boundary'
-    registry.providerForm.displayName = 'Credential Boundary'
+    await registry.whenRegistryLoaded()
+    registry.applyProviderProtocol('openai-compatible')
+    registry.providerForm.name = 'duplicate-name'
     registry.providerForm.status = 'enabled'
-    registry.providerForm.authType = 'api_key'
+    registry.providerForm.modelsText = ''
+    registry.providerForm.defaultModel = ''
     registry.providerForm.apiKey = 'secret-api-key'
 
-    await registry.createProvider()
+    await expect(registry.createProvider()).resolves.toBe(true)
 
-    const providerCreateIndex = requests.findIndex(request => (
-      request.url === '/api/dashboard/provider-registry/providers'
-      && request.options?.method === 'POST'
-    ))
-    const credentialCreateIndex = requests.findIndex(request => (
-      request.url === '/api/dashboard/provider-registry/credentials'
-      && request.options?.method === 'POST'
-    ))
-    const enableIndex = requests.findIndex(request => (
-      request.url === '/api/dashboard/provider-registry/providers/provider-credential'
-      && request.options?.method === 'PATCH'
-    ))
-    const providerCreate = requests[providerCreateIndex]!
-    const credentialCreate = requests[credentialCreateIndex]!
-    const enable = requests[enableIndex]!
-
-    expect(providerCreateIndex).toBeGreaterThanOrEqual(0)
-    expect(credentialCreateIndex).toBeGreaterThan(providerCreateIndex)
-    expect(enableIndex).toBeGreaterThan(credentialCreateIndex)
-    expect(providerCreate.options?.body).toEqual(expect.objectContaining({
-      name: 'credential-boundary',
-      authRef: 'secure://providers/credential-boundary',
-      authType: 'api_key',
-      status: 'disabled',
-    }))
-    expect(providerCreate.options?.body).not.toHaveProperty('apiKey')
-    expect(credentialCreate.options?.body).toEqual({
-      authRef: 'secure://providers/credential-boundary',
-      authType: 'api_key',
-      credentials: { apiKey: 'secret-api-key' },
-    })
-    expect(enable.options?.body).toEqual({ status: 'enabled' })
+    expect(registry.providers.value.find(record => record.id === older.id)).toMatchObject({ status: 'disabled', authRef: older.authRef })
+    expect(registry.providers.value.find(record => record.id === created.id)).toMatchObject({ status: 'enabled', authRef: 'secure://providers/server-rotated-slot' })
+    const mutations = requests.filter(request => ['POST', 'PATCH'].includes(request.options?.method ?? '') && !request.url.endsWith('/seed'))
+    expect(mutations.map(request => request.url)).toEqual([
+      '/api/dashboard/provider-registry/providers',
+      '/api/dashboard/provider-registry/credentials',
+      '/api/dashboard/provider-registry/providers/new-server-id',
+    ])
+    expect(mutations[0]!.options?.body).toMatchObject({ name: 'duplicate-name', status: 'disabled', metadata: { adapterKey: 'openai-compatible' } })
+    expect(mutations[0]!.options?.body).not.toHaveProperty('authRef')
+    expect(mutations[0]!.options?.body).not.toHaveProperty('apiKey')
+    expect(mutations[1]!.options?.body).toEqual({ providerId: created.id, credentials: { apiKey: 'secret-api-key' } })
     expect(registry.providerForm.apiKey).toBe('')
   })
 
-  it('fills a capability row from the built-in catalogue: unit and schema come with the capability', () => {
-    installComposableRuntime()
-    fetchMock.mockImplementation(async () => ({}))
-    const registry = useProviderRegistryAdmin()
-    const catalogue = registry.providerCapabilityTemplateOptions.value
-    const target = catalogue.find(item => item.capability === 'vision.ocr') ?? catalogue[0]!
-    const row = { capability: '', schemaRef: '', meteringUnit: '' }
-
-    registry.applyProviderCapabilityTemplate(row, target.capability)
-
-    expect(row).toEqual({ capability: target.capability, schemaRef: target.schemaRef, meteringUnit: target.meteringUnit })
-    expect(catalogue.length).toBeGreaterThan(10)
-    registry.applyProviderCapabilityTemplate(row, 'not.in.catalogue')
-    expect(row.capability).toBe(target.capability)
-  })
-
-  it('re-seeds the create form from the first preset of a service category, and offers the server\'s adapters', async () => {
+  it.each([
+    { name: 'existing selection', modelsText: 'manual-a\nmanual-b', defaultModel: 'manual-b' },
+    { name: 'empty selection', modelsText: '', defaultModel: '' },
+  ])('fetches model candidates without changing the $name in create or edit', async ({ modelsText, defaultModel }) => {
     installComposableRuntime()
     const requests: Request[] = []
     installRegistryApi(requests)
-    const adapters = [{ key: 'openai-compatible', label: 'OpenAI compatible' }, { key: 'tencent-tmt', label: 'Tencent TMT' }]
-    const listProviders = fetchMock.getMockImplementation()!
+    const registryApi = fetchMock.getMockImplementation()!
     fetchMock.mockImplementation(async (url: string, options?: Request['options']) => (
-      url === '/api/dashboard/provider-registry/providers' && !options?.method
-        ? { providers: [], adapters }
-        : listProviders(url, options)
+      url.endsWith('/models')
+        ? { models: [' fetched-a ', 'fetched-b', 'fetched-a', ''] }
+        : registryApi(url, options)
     ))
     const registry = useProviderRegistryAdmin()
-    await registry.refresh()
-    registry.providerForm.name = 'typed by hand'
+    await registry.whenRegistryLoaded()
+    registry.providerForm.endpoint = 'https://provider.example.test/v1'
+    registry.providerForm.apiKey = 'probe-only-key'
+    registry.providerForm.modelsText = modelsText
+    registry.providerForm.defaultModel = defaultModel
+    const record = registry.providers.value[0]!
+    const editor = registry.getProviderEditPanel(record)
+    editor.modelsText = modelsText
+    editor.defaultModel = defaultModel
 
-    registry.applyProviderServiceCategory('translation')
+    await registry.fetchFormModels()
+    await registry.fetchProviderModels(record)
 
-    const template = registry.providerTemplateOptions.value[0]!
-    expect(registry.providerServiceCategoryId.value).toBe('translation')
-    expect(registry.providerTemplateId.value).toBe(template.value)
-    expect(registry.providerForm.name).not.toBe('typed by hand')
-    expect(registry.capabilityRows.value.length).toBeGreaterThan(0)
-    expect(registry.providerAdapterOptions.value).toEqual([
-      { value: 'openai-compatible', label: 'OpenAI compatible' },
-      { value: 'tencent-tmt', label: 'Tencent TMT' },
-    ])
+    expect(registry.fetchedFormModels.value).toEqual(['fetched-a', 'fetched-b'])
+    expect(editor.fetchedModels).toEqual(['fetched-a', 'fetched-b'])
+    expect({ modelsText: registry.providerForm.modelsText, defaultModel: registry.providerForm.defaultModel }).toEqual({ modelsText, defaultModel })
+    expect({ modelsText: editor.modelsText, defaultModel: editor.defaultModel }).toEqual({ modelsText, defaultModel })
+    expect(requests.filter(request => request.options?.method === 'PATCH')).toEqual([])
+  })
+
+  it('changing protocol switches the credential boundary used on create', async () => {
+    installComposableRuntime()
+    const requests: Request[] = []
+    installRegistryApi(requests)
+    const registryApi = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (url: string, options?: Request['options']) => {
+      if (url.endsWith('/credentials')) {
+        requests.push({ url, options })
+        return { success: true, hasCredential: true }
+      }
+      return registryApi(url, options)
+    })
+    const registry = useProviderRegistryAdmin()
+    await registry.whenRegistryLoaded()
+    registry.providerForm.name = 'protocol-switch'
+    registry.providerForm.modelsText = ''
+    registry.providerForm.defaultModel = ''
+    registry.providerForm.apiKey = 'stale-api-key'
+    registry.providerForm.secretId = 'AKID-switched'
+    registry.providerForm.secretKey = 'switched-secret'
+    registry.applyProviderProtocol('tencent-translation')
+
+    await expect(registry.createProvider()).resolves.toBe(true)
+
+    const credential = requests.find(request => request.url.endsWith('/credentials'))!
+    expect(credential.options?.body).toEqual({ providerId: 'provider-1', credentials: { secretId: 'AKID-switched', secretKey: 'switched-secret' } })
+    const created = requests.find(request => request.url.endsWith('/providers') && request.options?.method === 'POST')!
+    expect(created.options?.body).toMatchObject({ vendor: 'tencent-cloud', authType: 'secret_pair', metadata: { adapterKey: 'tencent-translation' } })
+  })
+
+  it('does not enable a new provider after credential storage fails, and preserves the unsaved key', async () => {
+    installComposableRuntime()
+    const requests: Request[] = []
+    installRegistryApi(requests)
+    const registryApi = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (url: string, options?: Request['options']) => {
+      if (url.endsWith('/credentials'))
+        throw Object.assign(new Error('Credential storage refused.'), { data: { message: 'Credential storage refused.' } })
+      return registryApi(url, options)
+    })
+    const registry = useProviderRegistryAdmin()
+    await registry.whenRegistryLoaded()
+    registry.applyProviderProtocol('openai-compatible')
+    registry.providerForm.name = 'failed-credential'
+    registry.providerForm.status = 'enabled'
+    registry.providerForm.modelsText = ''
+    registry.providerForm.defaultModel = ''
+    registry.providerForm.apiKey = 'retryable-unsaved-key'
+
+    await expect(registry.createProvider()).resolves.toBe(false)
+
+    expect(registry.providerCreateError.value).toBe('Credential storage refused.')
+    expect(registry.providerForm.apiKey).toBe('retryable-unsaved-key')
+    expect(requests.filter(request => request.options?.method === 'PATCH')).toEqual([])
+    const createRequest = requests.find(request => request.url.endsWith('/providers') && request.options?.method === 'POST')!
+    expect(createRequest.options?.body).toMatchObject({ status: 'disabled' })
   })
 
   it('re-seeds the run input per capability and clears the last result, and keeps a failed run\'s error', async () => {

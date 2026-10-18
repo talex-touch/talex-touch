@@ -1152,7 +1152,8 @@ export class ConversationWorkspaceService {
       .object({
         conversationId: idSchema,
         messageId: idSchema.optional(),
-        mode: z.enum(['chat', 'agent']).optional()
+        mode: z.enum(['chat', 'agent']).optional(),
+        profileId: idSchema.optional()
       })
       .strict()
       .parse(raw)
@@ -1175,7 +1176,11 @@ export class ConversationWorkspaceService {
       if (pointer && request.messageId) throw new Error('WORKSPACE_FORK_NATIVE_UNSAFE')
       const childId = randomUUID()
       const cloned = cloneMessagesForFork(prefix, randomUUID)
-      const settings = { ...state.settings, ...(request.mode ? { mode: request.mode } : {}) }
+      const settings = {
+        ...state.settings,
+        ...(request.mode ? { mode: request.mode } : {}),
+        ...(request.profileId ? { profileId: request.profileId } : {})
+      }
       const completedTurns = new Set(
         prefix
           .filter((message) => message.role === 'assistant' && message.status === 'complete')

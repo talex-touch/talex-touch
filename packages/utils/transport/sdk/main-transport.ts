@@ -797,6 +797,7 @@ export class TuffMainTransport implements ITuffTransportMain {
     const channelHandler = async (data: any) => {
       const context: HandlerContext = {
         sender: data.header?.event?.sender as any,
+        senderFrame: data.header?.event?.senderFrame,
         eventName,
         plugin: this.resolveChannelPluginContext(data),
       };
@@ -807,6 +808,7 @@ export class TuffMainTransport implements ITuffTransportMain {
     const invokeHandler: InvokeHandler<TReq, TRes> = (payload, event) => {
       const context: HandlerContext = {
         sender: event.sender as any,
+        senderFrame: event.senderFrame,
         eventName,
         plugin: this.resolveSenderPluginContext(event.sender),
       };

@@ -1,24 +1,27 @@
-import { readBody } from 'h3'
+import { createError, readBody } from 'h3'
 import { requireAdmin } from '../../../utils/auth'
 import { createSceneRegistryEntry, withSceneRegistryReadiness } from '../../../utils/sceneRegistryStore'
+import { PRODUCT_SCENE_TEMPLATES } from '../../../../shared/provider-registry'
 
 export default defineEventHandler(async (event) => {
   const { userId } = await requireAdmin(event)
   const body = await readBody(event)
+  const definition = PRODUCT_SCENE_TEMPLATES.find(scene => scene.id === body?.id)
+  if (!definition)
+    throw createError({ statusCode: 400, statusMessage: 'Choose a code-defined product function.' })
 
   const scene = await createSceneRegistryEntry(event, {
-    id: body?.id,
-    displayName: body?.displayName,
-    owner: body?.owner,
-    ownerScope: body?.ownerScope,
-    ownerId: body?.ownerId,
+    id: definition.id,
+    displayName: definition.displayName,
+    owner: definition.owner,
+    ownerScope: 'system',
     status: body?.status,
-    requiredCapabilities: body?.requiredCapabilities,
+    requiredCapabilities: definition.requiredCapabilities,
     strategyMode: body?.strategyMode,
     fallback: body?.fallback,
-    meteringPolicy: body?.meteringPolicy,
-    auditPolicy: body?.auditPolicy,
-    metadata: body?.metadata,
+    meteringPolicy: definition.meteringPolicy,
+    auditPolicy: { persistInput: false, persistOutput: false, persistTrace: true },
+    metadata: { source: 'product-function-catalog' },
     bindings: body?.bindings,
   }, userId)
 

@@ -1,4 +1,6 @@
-import { getTuffIntelligenceBuiltinAbility, listTuffIntelligenceBuiltinAbilities, pickTuffIntelligenceBuiltinAbilities } from '@talex-touch/tuff-intelligence/light'
+import { listTuffIntelligenceBuiltinAbilities, pickTuffIntelligenceBuiltinAbilities } from '@talex-touch/tuff-intelligence/light'
+export { PRODUCT_SCENE_TEMPLATES } from '../../shared/provider-registry'
+export type { ProductSceneTemplate } from '../../shared/provider-registry'
 export type ProviderVendor = 'tencent-cloud' | 'openai' | 'deepseek' | 'dashscope' | 'exchange-rate' | 'custom'
 export type ProviderServiceCategory = 'ai' | 'exchange' | 'screenshot' | 'translation'
 export type ProviderStatus = 'enabled' | 'disabled' | 'degraded'
@@ -39,6 +41,7 @@ export interface ProviderRegistryRecord {
   status: ProviderStatus
   authType: ProviderAuthType
   authRef: string | null
+  hasCredential?: boolean
   ownerScope: OwnerScope
   ownerId: string | null
   description: string | null
@@ -142,17 +145,6 @@ export interface BindingFormRow {
   priority: number
 }
 
-export interface CapabilityEditRow {
-  id?: string
-  capability: string
-  schemaRef: string
-  meteringUnit: string
-  maxImageBytes: string
-  providerModel: string
-  meteringText: string
-  constraintsText: string
-  metadataText: string
-}
 
 export interface ProviderEditPanelState {
   expanded: boolean
@@ -163,7 +155,6 @@ export interface ProviderEditPanelState {
   adapterKey: string
   status: ProviderStatus
   authType: ProviderAuthType
-  authRef: string
   ownerScope: OwnerScope
   ownerId: string
   description: string
@@ -172,8 +163,6 @@ export interface ProviderEditPanelState {
   modelsText: string
   defaultModel: string
   metadataText: string
-  capabilities: CapabilityEditRow[]
-  removedCapabilityIds: string[]
   error: string | null
   apiKey?: string
   secretId?: string
@@ -599,16 +588,6 @@ export function resolveFirstProviderTemplateForServiceCategory(
   return providerRegistryTemplates.find(template => template.serviceCategory === normalized) ?? null
 }
 
-export function createProviderAuthRef(name: string): string {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 80) || 'provider'
-
-  return `secure://providers/${slug}`
-}
 
 export const providerObservabilityFilters: ProviderObservabilityFilter[] = ['all', 'attention', 'healthy', 'degraded', 'unhealthy', 'unknown']
 export const sceneObservabilityFilters: SceneObservabilityFilter[] = ['all', 'attention', 'completed', 'failed', 'planned', 'unknown']
@@ -1022,10 +1001,6 @@ function readStringField(value: Record<string, unknown> | null | undefined, key:
   return typeof item === 'string' ? item : ''
 }
 
-function readNumberField(value: Record<string, unknown> | null | undefined, key: string): string {
-  const item = value?.[key]
-  return typeof item === 'number' && Number.isFinite(item) ? String(item) : ''
-}
 
 function readStringArrayField(value: Record<string, unknown> | null | undefined, key: string): string[] {
   const item = value?.[key]
@@ -1071,7 +1046,6 @@ export function createProviderEditPanel(provider: ProviderRegistryRecord): Provi
     vendor: provider.vendor,
     status: provider.status,
     authType: provider.authType,
-    authRef: provider.authRef ?? '',
     ownerScope: provider.ownerScope,
     ownerId: provider.ownerId ?? '',
     description: provider.description ?? '',
@@ -1081,18 +1055,6 @@ export function createProviderEditPanel(provider: ProviderRegistryRecord): Provi
     modelsText: readStringArrayField(provider.metadata, 'models').join('\n'),
     defaultModel: readStringField(provider.metadata, 'defaultModel'),
     metadataText: formatEditJson(omitFields(provider.metadata, ['adapterKey', 'adapter', 'models', 'defaultModel'])),
-    capabilities: provider.capabilities.map(capability => ({
-      id: capability.id,
-      capability: capability.capability,
-      schemaRef: capability.schemaRef ?? '',
-      meteringUnit: readStringField(capability.metering, 'unit'),
-      maxImageBytes: readNumberField(capability.constraints, 'maxImageBytes'),
-      providerModel: readStringField(capability.metadata, 'providerModel'),
-      meteringText: formatEditJson(omitFields(capability.metering, ['unit'])),
-      constraintsText: formatEditJson(omitFields(capability.constraints, ['maxImageBytes'])),
-      metadataText: formatEditJson(omitFields(capability.metadata, ['providerModel'])),
-    })),
-    removedCapabilityIds: [],
     error: null,
     apiKey: '',
     secretId: '',
@@ -1290,132 +1252,5 @@ export function parseOptionalJson(value: string, field = 'input'): unknown {
   return trimmed ? parseJsonText(trimmed, field) : undefined
 }
 
-export interface ProductSceneTemplate {
-  id: string
-  displayName: string
-  owner: SceneOwner
-  requiredCapabilities: string[]
-  description: string
-  meteringPolicy?: Record<string, unknown>
-}
 
-export const PRODUCT_SCENE_TEMPLATES: ProductSceneTemplate[] = [
-  {
-    id: 'corebox.selection.translate',
-    displayName: 'CoreBox 划词翻译',
-    owner: 'core-app',
-    requiredCapabilities: ['text.translate'],
-    description: '桌面端选中文本划词翻译',
-    meteringPolicy: { units: ['character'] },
-  },
-  {
-    id: 'corebox.screenshot.translate',
-    displayName: 'CoreBox 截图翻译',
-    owner: 'core-app',
-    requiredCapabilities: ['vision.ocr', 'text.translate', 'overlay.render'],
-    description: '桌面端截图 OCR 与覆盖翻译渲染',
-    meteringPolicy: { units: ['image', 'character'] },
-  },
-  {
-    id: 'corebox.fx.latest',
-    displayName: 'CoreBox 汇率实时查询',
-    owner: 'core-app',
-    requiredCapabilities: ['fx.rate.latest'],
-    description: '桌面端货币换算汇率查询',
-    meteringPolicy: { units: ['fx_quote'] },
-  },
-  {
-    id: 'corebox.fx.convert',
-    displayName: 'CoreBox 汇率换算',
-    owner: 'core-app',
-    requiredCapabilities: ['fx.convert'],
-    description: '桌面端多币种换算计算',
-    meteringPolicy: { units: ['fx_quote'] },
-  },
-  {
-    id: 'nexus.intelligence.chat.completion',
-    displayName: 'AI 对话补全 (text.chat)',
-    owner: 'nexus',
-    requiredCapabilities: ['chat.completion'],
-    description: '桌面与网页通用对话问答',
-  },
-  {
-    id: 'nexus.intelligence.text.translate',
-    displayName: 'AI 文本翻译',
-    owner: 'nexus',
-    requiredCapabilities: ['text.translate'],
-    description: '通用文本多语言互译',
-  },
-  {
-    id: 'nexus.intelligence.vision.ocr',
-    displayName: 'AI 视觉文字识别 (OCR)',
-    owner: 'nexus',
-    requiredCapabilities: ['vision.ocr'],
-    description: '图片文本提取与排版识别',
-  },
-  {
-    id: 'nexus.intelligence.audio.transcribe',
-    displayName: '语音听写与转写 (ASR)',
-    owner: 'nexus',
-    requiredCapabilities: ['audio.transcribe'],
-    description: '音频文件与实时语音转写',
-  },
-  {
-    id: 'nexus.intelligence.text.summarize',
-    displayName: '文本摘要总结',
-    owner: 'nexus',
-    requiredCapabilities: ['text.summarize'],
-    description: '长文本提炼核心摘要',
-  },
-  {
-    id: 'nexus.intelligence.text.rewrite',
-    displayName: '文本润色与改写',
-    owner: 'nexus',
-    requiredCapabilities: ['text.rewrite'],
-    description: '语法纠错、语气优化与专业改写',
-  },
-  {
-    id: 'nexus.intelligence.content.extract',
-    displayName: '结构化内容抽取',
-    owner: 'nexus',
-    requiredCapabilities: ['content.extract'],
-    description: '实体、动作与标签结构化抽取',
-  },
-  {
-    id: 'nexus.intelligence.code.explain',
-    displayName: '代码解释与分析',
-    owner: 'nexus',
-    requiredCapabilities: ['code.explain'],
-    description: '代码逻辑与结构讲解',
-  },
-  {
-    id: 'nexus.intelligence.code.review',
-    displayName: '代码审查与建议',
-    owner: 'nexus',
-    requiredCapabilities: ['code.review'],
-    description: '代码缺陷、安全与规范评审',
-  },
-]
 
-const ADAPTER_CAPABILITIES_MAP: Record<string, string[]> = {
-  'tencent-translation': ['text.translate', 'image.translate', 'image.translate.e2e'],
-  'openai-compatible': ['chat.completion', 'text.translate', 'text.summarize', 'text.rewrite', 'content.extract', 'keywords.extract', 'intent.detect', 'code.explain', 'code.review', 'vision.ocr'],
-  'openai-responses': ['chat.completion', 'text.translate', 'text.summarize', 'text.rewrite', 'content.extract', 'keywords.extract', 'intent.detect', 'code.explain', 'code.review', 'vision.ocr'],
-  'dashscope-filetrans-asr': ['audio.transcribe'],
-  'dashscope-qwen-audio-asr': ['audio.transcribe'],
-  'exchange-rate': ['fx.rate.latest', 'fx.convert'],
-  'local-overlay': ['overlay.render'],
-}
-
-export function deriveCapabilitiesFromAdapter(adapterKey: string): CapabilityFormRow[] {
-  const normalizedKey = adapterKey.trim().toLowerCase()
-  const caps = ADAPTER_CAPABILITIES_MAP[normalizedKey] ?? ['chat.completion']
-  return caps.map(cap => {
-    const ability = getTuffIntelligenceBuiltinAbility(cap)
-    return {
-      capability: ability?.id ?? cap,
-      schemaRef: ability?.schemaRef ?? `nexus://schemas/provider/${cap}.v1`,
-      meteringUnit: ability?.meteringUnit ?? 'token',
-    }
-  })
-}

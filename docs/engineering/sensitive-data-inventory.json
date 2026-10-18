@@ -1,8 +1,54 @@
 {
   "schema": "talex.touch.sensitive-data-inventory/v1",
-  "updatedAt": "2026-10-12",
+  "updatedAt": "2026-10-17",
   "verificationCommand": "corepack pnpm privacy:inventory:verify",
   "entries": [
+    {
+      "id": "browser-connections",
+      "classification": "behavioral-metadata",
+      "owner": "BrowserConnectionModule/BrowserConnectionManager",
+      "storageLocations": [
+        "main SQLite app_config_entries: browser-connections (per-profile public approval keys, bookmark snapshots and durable mutation outbox)",
+        "Chrome extension IndexedDB: non-extractable P-256 signing key and operation outcome journal",
+        "explicitly installed canonical app-root/browser-connector: native helper, public host manifest and one atomically published endpoint descriptor containing loopback address plus public server SPKI",
+        "Main memory only: ephemeral P-256 server signing key, regenerated per manager lifetime and released on module disposal"
+      ],
+      "writers": ["exact main-window/main-frame BrowserConnectionEvents", "mutually challenge-authenticated deterministic Chrome extension and ephemeral Main server"],
+      "readers": ["owner-authorized BrowserConnectionSdk", "Main-only outbox dispatcher"],
+      "exportPolicy": "local-only; excluded from cloud sync allowlist, generic renderer storage and portable exports; public approval keys never exposed to renderer",
+      "deletionPolicy": "disconnect revokes approval and deletes that profile snapshot/outbox; disabling browserWorkspace or pausing disconnects sockets without deleting queued work; app-data reset removes Main state",
+      "retentionPolicy": "up to 16 approved profiles, 1000 queued/conflicted operations per profile and 100000 combined snapshot nodes with a 32MiB per-snapshot bound; Chrome tab IDs are ephemeral and not persisted; pairing codes expire after two minutes",
+      "rendererExposure": "profile labels, bookmark/tab metadata, queue/conflict summaries and transient one-use pairing code only to the exact live Main renderer frame; no cookie/password/history/identity collection or private signing keys",
+      "portable": false,
+      "migrationStatus": "additive SQLite host-only config key; explicit per-user platform host registration; no Chrome profile file access",
+      "evidence": [
+        "apps/core-app/src/main/modules/browser-connection/manager.ts#symbol=BrowserConnectionManager",
+        "apps/core-app/src/main/modules/browser-connection/handlers.ts#symbol=registerBrowserConnectionHandlers",
+        "apps/core-app/src/main/modules/browser-connection/installer.ts#symbol=BrowserBridgeInstaller"
+      ]
+    },
+    {
+      "id": "browser-workspace",
+      "classification": "behavioral-metadata",
+      "owner": "BrowserModule/BrowserWorkspaceManager",
+      "storageLocations": [
+        "main SQLite app_config_entries: browser-workspace (saved tabs, recent pages and bookmarks)",
+        "dedicated non-persistent Electron session: website cookies and session storage"
+      ],
+      "writers": ["owner-authorized BrowserEvents", "owned guest navigation and title events"],
+      "readers": ["main-window browser workspace through the typed BrowserSdk"],
+      "exportPolicy": "local-only; excluded from the cloud sync allowlist, generic renderer storage projection and portable secrets",
+      "deletionPolicy": "closing a tab releases its guest; bookmark toggle removes the saved entry; recent entries are evicted by the 60-page bound; app-data reset removes the workspace; website session data expires with this application run",
+      "retentionPolicy": "up to 16 saved tabs, 60 recent pages and 100 bookmarks; no eager guest allocation for restored inactive tabs",
+      "rendererExposure": "URL, title, favicon URL, visit time and navigation state only to the exact live main-window frame; guest websites receive no app preload, Node or typed host bridge",
+      "portable": false,
+      "migrationStatus": "additive SQLite config key; no new tables or legacy JSON fallback",
+      "evidence": [
+        "apps/core-app/src/main/modules/browser/workspace-manager.ts#symbol=BrowserWorkspaceManager",
+        "apps/core-app/src/main/modules/browser/policy.ts#symbol=assertBrowserOwner",
+        "apps/core-app/src/main/modules/browser/index.ts#symbol=secureBrowserSession"
+      ]
+    },
     {
       "id": "voice-insights",
       "classification": "behavioral-metadata",

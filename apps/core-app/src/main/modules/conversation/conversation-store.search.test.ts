@@ -61,9 +61,9 @@ async function seedMessage(
   })
 }
 
-async function search(term: string, limit?: number) {
+async function search(term: string, limit?: number, options?: { maxRecentThreads?: number }) {
   const { searchConversations } = await loadStore()
-  return searchConversations(term, limit)
+  return searchConversations(term, limit, options)
 }
 
 async function hitIds(term: string, limit?: number): Promise<string[]> {
@@ -207,6 +207,35 @@ describe('searchConversations matching rules', () => {
 
     // 上限本身是可调的，这里只钉「宽度有限的命令栏不会被一次查询灌满」这一件事。
     expect(hits).toHaveLength(CONVERSATION_SEARCH_LIMIT)
+  })
+
+  it('bounds message content scan to the specified maxRecentThreads window', async () => {
+    // Seed 3 conversations with older to newer updatedAt
+    await seedConversation('c-oldest', 'topic one', 100)
+    await seedMessage('c-oldest', 'm-1', 0, 'needle in oldest')
+
+    await seedConversation('c-middle', 'topic two', 200)
+    await seedMessage('c-middle', 'm-1', 0, 'needle in middle')
+
+    await seedConversation('c-newest', 'topic three', 300)
+    await seedMessage('c-newest', 'm-1', 0, 'needle in newest')
+
+    // Restrict scan to top 2 recent threads
+    const hits = await search('needle', 10, { maxRecentThreads: 2 })
+    const hitIdList = hits.map((h) => h.id)
+
+    expect(hitIdList).toEqual(['c-newest', 'c-middle'])
+    expect(hitIdList).not.toContain('c-oldest')
+  })
+
+  it('does not restrict title search when title matches older conversations', async () => {
+    await seedConversation('c-ancient-title', 'needle in ancient title', 50)
+    await seedConversation('c-recent-1', 'other 1', 500)
+    await seedConversation('c-recent-2', 'other 2', 600)
+
+    // Title search is lightweight and covers all conversations even if maxRecentThreads is small
+    const hits = await search('ancient', 10, { maxRecentThreads: 1 })
+    expect(hits.map((h) => h.id)).toContain('c-ancient-title')
   })
 })
 

@@ -209,6 +209,18 @@ export const CONVERSATION_SEARCH_LIMIT = 6
 /** How many content rows to scan per wanted hit, so one chatty thread cannot use the whole budget. */
 const CONVERSATION_CONTENT_SCAN_FACTOR = 4
 
+/**
+ * Maximum number of recent conversations to inspect for message body content matches.
+ * Scoping content search to the most recent conversations prevents unbounded whole-table scans
+ * across years of chat messages on every keystroke, allowing SQLite to leverage idx_conversation_messages_thread.
+ */
+export const CONVERSATION_CONTENT_MAX_SEARCH_THREADS = 150
+
+export interface SearchConversationsOptions {
+  /** Maximum number of recent conversations to scan messages for. Defaults to CONVERSATION_CONTENT_MAX_SEARCH_THREADS. */
+  maxRecentThreads?: number
+}
+
 /** Characters of context kept around the match, in code points rather than UTF-16 units. */
 const EXCERPT_WINDOW = 96
 
@@ -237,7 +249,8 @@ export interface ConversationSearchHit {
  */
 export async function searchConversations(
   term: string,
-  limit = CONVERSATION_SEARCH_LIMIT
+  limit = CONVERSATION_SEARCH_LIMIT,
+  options?: SearchConversationsOptions
 ): Promise<ConversationSearchHit[]> {
   const needle = term.trim().toLowerCase()
   if (!needle || limit <= 0) return []
@@ -268,7 +281,16 @@ export async function searchConversations(
     })
     .from(conversationMessages)
     .innerJoin(conversations, eq(conversationMessages.conversationId, conversations.id))
-    .where(sql`instr(lower(${conversationMessages.content}), ${needle}) > 0`)
+    .where(
+      and(
+        sql`instr(lower(${conversationMessages.content}), ${needle}) > 0`,
+        sql`${conversations.id} IN (
+          SELECT ${conversations.id} FROM ${conversations}
+          ORDER BY ${conversations.updatedAt} DESC
+          LIMIT ${options?.maxRecentThreads ?? CONVERSATION_CONTENT_MAX_SEARCH_THREADS}
+        )`
+      )
+    )
     .orderBy(desc(conversations.updatedAt), asc(conversationMessages.seq))
     .limit(limit * CONVERSATION_CONTENT_SCAN_FACTOR)
 

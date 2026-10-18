@@ -218,6 +218,15 @@ const shouldInspectSvgColor = computed(() => isSvg.value && !shouldPreserveColor
 const shouldUseMask = computed(
   () => shouldInspectSvgColor.value && shouldRenderSvgAsMask(svgContent.value),
 )
+// Asked on every evaluation rather than once: a resolver serving lazily loaded
+// path data reads reactive state, and this is what redraws the icon when the
+// data lands.
+const classGlyph = computed(() => {
+  if (safeIcon.value.type !== 'class')
+    return null
+  return injectedConfig.classGlyph?.(safeIcon.value.value) ?? null
+})
+
 
 const builtin = computed(() => {
   if (safeIcon.value.type !== 'builtin')
@@ -349,7 +358,10 @@ watch(
     </span>
 
     <span v-else-if="safeIcon.type === 'class'" class="tuff-icon__class">
-      <i :class="safeIcon.value" />
+      <svg v-if="classGlyph" :viewBox="classGlyph.viewBox || '0 0 24 24'" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg">
+        <path v-if="classGlyph.d" :d="classGlyph.d" fill="currentColor" />
+      </svg>
+      <i v-else :class="safeIcon.value" />
     </span>
 
     <span v-else-if="safeIcon.type === 'builtin' && builtin" class="tuff-icon__builtin">

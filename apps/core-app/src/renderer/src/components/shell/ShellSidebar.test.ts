@@ -46,8 +46,14 @@ vi.mock('~/modules/layout/useShellSidebar', () => ({
 vi.mock('~/modules/settings/categories', () => ({
   groupedSettingNavigation: () => []
 }))
+const appSettingMock = vi.hoisted(() => ({
+  dev: { developerMode: false },
+  betaFeatures: {
+    browserWorkspace: false
+  }
+}))
 vi.mock('~/modules/storage/app-storage', () => ({
-  appSetting: { dev: { developerMode: false } }
+  appSetting: appSettingMock
 }))
 vi.mock('~/modules/hooks/env-hooks', () => ({
   useEnv: () => ({ packageJson: ref(null) })
@@ -60,7 +66,12 @@ vi.mock('./ShellBackRow.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./ShellChromeBar.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./ShellConversationList.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./ShellNavGroup.vue', () => ({ default: { template: '<div><slot /></div>' } }))
-vi.mock('./ShellNavItem.vue', () => ({ default: { template: '<div><slot name="hint" /></div>' } }))
+vi.mock('./ShellNavItem.vue', () => ({
+  default: {
+    props: ['to', 'label', 'icon'],
+    template: '<div class="ShellNavItem" :data-to="to"><slot name="hint" /></div>'
+  }
+}))
 
 import ShellSidebar from './ShellSidebar.vue'
 
@@ -87,5 +98,23 @@ describe('ShellSidebar search entry', () => {
 
     expect(wrapper.find('.ShellSearchEntry').exists()).toBe(true)
     expect(wrapper.find('.ShellSearchEntry-Kbd').exists()).toBe(false)
+  })
+})
+
+describe('ShellSidebar browser workspace beta gate', () => {
+  it('hides the browser nav item when browserWorkspace is off', async () => {
+    appSettingMock.betaFeatures.browserWorkspace = false
+    const wrapper = mount(ShellSidebar)
+    await nextTick()
+
+    expect(wrapper.find('[data-to="/browser"]').exists()).toBe(false)
+  })
+
+  it('shows the browser nav item when browserWorkspace is on', async () => {
+    appSettingMock.betaFeatures.browserWorkspace = true
+    const wrapper = mount(ShellSidebar)
+    await nextTick()
+
+    expect(wrapper.find('[data-to="/browser"]').exists()).toBe(true)
   })
 })

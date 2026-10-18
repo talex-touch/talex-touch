@@ -7,9 +7,6 @@ import {
 } from '@talex-touch/utils/transport/events/screenshot-session'
 import { isAuthoritativePluginContext } from '@talex-touch/utils/transport/security/plugin-identity'
 import { BrowserWindow, dialog, screen, webContents } from 'electron'
-import { StorageList } from '@talex-touch/utils'
-import { isBetaFeatureEnabled } from '../../../shared/beta-features'
-import { getMainConfig } from '../storage'
 import type { TalexEvents } from '../../core/eventbus/touch-event'
 import { resolveMainRuntime } from '../../core/runtime-accessor'
 import { TouchWindow } from '../../core/touch-window'
@@ -25,7 +22,6 @@ import {
   type ScreenshotSessionStartOptions
 } from './session-manager'
 import { ElectronScreenshotWindowFactory, type ScreenshotTouchWindowLike } from './window-factory'
-
 const screenshotSessionLog = createLogger('ScreenshotSession')
 /** Exported for the tray, which prints the key this id is bound to. */
 export const SCREENSHOT_SHORTCUT_ID = 'screenshot.tool.start'
@@ -34,6 +30,9 @@ const SCREENSHOT_DEFAULT_ACCELERATOR = 'CommandOrControl+Shift+A'
 const SCREENSHOT_LEGACY_DEFAULT_ACCELERATORS = ['CommandOrControl+Shift+S']
 
 type CodedError = Error & { code?: string }
+type ScreenshotStandaloneOptions = {
+  bypassBetaFeatureGate?: boolean
+}
 
 let activeManager: ScreenshotSessionManager | null = null
 
@@ -180,20 +179,16 @@ export class ScreenshotSessionModule extends BaseModule {
 
   async startStandalone(
     entrypoint: ScreenshotSessionEntrypoint,
-    delayMs: 0 | 3000 | 5000 = 0
+    delayMs: 0 | 3000 | 5000 = 0,
+    _options: ScreenshotStandaloneOptions = {}
   ): Promise<void> {
-    if (!isBetaFeatureEnabled(getMainConfig(StorageList.APP_SETTING), 'screenshot')) {
-      const error = new Error('Screenshot Beta feature is disabled') as CodedError
-      error.code = 'SCREENSHOT_FEATURE_DISABLED'
-      throw error
-    }
     const manager = this.requireManager()
     await manager.start({
       entrypoint,
       ownerKey: `internal:${entrypoint}`,
       completionMode: 'editor',
       delayMs,
-      initialTarget: 'free-region'
+      initialTarget: 'ui-element'
     })
   }
 
@@ -242,22 +237,6 @@ export class ScreenshotSessionModule extends BaseModule {
           await this.broadcastOverlayState(payload.sessionId)
         }
         return response
-      }),
-      transport.on(ScreenshotSessionEvents.editor.ready, (_payload, context) => {
-        const state = this.requireManager().getEditorStateForSender(context.sender.id)
-        if (!state) {
-          const error = new Error('Screenshot editor sender is unavailable') as CodedError
-          error.code = 'SCREENSHOT_SESSION_SENDER_UNAUTHORIZED'
-          throw error
-        }
-        return state
-      }),
-      transport.on(ScreenshotSessionEvents.editor.action, async (payload, context) => {
-        return await this.requireManager().editorAction(
-          payload.sessionId,
-          context.sender.id,
-          payload.action
-        )
       })
     )
   }

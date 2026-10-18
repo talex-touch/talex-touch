@@ -5,6 +5,7 @@ import {
   summarizeClonePayload
 } from '@talex-touch/utils/common/utils/clone-diagnostics'
 import { formatPayloadPreview } from '@talex-touch/utils/common/utils/payload-preview'
+import { BROWSER_CONNECTION_EVENT_PREFIX } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
 import { reportPerfToMain } from '~/modules/perf/perf-report'
 import { RAW_MAIN_PROCESS_CHANNEL } from '../../../../shared/ipc/raw-channel'
 
@@ -31,14 +32,18 @@ function createChannelReplyError(eventName: string, code: number, payload: unkno
   const message =
     typeof record?.message === 'string' && record.message.trim()
       ? record.message.trim()
-      : `Channel request "${eventName}" replied with code ${code}: ${formatPayloadPreview(payload)}`
+      : `Channel request "${eventName}" replied with code ${code}: ${
+          eventName.startsWith(BROWSER_CONNECTION_EVENT_PREFIX)
+            ? '[browser connection metadata redacted]'
+            : formatPayloadPreview(payload)
+        }`
 
   return Object.assign(new Error(message), {
     code: 'channel_error_reply',
     eventName,
     replyCode: code,
     ...(reason ? { reason } : {}),
-    payload
+    ...(eventName.startsWith(BROWSER_CONNECTION_EVENT_PREFIX) ? {} : { payload })
   })
 }
 
@@ -222,8 +227,10 @@ class TouchChannel implements TouchClientChannelLike {
     }
   }
 
-  private formatPayloadPreview(payload: unknown): string {
-    return formatPayloadPreview(payload)
+  private formatPayloadPreview(payload: unknown, eventName: string): string {
+    return eventName.startsWith(BROWSER_CONNECTION_EVENT_PREFIX)
+      ? '[browser connection metadata redacted]'
+      : formatPayloadPreview(payload)
   }
 
   send<TRequest = unknown, TResponse = unknown>(
@@ -258,11 +265,15 @@ class TouchChannel implements TouchClientChannelLike {
       try {
         ipcRenderer.send(RAW_MAIN_PROCESS_CHANNEL, data)
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorMessage = eventName.startsWith(BROWSER_CONNECTION_EVENT_PREFIX)
+          ? 'BROWSER_CONNECTION_SEND_FAILED'
+          : error instanceof Error
+            ? error.message
+            : String(error)
         const meta: Record<string, unknown> = {
-          payloadPreview: this.formatPayloadPreview(arg)
+          payloadPreview: this.formatPayloadPreview(arg, eventName)
         }
-        if (isCloneError(error)) {
+        if (!eventName.startsWith(BROWSER_CONNECTION_EVENT_PREFIX) && isCloneError(error)) {
           meta.cloneIssue = findCloneIssue(arg)
           meta.payloadSummary = summarizeClonePayload(arg)
         }
@@ -285,7 +296,7 @@ class TouchChannel implements TouchClientChannelLike {
           { code: 'channel_timeout' }
         )
         console.warn(error.message, {
-          payloadPreview: this.formatPayloadPreview(arg),
+          payloadPreview: this.formatPayloadPreview(arg, eventName),
           stack
         })
         reportPerfToMain({
@@ -294,7 +305,7 @@ class TouchChannel implements TouchClientChannelLike {
           durationMs: timeoutMs,
           at: Date.now(),
           level: 'error',
-          payloadPreview: this.formatPayloadPreview(arg),
+          payloadPreview: this.formatPayloadPreview(arg, eventName),
           stack,
           meta: { timeoutMs, syncId: uniqueId }
         })
@@ -309,7 +320,7 @@ class TouchChannel implements TouchClientChannelLike {
         if (duration >= CHANNEL_SEND_ERROR_MS) {
           const logSlow = eventName === 'store:http-request' ? console.warn : console.error
           logSlow(`[Channel][send][slow] \"${eventName}\" took ${duration.toFixed(1)}ms`, {
-            payloadPreview: this.formatPayloadPreview(arg),
+            payloadPreview: this.formatPayloadPreview(arg, eventName),
             stack
           })
           reportPerfToMain({
@@ -318,13 +329,13 @@ class TouchChannel implements TouchClientChannelLike {
             durationMs: duration,
             at: Date.now(),
             level: 'error',
-            payloadPreview: this.formatPayloadPreview(arg),
+            payloadPreview: this.formatPayloadPreview(arg, eventName),
             stack,
             meta: { threshold: CHANNEL_SEND_ERROR_MS, syncId: uniqueId }
           })
         } else if (duration >= CHANNEL_SEND_WARN_MS) {
           console.warn(`[Channel][send][slow] \"${eventName}\" took ${duration.toFixed(1)}ms`, {
-            payloadPreview: this.formatPayloadPreview(arg),
+            payloadPreview: this.formatPayloadPreview(arg, eventName),
             stack
           })
           reportPerfToMain({
@@ -333,7 +344,7 @@ class TouchChannel implements TouchClientChannelLike {
             durationMs: duration,
             at: Date.now(),
             level: 'warn',
-            payloadPreview: this.formatPayloadPreview(arg),
+            payloadPreview: this.formatPayloadPreview(arg, eventName),
             stack,
             meta: { threshold: CHANNEL_SEND_WARN_MS, syncId: uniqueId }
           })
@@ -341,8 +352,8 @@ class TouchChannel implements TouchClientChannelLike {
 
         if (res.code !== DATA_CODE_SUCCESS) {
           console.warn(`[Channel][send][errorReply] "${eventName}" replied with ERROR`, {
-            payloadPreview: this.formatPayloadPreview(arg),
-            replyPreview: this.formatPayloadPreview(res.data),
+            payloadPreview: this.formatPayloadPreview(arg, eventName),
+            replyPreview: this.formatPayloadPreview(res.data, eventName),
             stack
           })
           reportPerfToMain({
@@ -351,10 +362,10 @@ class TouchChannel implements TouchClientChannelLike {
             durationMs: duration,
             at: Date.now(),
             level: 'error',
-            payloadPreview: this.formatPayloadPreview(arg),
+            payloadPreview: this.formatPayloadPreview(arg, eventName),
             stack,
             meta: {
-              replyPreview: this.formatPayloadPreview(res.data),
+              replyPreview: this.formatPayloadPreview(res.data, eventName),
               syncId: uniqueId
             }
           })

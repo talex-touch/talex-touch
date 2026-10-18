@@ -180,7 +180,7 @@ function verifyNativeModules(strict, target) {
 
   const message =
     `Required native modules missing from ${releaseDir}: ${missingModuleNames.join(', ')}. ` +
-    'Run the native package rebuild, build:audio, and (on macOS) build:translation and build:update scripts to produce them.'
+    'Run the native package rebuild, build:audio, build:browser-bridge, and (on macOS) build:translation and build:update scripts to produce them.'
 
   if (strict || target === 'win') {
     throw new Error(message)

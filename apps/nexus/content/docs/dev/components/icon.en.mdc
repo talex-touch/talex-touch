@@ -307,7 +307,7 @@ Browse and search every icon at [Icônes](https://icones.js.org/).
 ## Technologies
 
 - `shouldRenderSvgAsMask` checks whether every paint color in an SVG is neutral or `currentColor` to decide on mask rendering.
-- `TX_ICON_CONFIG_KEY` injects `urlResolver`, `svgFetcher`, and `fileProtocol`.
+- `TX_ICON_CONFIG_KEY` injects `urlResolver`, `svgFetcher`, `fileProtocol`, and `classGlyph`, which draws the classes it resolves from path data instead of the host's CSS.
 - Source: `packages/tuffex/packages/components/src/icon/`.
 
 <TuffDocSourceLink />

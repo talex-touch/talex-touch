@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { PRODUCT_SCENE_TEMPLATES } from '../../shared/provider-registry'
 import { toRegistryCapabilityId, toRuntimeCapabilityId } from '@talex-touch/tuff-intelligence/light'
 import type { ProviderRegistryRecord } from './providerRegistryStore'
 import type { SceneRegistryRecord, SceneStrategyBindingInput } from './sceneRegistryStore'
@@ -20,7 +21,6 @@ const COREBOX_FX_LATEST_SCENE_ID = 'corebox.fx.latest'
 const COREBOX_FX_CONVERT_SCENE_ID = 'corebox.fx.convert'
 const SCREENSHOT_TRANSLATE_REQUIRED_CAPABILITIES = ['vision.ocr', 'text.translate', 'overlay.render'] as const
 const SCREENSHOT_TRANSLATE_DIRECT_CAPABILITIES = ['image.translate.e2e'] as const
-const CANONICAL_CAPABILITY_PREFIXES = ['audio.', 'chat.', 'code.', 'content.', 'image.', 'intent.', 'keywords.', 'text.', 'vision.'] as const
 
 interface ProviderSceneSeedResult {
   overlayProviderId: string | null
@@ -106,27 +106,32 @@ async function migrateProviderRoutingMetadata(
       continue
     }
     const models = providerModels(provider)
-    const normalizedCapabilities = provider.capabilities.map(capability => ({
-      capability: toRegistryCapabilityId(toRuntimeCapabilityId(capability.capability)),
-      schemaRef: capability.schemaRef,
-      metering: capability.metering,
-      constraints: capability.constraints,
-      metadata: capability.metadata,
-    }))
-    const capabilitiesChanged = normalizedCapabilities.some((capability, index) =>
-      capability.capability !== provider.capabilities[index]?.capability)
+    const normalizedCapabilities = [...new Map(provider.capabilities.filter(capability =>
+      sceneCapabilityAdapterSupports(adapterKey, toRegistryCapabilityId(capability.capability)),
+    ).map(capability => {
+      const canonicalCapability = toRegistryCapabilityId(toRuntimeCapabilityId(capability.capability))
+      return [canonicalCapability, {
+        capability: canonicalCapability,
+        schemaRef: capability.schemaRef,
+        metering: capability.metering,
+        constraints: capability.constraints,
+        metadata: capability.metadata,
+      }] as const
+    })).values()]
+    const capabilitiesChanged = normalizedCapabilities.length !== provider.capabilities.length
+      || normalizedCapabilities.some((capability, index) => capability.capability !== provider.capabilities[index]?.capability)
     const configuredDefault = typeof provider.metadata?.defaultModel === 'string'
       ? provider.metadata.defaultModel.trim()
       : ''
-    const defaultModel = configuredDefault && models.includes(configuredDefault)
-      ? configuredDefault
-      : models[0] ?? null
+    const defaultModel = configuredDefault && models.includes(configuredDefault) ? configuredDefault : null
     const metadata: Record<string, unknown> = {
       ...(provider.metadata ?? {}),
       adapterKey,
       ...(models.length > 0 ? { models } : {}),
       ...(defaultModel ? { defaultModel } : {}),
     }
+    if (!defaultModel)
+      delete metadata.defaultModel
     if (typeof metadata.adapter === 'string')
       delete metadata.adapter
     const currentDefaultModel = typeof provider.metadata?.defaultModel === 'string'
@@ -242,9 +247,9 @@ function buildSeedBindings(
 function mergeSeedBindings(
   scene: SceneRegistryRecord,
   seedBindings: SceneStrategyBindingInput[],
-  options: { allowMultipleProvidersPerCapability?: boolean } = {},
 ): SceneStrategyBindingInput[] {
   const merged: SceneStrategyBindingInput[] = scene.bindings.map(binding => ({
+    id: binding.id,
     providerId: binding.providerId,
     capability: binding.capability,
     model: binding.model,
@@ -253,6 +258,7 @@ function mergeSeedBindings(
     status: binding.status,
     constraints: binding.constraints,
     metadata: binding.metadata,
+    createdAt: binding.createdAt,
   }))
 
   for (const binding of seedBindings) {
@@ -262,7 +268,7 @@ function mergeSeedBindings(
       continue
     if (hasBinding(scene, providerId, capability))
       continue
-    if (!options.allowMultipleProvidersPerCapability && hasAnyBindingForCapability(scene, capability))
+    if (hasAnyBindingForCapability(scene, capability))
       continue
     merged.push(binding)
   }
@@ -410,7 +416,7 @@ async function ensureSelectionTranslateScene(
     return { created: true, updated: false }
   }
 
-  const mergedBindings = mergeSeedBindings(existing, seedBindings, { allowMultipleProvidersPerCapability: true })
+  const mergedBindings = mergeSeedBindings(existing, seedBindings)
   if (mergedBindings.length !== existing.bindings.length) {
     await updateSceneRegistryEntry(event, existing.id, {
       ...existing,
@@ -512,12 +518,10 @@ async function ensureCanonicalCapabilityScenes(
   event: H3Event,
   providers: ProviderRegistryRecord[],
 ): Promise<string[]> {
-  const capabilities = [...new Set(
-    providers
-      .filter(provider => provider.status === 'enabled' && provider.ownerScope === 'system')
-      .flatMap(provider => provider.capabilities.map(capability => capability.capability))
-      .filter(capability => CANONICAL_CAPABILITY_PREFIXES.some(prefix => capability.startsWith(prefix))),
-  )].sort()
+  const capabilities = PRODUCT_SCENE_TEMPLATES
+    .filter(scene => scene.owner === 'nexus')
+    .flatMap(scene => scene.requiredCapabilities)
+    .sort()
   const created: string[] = []
 
   for (const capability of capabilities) {
@@ -538,8 +542,6 @@ async function ensureCanonicalCapabilityScenes(
       status: 'enabled' as const,
       metadata: { source: SEED_SOURCE },
     }))
-    if (bindings.length === 0)
-      continue
 
     if (!existing || existing.id !== sceneId) {
       await createSceneRegistryEntry(event, {
@@ -559,7 +561,7 @@ async function ensureCanonicalCapabilityScenes(
       created.push(sceneId)
     }
     else {
-      const mergedBindings = mergeSeedBindings(existing, bindings, { allowMultipleProvidersPerCapability: true })
+      const mergedBindings = mergeSeedBindings(existing, bindings)
       if (mergedBindings.length !== existing.bindings.length) {
         await updateSceneRegistryEntry(event, existing.id, {
           ...existing,

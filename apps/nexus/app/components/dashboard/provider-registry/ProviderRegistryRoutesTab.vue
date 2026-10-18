@@ -240,6 +240,7 @@ defineExpose({
               @click="emit('edit', row)"
             />
             <TxIconButton
+              v-if="!admin.productSceneTemplates.some(scene => scene.id === row.id)"
               size="xs"
               icon="i-carbon-trash-can"
               status="danger"

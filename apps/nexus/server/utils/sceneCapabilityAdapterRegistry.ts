@@ -1,4 +1,5 @@
 import type { ProviderRegistryRecord } from './providerRegistryStore'
+import { PROVIDER_PROTOCOLS } from '../../shared/provider-registry'
 
 export interface SceneCapabilityAdapterRegistryReadiness {
   providerId: string
@@ -23,50 +24,7 @@ export interface SceneCapabilityAdapterCatalogEntry {
   supportsStreaming: boolean
 }
 
-export const SCENE_CAPABILITY_ADAPTER_CATALOG = [
-  {
-    key: 'tencent-translation',
-    label: 'Tencent Cloud Translation',
-    capabilities: ['text.translate', 'image.translate', 'image.translate.e2e'],
-    supportsStreaming: false,
-  },
-  {
-    key: 'openai-compatible',
-    label: 'OpenAI-compatible Chat Completions',
-    capabilities: ['text.chat', 'chat.completion', 'text.translate', 'text.summarize', 'text.rewrite', 'content.extract', 'keywords.extract', 'intent.detect', 'code.explain', 'code.review', 'vision.ocr'],
-    supportsStreaming: true,
-  },
-  {
-    key: 'openai-responses',
-    label: 'OpenAI Responses',
-    capabilities: ['text.chat', 'chat.completion', 'text.translate', 'text.summarize', 'text.rewrite', 'content.extract', 'keywords.extract', 'intent.detect', 'code.explain', 'code.review', 'vision.ocr'],
-    supportsStreaming: true,
-  },
-  {
-    key: 'dashscope-filetrans-asr',
-    label: 'DashScope Filetrans ASR',
-    capabilities: ['audio.transcribe'],
-    supportsStreaming: false,
-  },
-  {
-    key: 'dashscope-qwen-audio-asr',
-    label: 'DashScope Qwen Audio ASR',
-    capabilities: ['audio.stt', 'audio.transcribe'],
-    supportsStreaming: false,
-  },
-  {
-    key: 'exchange-rate',
-    label: 'Exchange Rate API',
-    capabilities: ['fx.rate.latest', 'fx.convert'],
-    supportsStreaming: false,
-  },
-  {
-    key: 'local-overlay',
-    label: 'Local Screenshot Overlay',
-    capabilities: ['overlay.render'],
-    supportsStreaming: false,
-  },
-] as const satisfies readonly SceneCapabilityAdapterCatalogEntry[]
+export const SCENE_CAPABILITY_ADAPTER_CATALOG = PROVIDER_PROTOCOLS satisfies readonly SceneCapabilityAdapterCatalogEntry[]
 
 export type SceneCapabilityAdapterKey = typeof SCENE_CAPABILITY_ADAPTER_CATALOG[number]['key']
 

@@ -30,6 +30,8 @@ import { authModule } from './modules/auth'
 import { coreBoxModule } from './modules/box-tool/core-box/index'
 import FileSystemWatcher from './modules/box-tool/file-system-watcher'
 import { buildVerificationModule } from './modules/build-verification'
+import { browserModule } from './modules/browser'
+import { browserConnectionModule } from './modules/browser-connection'
 import { catalogModule } from './modules/catalog'
 import { clipboardModule } from './modules/clipboard'
 import { conversationModule } from './modules/conversation'
@@ -222,6 +224,8 @@ const foregroundModulesToLoad = [
   toolGatewayModule,
   mcpHostModule,
   storageModule,
+  browserModule,
+  browserConnectionModule,
   fileProtocolModule,
   shortcutModule,
   commonChannelModule,
@@ -433,6 +437,16 @@ app.whenReady().then(async () => {
     rendererWaitTimer.end('Renderer initialization settled', {
       meta: { durationMs: rendererWaitDuration }
     })
+    if (process.env.TUFF_SCREENSHOT_ACCEPTANCE === '1' && !app.isPackaged) {
+      void touchApp
+        .waitUntilInitialized()
+        .then(() =>
+          screenshotSessionModule.startStandalone('demo', 0, { bypassBetaFeatureGate: true })
+        )
+        .catch((error) => {
+          mainLog.warn('Screenshot acceptance session failed to start', { error })
+        })
+    }
 
     startupTimer.end('Startup health check passed', {
       meta: {

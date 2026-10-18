@@ -1,0 +1,14 @@
+{
+  "name": "@talex-touch/screenshot-acceptance",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone launcher for the Tuff screenshot acceptance pipeline.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^41.10.6"
+  }
+}

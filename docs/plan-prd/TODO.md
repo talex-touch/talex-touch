@@ -43,7 +43,8 @@
 
 ## Version-planned work
 
-- [ ] **2.5.1：文件搜索与文件动作融合。** P0 与本轮正文语义穿透已落地：目录结果与 `.app` 去重、⌘K 打开方式与 7 组文件动作、应用版本与真实创建时间摘要、权限/删除错误反馈；B9 文件名错字 n-gram；PDF/code 分段、页码/行号片段和受控 EmbeddingGemma 2 本地 runtime contract 已接入，209 项既有单测及本轮分段/向量/预览回归通过。仍待实施的是 P1 原生 Scanner 对比、P3 文件移动/复制/废纸篓、P4 显式源码正文检索，以及签名 helper 的 packaged release 验收；模型与运行边界见 [调研报告](../engineering/reports/file-search-integration-2.5.1-2026-10-11.md)。本条不改变前述全局执行顺序。
+- [ ] **2.5.1：文件搜索与文件动作融合。** P0 正文语义穿透已落地：目录结果与 `.app` 去重、⌘K 打开方式与 7 组文件动作、应用版本与真实创建时间摘要、权限/删除错误反馈；B9 文件名错字 n-gram；PDF/code 分段、页码/行号片段和受控 EmbeddingGemma 2 本地 runtime contract 已接入；P1 原生 Scanner 对比已在 20,000 文件下实测完成（19ms vs 285ms，7.5MB vs 114MB，支持取消）；P3 文件移动/复制/废纸篓已落地，支持单文件原子硬链接防同名覆盖与跨卷身份复核（46 项单测通过）；P4 显式源码正文检索 `file.search` 工具已落地（5 项单测通过）。仍待实施的是签名 helper 的 packaged release 验收；模型与运行边界见 [调研报告](../engineering/reports/file-search-integration-2.5.1-2026-10-11.md)。本条不改变前述全局执行顺序。
+- [ ] **2.5.2：现代浏览器工作区（Beta / 实验室特性）。** 走路线 1（`WebContentsView` + Vue 3 自研现代外壳 + 核心能力原生内置），规避通用 Chrome 扩展与 DRM 授权包袱。功能设为 Beta，在设置中默认关闭（`betaFeatures.browserWorkspace: false`）；未开启时侧边栏无浏览器图标、路由拦截重定向，展示与行为完全保持现有启动器形态；开启后在侧边栏显示入口，进入包含垂直标签页管理、无边框视口与快捷导航的独立浏览工作区。PRD 见 [2.5.2 浏览器工作区规划](./03-features/browser-workspace-2.5.2-plan-prd.md)。本条不改变前述全局执行顺序。
 
 ## Release follow-ups
 

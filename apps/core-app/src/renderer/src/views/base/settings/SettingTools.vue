@@ -39,7 +39,7 @@ import {
   BETA_FEATURE_SHORTCUTS,
   isBetaFeatureEnabled,
   isShortcutFeatureEnabled,
-  type BetaFeature
+  type BetaShortcutFeature
 } from '../../../../../shared/beta-features'
 
 const props = withDefaults(
@@ -64,8 +64,8 @@ const systemShortcuts = computed(() =>
       (shortcut.id !== 'local-ai-cli.quick-open' || appSetting.localAiCli?.enabled === true)
   )
 )
-const betaFeatures = Object.keys(BETA_FEATURE_SHORTCUTS) as BetaFeature[]
-const savingBetaFeatures = reactive(new Set<BetaFeature>())
+const betaFeatures = Object.keys(BETA_FEATURE_SHORTCUTS) as BetaShortcutFeature[]
+const savingBetaFeatures = reactive(new Set<BetaShortcutFeature>())
 const showBetaFeatures = computed(() => appSetting.dev?.advancedSettings === true)
 const shortcutsLoading = computed(() => shortcuts.value === null)
 const shortcutsDialogVisible = ref(false)
@@ -499,7 +499,7 @@ async function updateShortcutEnabled(id: string, enabled: boolean): Promise<void
   await refreshShortcuts()
 }
 
-async function updateBetaFeature(feature: BetaFeature, enabled: boolean): Promise<void> {
+async function updateBetaFeature(feature: BetaShortcutFeature, enabled: boolean): Promise<void> {
   if (!showBetaFeatures.value || savingBetaFeatures.has(feature)) return
   savingBetaFeatures.add(feature)
   try {

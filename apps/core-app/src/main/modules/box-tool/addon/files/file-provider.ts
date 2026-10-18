@@ -213,7 +213,10 @@ import {
 } from './services/file-provider-reconciliation-run-service'
 import { FileProviderReconciliationUpdateService } from './services/file-provider-reconciliation-update-service'
 import { FileProviderScanStrategyService } from './services/file-provider-scan-strategy-service'
-import { FileProviderAssetService } from './services/file-provider-asset-service'
+import {
+  FileProviderAssetService,
+  type IndexedActionPathResolution
+} from './services/file-provider-asset-service'
 import { FileProviderSearchResultService } from './services/file-provider-search-result-service'
 import FileSystemWatcher from '../../file-system-watcher'
 import {
@@ -2458,6 +2461,12 @@ class FileProvider implements ISearchProvider<ProviderContext> {
 
   public async resolvePreviewResourcePath(rawPath: string): Promise<string | null> {
     return await this.assetService.resolvePreviewResourcePath(rawPath)
+  }
+
+  public async resolveIndexedActionPath(
+    rawPath: string
+  ): Promise<IndexedActionPathResolution | null> {
+    return await this.assetService.resolveIndexedActionPath(rawPath)
   }
 
   public async *streamIndexedSourceSnapshot(

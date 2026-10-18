@@ -1404,7 +1404,7 @@ async function openHome(send: CdpSend): Promise<void> {
         send,
         `document.hidden === false && Boolean(
           document.querySelector('.HomePage textarea.HomePage-Input') &&
-          document.querySelector('.HomePage .HomePermissionMenu-Pill') &&
+          document.querySelector('.HomePage .HomePermissionMenu-Chip') &&
           document.querySelector('.HomePage .ComposerModelPill')
         )`
       ),
@@ -1507,7 +1507,7 @@ async function enableReviewMode(send: CdpSend): Promise<void> {
   const opened = await evaluate<boolean>(
     send,
     `(() => {
-      const button = document.querySelector('.HomePage .HomePermissionMenu-Pill')
+      const button = document.querySelector('.HomePage .HomePermissionMenu-Chip')
       if (!(button instanceof HTMLButtonElement)) return false
       button.click()
       return true
@@ -1533,7 +1533,7 @@ async function enableReviewMode(send: CdpSend): Promise<void> {
     () =>
       evaluate<boolean>(
         send,
-        `document.hidden === false && document.querySelector('.HomePermissionMenu-Pill')?.classList.contains('is-info') === true`
+        `document.hidden === false && document.querySelector('.HomePage .HomePermissionMenu-Chip')?.getAttribute('data-mode') === 'review'`
       ),
     Boolean,
     8_000,
@@ -1630,9 +1630,8 @@ async function selectControlledPiModel(send: CdpSend): Promise<void> {
       evaluate<boolean>(
         send,
         `(() => {
-          const group = document.querySelector('#home-model-group-pi-cli-default')?.closest('.HomeModelMenu-Group')
-          const button = Array.from(group?.querySelectorAll('.HomeModelMenu-Item') || []).find(
-            (item) => item.querySelector('.HomeModelMenu-Model')?.textContent?.trim() === ${JSON.stringify(PI_MODEL)}
+          const button = Array.from(document.querySelectorAll('[data-home-model-rail-item][data-provider-id="pi-cli-default"][data-source="controlled"]')).find(
+            (item) => item instanceof HTMLElement && item.getClientRects().length > 0
           )
           if (!(button instanceof HTMLButtonElement)) return false
           button.click()
@@ -1641,13 +1640,32 @@ async function selectControlledPiModel(send: CdpSend): Promise<void> {
       ),
     Boolean,
     30_000,
+    'CONTROLLED_PI_SOURCE_UNAVAILABLE'
+  )
+  const selectedLabel = await waitForValue(
+    () =>
+      evaluate<string | null>(
+        send,
+        `(() => {
+          const button = Array.from(document.querySelectorAll('[data-home-model-option][data-provider-id="pi-cli-default"]')).find(
+            (item) => item instanceof HTMLElement && item.getClientRects().length > 0 && item.getAttribute('data-model') === ${JSON.stringify(PI_MODEL)}
+          )
+          if (!(button instanceof HTMLButtonElement)) return null
+          const label = button.querySelector('.HomeModelMenu-OptionLabel')?.textContent?.trim()
+          if (!label) return null
+          button.click()
+          return label
+        })()`
+      ),
+    (value) => typeof value === 'string' && value.length > 0,
+    30_000,
     'CONTROLLED_PI_MODEL_UNAVAILABLE'
   )
   await waitForValue(
     () =>
       evaluate<boolean>(
         send,
-        `document.hidden === false && document.querySelector('.HomePage .ComposerModelPill .ComposerChip-Label .tx-text-transformer__layer--current')?.textContent?.trim() === ${JSON.stringify(PI_MODEL)}`
+        `document.hidden === false && document.querySelector('.HomePage .ComposerModelPill > .ComposerChip-Text > .ComposerChip-Label')?.textContent?.trim() === ${JSON.stringify(selectedLabel)}`
       ),
     Boolean,
     8_000,
@@ -1910,7 +1928,7 @@ export async function submitControlledTurn(send: CdpSend): Promise<void> {
   const assertReviewModeActive = async (): Promise<void> => {
     const reviewModeActive = await evaluate<boolean>(
       send,
-      `document.querySelector('.HomePage .HomePermissionMenu-Pill')?.classList.contains('is-info') === true`
+      `document.querySelector('.HomePage .HomePermissionMenu-Chip')?.getAttribute('data-mode') === 'review'`
     )
     if (!reviewModeActive) fail('REVIEW_MODE_ROLLED_BACK')
   }
@@ -1963,8 +1981,8 @@ export async function submitControlledTurn(send: CdpSend): Promise<void> {
     `(() => {
       const input = document.querySelector('.HomePage textarea.HomePage-Input')
       const button = document.querySelector('.HomePage .ComposerSendIsland')
-      const permission = document.querySelector('.HomePage .HomePermissionMenu-Pill')
-      if (!permission?.classList.contains('is-info')) return 'review-mode-inactive'
+      const permission = document.querySelector('.HomePage .HomePermissionMenu-Chip')
+      if (permission?.getAttribute('data-mode') !== 'review') return 'review-mode-inactive'
       if (
         !(input instanceof HTMLTextAreaElement) ||
         input.value !== ${JSON.stringify(CONTROLLED_TURN_PROMPT)} ||
@@ -2123,7 +2141,7 @@ async function resetRememberedApprovals(send: CdpSend): Promise<void> {
   const opened = await evaluate<boolean>(
     send,
     `(() => {
-      const button = document.querySelector('.HomePage .HomePermissionMenu-Pill')
+      const button = document.querySelector('.HomePage .HomePermissionMenu-Chip')
       if (!(button instanceof HTMLButtonElement)) return false
       document.querySelectorAll('[data-sonner-toast]').forEach((toast) => {
         toast.setAttribute(${JSON.stringify(seenToastAttribute)}, 'true')

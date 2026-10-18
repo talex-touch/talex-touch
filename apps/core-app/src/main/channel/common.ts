@@ -1692,7 +1692,8 @@ export class CommonChannelModule extends BaseModule {
         configRootPath: () => storageModule.filePath,
         appRootPath: () => touchApp.rootPath,
         logger: log,
-        registerSafeHandler
+        registerSafeHandler,
+        resolveIndexedActionPath: (rawPath) => fileProvider.resolveIndexedActionPath(rawPath)
       }),
       transport.on(AppEvents.i18n.setLocale, (payload) => {
         const locale = getOptionalStringProp(payload, 'locale')

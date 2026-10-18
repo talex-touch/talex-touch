@@ -153,7 +153,10 @@ describe('buildMetaActionModel — one row per action', () => {
       'copy-title',
       'file-copy-shell-path',
       'file-copy-url',
+      'copy-to',
+      'move-to',
       'toggle-pin',
+      'move-to-trash',
       'open-settings'
     ])
     // The provider's "Open" is not a second row: it merged, and the merged row runs the main

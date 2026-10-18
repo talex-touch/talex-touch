@@ -6,13 +6,6 @@ import type {
   SceneCapabilityAdapterCatalogEntry,
 } from '~/utils/provider-registry-admin'
 
-function providerCapabilityCollectionUrl(providerId: string): string {
-  return `/api/dashboard/provider-registry/providers/${encodeURIComponent(providerId)}/capabilities`
-}
-
-function providerCapabilityUrl(providerId: string, capabilityId: string): string {
-  return `${providerCapabilityCollectionUrl(providerId)}/${encodeURIComponent(capabilityId)}`
-}
 
 export function createProviderRegistryCrudService(fetcher: typeof rawFetch = rawFetch) {
   async function listProviders(vendor?: string) {
@@ -22,7 +15,7 @@ export function createProviderRegistryCrudService(fetcher: typeof rawFetch = raw
   }
 
   async function createProvider(body: Record<string, unknown>) {
-    await fetcher('/api/dashboard/provider-registry/providers', { method: 'POST', body })
+    return await fetcher<{ provider: ProviderRegistryRecord }>('/api/dashboard/provider-registry/providers', { method: 'POST', body })
   }
 
   async function createCredential(body: Record<string, unknown>) {
@@ -73,31 +66,17 @@ export function createProviderRegistryCrudService(fetcher: typeof rawFetch = raw
     })
   }
 
-  async function deleteCapability(providerId: string, capabilityId: string) {
-    await fetcher(providerCapabilityUrl(providerId, capabilityId), { method: 'DELETE' })
-  }
-
-  async function updateCapability(providerId: string, capabilityId: string, body: Record<string, unknown>) {
-    await fetcher(providerCapabilityUrl(providerId, capabilityId), { method: 'PATCH', body })
-  }
-
-  async function createCapability(providerId: string, body: Record<string, unknown>) {
-    await fetcher(providerCapabilityCollectionUrl(providerId), { method: 'POST', body })
-  }
 
   return {
     checkProvider,
-    createCapability,
     createCredential,
     createProvider,
-    deleteCapability,
     deleteProvider,
     fetchProviderModels,
     fetchModelsProbe,
     fetchProviderQuota,
     listProviders,
     saveProviderQuota,
-    updateCapability,
     updateProvider,
   }
 }

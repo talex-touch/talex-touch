@@ -1,5 +1,10 @@
+import type { H3Event } from 'h3'
 import type { ProviderRegistryRecord } from '../../../../server/utils/providerRegistryStore'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SqliteD1Database } from '../../../helpers/d1-sqlite'
+import { createSqliteD1 } from '../../../helpers/d1-sqlite'
+import { resolveProviderCredential, storeProviderCredential } from '../../../../server/utils/providerCredentialStore'
+import { createProviderRegistryEntry, getProviderRegistryEntry, updateProviderRegistryEntry } from '../../../../server/utils/providerRegistryStore'
 import {
   MockD1Database,
   makeProviderRegistryEvent,
@@ -18,6 +23,7 @@ const h3Mocks = vi.hoisted(() => ({
 
 const state = vi.hoisted(() => ({
   db: null as MockD1Database | null,
+  realDb: null as SqliteD1Database | null,
 }))
 
 const importsMocks = vi.hoisted(() => ({
@@ -52,7 +58,7 @@ vi.mock('h3', async () => {
 })
 
 vi.mock('../../../../server/utils/auth', () => authMocks)
-vi.mock('../../../../server/utils/cloudflare', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../../../server/utils/cloudflare')>()), readCloudflareBindings: () => state.db ? { DB: state.db } : undefined, }))
+vi.mock('../../../../server/utils/cloudflare', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../../../server/utils/cloudflare')>()), readCloudflareBindings: () => state.realDb || state.db ? { DB: state.realDb ?? state.db } : undefined, }))
 vi.mock('../../../../server/utils/providerHealthStore', () => healthMocks)
 vi.mock('../../../../server/utils/intelligenceProviderHealthCheck', () => intelligenceHealthMocks)
 vi.mock('#imports', () => importsMocks)
@@ -97,7 +103,13 @@ beforeAll(async () => {
   tencentProviderUtils = await import('../../../../server/utils/tencentMachineTranslationProvider')
 })
 
-const makeEvent = makeProviderRegistryEvent
+// Route/store fixtures supply only the request fields these handlers consume.
+const makeEvent = () => makeProviderRegistryEvent() as unknown as H3Event
+
+afterEach(() => {
+  state.realDb?.close()
+  state.realDb = null
+})
 
 describe('/api/dashboard/provider-registry', () => {
   beforeEach(() => {
@@ -142,161 +154,180 @@ describe('/api/dashboard/provider-registry', () => {
     h3Mocks.getRouterParam.mockReturnValue('')
   })
 
-  it('管理员可以创建腾讯云机器翻译 provider，且只保存 authRef 与 capabilities', async () => {
-    h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
-
-    const result = await createProviderHandler(makeEvent())
-
-    expect(authMocks.requireAdmin).toHaveBeenCalledWith(expect.anything())
-    expect(result.provider).toMatchObject({
-      name: 'tencent-cloud-mt-main',
-      vendor: 'tencent-cloud',
-      status: 'enabled',
-      authType: 'secret_pair',
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      capabilities: expect.arrayContaining([
-        expect.objectContaining({ capability: 'image.translate.e2e' }),
-        expect.objectContaining({ capability: 'image.translate' }),
-        expect.objectContaining({ capability: 'text.translate' }),
-      ]),
+  it('管理员创建腾讯云 provider 时按协议推导认证与真实 adapter 能力', async () => {
+    h3Mocks.readBody.mockResolvedValue({
+      ...tencentTranslateProviderBody(),
+      vendor: 'openai',
+      authType: 'none',
+      capabilities: [{ capability: 'audio.transcribe' }],
     })
-    expect(result.provider.capabilities).toHaveLength(3)
-    expect(JSON.stringify(state.db?.providers)).not.toContain('secretKey')
-    expect(JSON.stringify(state.db?.providers)).not.toContain('apiKey')
+
+    const { provider } = await createProviderHandler(makeEvent())
+
+    expect(provider).toMatchObject({ vendor: 'tencent-cloud', authType: 'secret_pair' })
+    expect(provider.capabilities.map((item: { capability: string }) => item.capability).sort()).toEqual([
+      'image.translate.e2e', 'text.translate',
+    ])
+  })
+
+  it.each([
+    { adapterKey: 'openai-compatible', vendor: 'custom', authType: 'api_key', capabilities: ['chat.completion', 'code.explain', 'code.review', 'content.extract', 'intent.detect', 'keywords.extract', 'text.rewrite', 'text.summarize', 'text.translate', 'vision.ocr'] },
+    { adapterKey: 'openai-responses', vendor: 'custom', authType: 'api_key', capabilities: ['chat.completion', 'code.explain', 'code.review', 'content.extract', 'intent.detect', 'keywords.extract', 'text.rewrite', 'text.summarize', 'text.translate'] },
+    { adapterKey: 'dashscope-filetrans-asr', vendor: 'dashscope', authType: 'api_key', capabilities: ['audio.transcribe'] },
+    { adapterKey: 'dashscope-qwen-audio-asr', vendor: 'dashscope', authType: 'api_key', capabilities: ['audio.stt', 'audio.transcribe'] },
+    { adapterKey: 'exchange-rate', vendor: 'exchange-rate', authType: 'none', capabilities: ['fx.convert', 'fx.rate.latest'] },
+    { adapterKey: 'local-overlay', vendor: 'custom', authType: 'none', capabilities: ['overlay.render'] },
+  ])('$adapterKey 只声明该 runtime adapter 可执行的能力', async ({ adapterKey, vendor, authType, capabilities }) => {
+    h3Mocks.readBody.mockResolvedValue({
+      name: `protocol-${adapterKey}`,
+      displayName: adapterKey,
+      vendor: 'tencent-cloud',
+      authType: 'oauth',
+      metadata: { adapterKey },
+      capabilities: [{ capability: 'invented.capability' }],
+    })
+
+    const { provider } = await createProviderHandler(makeEvent())
+
+    expect(provider).toMatchObject({ vendor, authType })
+    expect(provider.capabilities.map((item: { capability: string }) => item.capability).sort()).toEqual(capabilities)
+    if (authType === 'none')
+      expect(provider.authRef).toBeNull()
   })
 
   it('拒绝明文密钥字段', async () => {
-    h3Mocks.readBody.mockResolvedValue({
-      ...tencentTranslateProviderBody(),
-      secretKey: 'plain-secret',
-    })
+    h3Mocks.readBody.mockResolvedValue({ ...tencentTranslateProviderBody(), secretKey: 'plain-secret' })
 
-    await expect(createProviderHandler(makeEvent())).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: expect.stringContaining('authRef'),
-    })
-
+    await expect(createProviderHandler(makeEvent())).rejects.toMatchObject({ statusCode: 400 })
     expect(state.db?.providers.size).toBe(0)
   })
 
-  it('Provider CRUD 只接受 secure://providers/<slug> authRef', async () => {
-    h3Mocks.readBody.mockResolvedValue({
-      ...tencentTranslateProviderBody(),
-      authRef: 'secure://other/tencent-cloud-mt-main',
-    })
+  it('创建和编辑 provider 拒绝调用者直接写入 authRef', async () => {
+    h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
+    const { provider } = await createProviderHandler(makeEvent())
+    h3Mocks.getRouterParam.mockReturnValue(provider.id)
+    const before = await getProviderRegistryEntry(makeEvent(), provider.id)
 
-    await expect(createProviderHandler(makeEvent())).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: expect.stringContaining('secure://providers'),
-    })
+    h3Mocks.readBody.mockResolvedValue({ ...tencentTranslateProviderBody(), authRef: 'secure://providers/shared-slot' })
+    await expect(createProviderHandler(makeEvent())).rejects.toMatchObject({ statusCode: 400 })
+    h3Mocks.readBody.mockResolvedValue({ authRef: 'secure://providers/shared-slot' })
+    await expect(patchProviderHandler(makeEvent())).rejects.toMatchObject({ statusCode: 400 })
 
-    expect(state.db?.providers.size).toBe(0)
+    expect(await getProviderRegistryEntry(makeEvent(), provider.id)).toEqual(before)
+    expect(state.db?.providers.size).toBe(1)
   })
 
-  it('凭证绑定接口将 secret_pair 写入 D1 密文 secure store', async () => {
-    h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
-      credentials: {
-        secretId: 'AKID-unit-test',
-        secretKey: 'secret-key-unit-test',
-      },
-    })
+  it('同名且共享历史 authRef 的 provider 轮换密钥时只更新目标 provider', async () => {
+    state.realDb = createSqliteD1()
+    const event = makeEvent()
+    const legacyRef = 'secure://providers/legacy-shared-name'
+    const original = { secretId: 'AKID-original', secretKey: 'original-secret' }
+    const rotated = { secretId: 'AKID-rotated', secretKey: 'rotated-secret' }
+    const first = await createProviderRegistryEntry(event, { ...tencentTranslateProviderBody(), authRef: legacyRef }, 'admin_1')
+    const second = await createProviderRegistryEntry(event, { ...tencentTranslateProviderBody(), authRef: legacyRef }, 'admin_1')
+    await storeProviderCredential(event, { authRef: legacyRef, authType: 'secret_pair', credentials: original }, 'admin_1')
 
-    const result = await storeCredentialHandler(makeEvent())
-    const row = [...(state.db?.credentials.values() ?? [])][0]
+    h3Mocks.readBody.mockResolvedValue({ providerId: first.id, credentials: rotated })
+    expect(await storeCredentialHandler(event)).toEqual({ success: true, hasCredential: true })
+    const changed = (await getProviderRegistryEntry(event, first.id))!
+    const untouched = (await getProviderRegistryEntry(event, second.id))!
 
-    expect(result).toMatchObject({
-      success: true,
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      backend: 'd1-encrypted',
-      degraded: false,
-    })
-    expect(row?.encrypted_value).toContain('A256GCM')
-    expect(row?.encrypted_value).not.toContain('AKID-unit-test')
-    expect(row?.encrypted_value).not.toContain('secret-key-unit-test')
+    expect(changed.authRef).toMatch(/^secure:\/\/providers\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+    expect(untouched).toEqual(second)
+    expect(await resolveProviderCredential(event, changed.authRef!)).toMatchObject(rotated)
+    expect(await resolveProviderCredential(event, untouched.authRef!)).toMatchObject(original)
+
+    h3Mocks.readBody.mockResolvedValue({ providerId: first.id, credentials: { secretId: 'AKID-again', secretKey: 'again-secret' } })
+    await storeCredentialHandler(event)
+    const changedAgain = (await getProviderRegistryEntry(event, first.id))!
+    expect(changedAgain.authRef).not.toBe(changed.authRef)
+    expect(await resolveProviderCredential(event, changedAgain.authRef!)).toMatchObject({ secretId: 'AKID-again', secretKey: 'again-secret' })
+    expect(await resolveProviderCredential(event, legacyRef)).toMatchObject(original)
+    const encryptedRows = state.realDb.sqlite.prepare('SELECT encrypted_value FROM provider_secure_store').all()
+    for (const secret of [original.secretId, original.secretKey, rotated.secretId, rotated.secretKey, 'again-secret'])
+      expect(JSON.stringify(encryptedRows)).not.toContain(secret)
   })
 
-  it('凭证绑定接口拒绝非法 authRef 与 schema 不匹配', async () => {
-    h3Mocks.readBody.mockResolvedValue({
-      authRef: 'plain://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
-      credentials: {
-        secretId: 'AKID-unit-test',
-        secretKey: 'secret-key-unit-test',
-      },
-    })
+  it('凭证 schema 由目标 provider 决定，伪造 authType 不能改变认证类型', async () => {
+    h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
+    const { provider } = await createProviderHandler(makeEvent())
+    h3Mocks.readBody.mockResolvedValue({ providerId: provider.id, authType: 'api_key', credentials: { apiKey: 'wrong-shape' } })
 
-    await expect(storeCredentialHandler(makeEvent())).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: expect.stringContaining('secure://providers'),
-    })
+    await expect(storeCredentialHandler(makeEvent())).rejects.toMatchObject({ statusCode: 400, statusMessage: expect.stringContaining('secretId') })
 
-    h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
-      credentials: {
-        apiKey: 'wrong-shape',
-      },
-    })
-
-    await expect(storeCredentialHandler(makeEvent())).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: expect.stringContaining('secretId'),
-    })
+    expect(state.db?.credentials.size).toBe(0)
+    expect((await getProviderRegistryEntry(makeEvent(), provider.id))?.authRef).toBe(provider.authRef)
   })
 
-  it('生产环境缺少 secure-store master key 时拒绝绑定', async () => {
+  it('凭证接口拒绝没有 providerId 的裸 authRef 请求且不覆写已有凭证', async () => {
+    state.realDb = createSqliteD1()
+    const event = makeEvent()
+    const authRef = 'secure://providers/do-not-overwrite'
+    const original = { apiKey: 'original-api-key' }
+    await storeProviderCredential(event, { authRef, authType: 'api_key', credentials: original }, 'admin_1')
+    h3Mocks.readBody.mockResolvedValue({ authRef, authType: 'api_key', credentials: { apiKey: 'attacker-api-key' } })
+
+    await expect(storeCredentialHandler(event)).rejects.toMatchObject({ statusCode: 404 })
+    expect(await resolveProviderCredential(event, authRef)).toMatchObject(original)
+  })
+
+  it('未授权调用不能列出 provider 或轮换凭证', async () => {
+    state.realDb = createSqliteD1()
+    h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
+    const { provider } = await createProviderHandler(makeEvent())
+    const denied = Object.assign(new Error('Administrator required.'), { statusCode: 403 })
+    authMocks.requireAdmin.mockRejectedValue(denied)
+    h3Mocks.readBody.mockResolvedValue({ providerId: provider.id, credentials: { secretId: 'AKID-denied', secretKey: 'denied-secret' } })
+
+    await expect(storeCredentialHandler(makeEvent())).rejects.toMatchObject({ statusCode: 403 })
+    await expect(listProvidersHandler(makeEvent())).rejects.toMatchObject({ statusCode: 403 })
+    expect(await getProviderRegistryEntry(makeEvent(), provider.id)).toEqual(provider)
+    expect(await resolveProviderCredential(makeEvent(), provider.authRef)).toBeNull()
+  })
+
+  it('列表只投影凭证是否存在，即使密文不可解密也不读取或泄漏明文', async () => {
+    state.realDb = createSqliteD1()
+    h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
+    const { provider } = await createProviderHandler(makeEvent())
+    expect((await listProvidersHandler(makeEvent())).providers[0].hasCredential).toBe(false)
+    h3Mocks.readBody.mockResolvedValue({ providerId: provider.id, credentials: { secretId: 'AKID-list-private', secretKey: 'list-private-secret' } })
+    await storeCredentialHandler(makeEvent())
+    const bound = (await getProviderRegistryEntry(makeEvent(), provider.id))!
+    state.realDb.sqlite.prepare('UPDATE provider_secure_store SET encrypted_value = ? WHERE auth_ref = ?').run('unreadable-ciphertext', bound.authRef!)
+
+    const result = await listProvidersHandler(makeEvent())
+
+    expect(result.providers[0]).toMatchObject({ id: provider.id, hasCredential: true })
+    const serialized = JSON.stringify(result)
+    for (const secret of ['AKID-list-private', 'list-private-secret', 'unreadable-ciphertext', 'secure://providers/'])
+      expect(serialized).not.toContain(secret)
+  })
+
+  it('生产环境缺少 secure-store master key 时拒绝绑定且保留旧引用', async () => {
+    h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
+    const { provider } = await createProviderHandler(makeEvent())
     const originalNodeEnv = process.env.NODE_ENV
     const originalSecureStoreKey = process.env.PROVIDER_REGISTRY_SECURE_STORE_KEY
     try {
       process.env.NODE_ENV = 'production'
       delete process.env.PROVIDER_REGISTRY_SECURE_STORE_KEY
-      importsMocks.useRuntimeConfig.mockReturnValue({
-        providerRegistry: {},
-      })
-      h3Mocks.readBody.mockResolvedValue({
-        authRef: 'secure://providers/tencent-cloud-mt-main',
-        authType: 'secret_pair',
-        credentials: {
-          secretId: 'AKID-unit-test',
-          secretKey: 'secret-key-unit-test',
-        },
-      })
+      importsMocks.useRuntimeConfig.mockReturnValue({ providerRegistry: {} })
+      h3Mocks.readBody.mockResolvedValue({ providerId: provider.id, credentials: { secretId: 'AKID-unit-test', secretKey: 'secret-key-unit-test' } })
 
-      await expect(storeCredentialHandler(makeEvent())).rejects.toMatchObject({
-        statusCode: 500,
-        statusMessage: expect.stringContaining('secure store key'),
-      })
+      await expect(storeCredentialHandler(makeEvent())).rejects.toMatchObject({ statusCode: 500, statusMessage: expect.stringContaining('secure store key') })
+      expect((await getProviderRegistryEntry(makeEvent(), provider.id))?.authRef).toBe(provider.authRef)
+      expect(state.db?.credentials.size).toBe(0)
     }
     finally {
-      process.env.NODE_ENV = originalNodeEnv
+      if (originalNodeEnv == null)
+        delete process.env.NODE_ENV
+      else
+        process.env.NODE_ENV = originalNodeEnv
       if (originalSecureStoreKey == null)
         delete process.env.PROVIDER_REGISTRY_SECURE_STORE_KEY
       else
         process.env.PROVIDER_REGISTRY_SECURE_STORE_KEY = originalSecureStoreKey
     }
-  })
-
-  it('非生产环境缺少 secure-store master key 时允许降级 fallback', async () => {
-    importsMocks.useRuntimeConfig.mockReturnValue({
-      providerRegistry: {},
-    })
-    h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
-      credentials: {
-        secretId: 'AKID-unit-test',
-        secretKey: 'secret-key-unit-test',
-      },
-    })
-
-    const result = await storeCredentialHandler(makeEvent())
-
-    expect(result).toMatchObject({
-      success: true,
-      degraded: true,
-    })
   })
 
   it('列表接口返回 provider 与 capabilities', async () => {
@@ -318,27 +349,15 @@ describe('/api/dashboard/provider-registry', () => {
             reason: 'adapter-ready',
           }),
         }),
-        expect.objectContaining({ capability: 'image.translate' }),
+        expect.objectContaining({ capability: 'image.translate.e2e' }),
       ]),
     })
   })
 
-  it('创建 provider 时拒绝 adapter 不支持的 capability', async () => {
-    h3Mocks.readBody.mockResolvedValue({
-      ...tencentTranslateProviderBody(),
-      capabilities: [
-        {
-          capability: 'speech.transcribe',
-          schemaRef: 'nexus://schemas/provider/speech-transcribe.v1',
-          metering: { unit: 'audio_second' },
-        },
-      ],
-    })
+  it.each(['anthropic', 'unsupported-adapter'])('拒绝没有真实 runtime adapter 的协议 %s', async (adapterKey) => {
+    h3Mocks.readBody.mockResolvedValue({ ...tencentTranslateProviderBody(), metadata: { adapterKey } })
 
-    await expect(createProviderHandler(makeEvent())).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: expect.stringContaining('does not support capability'),
-    })
+    await expect(createProviderHandler(makeEvent())).rejects.toMatchObject({ statusCode: 400 })
     expect(state.db?.providers.size).toBe(0)
   })
 
@@ -350,7 +369,6 @@ describe('/api/dashboard/provider-registry', () => {
     const result = await listCapabilitiesHandler(makeEvent())
 
     expect(result.capabilities.map((item: any) => item.capability)).toEqual([
-      'image.translate',
       'image.translate.e2e',
       'text.translate',
     ])
@@ -628,62 +646,22 @@ describe('/api/dashboard/provider-registry', () => {
     expect(serialized).not.toContain('secure://providers')
   })
 
-  it('可以更新 status 与 capabilities', async () => {
+  it('切换协议时同步更新认证与能力，不保留旧协议或调用者伪造能力', async () => {
     h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
     const created = await createProviderHandler(makeEvent())
-
     h3Mocks.getRouterParam.mockReturnValue(created.provider.id)
     h3Mocks.readBody.mockResolvedValue({
       status: 'degraded',
-      metadata: {
-        prdScene: 'screenshot-translation',
-        adapterKey: 'tencent-translation',
-        owner: 'ops',
-      },
-      capabilities: [
-        {
-          capability: 'text.translate',
-          schemaRef: 'nexus://schemas/provider/text-translate.v1',
-          metering: {
-            unit: 'character',
-            unitCost: 0.01,
-          },
-          constraints: {
-            maxTextLength: 3000,
-          },
-          metadata: {
-            qualityTier: 'standard',
-          },
-        },
-      ],
+      vendor: 'tencent-cloud',
+      authType: 'secret_pair',
+      metadata: { adapterKey: 'exchange-rate', owner: 'ops' },
+      capabilities: [{ capability: 'text.translate' }],
     })
 
-    const result = await patchProviderHandler(makeEvent())
+    const { provider } = await patchProviderHandler(makeEvent())
 
-    expect(result.provider).toMatchObject({
-      id: created.provider.id,
-      status: 'degraded',
-      metadata: {
-        prdScene: 'screenshot-translation',
-        owner: 'ops',
-      },
-      capabilities: [
-        {
-          capability: 'text.translate',
-          metering: {
-            unit: 'character',
-            unitCost: 0.01,
-          },
-          constraints: {
-            maxTextLength: 3000,
-          },
-          metadata: {
-            qualityTier: 'standard',
-          },
-        },
-      ],
-    })
-    expect(result.provider.capabilities).toHaveLength(1)
+    expect(provider).toMatchObject({ id: created.provider.id, vendor: 'exchange-rate', authType: 'none', authRef: null, status: 'degraded', metadata: { adapterKey: 'exchange-rate', owner: 'ops' } })
+    expect(provider.capabilities.map((item: { capability: string }) => item.capability).sort()).toEqual(['fx.convert', 'fx.rate.latest'])
   })
 
   it('可以通过独立 API 新增 adapter 支持的 provider capability', async () => {
@@ -693,14 +671,13 @@ describe('/api/dashboard/provider-registry', () => {
       vendor: 'openai',
       status: 'enabled',
       authType: 'api_key',
-      authRef: 'secure://providers/openai-capability-provider',
       ownerScope: 'system',
       endpoint: 'https://api.openai.com/v1',
       metadata: { adapterKey: 'openai-compatible', models: ['gpt-4.1-mini'], defaultModel: 'gpt-4.1-mini' },
-      // An empty list takes the adapter's whole catalog, vision.ocr included.
       capabilities: [{ capability: 'text.chat' }],
     })
     const created = await createProviderHandler(makeEvent())
+    await updateProviderRegistryEntry(makeEvent(), created.provider.id, { capabilities: [{ capability: 'chat.completion' }] })
 
     h3Mocks.getRouterParam.mockImplementation((_event, name) => {
       if (name === 'id')
@@ -777,7 +754,7 @@ describe('/api/dashboard/provider-registry', () => {
   it('独立 capability API 可以删除单个 capability 而不影响同 provider 其他能力', async () => {
     h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
     const created = await createProviderHandler(makeEvent())
-    const imageCapability = created.provider.capabilities.find((item: any) => item.capability === 'image.translate')
+    const imageCapability = created.provider.capabilities.find((item: { capability: string }) => item.capability === 'image.translate.e2e')
 
     h3Mocks.getRouterParam.mockImplementation((_event, name) => {
       if (name === 'id')
@@ -793,7 +770,6 @@ describe('/api/dashboard/provider-registry', () => {
 
     expect(deleted).toEqual({ success: true })
     expect(listed.capabilities.map((item: any) => item.capability)).toEqual([
-      'image.translate.e2e',
       'text.translate',
     ])
   })
@@ -837,7 +813,7 @@ describe('/api/dashboard/provider-registry', () => {
   it('独立 capability API 拒绝重复 capability', async () => {
     h3Mocks.readBody.mockResolvedValue(tencentTranslateProviderBody())
     const created = await createProviderHandler(makeEvent())
-    const imageCapability = created.provider.capabilities.find((item: any) => item.capability === 'image.translate')
+    const imageCapability = created.provider.capabilities.find((item: { capability: string }) => item.capability === 'image.translate.e2e')
 
     h3Mocks.getRouterParam.mockImplementation((_event, name) => {
       if (name === 'id')
@@ -871,8 +847,7 @@ describe('/api/dashboard/provider-registry', () => {
     const created = await createProviderHandler(makeEvent())
 
     h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
+      providerId: created.provider.id,
       credentials: {
         secretId: 'AKID-unit-test',
         secretKey: 'secret-key-unit-test',
@@ -923,8 +898,7 @@ describe('/api/dashboard/provider-registry', () => {
     const created = await createProviderHandler(makeEvent())
 
     h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
+      providerId: created.provider.id,
       credentials: {
         secretId: 'AKID-unit-test',
         secretKey: 'secret-key-unit-test',
@@ -997,8 +971,7 @@ describe('/api/dashboard/provider-registry', () => {
     const created = await createProviderHandler(makeEvent())
 
     h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
+      providerId: created.provider.id,
       credentials: {
         secretId: 'AKID-unit-test',
         secretKey: 'secret-key-unit-test',
@@ -1027,7 +1000,6 @@ describe('/api/dashboard/provider-registry', () => {
       vendor: 'openai',
       status: 'enabled',
       authType: 'api_key',
-      authRef: 'secure://providers/intelligence-ip_ai_provider_1',
       ownerScope: 'user',
       ownerId: 'admin_1',
       endpoint: 'https://api.openai.com/v1',
@@ -1091,7 +1063,7 @@ describe('/api/dashboard/provider-registry', () => {
     })
     expect(healthMocks.recordProviderHealthCheck).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ id: created.provider.id, vendor: 'openai' }),
+      expect.objectContaining({ id: created.provider.id, vendor: created.provider.vendor }),
       expect.objectContaining({
         success: true,
         providerId: created.provider.id,
@@ -1107,7 +1079,6 @@ describe('/api/dashboard/provider-registry', () => {
       vendor: 'openai',
       status: 'enabled',
       authType: 'api_key',
-      authRef: 'secure://providers/intelligence-ip_ai_models_provider',
       ownerScope: 'user',
       ownerId: 'admin_1',
       endpoint: 'https://api.openai.com/v1',
@@ -1127,8 +1098,7 @@ describe('/api/dashboard/provider-registry', () => {
     const created = await createProviderHandler(makeEvent())
 
     h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/intelligence-ip_ai_models_provider',
-      authType: 'api_key',
+      providerId: created.provider.id,
       credentials: {
         apiKey: 'sk-models-unit-test',
       },
@@ -1170,7 +1140,6 @@ describe('/api/dashboard/provider-registry', () => {
       vendor: 'openai',
       status: 'enabled',
       authType: 'api_key',
-      authRef: 'secure://providers/intelligence-ip_ai_vision_provider',
       ownerScope: 'user',
       ownerId: 'admin_1',
       endpoint: 'https://api.openai.com/v1',
@@ -1231,7 +1200,7 @@ describe('/api/dashboard/provider-registry', () => {
     })
     expect(healthMocks.recordProviderHealthCheck).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ id: created.provider.id, vendor: 'openai' }),
+      expect.objectContaining({ id: created.provider.id, vendor: created.provider.vendor }),
       expect.objectContaining({
         capability: 'vision.ocr',
         requestId: 'req_ocr_probe',
@@ -1263,8 +1232,7 @@ describe('/api/dashboard/provider-registry', () => {
     const created = await createProviderHandler(makeEvent())
 
     h3Mocks.readBody.mockResolvedValue({
-      authRef: 'secure://providers/tencent-cloud-mt-main',
-      authType: 'secret_pair',
+      providerId: created.provider.id,
       credentials: {
         secretId: 'AKID-unit-test',
         secretKey: 'secret-key-unit-test',
@@ -1272,7 +1240,8 @@ describe('/api/dashboard/provider-registry', () => {
     })
     await storeCredentialHandler(makeEvent())
 
-    const result = await tencentProviderUtils.invokeTencentImageTranslate(makeEvent() as any, created.provider, {
+    const boundProvider = (await getProviderRegistryEntry(makeEvent(), created.provider.id))!
+    const result = await tencentProviderUtils.invokeTencentImageTranslate(makeEvent(), boundProvider, {
       imageBase64: 'source-image-base64',
       targetLang: 'zh',
     }, 'image.translate.e2e')

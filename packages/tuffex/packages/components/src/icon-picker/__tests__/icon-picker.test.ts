@@ -3,7 +3,10 @@ import type { VueWrapper } from '@vue/test-utils'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
+import TxIcon from '../../icon/src/TxIcon.vue'
+import { TX_ICON_CONFIG_KEY } from '../../icon/src/types'
 import { formatIconIdentifier, parseIconIdentifier } from '../src/identifier'
+import TxIconPicker from '../src/TxIconPicker.vue'
 import TxIconPickerPanel from '../src/TxIconPickerPanel.vue'
 
 describe('icon identifier', () => {
@@ -51,6 +54,7 @@ describe('icon identifier', () => {
 })
 
 const LABELS: IconPickerLabels = {
+  ai: 'AI',
   emoji: 'Emoji',
   icon: 'Icons',
   brand: 'Brands',
@@ -74,6 +78,37 @@ const MESSAGE: IconPickerEntry = {
   id: 'class:i-ri-message-3-line',
   icon: { type: 'class', value: 'i-ri-message-3-line' },
   keywords: 'chat message',
+}
+
+const BRAND_GITHUB: IconPickerEntry = {
+  id: 'class:i-simple-icons-github',
+  icon: { type: 'class', value: 'i-simple-icons-github' },
+  keywords: 'github code hosting',
+}
+const AI_COPILOT: IconPickerEntry = {
+  id: 'class:i-ri-sparkling-2-line',
+  icon: { type: 'class', value: 'i-ri-sparkling-2-line' },
+  keywords: 'copilot ai assistant',
+}
+const HOST_FILE: IconPickerEntry = {
+  id: 'file:/icons/host.png',
+  icon: { type: 'file', value: '/icons/host.png' },
+  keywords: 'host file',
+}
+const HOST_URL: IconPickerEntry = {
+  id: 'url:/icons/host.svg',
+  icon: { type: 'url', value: '/icons/host.svg' },
+  keywords: 'host url',
+}
+
+const MULTI_CATALOG = {
+  icon: [MESSAGE],
+  brand: [BRAND_GITHUB],
+  ai: [AI_COPILOT],
+}
+
+const HOST_CATALOG = {
+  icon: [ASSISTANT, HOST_FILE, HOST_URL],
 }
 
 /** An explicit catalog, so no assertion depends on the bundled rows. */
@@ -147,6 +182,77 @@ describe('txIconPickerPanel search', () => {
     await nextTick()
 
     expect(wrapper.findAll('.tx-icon-picker-panel__cell')).toHaveLength(2)
+  })
+
+  it('searches AI, brand, and icon sections and selects each actual entry id', async () => {
+    const cases = [
+      ['message', MESSAGE],
+      ['github', BRAND_GITHUB],
+      ['copilot', AI_COPILOT],
+    ] as const
+
+    for (const [query, expected] of cases) {
+      const wrapper = mountPanel({
+        sections: ['icon', 'brand', 'ai'],
+        catalog: MULTI_CATALOG,
+      })
+      await search(wrapper, query)
+
+      const cells = wrapper.findAll('.tx-icon-picker-panel__cell')
+      expect(cells).toHaveLength(1)
+      expect(cells[0]!.attributes('title')).toBe(expected.icon.value)
+      await cells[0]!.trigger('click')
+      expect(wrapper.emitted('select')).toEqual([[expected]])
+    }
+  })
+})
+
+describe('txIconPicker host icon config', () => {
+  it('preserves host transports and gives a host class glyph precedence', async () => {
+    const hostResolver = (value: string, type: 'url' | 'file') => `host://${type}${value}`
+    const hostSvgFetcher = async () => '<svg><title>PICKER_HOST_SVG</title></svg>'
+    const hostGlyph = (className: string) => className === ASSISTANT.icon.value
+      ? { d: 'M0 0H32V16H0Z', viewBox: '0 0 32 16' }
+      : null
+
+    const wrapper = mount(TxIconPicker, {
+      props: {
+        inline: true,
+        sections: ['icon'],
+        catalog: HOST_CATALOG,
+        shapeSelectable: false,
+      },
+      global: {
+        provide: {
+          [TX_ICON_CONFIG_KEY as symbol]: {
+            urlResolver: hostResolver,
+            svgFetcher: hostSvgFetcher,
+            fileProtocol: 'tfile://',
+            classGlyph: hostGlyph,
+          },
+        },
+      },
+    })
+    await nextTick()
+
+    const hostPath = wrapper.find('path[d="M0 0H32V16H0Z"]')
+    expect(hostPath.exists()).toBe(true)
+    expect((hostPath.element.closest('svg') as SVGSVGElement | null)?.getAttribute('viewBox')).toBe('0 0 32 16')
+    expect(wrapper.find('img[src="host://file/icons/host.png"]').exists()).toBe(true)
+
+    const uncolored = mount(TxIcon, {
+      props: { icon: HOST_URL.icon, colorful: false },
+      global: {
+        provide: {
+          [TX_ICON_CONFIG_KEY as symbol]: { svgFetcher: hostSvgFetcher },
+        },
+      },
+    })
+    await nextTick()
+    await nextTick()
+    const mask = uncolored.find('.tuff-icon__svg-mask')
+    expect(mask.exists()).toBe(true)
+    expect(mask.attributes('style')).toContain('PICKER_HOST_SVG')
   })
 })
 
@@ -227,15 +333,22 @@ describe('txIconPickerPanel sections', () => {
     expect(wrapper.findAll('.tx-icon-picker-panel__cell')).toHaveLength(2)
   })
 
-  it('reports the shape the user pressed', async () => {
+  it('reports a selected shape and keeps one current radio', async () => {
     const wrapper = mountPanel({ shape: 'rounded' })
     const shapes = wrapper.findAll('.tx-icon-picker-panel__shape')
+    const checkedShapes = shapes.filter(shape => shape.attributes('aria-checked') === 'true')
 
-    // The row is a radio group: exactly one shape is current, and it is the
-    // one the host passed, not whatever was pressed last.
-    expect(shapes.map(shape => shape.attributes('aria-checked'))).toEqual(['false', 'true', 'false'])
-    await shapes[0].trigger('click')
+    expect(checkedShapes).toHaveLength(1)
+    expect(checkedShapes[0]!.attributes('aria-label')).toBe('rounded')
 
-    expect(wrapper.emitted('select-shape')).toEqual([['circle']])
+    const target = shapes.find(shape => shape.attributes('aria-label') === 'heart')
+    expect(target).toBeDefined()
+    await target!.trigger('click')
+
+    expect(wrapper.emitted('select-shape')).toEqual([['heart']])
+    await wrapper.setProps({ shape: 'heart' })
+    const updatedCheckedShapes = shapes.filter(shape => shape.attributes('aria-checked') === 'true')
+    expect(updatedCheckedShapes).toHaveLength(1)
+    expect(updatedCheckedShapes[0]!.attributes('aria-label')).toBe('heart')
   })
 })

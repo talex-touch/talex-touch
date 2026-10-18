@@ -15,6 +15,7 @@ import {
 } from '~/modules/intelligence/nexus-provider'
 import { getProviderChannelType } from '~/modules/intelligence/provider-channel-type'
 import { resolveProviderIcon } from '~/modules/intelligence/provider-icon-override'
+import { provideIconPickerGlyphs } from '@talex-touch/tuffex/icon-picker'
 
 const props = defineProps<{
   capabilityId?: string
@@ -28,6 +29,7 @@ const emits = defineEmits<{
 }>()
 
 const { t } = useI18n()
+provideIconPickerGlyphs()
 
 /**
  * The rows this list draws.

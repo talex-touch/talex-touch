@@ -5,6 +5,7 @@ import type {
   ConversationWorkspaceMode,
   ConversationWorkspaceSettings,
   ConversationWorkspaceState,
+  WorkspaceForkRequest,
   WorkspaceMessageUpdate,
   WorkspaceQueuedInput,
   WorkspaceSubmitDisposition
@@ -143,7 +144,7 @@ export interface UseAgentWorkspaceReturn {
   setDraftProfile: (profileId: string | undefined) => void
   resume: () => Promise<void>
   queueAction: (queueId: string, action: WorkspaceQueueAction) => Promise<void>
-  fork: (request: { messageId?: string; mode?: ConversationWorkspaceMode }) => Promise<string>
+  fork: (request: Omit<WorkspaceForkRequest, 'conversationId'>) => Promise<string>
   approveRun: () => Promise<void>
   rejectRun: () => Promise<void>
   runDecision: Ref<'approve' | 'reject' | null>
@@ -533,10 +534,7 @@ export function useAgentWorkspace(options: UseAgentWorkspaceOptions): UseAgentWo
     }
   }
 
-  async function fork(request: {
-    messageId?: string
-    mode?: ConversationWorkspaceMode
-  }): Promise<string> {
+  async function fork(request: Omit<WorkspaceForkRequest, 'conversationId'>): Promise<string> {
     const conversationId = currentId()
     if (!conversationId) throw new Error('CONVERSATION_WORKSPACE_UNAVAILABLE')
     try {

@@ -15,6 +15,19 @@ import { computeSubscriptionActive } from '~/components/base/user-subscription'
 import { getAuthBaseUrl } from '~/modules/auth/auth-env'
 import { useAuth } from '~/modules/auth/useAuth'
 
+const props = withDefaults(
+  defineProps<{
+    /**
+     * Renders the compact name/email row that opens the account dialog. Hosts with their own entry
+     * (the shell avatar) turn it off, pass their trigger as `reference` and open through the
+     * exposed `openProfileDialog`.
+     */
+    showTrigger?: boolean
+    reference?: HTMLElement | null
+  }>(),
+  { showTrigger: true, reference: null }
+)
+const emit = defineEmits<{ 'visible-change': [visible: boolean] }>()
 const { t } = useI18n()
 const { openLoginSettings, requestStepUp } = useAuth()
 const { isLoggedIn, displayId, displayName, displayEmail, profileBio, avatarUrl, displayInitial } =
@@ -174,11 +187,19 @@ watch(profileVisible, (visible) => {
   if (!visible) {
     profileEditing.value = false
   }
+  emit('visible-change', visible)
 })
+
+function closeProfileDialog() {
+  profileVisible.value = false
+}
+
+defineExpose({ openProfileDialog, closeProfileDialog })
 </script>
 
 <template>
   <div
+    v-if="props.showTrigger"
     ref="profileTriggerRef"
     :class="{ active: isLoggedIn, clickable: isLoggedIn }"
     class="FlatUserInfo"
@@ -209,7 +230,7 @@ watch(profileVisible, (visible) => {
   </div>
   <FlipDialog
     v-model="profileVisible"
-    :reference="profileTriggerRef"
+    :reference="props.reference ?? profileTriggerRef"
     :header-title="t('userProfile.title', 'Account')"
     size="lg"
   >

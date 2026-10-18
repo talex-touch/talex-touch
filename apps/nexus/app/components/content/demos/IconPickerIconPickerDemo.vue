@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { IconPickerShape } from '@talex-touch/tuffex/icon-picker'
-import { TxIconPicker } from '@talex-touch/tuffex/icon-picker'
+import { AI_CATALOG, TxIconPicker } from '@talex-touch/tuffex/icon-picker'
 import { computed, ref } from 'vue'
 
 const { locale } = useI18n()
@@ -8,10 +8,9 @@ const { locale } = useI18n()
 const identifier = ref('emoji:🚀')
 const shape = ref<IconPickerShape>('rounded')
 
-// `carbon` is one of the four collections this app installs. The picker's own catalog is
-// `ri`/`simple`, which Nexus does not carry, so a class from there renders as an empty box —
-// check-icon-collections is the gate that catches it.
-const inlineIdentifier = ref('class:i-carbon-crop-growth')
+// A row of the bundled catalog. Nexus installs none of the collections it comes
+// from; the picker draws its own catalog, so the row renders here all the same.
+const inlineIdentifier = ref(AI_CATALOG[0]?.id ?? '')
 
 const copy = computed(() => {
   if (locale.value === 'zh') {
@@ -46,7 +45,7 @@ const copy = computed(() => {
 
     <div class="flex flex-col gap-2">
       <span class="text-xs text-[var(--tx-text-color-secondary)]">{{ copy.inline }}</span>
-      <TxIconPicker v-model="inlineIdentifier" inline :sections="['icon', 'brand']" />
+      <TxIconPicker v-model="inlineIdentifier" inline :sections="['ai', 'icon', 'brand']" />
       <code class="text-xs text-[var(--tx-text-color-secondary)]">
         {{ copy.stored }}: {{ inlineIdentifier || '""' }}
       </code>

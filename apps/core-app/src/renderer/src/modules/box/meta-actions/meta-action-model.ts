@@ -212,6 +212,24 @@ const BUILTIN_SPECS: Readonly<Record<string, HostActionSpec>> = {
     label: key('corebox.actions.copyFile'),
     glyph: glyph('copy')
   },
+  'copy-to': {
+    slot: 'open',
+    rank: 130,
+    label: key('corebox.actions.copyTo'),
+    glyph: glyph('copy')
+  },
+  'move-to': {
+    slot: 'open',
+    rank: 135,
+    label: key('corebox.actions.moveTo'),
+    glyph: glyph('folder-open')
+  },
+  'move-to-trash': {
+    slot: 'open',
+    rank: 150,
+    label: key('corebox.actions.moveToTrash'),
+    glyph: glyph('delete')
+  },
   'system-share': {
     slot: 'quick-flow',
     rank: 30,
@@ -532,6 +550,9 @@ export function generateBuiltinActions(item: TuffItem): MetaAction[] {
     actions.push(builtin('open-terminal', 'Open in terminal', 'quick-flow'))
     actions.push(builtin('copy-file', 'Copy file', 'open'))
     actions.push(builtin('system-share', 'Share', 'quick-flow'))
+    actions.push(builtin('copy-to', 'Copy to', 'open'))
+    actions.push(builtin('move-to', 'Move to', 'open'))
+    actions.push(builtin('move-to-trash', 'Move to Trash', 'open'))
     if (filePath.endsWith('.app') || filePath.endsWith('.bundle')) {
       actions.push(builtin('show-package-contents', 'Show package contents', 'open'))
     }

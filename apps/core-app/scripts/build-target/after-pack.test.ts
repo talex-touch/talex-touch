@@ -292,7 +292,8 @@ describe('verifyPackagedNativeAddons', () => {
       'tuff_native_ocr.node',
       'tuff_native_audio.node',
       'tuff-native-translation',
-      'tuff-native-update'
+      'tuff-native-update',
+      'tuff-browser-bridge'
     ])
     await fs.rm(path.join(releaseDir, 'tuff_native_audio.node'))
 
@@ -301,12 +302,28 @@ describe('verifyPackagedNativeAddons', () => {
     ).toThrow(/Packaged native addons missing from .*: tuff_native_audio\.node\./)
   })
 
+  it('rejects a strict darwin package whose browser bridge is missing', async () => {
+    const { appOutDir, releaseDir } = await createPackagedNativeAddonFixture([
+      'tuff_native_ocr.node',
+      'tuff_native_audio.node',
+      'tuff-native-translation',
+      'tuff-native-update',
+      'tuff-browser-bridge'
+    ])
+    await fs.rm(path.join(releaseDir, 'tuff-browser-bridge'))
+
+    expect(() =>
+      verifyPackagedNativeAddons({ appOutDir, electronPlatformName: 'darwin' }, { strict: true })
+    ).toThrow(/Packaged native addons missing from .*: tuff-browser-bridge\./)
+  })
+
   it('rejects a strict darwin package when only the translation helper is removed', async () => {
     const helperName = 'tuff-native-translation'
     const { appOutDir, releaseDir } = await createPackagedNativeAddonFixture([
       'tuff_native_ocr.node',
       'tuff_native_audio.node',
       'tuff-native-update',
+      'tuff-browser-bridge',
       helperName
     ])
     const context = { appOutDir, electronPlatformName: 'darwin' }
@@ -325,7 +342,8 @@ describe('verifyPackagedNativeAddons', () => {
     const { appOutDir, releaseDir } = await createPackagedNativeAddonFixture([
       'tuff_native_ocr.node',
       'tuff_native_audio.node',
-      'tuff-native-update'
+      'tuff-native-update',
+      'tuff-browser-bridge'
     ])
     await fs.rm(path.join(releaseDir, 'tuff_native_audio.node'))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -343,7 +361,8 @@ describe('verifyPackagedNativeAddons', () => {
   it('rejects a Win32 package that lost the Everything addon', async () => {
     const { appOutDir } = await createPackagedNativeAddonFixture([
       'tuff_native_ocr.node',
-      'tuff_native_audio.node'
+      'tuff_native_audio.node',
+      'tuff-browser-bridge.exe'
     ])
 
     expect(() =>
@@ -360,7 +379,8 @@ describe('verifyPackagedNativeAddons', () => {
         'tuff_native_ocr.node',
         'tuff_native_audio.node',
         'tuff-native-translation',
-        'tuff-native-update'
+        'tuff-native-update',
+        'tuff-browser-bridge'
       ])
       const helper = path.join(releaseDir, 'tuff-native-update')
       verifyPackagedNativeAddons({ appOutDir, electronPlatformName: 'darwin' }, { strict: false })

@@ -389,6 +389,11 @@ if (process.platform === 'darwin') {
   })
 }
 
+execFileSync(process.execPath, [path.join(__dirname, 'prepare-browser-connector.cjs')], {
+  env,
+  stdio: 'inherit'
+})
+
 // macOS 26/27 (Tahoe) can crash the Electron *browser* process with a V8
 // JIT-page fault (electron/electron#51351). app.commandLine (see precore.ts)
 // only reaches renderer/child V8 — the browser process's V8 is already

@@ -4,7 +4,7 @@ description: "A picker that returns an icon identifier string."
 category: Form
 status: beta
 since: 0.6.0
-tags: [icon, picker, emoji, brand, file]
+tags: [icon, picker, emoji, brand, ai, file]
 syncStatus: reviewed
 verified: true
 ---
@@ -27,7 +27,7 @@ code: |
 
   <template>
     <TxIconPicker v-model="identifier" v-model:shape="shape" shape-selectable />
-    <TxIconPicker v-model="identifier" inline :sections="['icon', 'brand']" />
+    <TxIconPicker v-model="identifier" inline :sections="['ai', 'icon', 'brand']" />
   </template>
 ---
 :::
@@ -36,6 +36,7 @@ code: |
 
 - Store the identifier as-is and resolve it at render time with `parseIconIdentifier`; don't split it into two columns that can disagree.
 - In modules that only read a stored value, import `parseIconIdentifier` from `@talex-touch/tuffex/icon-picker` without loading the panel.
+- When narrowing `sections`, keep `ai` if users pick model vendors: vendor marks and AI glyphs live there, not under Brands or Icons.
 - Turn `shapeSelectable` off when the host draws its own plate, or users pick a shape they never see.
 - Use `TxIconChip` to display a small icon plate; this component only chooses one.
 
@@ -46,9 +47,9 @@ code: |
 | Prop | Type | Default | Description |
 |------|------|---------|------|
 | `modelValue` | `string` | `''` | The icon identifier, bound with `v-model`. |
-| `shape` | `'circle' \| 'rounded' \| 'square'` | `'rounded'` | Plate shape, bound with `v-model:shape`. |
-| `sections` | `IconPickerSection[]` | all four | Sections to offer, in tab order; `file` appears as a choose-file button. |
-| `catalog` | `Partial<Record<'emoji' \| 'icon' \| 'brand', IconPickerEntry[]>>` | - | Replaces a section's bundled rows; hosts with their own icon set replace them whole. |
+| `shape` | `IconPickerShape` | `'rounded'` | Plate shape, bound with `v-model:shape`; `ICON_PICKER_SHAPES` lists all twelve. |
+| `sections` | `IconPickerSection[]` | all five | Sections to offer, in tab order: `emoji`, `icon`, `brand`, `ai`, and `file` as a choose-file button. |
+| `catalog` | `Partial<Record<IconPickerCatalogSection, IconPickerEntry[]>>` | - | Replaces a section's bundled rows; an entry's `category` groups it under a heading. |
 | `shapeSelectable` | `boolean` | `true` | Shows the shape row; turn off when the host draws its own plate. |
 | `fileChooser` | `() => Promise<string \| null>` | - | Host file dialog resolving to an absolute path, or `null` on cancel. |
 | `accept` | `string` | `'image/*'` | Accept list for the file dialog and the fallback input. |
@@ -56,7 +57,7 @@ code: |
 | `size` | `number` | `44` | Edge length of the trigger plate, in px. |
 | `placeholder` | `string` | `''` | The trigger's `aria-label`; falls back to the search label. |
 | `inline` | `boolean` | `false` | Renders the panel directly instead of behind a trigger. |
-| `labels` | `Partial<IconPickerLabels>` | English defaults | Section labels, search placeholder, and the clear and choose-file actions. |
+| `labels` | `Partial<IconPickerLabels>` | English defaults | Section, shape and category names, the search placeholder, and the actions. |
 
 ### Events
 
@@ -95,9 +96,16 @@ parseIconIdentifier('rocket.png')             // null
 parseIconIdentifier('🚀')                      // { type: 'emoji', value: '🚀' }
 ```
 
-## Safelisting the Catalog
+## Rendering a Picked Class
 
-Hosts on a utility-CSS engine must safelist `ICON_CATALOG_CLASSES`, or every icon in the grid renders as an empty box. Spread the module export rather than copying the strings.
+The picker draws its bundled classes from path data it ships, so its grid needs no icon CSS from the host. Outside the picker a picked `class:` value is only a class name: give `TxIcon` the picker's glyphs through `classGlyph`, or safelist `ICON_CATALOG_CLASSES` in the host's utility-CSS engine.
+
+```ts
+import { TX_ICON_CONFIG_KEY } from '@talex-touch/tuffex'
+import { resolveIconPickerGlyph } from '@talex-touch/tuffex/icon-picker'
+
+app.provide(TX_ICON_CONFIG_KEY, { classGlyph: resolveIconPickerGlyph })
+```
 
 ```ts
 import { ICON_CATALOG_CLASSES } from '@talex-touch/tuffex/icon-picker'
@@ -109,11 +117,17 @@ export default defineConfig({
 
 ## Overview
 
+- Search covers every section at once, the open tab first. It matches keywords, class names and category headings, tolerates a typo, and takes Chinese, full pinyin or initials (`火箭`, `huojian`, `hj`).
+- Focus stays in the search box: arrow keys move through the grid, Enter picks the highlighted cell (the top result while searching), and Esc clears the query before it closes the panel.
+- Browsing groups a section by category, with a row of shortcuts that jumps between them.
+- The trigger morphs from one plate outline to the next; under reduced motion it switches at once.
 - The file section depends on the host: pass `fileChooser` (for example an Electron `dialog.showOpenDialog` bridge); without it, a hidden `<input type="file">` yields a data URL.
-- Search matches `keywords`, not the id; the bundled keywords are bilingual (English and Chinese).
 - `shape` is presentational and stored separately; it is not part of the identifier.
 
 ## Technologies
 
-- Identifier helpers: `src/identifier.ts`.
+- Glyph path data is generated by `scripts/generate-icon-picker-data.mjs` and loaded per section the first time it is shown; the plate morphs through TxIconMorph's engine.
+- Remix Icon 4.8.0 data ships under Apache-2.0 (`REMIXICON-LICENSE`) and Simple Icons data under CC0-1.0; brand marks remain trademarks of their owners.
 - Source: `packages/tuffex/packages/components/src/icon-picker/`.
+
+<TuffDocSourceLink />

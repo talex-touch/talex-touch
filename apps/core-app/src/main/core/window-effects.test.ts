@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  BoxWindowOption,
-  MainWindowOption,
-  ScreenshotEditorWindowOption,
-  ScreenshotOverlayWindowOption
-} from '../config/default'
+import { BoxWindowOption, MainWindowOption, ScreenshotOverlayWindowOption } from '../config/default'
 import {
   OPAQUE_WINDOW_BACKGROUND,
   OPAQUE_WINDOW_ENV_VAR,
@@ -76,10 +71,9 @@ describe('opaque window escape hatch', () => {
     }
   })
 
-  it('leaves the shipped screenshot windows exactly as they are', () => {
+  it('leaves the shipped screenshot overlay exactly as it is', () => {
     expect(withOpaqueFallback(ScreenshotOverlayWindowOption, ON)).toBe(
       ScreenshotOverlayWindowOption
     )
-    expect(withOpaqueFallback(ScreenshotEditorWindowOption, ON)).toBe(ScreenshotEditorWindowOption)
   })
 })

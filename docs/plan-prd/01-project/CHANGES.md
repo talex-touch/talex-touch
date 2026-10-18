@@ -1,7 +1,28 @@
 # 变更日志
 
-> 更新时间：2026-10-13
+> 更新时间：2026-10-18
 > 定位：只保留当前阶段的高信号变更索引。早期流水记录已从文档树移除，可从 Git 历史追溯。
+
+## 2026-10-18
+
+### core-app: 修复缓存页键盘所有权与分叉配置污染
+
+- 渠道页的键盘组合函数在 KeepAlive 停用时解绑、恢复时幂等绑定，只拦截有回调的按键。真实浏览器对照确认：修前其他页面 Space 被吞、方向键仍触发旧页导航；修后原生按钮激活、离页释放、恢复单次导航与输入框按键均符合约定。
+- Agent profile 通过 typed fork 请求只覆盖子会话。HomePage 不再先写源会话；真实 SQLite 回归验证父 settings、revision、messages 不变，非法锚点拒绝后全库快照不变。相关 30 项回归通过。
+- 打包工具确认验收脚本移除旧权限胶囊、旧模型分组和动画层选择器。权限校验读取精确模式，不把 off 当 review；模型按 provider/model 身份选择。33 项脚本回归、42 项权限/模型组件回归通过；生产提交函数在真实浏览器的受控页面上验证 review 发送与 off 拒绝。该页面使用实际权限组件及受控 gateway，不是 packaged 完整验收。
+- 最终定向验证 5 套件／105 项通过，CoreApp Node/Web 类型检查通过。未启动第二个 Electron，未停止用户 dev，未修改正式会话数据或发布。
+- 只读实查本机官方 arm64 `2.4.15-beta.7`：Developer ID、deep strict codesign、Gatekeeper、公证、RSA 构建证明与物理 asar SHA 全部通过；截图/audio/OCR 原生资源实际存在。官方 manifest 同时列出 arm64/x64 DMG，但 beta.7 不含新的 atomic-swap helper，且相对 beta.6 的 `rollbackCompatible=false`；不能据此关闭新 OTA 源版本→目标版本及恢复验收。
+### nexus: 供应商配置简化与协议推导模型
+
+- 供应商表单由“协议”自动推导 vendor、authType 与真实 adapter 能力声明，不再手工维护能力多处同步；API Key 支持编辑页轮换，全新 UUID authRef 独立隔离，列表不泄漏内部存储引用。
+- 上游模型拉取支持增量候选选择，不再覆盖现有模型列表；场景绑定固定代码产品功能清单，种子不钉死供应商默认模型并保留已有的手动路由配置。
+- 补齐 `corebox.selection.translate` 与 `corebox.fx.*` 种子场景，缺少上游能力时对外显式呈现 degraded；92 项测试通过，ESLint 零警告通过。未修改生产 D1 数据库。
+
+### search: 修复缓存键易失失效与对话消息全表扫描风险（C3 / C7）
+
+- `buildSearchCacheKey` 显式过滤 `sessionId`、`requestId`、`timestamp`、`_traceId` 等动态键，并对 JSON 字符串 content 进行稳定结构化解析；10 项测试断言相同查询严格产出相同缓存键、序列化与激活顺序无关性。
+- `searchConversations` 为消息正文检索引入最近会话窗口（默认 150 条会话），SQLite 查询计划从无界 `SCAN conversation_messages` 优化为通过 `idx_conversations_updated` 过滤候选会话并由 `idx_conversation_messages_thread` 索引按 `conversation_id` 检索；标题全量搜索保持不设限；17 项测试通过。
+
 
 ## 2026-10-13
 

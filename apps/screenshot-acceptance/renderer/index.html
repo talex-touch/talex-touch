@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'; script-src 'self';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tuff Screenshot Acceptance</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <p class="eyebrow">TUFF SCREENSHOT PIPELINE</p>
+      <h1>完整截图工具链验收</h1>
+      <p class="subtitle">
+        这里不重新实现截图逻辑。点击按钮后，直接调起 Tuff 已有的完整流程：Rust 冻结屏幕、跨屏框选、对象识别、截图编辑器、复制与保存。
+      </p>
+
+      <section class="pipeline-card">
+        <div class="pipeline-step"><span>01</span><strong>Rust capture</strong><small>冻结各显示器画面</small></div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step"><span>02</span><strong>Overlay</strong><small>自由框选 / 对象识别</small></div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step"><span>03</span><strong>Editor</strong><small>复制 / 保存 / 完成</small></div>
+      </section>
+
+      <button id="start-button" class="button button-primary" type="button">
+        开始完整截图验收
+      </button>
+      <p id="status" class="status" role="status">等待调用 Tuff 截图工具。</p>
+      <p id="error" class="error" role="alert"></p>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

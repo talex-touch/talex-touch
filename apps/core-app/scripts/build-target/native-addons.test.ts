@@ -213,7 +213,9 @@ describe('a preservation that fails part way', () => {
 })
 
 describe('restorePreservedNativeAddons', () => {
-  it.skipIf(process.platform === 'win32').each(['tuff-native-translation', 'tuff-native-update'])(
+  it
+    .skipIf(process.platform === 'win32')
+    .each(['tuff-native-translation', 'tuff-native-update', 'tuff-browser-bridge'])(
     'preserves %s contents and executable mode across a rebuild',
     (helperName) => {
       const fixture = createNativeAddonsFixture(['tuff_native_ocr.node', AUDIO_ADDON, helperName])
@@ -263,7 +265,7 @@ describe('restorePreservedNativeAddons', () => {
 
     const restored = restorePreservedNativeAddons({ projectRoot: fixture.projectRoot, preserved })
 
-    expect(restored).toEqual([AUDIO_ADDON])
+    expect(restored.sort()).toEqual([AUDIO_ADDON, 'tuff-browser-bridge.exe'].sort())
     for (const addonName of GYP_BUILT_ADDONS) {
       expect(readFileSync(path.join(fixture.releaseDir, addonName), 'utf8')).toBe(
         `node-gyp-rebuilt:${addonName}\n`

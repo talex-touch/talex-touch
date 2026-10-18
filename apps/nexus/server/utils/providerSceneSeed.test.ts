@@ -1,374 +1,197 @@
+import type { H3Event } from 'h3'
+import type { SqliteD1Database } from '../../test/helpers/d1-sqlite'
 import type { ProviderRegistryRecord } from './providerRegistryStore'
-import type { SceneRegistryRecord } from './sceneRegistryStore'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSqliteD1 } from '../../test/helpers/d1-sqlite'
+import { createProviderRegistryEntry, getProviderRegistryEntry, listProviderRegistryEntries } from './providerRegistryStore'
+import { createSceneRegistryEntry, deleteSceneRegistryEntry, getSceneRegistryEntry, listSceneRegistryEntries, withSceneRegistryReadiness } from './sceneRegistryStore'
 import { ensureDefaultProviderSceneSeed, ensureDefaultProviderSceneSeedForMiss } from './providerSceneSeed'
 
-const storeMocks = vi.hoisted(() => ({
-  listProviderRegistryEntries: vi.fn(),
-  createProviderRegistryEntry: vi.fn(),
-  updateProviderRegistryEntry: vi.fn(),
-  getSceneRegistryEntry: vi.fn(),
-  createSceneRegistryEntry: vi.fn(),
-  updateSceneRegistryEntry: vi.fn(),
-}))
+let db: SqliteD1Database
 
-vi.mock('./providerRegistryStore', () => ({
-  createProviderRegistryEntry: storeMocks.createProviderRegistryEntry,
-  listProviderRegistryEntries: storeMocks.listProviderRegistryEntries,
-  updateProviderRegistryEntry: storeMocks.updateProviderRegistryEntry,
-}))
+function eventFor(): H3Event {
+  // Store APIs only consume this fixture's Cloudflare binding, not an HTTP socket.
+  return { context: { cloudflare: { env: { DB: db } } } } as unknown as H3Event
+}
 
-vi.mock('./sceneRegistryStore', () => ({
-  createSceneRegistryEntry: storeMocks.createSceneRegistryEntry,
-  getSceneRegistryEntry: storeMocks.getSceneRegistryEntry,
-  updateSceneRegistryEntry: storeMocks.updateSceneRegistryEntry,
-}))
-
-const event = {} as any
-
-function provider(
-  id: string,
-  capability: string,
-  overrides: Partial<ProviderRegistryRecord> = {},
-): ProviderRegistryRecord {
-  return {
-    id,
-    name: id,
-    displayName: id,
+async function provider(name: string, options: {
+  adapterKey?: string
+  models?: string[]
+  defaultModel?: string
+  ownerScope?: 'system' | 'user'
+} = {}): Promise<ProviderRegistryRecord> {
+  return createProviderRegistryEntry(eventFor(), {
+    name,
+    displayName: name,
     vendor: 'custom',
+    authType: 'api_key',
+    authRef: `secure://providers/${name}`,
     status: 'enabled',
-    authType: 'none',
-    authRef: null,
-    ownerScope: 'system',
-    ownerId: null,
-    description: null,
-    endpoint: null,
-    region: null,
+    ownerScope: options.ownerScope ?? 'system',
+    ownerId: options.ownerScope === 'user' ? 'user_1' : null,
+    endpoint: 'https://provider.example.test/v1',
     metadata: {
-      adapterKey: capability === 'overlay.render'
-        ? 'local-overlay'
-        : capability.startsWith('image.') ? 'tencent-translation' : 'openai-compatible',
+      adapterKey: options.adapterKey ?? 'openai-compatible',
+      ...(options.models ? { models: options.models } : {}),
+      ...(options.defaultModel ? { defaultModel: options.defaultModel } : {}),
     },
-    capabilities: [
-      {
-        id: `${id}:${capability}`,
-        providerId: id,
-        capability,
-        schemaRef: null,
-        metering: null,
-        constraints: null,
-        metadata: null,
-        createdAt: '2026-05-11T00:00:00.000Z',
-        updatedAt: '2026-05-11T00:00:00.000Z',
-      },
-    ],
-    createdBy: 'admin_1',
-    createdAt: '2026-05-11T00:00:00.000Z',
-    updatedAt: '2026-05-11T00:00:00.000Z',
-    ...overrides,
-  }
+    capabilities: [],
+  }, 'admin_1')
 }
 
-function scene(overrides: Partial<SceneRegistryRecord> = {}): SceneRegistryRecord {
-  return {
-    id: 'corebox.screenshot.translate',
-    displayName: 'Custom Screenshot Translate',
-    owner: 'core-app',
-    ownerScope: 'system',
-    ownerId: null,
-    status: 'enabled',
-    requiredCapabilities: ['image.translate.e2e'],
-    strategyMode: 'manual',
-    fallback: 'disabled',
-    meteringPolicy: null,
-    auditPolicy: { persistInput: false },
-    metadata: { owner: 'admin-custom' },
-    bindings: [
-      {
-        id: 'binding_existing',
-        sceneId: 'corebox.screenshot.translate',
-        providerId: 'prv_existing_image',
-        capability: 'image.translate.e2e',
-        priority: 5,
-        model: null,
-        weight: null,
-        status: 'enabled',
-        constraints: { maxImageBytes: 1024 },
-        metadata: { route: 'admin' },
-        createdAt: '2026-05-11T00:00:00.000Z',
-        updatedAt: '2026-05-11T00:00:00.000Z',
-      },
-    ],
-    createdBy: 'admin_1',
-    createdAt: '2026-05-11T00:00:00.000Z',
-    updatedAt: '2026-05-11T00:00:00.000Z',
-    ...overrides,
-  }
-}
+beforeEach(() => {
+  db = createSqliteD1()
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  db.close()
+})
 
 describe('providerSceneSeed', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    storeMocks.createProviderRegistryEntry.mockImplementation(async (_event, input) => ({
-      ...provider('prv_overlay', 'overlay.render'),
-      name: input.name,
-      displayName: input.displayName,
-      vendor: input.vendor,
-      metadata: input.metadata,
-      capabilities: [
-        {
-          ...provider('prv_overlay', 'overlay.render').capabilities[0],
-          ...input.capabilities[0],
-          providerId: 'prv_overlay',
-        },
-      ],
-    }))
-    storeMocks.updateProviderRegistryEntry.mockImplementation(async (_event, id, input) => {
-      const existing = (await storeMocks.listProviderRegistryEntries())
-        .find((candidate: ProviderRegistryRecord) => candidate.id === id)
-      return existing ? { ...existing, ...input, metadata: input.metadata } : null
-    })
+  it('空库也建立产品场景，缺少上游能力的场景对外呈现 degraded', async () => {
+    await ensureDefaultProviderSceneSeed(eventFor())
+
+    const entries = await listSceneRegistryEntries(eventFor())
+    const productContracts = [
+      ['corebox.screenshot.translate', ['vision.ocr', 'text.translate']],
+      ['corebox.selection.translate', ['text.translate']],
+      ['corebox.fx.latest', ['fx.rate.latest']],
+      ['corebox.fx.convert', ['fx.convert']],
+      ['nexus.intelligence.chat.completion', ['chat.completion']],
+      ['nexus.intelligence.text.translate', ['text.translate']],
+      ['nexus.intelligence.vision.ocr', ['vision.ocr']],
+      ['nexus.intelligence.audio.transcribe', ['audio.transcribe']],
+      ['nexus.intelligence.text.summarize', ['text.summarize']],
+      ['nexus.intelligence.text.rewrite', ['text.rewrite']],
+      ['nexus.intelligence.content.extract', ['content.extract']],
+      ['nexus.intelligence.code.explain', ['code.explain']],
+      ['nexus.intelligence.code.review', ['code.review']],
+    ] as const
+    for (const [id, missing] of productContracts) {
+      const entry = entries.find(scene => scene.id === id)
+      expect(entry, id).toBeDefined()
+      const projected = await withSceneRegistryReadiness(eventFor(), entry!)
+      expect(projected.readiness.status, id).toBe('degraded')
+      expect(projected.readiness.missingCapabilities, id).toEqual([...missing])
+    }
+    expect(entries.filter(scene => scene.id === 'nexus.intelligence.chat.completion')).toHaveLength(1)
+    expect(entries.some(scene => scene.id === 'nexus.intelligence.text.chat')).toBe(false)
+    const overlay = (await listProviderRegistryEntries(eventFor())).filter(item => item.capabilities.some(capability => capability.capability === 'overlay.render'))
+    expect(overlay).toHaveLength(1)
+    const screenshot = entries.find(scene => scene.id === 'corebox.screenshot.translate')!
+    expect(screenshot.bindings.map(binding => [binding.providerId, binding.capability])).toEqual([[overlay[0]!.id, 'overlay.render']])
   })
 
-  it('创建本地 overlay provider 与截图翻译 seed scene', async () => {
-    const providers = [
-      provider('prv_ocr', 'vision.ocr'),
-      provider('prv_text', 'text.translate'),
-      provider('prv_image', 'image.translate.e2e'),
-    ]
-    storeMocks.listProviderRegistryEntries.mockResolvedValue(providers)
-    storeMocks.getSceneRegistryEntry.mockResolvedValue(null)
-    storeMocks.createSceneRegistryEntry.mockResolvedValue(scene())
+  it('新增 scene bindings 不钉死 provider 的默认模型，未选择默认模型也不会自动选首项', async () => {
+    const chosen = await provider('chosen-model', { models: ['model-a', 'model-b'], defaultModel: 'model-b' })
+    const unchosen = await provider('unchosen-model', { models: ['model-x', 'model-y'] })
 
-    const result = await ensureDefaultProviderSceneSeed(event)
+    await ensureDefaultProviderSceneSeed(eventFor())
 
-    expect(storeMocks.createProviderRegistryEntry).toHaveBeenCalledWith(
-      event,
-      expect.objectContaining({
-        name: 'custom-local-overlay',
-        vendor: 'custom',
-        authType: 'none',
-        ownerScope: 'system',
-        capabilities: [
-          expect.objectContaining({ capability: 'overlay.render' }),
-        ],
-      }),
-      'system:nexus-provider-scene-seed',
-    )
-    expect(storeMocks.createSceneRegistryEntry).toHaveBeenCalledWith(
-      event,
-      expect.objectContaining({
-        id: 'corebox.screenshot.translate',
-        requiredCapabilities: ['vision.ocr', 'text.translate', 'overlay.render'],
-        bindings: expect.arrayContaining([
-          expect.objectContaining({ providerId: 'prv_image', capability: 'image.translate.e2e' }),
-          expect.objectContaining({ providerId: 'prv_ocr', capability: 'vision.ocr' }),
-          expect.objectContaining({ providerId: 'prv_text', capability: 'text.translate' }),
-          expect.objectContaining({ providerId: 'prv_overlay', capability: 'overlay.render' }),
-        ]),
-      }),
-      'system:nexus-provider-scene-seed',
-    )
-    expect(result).toMatchObject({
-      createdOverlayProvider: true,
-      createdScreenshotScene: true,
-      updatedScreenshotScene: false,
-    })
+    const chat = (await getSceneRegistryEntry(eventFor(), 'nexus.intelligence.chat.completion'))!
+    expect(chat.bindings.map(binding => binding.providerId).sort()).toEqual([chosen.id, unchosen.id].sort())
+    expect(chat.bindings.map(binding => binding.model)).toEqual([null, null])
+    expect((await getProviderRegistryEntry(eventFor(), chosen.id))!.metadata).toMatchObject({ models: ['model-a', 'model-b'], defaultModel: 'model-b' })
+    const unchosenAfter = (await getProviderRegistryEntry(eventFor(), unchosen.id))!
+    expect(unchosenAfter.metadata?.models).toEqual(['model-x', 'model-y'])
+    expect(unchosenAfter.metadata?.defaultModel ?? null).toBeNull()
+    const selection = (await getSceneRegistryEntry(eventFor(), 'corebox.selection.translate'))!
+    expect(selection.bindings.map(binding => binding.model)).toEqual([null])
   })
 
-  it('幂等跳过已存在的 seed provider 与完整 seed scene', async () => {
-    const overlay = provider('prv_overlay', 'overlay.render', {
-      name: 'custom-local-overlay',
-      metadata: { source: 'nexus-provider-scene-seed', seedId: 'custom-local-overlay' },
-    })
-    storeMocks.listProviderRegistryEntries.mockResolvedValue([overlay])
-    storeMocks.getSceneRegistryEntry.mockImplementation(async (_event, id) => scene({
-      id,
-      metadata: { source: 'nexus-provider-scene-seed', seedId: id },
-      requiredCapabilities: id === 'corebox.screenshot.translate'
-        ? ['vision.ocr', 'text.translate', 'overlay.render']
-        : id === 'corebox.selection.translate'
-          ? ['text.translate']
-          : id === 'corebox.fx.latest'
-            ? ['fx.rate.latest']
-            : ['fx.convert'],
-      bindings: [
-        {
-          id: `binding_${id}`,
-          sceneId: id,
-          providerId: 'prv_overlay',
-          capability: 'overlay.render',
-          priority: 40,
-          weight: null,
-          status: 'enabled',
-          constraints: null,
-          metadata: { source: 'nexus-provider-scene-seed' },
-          createdAt: '2026-05-11T00:00:00.000Z',
-          updatedAt: '2026-05-11T00:00:00.000Z',
-        },
-      ],
-    }))
+  it.each([
+    { sceneId: 'corebox.selection.translate', capability: 'text.translate', owner: 'core-app' },
+    { sceneId: 'corebox.screenshot.translate', capability: 'text.translate', owner: 'core-app' },
+    { sceneId: 'nexus.intelligence.chat.completion', capability: 'chat.completion', owner: 'nexus' },
+  ] as const)('seed 保留 $sceneId 的手动路由和策略，不追加同能力的另一个 provider', async ({ sceneId, capability, owner }) => {
+    const preferred = await provider('a-seed-preferred', { models: ['automatic-model'], defaultModel: 'automatic-model' })
+    const manual = await provider('z-manual', { models: ['manual-model'], defaultModel: 'manual-model' })
+    await createSceneRegistryEntry(eventFor(), {
+      id: sceneId,
+      displayName: 'Operator configured route',
+      owner,
+      ownerScope: 'system',
+      status: 'enabled',
+      requiredCapabilities: [capability],
+      strategyMode: 'manual',
+      fallback: 'disabled',
+      auditPolicy: { persistInput: false, persistOutput: false },
+      meteringPolicy: { label: 'manual-policy' },
+      metadata: { managedBy: 'operator' },
+      bindings: [{ providerId: manual.id, capability, model: 'manual-model', priority: 7, status: 'disabled', constraints: { budget: 17 }, metadata: { route: 'manual' } }],
+    }, 'admin_1')
+    const before = (await getSceneRegistryEntry(eventFor(), sceneId))!
 
-    const result = await ensureDefaultProviderSceneSeed(event)
+    await ensureDefaultProviderSceneSeed(eventFor())
+    await ensureDefaultProviderSceneSeed(eventFor())
 
-    expect(storeMocks.createProviderRegistryEntry).not.toHaveBeenCalled()
-    expect(storeMocks.createSceneRegistryEntry).not.toHaveBeenCalled()
-    expect(storeMocks.updateSceneRegistryEntry).not.toHaveBeenCalled()
-    expect(result).toMatchObject({
-      overlayProviderId: 'prv_overlay',
-      createdOverlayProvider: false,
-      createdScreenshotScene: false,
-      updatedScreenshotScene: false,
-      createdSelectionScene: false,
-      createdFxLatestScene: false,
-      createdFxConvertScene: false,
+    const after = (await getSceneRegistryEntry(eventFor(), sceneId))!
+    expect(after).toMatchObject({
+      displayName: before.displayName,
+      requiredCapabilities: before.requiredCapabilities,
+      strategyMode: before.strategyMode,
+      fallback: before.fallback,
+      auditPolicy: before.auditPolicy,
+      meteringPolicy: before.meteringPolicy,
+      metadata: before.metadata,
     })
+    expect(after.bindings.filter(binding => binding.capability === capability)).toEqual(before.bindings)
+    expect(after.bindings.some(binding => binding.capability === capability && binding.providerId === preferred.id)).toBe(false)
   })
 
-  it('只追加缺失 binding，不覆盖用户已有 Scene policy 与 binding', async () => {
-    const overlay = provider('prv_overlay', 'overlay.render', {
-      name: 'custom-local-overlay',
-      metadata: { source: 'nexus-provider-scene-seed', seedId: 'custom-local-overlay' },
-    })
-    const text = provider('prv_text', 'text.translate')
-    storeMocks.listProviderRegistryEntries.mockResolvedValue([overlay, text])
-    storeMocks.getSceneRegistryEntry.mockResolvedValue(scene())
-    storeMocks.updateSceneRegistryEntry.mockResolvedValue(scene())
+  it('system scene 不会自动绑定 user scope provider', async () => {
+    const userProvider = await provider('user-private', { ownerScope: 'user' })
 
-    await ensureDefaultProviderSceneSeed(event)
+    await ensureDefaultProviderSceneSeed(eventFor())
 
-    expect(storeMocks.updateSceneRegistryEntry).toHaveBeenCalledWith(
-      event,
-      'corebox.screenshot.translate',
-      expect.objectContaining({
-        displayName: 'Custom Screenshot Translate',
-        strategyMode: 'manual',
-        fallback: 'disabled',
-        requiredCapabilities: ['image.translate.e2e'],
-        bindings: [
-          expect.objectContaining({
-            providerId: 'prv_existing_image',
-            capability: 'image.translate.e2e',
-            priority: 5,
-            constraints: { maxImageBytes: 1024 },
-            metadata: { route: 'admin' },
-          }),
-          expect.objectContaining({
-            providerId: 'prv_text',
-            capability: 'text.translate',
-          }),
-          expect.objectContaining({
-            providerId: 'prv_overlay',
-            capability: 'overlay.render',
-          }),
-        ],
-      }),
-    )
+    const entries = await listSceneRegistryEntries(eventFor())
+    expect(entries.flatMap(scene => scene.bindings).filter(binding => binding.providerId === userProvider.id)).toEqual([])
+    const selection = entries.find(scene => scene.id === 'corebox.selection.translate')!
+    expect((await withSceneRegistryReadiness(eventFor(), selection)).readiness).toMatchObject({ status: 'degraded', missingCapabilities: ['text.translate'] })
   })
 
-  it('不会把 user scope 的 OCR provider 自动绑定进 system scene', async () => {
-    const overlay = provider('prv_overlay', 'overlay.render', {
-      name: 'custom-local-overlay',
-      metadata: { source: 'nexus-provider-scene-seed', seedId: 'custom-local-overlay' },
-    })
-    const userOcr = provider('prv_user_ocr', 'vision.ocr', {
-      ownerScope: 'user',
-      ownerId: 'user_1',
-      authType: 'api_key',
-      authRef: 'secure://providers/user-ocr',
-    })
-    storeMocks.listProviderRegistryEntries.mockResolvedValue([overlay, userOcr])
-    storeMocks.getSceneRegistryEntry.mockResolvedValue(null)
-    storeMocks.createSceneRegistryEntry.mockResolvedValue(scene())
+  it('重复 seed 不新增 provider、scene 或替换既有 binding', async () => {
+    await provider('idempotent-provider')
+    await ensureDefaultProviderSceneSeed(eventFor())
+    const beforeProviders = await listProviderRegistryEntries(eventFor())
+    const beforeScenes = await listSceneRegistryEntries(eventFor())
 
-    await ensureDefaultProviderSceneSeed(event)
+    await ensureDefaultProviderSceneSeed(eventFor())
 
-    const input = storeMocks.createSceneRegistryEntry.mock.calls[0][1]
-    expect(input.bindings).toEqual([
-      expect.objectContaining({
-        providerId: 'prv_overlay',
-        capability: 'overlay.render',
-      }),
-    ])
-  })
-
-  it('只有 direct 图片翻译 provider 时默认 requiredCapabilities 保持 image.translate.e2e', async () => {
-    const overlay = provider('prv_overlay', 'overlay.render', {
-      name: 'custom-local-overlay',
-      metadata: { source: 'nexus-provider-scene-seed', seedId: 'custom-local-overlay' },
-    })
-    const image = provider('prv_image', 'image.translate.e2e')
-    storeMocks.listProviderRegistryEntries.mockResolvedValue([overlay, image])
-    storeMocks.getSceneRegistryEntry.mockResolvedValue(null)
-    storeMocks.createSceneRegistryEntry.mockResolvedValue(scene())
-
-    await ensureDefaultProviderSceneSeed(event)
-
-    const input = storeMocks.createSceneRegistryEntry.mock.calls[0][1]
-    expect(input.requiredCapabilities).toEqual(['image.translate.e2e'])
-    expect(input.bindings).toEqual([
-      expect.objectContaining({
-        providerId: 'prv_image',
-        capability: 'image.translate.e2e',
-      }),
-      expect.objectContaining({
-        providerId: 'prv_overlay',
-        capability: 'overlay.render',
-      }),
-    ])
-  })
-
-  it('同名 provider 缺少 overlay.render capability 时不会被当成 seed provider', async () => {
-    const invalidOverlay = provider('prv_invalid_overlay', 'text.translate', {
-      name: 'custom-local-overlay',
-      metadata: { source: 'nexus-provider-scene-seed', seedId: 'custom-local-overlay' },
-    })
-    storeMocks.listProviderRegistryEntries.mockResolvedValue([invalidOverlay])
-    storeMocks.getSceneRegistryEntry.mockResolvedValue(null)
-    storeMocks.createSceneRegistryEntry.mockResolvedValue(scene())
-
-    await ensureDefaultProviderSceneSeed(event)
-
-    expect(storeMocks.createProviderRegistryEntry).toHaveBeenCalled()
+    expect(await listProviderRegistryEntries(eventFor())).toEqual(beforeProviders)
+    expect(await listSceneRegistryEntries(eventFor())).toEqual(beforeScenes)
   })
 })
 
 describe('ensureDefaultProviderSceneSeedForMiss', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-15T08:00:00.000Z'))
-    storeMocks.listProviderRegistryEntries.mockResolvedValue([provider('prv_overlay', 'overlay.render', { name: 'custom-local-overlay', metadata: { source: 'nexus-provider-scene-seed', seedId: 'custom-local-overlay', adapterKey: 'local-overlay' } })])
-    storeMocks.getSceneRegistryEntry.mockResolvedValue(scene())
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
+  it('同一数据库的缺失场景只在窗口结束后重建', async () => {
+    const id = 'nexus.intelligence.chat.completion'
+    await ensureDefaultProviderSceneSeedForMiss(eventFor())
+    expect((await getSceneRegistryEntry(eventFor(), id))?.requiredCapabilities).toEqual(['chat.completion'])
+    await deleteSceneRegistryEntry(eventFor(), id)
 
-  function eventWithDatabase(db: object) {
-    return { context: { cloudflare: { env: { DB: db } } } } as any
-  }
-
-  it('runs the seed once per window for lookups that keep missing a scene', async () => {
-    const missEvent = eventWithDatabase({})
-
-    await ensureDefaultProviderSceneSeedForMiss(missEvent)
-    await ensureDefaultProviderSceneSeedForMiss(missEvent)
-    expect(storeMocks.listProviderRegistryEntries).toHaveBeenCalledTimes(1)
-
+    await ensureDefaultProviderSceneSeedForMiss(eventFor())
+    expect(await getSceneRegistryEntry(eventFor(), id)).toBeNull()
     vi.setSystemTime(new Date('2026-10-15T08:00:31.000Z'))
-    await ensureDefaultProviderSceneSeedForMiss(missEvent)
-    expect(storeMocks.listProviderRegistryEntries).toHaveBeenCalledTimes(2)
+    await ensureDefaultProviderSceneSeedForMiss(eventFor())
+
+    expect((await getSceneRegistryEntry(eventFor(), id))?.requiredCapabilities).toEqual(['chat.completion'])
   })
 
-  it('runs it again after a run that failed', async () => {
-    const missEvent = eventWithDatabase({})
-    storeMocks.listProviderRegistryEntries.mockRejectedValueOnce(new Error('D1_ERROR: network connection lost'))
+  it('数据库写入失败不消耗 seed 重试窗口', async () => {
+    await listSceneRegistryEntries(eventFor())
+    db.sqlite.exec("CREATE TRIGGER fail_seed BEFORE INSERT ON scene_registry BEGIN SELECT RAISE(ABORT, 'seed write denied'); END")
 
-    await expect(ensureDefaultProviderSceneSeedForMiss(missEvent)).rejects.toThrow(/network connection lost/)
-    await ensureDefaultProviderSceneSeedForMiss(missEvent)
+    await expect(ensureDefaultProviderSceneSeedForMiss(eventFor())).rejects.toThrow('seed write denied')
+    db.sqlite.exec('DROP TRIGGER fail_seed')
+    await ensureDefaultProviderSceneSeedForMiss(eventFor())
 
-    expect(storeMocks.listProviderRegistryEntries).toHaveBeenCalledTimes(2)
+    expect((await getSceneRegistryEntry(eventFor(), 'nexus.intelligence.chat.completion'))?.requiredCapabilities).toEqual(['chat.completion'])
   })
 })

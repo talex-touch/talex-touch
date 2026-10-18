@@ -51,7 +51,11 @@
     height: var(--tuff-switch-track-height);
     border-radius: var(--tuff-switch-track-radius);
     background-color: var(--tuff-switch-track-color);
-    transition: all 0.25s ease-in-out;
+    // Only the hover glow eases. `all` also transitioned the inherited
+    // `visibility`, so a switch in a closing popover kept painting for the
+    // transition's length after its hidden ancestor had gone. The fill repaints
+    // at once on toggle: TuffEx never eases colour outside a morph window.
+    transition: box-shadow 0.25s ease-in-out;
 
     // Breathing veil. Painted on every switch but fully transparent until
     // `is-loading`, so the fade in and out is one opacity transition on a box
@@ -117,13 +121,25 @@
     top: 15%;
     left: 10%;
     border-radius: var(--tuff-switch-thumb-radius);
-    background-color: var(--tuff-switch-thumb-color);
     // Not `left`, `width` or `translate`: the thumb's travel is a spring the
     // component draws itself (see TxSwitch.vue), and a CSS transition on those
-    // would smear every frame it writes.
-    transition-property: background-color, border-radius, filter, transform;
+    // would smear every frame it writes. Not a colour either: the fill lives on
+    // `::before` and fades by opacity.
+    transition-property: border-radius, filter, transform;
     transition-duration: 0.25s;
     transition-timing-function: ease-in-out;
+
+    // The fill, on its own layer so the loading morph can fade it out by
+    // opacity while the ring fades in. Snapping it off instead would leave the
+    // track empty for most of the ring's fade.
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background-color: var(--tuff-switch-thumb-color);
+      transition: opacity 0.25s ease-in-out;
+    }
 
     // The loading ring lives on a pseudo-element so the thumb -> ring morph is
     // one coordinated transition on a single box, with no node swap to flash.
@@ -175,7 +191,10 @@
 
     .tuff-switch__thumb {
       border-radius: 50%;
-      background-color: transparent;
+
+      &::before {
+        opacity: 0;
+      }
 
       &::after {
         opacity: 1;
@@ -281,5 +300,15 @@
   .tuff-switch.is-loading .tuff-switch__track::before,
   .tuff-switch.is-loading .tuff-switch__track::after {
     animation: none;
+  }
+
+  // State changes repaint at once: no hover glow, fill fade or ring fade.
+  .tuff-switch__track,
+  .tuff-switch__track::before,
+  .tuff-switch__track::after,
+  .tuff-switch__thumb,
+  .tuff-switch__thumb::before,
+  .tuff-switch__thumb::after {
+    transition: none;
   }
 }

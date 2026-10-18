@@ -21,7 +21,9 @@ export { TuffIcon, TX_ICON_CONFIG_KEY, TxIcon, TxOsIcon, TxStatusIcon }
 export type { TxStatusIconProps, TxStatusIconTone } from './src/status-icon'
 export type TxOsIconInstance = InstanceType<typeof TxOsIconComponent>
 export type {
+  TxIconClassGlyphResolver,
   TxIconConfig,
+  TxIconGlyph,
   TxIconSource,
   TxIconStatus,
   TxIconSvgFetcher,

@@ -13,6 +13,7 @@ import { performance } from 'node:perf_hooks'
 import { resolveLocalFilePath, toTfileUrl } from '@talex-touch/utils/network'
 import { BrowserWindow, clipboard, nativeImage, screen } from 'electron'
 import { tempFileService } from '../../service/temp-file.service'
+import { issueTfileReadbackGrant } from '../file-protocol/tfile-preview-grant'
 import {
   PRIVACY_RETENTION_DAY_MS,
   PRIVACY_SCREENSHOT_TEMP_NAMESPACE
@@ -44,6 +45,8 @@ const MAX_COMPOSE_PACKET_BYTES = 64 * 1024 * 1024
 const MAX_SELF_WINDOW_IDS = 128
 const BUNDLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/
 const MEDIA_SOURCE_WINDOW_PATTERN = /^window:([1-9][0-9]*)(?::|$)/
+const AX_ROLE_PATTERN = /^AX[A-Za-z]{1,62}$/
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const screenshotLog = createLogger('NativeScreenshot')
 
 type CodedError = Error & { code?: string }
@@ -157,11 +160,26 @@ export interface ScreenshotComposeEffects {
   cornerRadius?: number
 }
 
+export type ScreenshotAccessibilityFallback =
+  | 'permission-denied'
+  | 'timeout'
+  | 'unsupported'
+  | 'unverified-window'
+
 export interface ScreenshotNativeSelectionCandidate {
   kind: 'window' | 'ui-element'
   bounds: ScreenshotGlobalDipRect
   generation: string
   targetId: string
+  /** Bounded AX role of a UI element; never an identifier from another process. */
+  role?: string
+}
+
+export interface ScreenshotNativeHitResult {
+  /** The native chain, deepest first: the resolved UI element (if any), then its window. */
+  candidates: ScreenshotNativeSelectionCandidate[]
+  /** Present when a UI element was requested but the native layer fell back to the window. */
+  fallback?: ScreenshotAccessibilityFallback
 }
 
 export interface ScreenshotFramesRequest {
@@ -533,38 +551,53 @@ export class NativeScreenshotService {
     return await this.hitTestGeneration(content, point, options)
   }
 
-  async hitTestCandidate(
+  async hitTestCandidates(
     point: ScreenshotGlobalDipPoint,
     granularity: 'window' | 'ui-element'
-  ): Promise<ScreenshotNativeSelectionCandidate | null> {
+  ): Promise<ScreenshotNativeHitResult> {
     const result = await this.hitTest(point, {
       granularity,
       includePanels: false,
       maxCandidates: 1
     })
+    const fallback: ScreenshotAccessibilityFallback | undefined =
+      result.accessibilityFallback === undefined
+        ? undefined
+        : result.accessibilityFallback === 'permission-denied' ||
+            result.accessibilityFallback === 'timeout' ||
+            result.accessibilityFallback === 'unverified-window'
+          ? result.accessibilityFallback
+          : 'unsupported'
     const candidate = result.candidates[0]
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      return { candidates: [], fallback }
+    }
     const record = candidate as Record<string, unknown>
     const windowRecord = requireRecord(record.window)
-    if (windowRecord.capturable !== true) return null
-    const windowId = requireString(windowRecord.id)
-    const windowBounds = parseWithGeometry(() =>
-      parseScreenshotGlobalDipRect(windowRecord.globalFrame)
-    )
-    if (granularity === 'ui-element' && record.element !== undefined) {
-      const elementRecord = requireRecord(record.element)
-      return {
-        kind: 'ui-element',
-        bounds: parseWithGeometry(() => parseScreenshotGlobalDipRect(elementRecord.globalFrame)),
-        generation: result.generation,
-        targetId: requireString(elementRecord.id)
-      }
-    }
-    return {
+    if (windowRecord.capturable !== true) return { candidates: [], fallback }
+    const window: ScreenshotNativeSelectionCandidate = {
       kind: 'window',
-      bounds: windowBounds,
+      bounds: parseWithGeometry(() => parseScreenshotGlobalDipRect(windowRecord.globalFrame)),
       generation: result.generation,
-      targetId: windowId
+      targetId: requireString(windowRecord.id)
+    }
+    if (granularity !== 'ui-element' || record.element === undefined) {
+      return { candidates: [window], fallback }
+    }
+    const elementRecord = requireRecord(record.element)
+    const role = requireString(elementRecord.role)
+    return {
+      candidates: [
+        {
+          kind: 'ui-element',
+          bounds: parseWithGeometry(() => parseScreenshotGlobalDipRect(elementRecord.globalFrame)),
+          generation: result.generation,
+          targetId: requireString(elementRecord.id),
+          ...(AX_ROLE_PATTERN.test(role) ? { role } : {})
+        },
+        window
+      ],
+      fallback
     }
   }
 
@@ -619,6 +652,58 @@ export class NativeScreenshotService {
     region: ScreenshotGlobalDipRect,
     effects: ScreenshotComposeEffects = {}
   ): Promise<NativeScreenshotCaptureResult> {
+    for (const source of sources) {
+      if (source.resource.displayId !== source.display.id) {
+        throw createCodedError(
+          'Frozen screenshot source is invalid',
+          'ERR_NATIVE_SCREENSHOT_RESOURCE_INVALID'
+        )
+      }
+    }
+    return await this.composeResources(
+      sources.map(({ display, resource }) => ({
+        globalRect: { x: display.x, y: display.y, width: display.width, height: display.height },
+        resource
+      })),
+      region,
+      effects,
+      'frozen-display'
+    )
+  }
+
+  /**
+   * Applies border/shadow/corner effects to one managed capture through the same Rust compose
+   * path frozen regions use. A capture without effects is returned unchanged.
+   */
+  async applyEffects(
+    resource: NativeScreenshotCaptureResult,
+    effects: ScreenshotComposeEffects
+  ): Promise<NativeScreenshotCaptureResult> {
+    if (!effects.border && !effects.shadow && !((effects.cornerRadius ?? 0) > 0)) return resource
+    const scale = resource.scaleFactor > 0 ? resource.scaleFactor : 1
+    const globalRect = {
+      x: resource.x,
+      y: resource.y,
+      width: resource.width / scale,
+      height: resource.height / scale
+    }
+    return await this.composeResources(
+      [{ globalRect, resource }],
+      globalRect,
+      effects,
+      'edited-capture'
+    )
+  }
+
+  private async composeResources(
+    sources: Array<{
+      globalRect: ScreenshotGlobalDipRect
+      resource: NativeScreenshotCaptureResult
+    }>,
+    region: ScreenshotGlobalDipRect,
+    effects: ScreenshotComposeEffects,
+    purpose: 'frozen-display' | 'edited-capture'
+  ): Promise<NativeScreenshotCaptureResult> {
     const startedAt = performance.now()
     try {
       this.ensureAvailable()
@@ -636,15 +721,10 @@ export class NativeScreenshotService {
         )
       }
       const rect = parseWithGeometry(() => parseScreenshotGlobalDipRect(region))
-      const relevantSources = sources.filter(({ display }) =>
-        intersects(
-          { x: display.x, y: display.y, width: display.width, height: display.height },
-          rect
-        )
-      )
+      const relevantSources = sources.filter(({ globalRect }) => intersects(globalRect, rect))
       if (relevantSources.length === 0 || relevantSources.length > 32) {
         throw createCodedError(
-          'Frozen screenshot sources do not cover the selection',
+          'Screenshot compose sources do not cover the selection',
           'ERR_NATIVE_SCREENSHOT_INVALID_REGION'
         )
       }
@@ -663,12 +743,11 @@ export class NativeScreenshotService {
       for (const [sourceIndex, source] of relevantSources.entries()) {
         if (
           source.resource.mimeType !== 'image/png' ||
-          source.resource.displayId !== source.display.id ||
           source.resource.width <= 0 ||
           source.resource.height <= 0
         ) {
           throw createCodedError(
-            'Frozen screenshot source is invalid',
+            'Screenshot compose source is invalid',
             'ERR_NATIVE_SCREENSHOT_RESOURCE_INVALID'
           )
         }
@@ -676,7 +755,7 @@ export class NativeScreenshotService {
         packetBytes += bytes.length
         if (packetBytes > MAX_COMPOSE_PACKET_BYTES) {
           throw createCodedError(
-            'Frozen screenshot sources exceed the attachment budget',
+            'Screenshot compose sources exceed the attachment budget',
             'ERR_NATIVE_SCREENSHOT_OUTPUT_TOO_LARGE'
           )
         }
@@ -686,23 +765,10 @@ export class NativeScreenshotService {
           const id = `source:${sourceIndex}:${partIndex}`
           const data = bytes.subarray(offset, end)
           imageParts.push({ attachmentId: id, offset, byteLength: data.length })
-          attachments.push({
-            id,
-            data,
-            mediaType: 'image/png',
-            purpose: 'frozen-display'
-          })
+          attachments.push({ id, data, mediaType: 'image/png', purpose })
           offset = end
         }
-        composeSources.push({
-          globalRect: {
-            x: source.display.x,
-            y: source.display.y,
-            width: source.display.width,
-            height: source.display.height
-          },
-          imageParts
-        })
+        composeSources.push({ globalRect: source.globalRect, imageParts })
       }
 
       const nativeResult = await this.transport.invoke<
@@ -746,6 +812,7 @@ export class NativeScreenshotService {
       screenshotLog.info('Native screenshot composition completed', {
         meta: {
           platform: process.platform,
+          purpose,
           width: stored.width,
           height: stored.height,
           durationMs: Math.round(performance.now() - startedAt)
@@ -757,11 +824,61 @@ export class NativeScreenshotService {
       screenshotLog.warn('Native screenshot composition failed', {
         meta: {
           platform: process.platform,
+          purpose,
           durationMs: Math.round(performance.now() - startedAt),
           errorCode: coded.code ?? null
         }
       })
       throw coded
+    }
+  }
+
+  /**
+   * Short-lived capability URL through which the screenshot overlay may read a managed capture
+   * back into a canvas. Only screenshot-namespace resources qualify.
+   */
+  async grantCaptureReadback(tfileUrl: string): Promise<string> {
+    return issueTfileReadbackGrant(await this.resolveCaptureResourcePath(tfileUrl)).tfileUrl
+  }
+
+  /**
+   * Promotes an overlay-rendered PNG of an edited capture into the managed screenshot namespace.
+   * The PNG must decode to exactly the edited source's pixel size; it inherits the source's
+   * desktop placement metadata.
+   */
+  async storeEditedCapture(
+    source: NativeScreenshotCaptureResult,
+    png: Uint8Array
+  ): Promise<NativeScreenshotCaptureResult> {
+    const buffer = Buffer.from(png.buffer, png.byteOffset, png.byteLength)
+    if (
+      buffer.length < PNG_SIGNATURE.length ||
+      buffer.length > MAX_COMPOSE_PACKET_BYTES ||
+      !buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+    ) {
+      throw createCodedError('Edited screenshot is invalid', 'ERR_NATIVE_SCREENSHOT_EDIT_INVALID')
+    }
+    const image = nativeImage.createFromBuffer(buffer)
+    const size = image.getSize()
+    if (image.isEmpty() || size.width !== source.width || size.height !== source.height) {
+      throw createCodedError(
+        'Edited screenshot does not match its source',
+        'ERR_NATIVE_SCREENSHOT_EDIT_INVALID'
+      )
+    }
+    this.ensureTempNamespace()
+    const stored = await tempFileService.createFile({
+      namespace: SCREENSHOT_NAMESPACE,
+      ext: 'png',
+      buffer,
+      prefix: 'screenshot-edit'
+    })
+    return {
+      ...source,
+      tfileUrl: toTfileUrl(stored.path),
+      durationMs: 0,
+      sizeBytes: stored.sizeBytes,
+      wroteClipboard: false
     }
   }
 

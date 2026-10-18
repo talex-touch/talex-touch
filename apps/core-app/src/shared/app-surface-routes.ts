@@ -10,6 +10,7 @@
 
 export const APP_SURFACE_ROUTES = Object.freeze({
   home: '/home',
+  browser: '/browser',
   /** The parameterised pattern, exactly as the router registers it under `/home`. */
   conversation: '/home/c/:id',
   store: '/store',

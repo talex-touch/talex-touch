@@ -140,6 +140,8 @@ export interface WorkspaceForkRequest {
   conversationId: string
   messageId?: string
   mode?: ConversationWorkspaceMode
+  /** Applied only to the child; the source conversation keeps its settings. */
+  profileId?: string
 }
 
 export interface WorkspaceRunDecisionRequest {

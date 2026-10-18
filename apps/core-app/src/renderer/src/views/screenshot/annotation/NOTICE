@@ -1,0 +1,13 @@
+Tuff Screenshot Annotation Component
+Copyright (c) 2026 TalexTouch Contributors
+
+This component includes derived code and algorithms from Satty (https://github.com/Satty-org/Satty)
+at commit 1c198c65c251aadc74d4f138f03bc2741b4655b2.
+Copyright (c) Matthias Gabriel and Satty contributors.
+Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
+You may obtain a copy of the License at https://www.mozilla.org/MPL/2.0/
+
+Derived files and adaptations:
+- geometry.ts: Vector snapping, polyline and rectangle hit testing, segment resizing, and clipping adapted from Satty's src/math.rs and src/tools/mod.rs.
+- types.ts & document.ts: Object-level history entry model (Replace, Remove, UpdateIndex, ClearAll) and drawing tool primitives adapted from Satty's src/femtovg_area/imp.rs and tool definitions.
+- renderer.ts: Canvas-based rendering, arrow head projection, and pixelation block rasterization adapted from Satty's src/tools/arrow.rs and src/tools/pixelate.rs.

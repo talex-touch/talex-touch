@@ -3,7 +3,7 @@ import type { Ref } from 'vue'
  * Composable for keyboard navigation support
  * Provides arrow key navigation and other keyboard shortcuts
  */
-import { onMounted, onUnmounted } from 'vue'
+import { onActivated, onDeactivated, onMounted, onUnmounted } from 'vue'
 
 interface KeyboardNavigationOptions {
   /**
@@ -79,27 +79,32 @@ export function useKeyboardNavigation(options: KeyboardNavigationOptions = {}) {
 
     switch (event.key) {
       case 'ArrowUp':
+        if (!onNavigateUp) return
         event.preventDefault()
-        onNavigateUp?.()
+        onNavigateUp()
         break
       case 'ArrowDown':
+        if (!onNavigateDown) return
         event.preventDefault()
-        onNavigateDown?.()
+        onNavigateDown()
         break
       case 'ArrowLeft':
+        if (!onNavigateLeft) return
         event.preventDefault()
-        onNavigateLeft?.()
+        onNavigateLeft()
         break
       case 'ArrowRight':
+        if (!onNavigateRight) return
         event.preventDefault()
-        onNavigateRight?.()
+        onNavigateRight()
         break
       case 'Enter':
         onEnter?.()
         break
       case ' ':
+        if (!onSpace) return
         event.preventDefault()
-        onSpace?.()
+        onSpace()
         break
       case 'Escape':
         onEscape?.()
@@ -107,15 +112,25 @@ export function useKeyboardNavigation(options: KeyboardNavigationOptions = {}) {
     }
   }
 
-  onMounted(() => {
-    const targetElement = element?.value || document
-    targetElement.addEventListener('keydown', handleKeyDown as EventListener)
-  })
+  let attachedTarget: HTMLElement | Document | null = null
 
-  onUnmounted(() => {
+  const detach = (): void => {
+    attachedTarget?.removeEventListener('keydown', handleKeyDown as EventListener)
+    attachedTarget = null
+  }
+
+  const attach = (): void => {
     const targetElement = element?.value || document
-    targetElement.removeEventListener('keydown', handleKeyDown as EventListener)
-  })
+    if (attachedTarget === targetElement) return
+    detach()
+    targetElement.addEventListener('keydown', handleKeyDown as EventListener)
+    attachedTarget = targetElement
+  }
+
+  onMounted(attach)
+  onActivated(attach)
+  onDeactivated(detach)
+  onUnmounted(detach)
 
   return {
     handleKeyDown

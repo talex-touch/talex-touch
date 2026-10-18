@@ -132,7 +132,7 @@
     - `SEARCH_KEYWORD_SCHEMA_VERSION` 升到 3 后，`FileProviderKeywordBackfillService` 会在升级后把全部文件条目的关键词重写一遍。
 ### 🟠 高危工程风险
 
-- [ ] **R1 — Rust 截图模块已接入 CI/安装构建链** ⚠️ **契约测试已接入，发布路径未接入**（2026-08-07 复验，原判「已修 / #321 已关闭」不成立——[#321](https://github.com/talex-touch/tuff/issues/321) 仍 open）
+- [ ] **R1 — 原生截图发布资源已接入，签名包截图运行验收仍开放**（2026-09-27 发布路径修复；2026-10-18 官方包资源复核）
   - 修复：`native-protocol.yml` 在 macOS/Windows/Linux 安装 xcap 所需 Linux build deps，构建 ordinary screenshot addon，执行真实 dlopen/export contracts；随后构建 deterministic addon 跑 `.node -> NapiCarrier -> NativeTransport` integration，并在结束前恢复 ordinary addon。
   - 包合同：`@talex-touch/tuff-native.files` 显式包含 macOS/AX/stream/xcap production backend 源码与 `build/Release/tuff_native_screenshot.node`，继续排除 fixture、contract test backend 和 Cargo target。
   - 证据：本地 ordinary/deterministic 双构建、普通 addon strict macOS integration、31/31 Node contracts 和 `pnpm pack --dry-run` 通过；tarball 包含 addon 与全部 production backend，未包含 `test_backend.rs`/contract fixtures/target。
@@ -148,10 +148,11 @@
     3. **打包后校验 + 运行期能力信号**：`after-pack.js` 新增 `verifyPackagedNativeAddons()`（CI 严格、本地仅警告），校验 addon 真的活着走出 asar→`Resources/node_modules` 的搬运；主进程新增导出的 `captureUnavailableCode()`，把原生 reason 收敛成**封闭 code 集**（`VOICE_CAPTURE_UNAVAILABLE_CODES`，含 `componentMissing`），`assertSupported` 与 `getRecognitionStatus().capture` 共用它；渲染层按 code 分类（不再猜文案），并在 `componentMissing` 时**不给**输入框麦克风入口，而不是让用户点了才报错。
   - 实测证据（2026-09-27）：本地 `CI=true pnpm build:app --target=mac --type=snapshot` 跑完 `afterPack` —— 日志同时出现 `✓ Native module found: …tuff_native_audio.node` 与 `[afterPack] Verified packaged native addons: tuff_native_ocr.node, tuff_native_audio.node`；产出的 `dist/mac-arm64/tuff.app/Contents/Resources/node_modules/@talex-touch/tuff-native/build/Release/` 含 **4 个** addon（audio / screenshot / ocr / everything，对比安装版 beta.47 只有 2 个），`app.asar.unpacked` 同步含 4 个；直接 `require` 打包树里的 `tuff_native_audio.node` 返回 `{supported:true, platform:"macos"}` 且导出齐全。该次构建唯一失败点是 `forceCodeSigning` 找不到 Developer ID（本地无证书，CI 提供），发生在 `afterPack` 之后，与本项无关。
   - 仍未闭环：`screenshot` 的**打包运行时**证据（真的在有屏幕的会话里截一张）仍由 `07-29-screenshot-packaged-evidence` 承接；#321 / #322 需在下次 tag 发布后核对产物再关。
+  - 2026-10-18 官方安装包只读复核：arm64 `2.4.15-beta.7` 的物理 `app.asar.unpacked` 包含 screenshot、audio、OCR、Everything addon 与 translation helper；Developer ID/deep strict codesign、Gatekeeper、公证与 RSA build-attestation/asar 摘要校验通过。未启动该安装包截图，也未把 Node/浏览器 smoke 当 packaged 原生运行证据。
 
-- [ ] **R2 — macOS 发行架构范围未决**
-  - 位置：`electron-builder.yml:100-119` 当前仅产出 darwin/arm64；下载与 OTA 选择必须与该架构策略一致。
-  - 风险：未明确支持范围会让 Intel 用户收到不兼容资产，或迫使发行链临时引入未经签名、公证和真机验证的 x64/Universal 变体。**需产品决策**：保持 arm64-only 并显式告知，或新增完整 x64/Universal 发布矩阵。
+- [ ] **R2 — macOS 双架构已发行，跨架构运行证据仍需核对**
+  - 2026-10-18 当前源码及正式资产复核：`electron-builder.yml` 的 DMG/ZIP 均声明 `arm64` 与 `x64`。官方 `v2.4.15-beta.7` GitHub inventory 含两种架构的 DMG、ZIP 及签名；发布 manifest 为 `darwin/arm64` 与 `darwin/x64` 分别列出首选 DMG、SHA-256 和签名。
+  - 本机已安装 arm64 beta.7 的 Developer ID、deep strict codesign、Gatekeeper、公证及 RSA 构建证明/物理 asar SHA 均实查通过。旧“仅 arm64、需先决定是否支持 Intel”判断失效；剩余为下载/OTA 架构选择与 Intel 真机运行证据，不把 arm64 验签冒充 x64 运行验收，也未新增 Universal 承诺。
   - 2026-07-21 进展：Developer ID 签名、App Store Connect API-key 公证、本机/GitHub Secrets 与 ZIP 信任验证已闭环；OTA 已移除 `electron-updater` 双路径。R2 仍保持 open：架构策略、发布清单、下载选择和真机证据尚未收敛。跟踪：[#311](https://github.com/talex-touch/tuff/issues/311)。
   - 2026-08-07 复验：`electron-updater` 已不在任何 `package.json` 中声明，双路径确已移除——本条**只剩 Intel/Universal 范围这个产品决策**，不再含 artifact 冲突成分。#311 仍 open。
 
@@ -238,16 +239,18 @@
 - [x] **C1 — 死依赖** ✅ 已修（2026-08-07）：`mathjs` 已从两处 manifest、Vite externalize 例外与 electron-builder 排除项一并移除（[#338](https://github.com/talex-touch/tuff/issues/338) / [PR #1088](https://github.com/talex-touch/tuff/pull/1088)）；`tesseract.js` 在依赖树里已不存在，其残留的 build-allowlist 条目随 [#347](https://github.com/talex-touch/tuff/issues/347) / [PR #1084](https://github.com/talex-touch/tuff/pull/1084) 一并清除。
   - **顺带纠正原判断**：`electron-builder.yml` 那段注释称「只把约 2MB 的 mathjs/number 子集打进 bundle」——实测**从未发生**。移除前后 `out/main/index.js` 只差 **21 字节**（就是被内联 package.json 里的那串依赖声明），bundle 内 `createBigNumberClass` / `decimal.js` / `typed-function` 命中数全为 0。
 - [x] **C2 — `expectedDuration` 死配置** ✅ 已修（[#333](https://github.com/talex-touch/tuff/issues/333) / [PR #1085](https://github.com/talex-touch/tuff/pull/1085)，2026-08-07）：10 处声明（9 provider + 1 插件适配器）、`ISearchProvider` 字段及其文档、设计文档引用全部移除。兄弟字段 `priority` 确有消费者（`search-gather.ts:364` 按 `p.priority === 'fast'` 分层），未动。
-- [ ] **C3 — `searchCache` 收益存疑**（2026-08-07 复验，行号更新 + 部分前提修正）：定义在 `search-core.ts:186`，常量在 `:105-112`（TTL 5s / MAX 100 / ITEM 200），唯一读取点 `:887`。
-  - **原判断「命中率天然低」未获证实**：渲染层只发 `{ text, inputs }`（`useSearch.ts:83`），不含时间戳或请求 id，相同查询**能**产生相同键。正确性面也比预想好——命中走 `materializeCachedSearchResult(entry, sessionId)` 用**新** sessionId，且按 `searchIndexCommitHub` 的 revision 失效。
-  - **真正的问题**：`buildSearchCacheKey`（`search-core-utils.ts:133`）把 `TuffQuery` 上除 `text`/`inputs` 外的**所有**字段收进 `extras`，而**没有任何测试断言「相同查询 → 相同键」**（现有三条只断言不同输入键不同）。将来任何人往 `TuffQuery` 加一个每请求都变的字段，命中率会**静默归零**而套件全绿。跟踪：[#346](https://github.com/talex-touch/tuff/issues/346)（保留/移除阈值仍待拍板）。
+- [x] **C3 — `searchCache` 缓存键稳定性与击穿防线** ✅ 已修（2026-10-18）：
+  - 在 `search-core-utils.ts:buildSearchCacheKey` 中显式过滤了 `sessionId`、`requestId`、`timestamp`、`_traceId` 等每请求易失元数据键，防止字段扩充导致缓存命中率静默归零。
+  - 对字符串化的 JSON `content` 引入结构化稳定解析，消除属性序列化顺序差异导致的假失效。
+  - 新增 `search-core-utils.test.ts`（10 项单元测试），专门断言「相同查询 → 严格相同键」、键序列化顺序无关性、激活 Provider 顺序无关性、合法选项区分以及动态元数据隔离。61 项搜索契约套件全数通过。
 - [x] **C4 — 死代码** ✅ 已修（[#342](https://github.com/talex-touch/tuff/issues/342) / [PR #1083](https://github.com/talex-touch/tuff/pull/1083)，2026-08-07）：两个 handler 连同只为它们存在的 `enqueueIncrementalUpdate` 依赖（声明/字段/构造赋值/上游传入的闭包）与三个类型 import 一并删除。确认路径：`file-provider.ts:2442` 传的是 `subscribeToFileSystemEvents: () => undefined`，真实增量在 `indexed-source-event-router.ts:93` 绑的是另一套命名的 `handleFileAddedOrChanged`。
 - [ ] **C5 — Windows OCR COM apartment**：`winrt_ocr.cpp:157` 每次 init 不 uninit → 线程复用下 `RPC_E_CHANGED_MODE` 风险。
 - [ ] **C6 — Windows 全链路重依赖 PowerShell**：应用扫描 4 源 + Everything 装 PATH 全经 `powershell -Command`，ExecutionPolicy 受限时大面积降级且扫描侧无降级 UI。
-- [ ] **C7 — CoreBox 对话搜索按每次按键全表 `instr` 扫消息**（2026-09-26 新增功能时记账）
-  - 新增 `conversation-provider`（`addon/conversations/conversation-provider.ts`，`priority: 'fast'`）在**主进程同步**执行两条查询：`conversations` 标题 `instr(lower(title), ?)`，以及 join `conversation_messages` 的内容 `instr(lower(content), ?)`（`modules/conversation/conversation-store.ts:searchConversations`）。两列都没有索引，`instr` 只能全扫；查询文本按每次输入的 80ms debounce 触发一次。
-  - 当前规模下不是问题：本机 dev 库实测 `conversations` 7 行 / `conversation_messages` 26 行 / 正文合计 946 字节。风险面在长历史用户：消息正文是主要成本项（助手长回答），且单字查询会让 `ORDER BY updatedAt, seq` 面对海量命中行排序。`fastLayerConcurrency` 也因该 provider 从 6 提到 7（`search-gather.ts:62`）——一旦这条查询超过 80ms 窗口，它会以 late result 到达，而不是拖慢首帧。
-  - 修法（需要真实长历史 profile 的前后 A/B 才可判定，勿凭代码阅读直接改）：给 `conversation_messages.content` 建 FTS5 表或至少把内容检索限制在最近 N 个会话内；或把该 provider 移到 deferred 层。
+- [x] **C7 — CoreBox 对话搜索按每次按键全表 `instr` 扫消息** ✅ 已修（2026-10-18）：
+  - 位置：`modules/conversation/conversation-store.ts:searchConversations`。
+  - 根因与优化：原 `conversationMessages` 内容检索对整个消息表执行全表扫描（`SCAN conversation_messages`），长历史用户按键会带来同步 I/O 阻塞。
+  - 修复：为消息内容检索引入有界的最近会话扫描窗口 `maxRecentThreads`（默认 150，`CONVERSATION_CONTENT_MAX_SEARCH_THREADS`）。SQLite 查询计划从无界全表扫描优化为利用 `idx_conversations_updated` 索引拉取最近会话，再由 `idx_conversation_messages_thread` 索引按 `conversation_id` 精准搜索消息。
+  - 保证：标题检索仍然覆盖全部历史会话不受窗口限制；17 项单元测试及 25 项 Provider 单元测试全数通过。
 
 ---
 

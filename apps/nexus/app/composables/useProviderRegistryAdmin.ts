@@ -4,17 +4,15 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useAdminResource } from '~/composables/useAdminResource'
 import { useToast } from '~/composables/useToast'
 import { resolveProviderRegistryError } from '~/utils/admin-provider-registry'
+import { resolveProviderProtocol } from '../../shared/provider-registry'
 import {
   authTypeOptions,
   bindingStatusOptions,
   createProviderEditPanel,
-  createProviderAuthRef,
   createProviderQuotaPanel,
   createDefaultSceneCapabilityInput,
   createSceneEditPanel,
   createSceneRunPanel,
-  deriveCapabilitiesFromAdapter,
-  ensureUniqueCapabilities,
   fallbackOptions,
   formatJson,
   formatRunJson,
@@ -24,12 +22,9 @@ import {
   parseCommaList,
   parseJsonObjectField,
   parseOptionalJson,
-  parseOptionalNonNegativeNumber,
   ownerScopeOptions,
   PRODUCT_SCENE_TEMPLATES,
-  providerServiceCategoryOptions,
   providerStatusOptions,
-  providerCapabilityCatalogOptions,
   ProviderRegistryInputError,
   providerRegistryTemplates,
   providerVendorOptions,
@@ -39,7 +34,6 @@ import {
   summarizeProviderQuotaList,
   resolveHealthCheckActionHint,
   resolveHealthCheckReason,
-  resolveFirstProviderTemplateForServiceCategory,
   resolveSceneObservability,
   resolveSceneObservabilityActionHint,
   resolveUsageLedgerActionHint,
@@ -50,7 +44,6 @@ import {
   strategyOptions,
   type BindingFormRow,
   type BindingStatus,
-  type CapabilityFormRow,
   type OwnerScope,
   type ProductSceneTemplate,
   type ProviderCapabilityRecord,
@@ -61,8 +54,6 @@ import {
   type ProviderQuotaPanelState,
   type ProviderQuotaRecord,
   type ProviderRegistryRecord,
-  type ProviderServiceCategory,
-  type ProviderRegistryTemplateId,
   type ProviderStatus,
   type SceneCapabilityAdapterCatalogEntry,
   type ProviderUsageLedgerEntry,
@@ -91,10 +82,6 @@ export interface ProviderRegistrySnapshot {
   quotaLists: Record<string, ProviderQuotaRecord[]>
 }
 
-interface PreparedProviderCapabilities {
-  removedIds: Set<string>
-  inputs: Array<Pick<ProviderCapabilityRecord, 'capability' | 'schemaRef' | 'metering' | 'constraints' | 'metadata'> & { id?: string }>
-}
 
 /**
  * The provider registry page's data and actions.
@@ -221,10 +208,8 @@ export function useProviderRegistryAdmin() {
   const fetchingProviderModels = ref<string | null>(null)
   const fetchingFormModels = ref(false)
   const fetchedFormModels = ref<string[]>([])
-  const providerServiceCategoryId = ref<ProviderServiceCategory>('ai')
   const initialProviderTemplate = providerRegistryTemplates.find(template => template.id === 'openai-compatible-ai')
     ?? providerRegistryTemplates[0]!
-  const providerTemplateId = ref<ProviderRegistryTemplateId>(initialProviderTemplate.id)
 
   const providerForm = reactive({
     name: initialProviderTemplate.name,
@@ -233,7 +218,6 @@ export function useProviderRegistryAdmin() {
     adapterKey: initialProviderTemplate.adapterKey,
     status: 'disabled' as ProviderStatus,
     authType: initialProviderTemplate.authType,
-    authRef: createProviderAuthRef(initialProviderTemplate.name),
     ownerScope: 'system' as OwnerScope,
     endpoint: initialProviderTemplate.endpoint,
     region: initialProviderTemplate.region,
@@ -244,7 +228,6 @@ export function useProviderRegistryAdmin() {
     secretKey: '',
   })
 
-  const capabilityRows = ref<CapabilityFormRow[]>(initialProviderTemplate.capabilities.map(row => ({ ...row })))
 
   const sceneForm = reactive({
     id: 'corebox.screenshot.translate',
@@ -252,29 +235,20 @@ export function useProviderRegistryAdmin() {
     owner: 'core-app' as SceneOwner,
     ownerScope: 'system' as OwnerScope,
     status: 'enabled' as BindingStatus,
-    requiredCapabilitiesText: 'image.translate.e2e',
+    requiredCapabilitiesText: 'vision.ocr, text.translate, overlay.render',
     strategyMode: 'priority' as SceneStrategyMode,
     fallback: 'enabled' as SceneFallback,
   })
 
-  const bindingRows = ref<BindingFormRow[]>([
-    {
-      providerId: '',
-      capability: 'image.translate.e2e',
-      model: initialProviderTemplate.defaultModel ?? '',
-      priority: 10,
-    },
-  ])
+  const bindingRows = ref<BindingFormRow[]>(['vision.ocr', 'text.translate', 'overlay.render'].map((capability, index) => ({
+    providerId: '', capability, model: '', priority: (index + 1) * 10,
+  })))
 
   watch(() => registry.data.value, (data) => {
     if (!data)
       return
     providerQuotas.value = data.quotas
     providerQuotaLists.value = data.quotaLists
-    const firstBinding = bindingRows.value[0]
-    const firstProvider = data.providers[0]
-    if (firstBinding && !firstBinding.providerId && firstProvider)
-      firstBinding.providerId = firstProvider.id
   }, { immediate: true })
 
   const enabledProviders = computed(() => providers.value.filter(item => item.status === 'enabled').length)
@@ -296,92 +270,29 @@ export function useProviderRegistryAdmin() {
       resolveSceneObservability(scene.id, usageEntries.value),
     ]),
   ))
-  const providerServiceCategoryOptionsView = computed(() => providerServiceCategoryOptions.map(category => ({
-    value: category,
-    label: category,
-  })))
-  const providerTemplateOptions = computed(() => providerRegistryTemplates
-    .filter(template => template.serviceCategory === providerServiceCategoryId.value)
-    .map(template => ({
-      value: template.id,
-      label: template.displayName,
-    })))
-  const providerCapabilityTemplateOptions = computed(() => providerCapabilityCatalogOptions.map(row => ({ ...row })))
-  const providerMeteringUnitOptions = computed(() => Array.from(new Set(providerCapabilityCatalogOptions.map(row => row.meteringUnit))))
   const providerAdapterOptions = computed(() => adapterCatalog.value.map(adapter => ({
     value: adapter.key,
     label: adapter.label,
   })))
 
-  function applyProviderTemplate(templateId: unknown) {
-    const template = providerRegistryTemplates.find(item => item.id === String(templateId))
-    if (!template)
+  function applyProviderProtocol(key: unknown, provider?: ProviderRegistryRecord) {
+    const protocol = resolveProviderProtocol(String(key))
+    if (!protocol)
       return
-
-    providerServiceCategoryId.value = template.serviceCategory
-    providerTemplateId.value = template.id
-    providerForm.name = template.name
-    providerForm.displayName = template.displayName
-    providerForm.vendor = template.vendor
-    providerForm.status = 'disabled'
-    providerForm.adapterKey = template.adapterKey
-    providerForm.authType = template.authType
-    providerForm.authRef = createProviderAuthRef(template.name)
-    providerForm.ownerScope = 'system'
-    providerForm.endpoint = template.endpoint
-    providerForm.region = template.region
-    providerForm.modelsText = (template.models ?? []).join('\n')
-    providerForm.defaultModel = template.defaultModel ?? ''
-    providerForm.apiKey = ''
-    providerForm.secretId = ''
-    providerForm.secretKey = ''
-    capabilityRows.value = deriveCapabilitiesFromAdapter(template.adapterKey)
+    const form = provider ? getProviderEditPanel(provider) : providerForm
+    form.adapterKey = protocol.key
+    form.vendor = protocol.vendor
+    form.authType = protocol.authType
+    if (!provider)
+      fetchedFormModels.value = []
+    else
+      getProviderEditPanel(provider).fetchedModels = []
   }
 
-  function applyProviderServiceCategory(category: unknown) {
-    const normalized = String(category) as ProviderServiceCategory
-    const template = resolveFirstProviderTemplateForServiceCategory(normalized)
-    if (!template)
-      return
 
-    providerServiceCategoryId.value = normalized
-    applyProviderTemplate(template.id)
-  }
-
-  watch(providerServiceCategoryId, (category) => {
-    const currentTemplate = providerRegistryTemplates.find(item => item.id === providerTemplateId.value)
-    if (currentTemplate?.serviceCategory === category)
-      return
-
-    const template = resolveFirstProviderTemplateForServiceCategory(category)
-    if (template)
-      applyProviderTemplate(template.id)
-  })
-
-  function addCapabilityRow() {
-    const usedCapabilities = new Set(capabilityRows.value.map(row => row.capability))
-    const template = providerCapabilityTemplateOptions.value.find(row => !usedCapabilities.has(row.capability))
-      ?? providerCapabilityTemplateOptions.value[0]
-
-    capabilityRows.value.push(template ? { ...template } : { capability: '', schemaRef: '', meteringUnit: 'request' })
-  }
-
-  function removeCapabilityRow(index: number) {
-    capabilityRows.value.splice(index, 1)
-  }
-
-  function applyProviderCapabilityTemplate(row: CapabilityFormRow, capability: unknown) {
-    const template = providerCapabilityTemplateOptions.value.find(item => item.capability === String(capability))
-    if (!template)
-      return
-
-    row.capability = template.capability
-    row.schemaRef = template.schemaRef
-    row.meteringUnit = template.meteringUnit
-  }
-
-  function addBindingRow() {
-    bindingRows.value.push({ providerId: providers.value[0]?.id ?? '', capability: '', model: '', priority: 100 })
+  function addBindingRow(capability = parseRequiredCapabilities()[0] ?? '') {
+    const priority = Math.max(0, ...bindingRows.value.map(row => row.priority)) + 10
+    bindingRows.value.push({ providerId: '', capability, model: '', priority })
   }
 
   function removeBindingRow(index: number) {
@@ -419,32 +330,14 @@ export function useProviderRegistryAdmin() {
     delete sceneEditPanels[scene.id]
   }
 
-  function addProviderCapabilityEditRow(provider: ProviderRegistryRecord) {
-    getProviderEditPanel(provider).capabilities.push({
-      capability: '',
-      schemaRef: '',
-      meteringUnit: 'token',
-      maxImageBytes: '',
-      providerModel: '',
-      meteringText: '',
-      constraintsText: '',
-      metadataText: '',
-    })
-  }
 
-  function removeProviderCapabilityEditRow(provider: ProviderRegistryRecord, index: number) {
-    const panel = getProviderEditPanel(provider)
-    const [removed] = panel.capabilities.splice(index, 1)
-    if (removed?.id)
-      panel.removedCapabilityIds.push(removed.id)
-  }
-
-  function addSceneBindingEditRow(scene: SceneRegistryRecord) {
-    getSceneEditPanel(scene).bindings.push({
-      providerId: providers.value[0]?.id ?? '',
-      capability: scene.requiredCapabilities[0] ?? '',
+  function addSceneBindingEditRow(scene: SceneRegistryRecord, capability = scene.requiredCapabilities[0] ?? '') {
+    const panel = getSceneEditPanel(scene)
+    panel.bindings.push({
+      providerId: '',
+      capability,
       model: '',
-      priority: 100,
+      priority: Math.max(0, ...panel.bindings.map(row => Number(row.priority) || 0)) + 10,
       weightText: '',
       status: 'enabled',
       constraintsText: '',
@@ -460,72 +353,6 @@ export function useProviderRegistryAdmin() {
     return parseCommaList(sceneForm.requiredCapabilitiesText)
   }
 
-  function prepareProviderCapabilities(panel: ProviderEditPanelState): PreparedProviderCapabilities {
-    const blankedExistingCapabilityIds = panel.capabilities
-      .filter(row => row.id && !row.capability.trim())
-      .map(row => row.id as string)
-    // A row's path keeps its place in the editor, blank rows included, so an error names the row on screen.
-    const capabilityInputs = panel.capabilities
-      .map((row, index) => ({ row, index }))
-      .filter(({ row }) => row.capability.trim())
-      .map(({ row, index }) => ({
-        id: row.id,
-        capability: row.capability.trim(),
-        schemaRef: row.schemaRef.trim() || null,
-        metering: mergeJsonObjects(
-          parseJsonObjectField(row.meteringText, `capabilities[${index}].metering`),
-          { unit: row.meteringUnit.trim() || null },
-        ),
-        constraints: mergeJsonObjects(
-          parseJsonObjectField(row.constraintsText, `capabilities[${index}].constraints`),
-          {
-            maxImageBytes: parseOptionalNonNegativeNumber(
-              row.maxImageBytes,
-              `capabilities[${index}].maxImageBytes`,
-            ),
-          },
-        ),
-        metadata: mergeJsonObjects(
-          parseJsonObjectField(row.metadataText, `capabilities[${index}].metadata`),
-          { providerModel: row.providerModel.trim() || null },
-        ),
-      }))
-
-    ensureUniqueCapabilities(capabilityInputs)
-    return {
-      removedIds: new Set([...panel.removedCapabilityIds, ...blankedExistingCapabilityIds]),
-      inputs: capabilityInputs,
-    }
-  }
-
-  async function syncProviderCapabilities(
-    provider: ProviderRegistryRecord,
-    prepared: PreparedProviderCapabilities,
-  ) {
-    for (const capabilityId of prepared.removedIds)
-      await providerService.deleteCapability(provider.id, capabilityId)
-
-    for (const capability of prepared.inputs) {
-      if (capability.id) {
-        await providerService.updateCapability(provider.id, capability.id, {
-          capability: capability.capability,
-          schemaRef: capability.schemaRef,
-          metering: capability.metering,
-          constraints: capability.constraints,
-          metadata: capability.metadata,
-        })
-        continue
-      }
-
-      await providerService.createCapability(provider.id, {
-        capability: capability.capability,
-        schemaRef: capability.schemaRef,
-        metering: capability.metering,
-        constraints: capability.constraints,
-        metadata: capability.metadata,
-      })
-    }
-  }
 
   function sceneProviderOptions(scene: SceneRegistryRecord) {
     const providerIds = new Set(scene.bindings.map(binding => binding.providerId))
@@ -538,6 +365,12 @@ export function useProviderRegistryAdmin() {
     return Array.isArray(models)
       ? models.filter((model): model is string => typeof model === 'string' && model.trim().length > 0)
       : []
+  }
+
+  function bindingProviderOptions(capability: string) {
+    return providers.value
+      .filter(provider => provider.capabilities.some(item => item.capability === capability))
+      .map(provider => ({ value: provider.id, label: provider.displayName }))
   }
 
   function parseProviderModels(value: string) {
@@ -621,9 +454,6 @@ export function useProviderRegistryAdmin() {
     providerCreateError.value = null
     try {
       const targetStatus = providerForm.status
-      const authRef = providerForm.authType === 'none'
-        ? undefined
-        : createProviderAuthRef(providerForm.name)
       const hasApiKeyInput = providerForm.authType === 'api_key' && providerForm.apiKey.trim()
       const hasSecretPairInput = providerForm.authType === 'secret_pair'
         && providerForm.secretId.trim()
@@ -632,36 +462,28 @@ export function useProviderRegistryAdmin() {
       assertDefaultModel(parseProviderModels(providerForm.modelsText), providerForm.defaultModel.trim())
       const body = {
         name: providerForm.name.trim(),
-        displayName: providerForm.displayName.trim(),
+        displayName: providerForm.name.trim(),
         vendor: providerForm.vendor,
         status: hasCredentialInput ? 'disabled' : providerForm.status,
         authType: providerForm.authType,
-        authRef,
         ownerScope: providerForm.ownerScope,
         endpoint: providerForm.endpoint.trim() || undefined,
         region: providerForm.region.trim() || undefined,
         metadata: mergeJsonObjects(
-          providerRegistryTemplates.find(item => item.id === providerTemplateId.value)?.metadata ?? null,
+          { intelligenceType: 'custom' },
           {
             adapterKey: providerForm.adapterKey,
             models: parseProviderModels(providerForm.modelsText),
             defaultModel: providerForm.defaultModel.trim() || null,
           },
         ),
-        capabilities: (capabilityRows.value.length ? capabilityRows.value : deriveCapabilitiesFromAdapter(providerForm.adapterKey))
-          .filter(row => row.capability.trim())
-          .map(row => ({
-            capability: row.capability.trim(),
-            schemaRef: row.schemaRef.trim() || undefined,
-            metering: row.meteringUnit.trim() ? { unit: row.meteringUnit.trim() } : undefined,
-          })),
+        capabilities: [],
       }
 
-      await providerService.createProvider(body)
+      const { provider } = await providerService.createProvider(body)
       if (hasCredentialInput) {
         await providerService.createCredential({
-          authRef,
-          authType: providerForm.authType,
+          providerId: provider.id,
           credentials: hasSecretPairInput
             ? {
                 secretId: providerForm.secretId.trim(),
@@ -675,12 +497,8 @@ export function useProviderRegistryAdmin() {
         providerForm.secretId = ''
         providerForm.secretKey = ''
 
-        if (targetStatus !== 'disabled') {
-          const providerResult = await providerService.listProviders(providerForm.vendor)
-          const provider = (providerResult.providers ?? []).find(item => item.authRef === authRef)
-          if (provider)
-            await providerService.updateProvider(provider.id, { status: targetStatus })
-        }
+        if (targetStatus !== 'disabled')
+          await providerService.updateProvider(provider.id, { status: targetStatus })
       }
       toast.success(t('dashboard.providerRegistry.providers.created', 'Provider created.'))
       await refresh()
@@ -765,11 +583,6 @@ export function useProviderRegistryAdmin() {
           .filter(Boolean),
       ))
       panel.fetchedModels = models
-      if (!panel.modelsText.trim()) {
-        panel.modelsText = models.join('\n')
-      }
-      if (!panel.defaultModel && models[0])
-        panel.defaultModel = models[0]
       toast.success(t('dashboard.providerRegistry.providers.modelsFetched', { count: models.length }, `Fetched ${models.length} model(s).`))
     }
     catch (err) {
@@ -783,10 +596,8 @@ export function useProviderRegistryAdmin() {
     fetchingFormModels.value = true
     providerCreateError.value = null
     try {
-      const vendor = providerForm.vendor
-      const type = vendor === 'deepseek' ? 'deepseek' : (vendor === 'openai' ? 'openai' : 'custom')
       const result = await providerService.fetchModelsProbe({
-        type,
+        type: 'custom',
         baseUrl: providerForm.endpoint?.trim() || undefined,
         apiKey: providerForm.apiKey?.trim() || undefined,
       })
@@ -796,11 +607,6 @@ export function useProviderRegistryAdmin() {
           .filter(Boolean),
       ))
       fetchedFormModels.value = models
-      if (!providerForm.modelsText.trim()) {
-        providerForm.modelsText = models.join('\n')
-      }
-      if (!providerForm.defaultModel && models[0])
-        providerForm.defaultModel = models[0]
       toast.success(t('dashboard.providerRegistry.providers.modelsFetched', { count: models.length }, `Fetched ${models.length} model(s).`))
     }
     catch (err) {
@@ -817,14 +623,16 @@ export function useProviderRegistryAdmin() {
     panel.saving = true
     panel.error = null
     try {
+      const replacingCredential = Boolean(panel.apiKey?.trim() || panel.secretId?.trim() || panel.secretKey?.trim())
+      if (panel.authType === 'secret_pair' && replacingCredential && (!panel.secretId?.trim() || !panel.secretKey?.trim()))
+        throw new Error(t('dashboard.providerRegistry.providers.secretPairRequired', 'Enter both SecretId and SecretKey to replace the credential.'))
       assertDefaultModel(parseProviderModels(panel.modelsText), panel.defaultModel.trim())
       const body = {
         name: panel.name.trim(),
-        displayName: panel.displayName.trim(),
+        displayName: panel.name.trim(),
         vendor: panel.vendor,
-        status: panel.status,
+        status: replacingCredential ? 'disabled' : panel.status,
         authType: panel.authType,
-        authRef: panel.authType === 'none' ? undefined : panel.authRef.trim(),
         ownerScope: panel.ownerScope,
         ownerId: panel.ownerId.trim() || null,
         description: panel.description.trim() || null,
@@ -834,32 +642,31 @@ export function useProviderRegistryAdmin() {
           parseJsonObjectField(panel.metadataText, 'provider.metadata'),
           {
             adapterKey: panel.adapterKey,
+            intelligenceType: 'custom',
             models: parseProviderModels(panel.modelsText),
             defaultModel: panel.defaultModel.trim() || null,
           },
         ),
       }
-      const capabilities = prepareProviderCapabilities(panel)
 
       await providerService.updateProvider(provider.id, body)
-      await syncProviderCapabilities(provider, capabilities)
       if (panel.authType === 'api_key' && panel.apiKey?.trim()) {
         await providerService.createCredential({
-          authRef: panel.authRef || provider.authRef,
-          authType: 'api_key',
+          providerId: provider.id,
           credentials: { apiKey: panel.apiKey.trim() },
         })
         panel.apiKey = ''
       }
       else if (panel.authType === 'secret_pair' && panel.secretId?.trim() && panel.secretKey?.trim()) {
         await providerService.createCredential({
-          authRef: panel.authRef || provider.authRef,
-          authType: 'secret_pair',
+          providerId: provider.id,
           credentials: { secretId: panel.secretId.trim(), secretKey: panel.secretKey.trim() },
         })
         panel.secretId = ''
         panel.secretKey = ''
       }
+      if (replacingCredential && panel.status !== 'disabled')
+        await providerService.updateProvider(provider.id, { status: panel.status })
       toast.success(t('dashboard.providerRegistry.providers.updated', 'Provider updated.'))
       // Unless the drawer was reopened while this saved: that editor is the operator's now.
       if (providerEditPanels[provider.id] === panel)
@@ -940,6 +747,7 @@ export function useProviderRegistryAdmin() {
     savingScene.value = true
     sceneCreateError.value = null
     try {
+      const existingScene = scenes.value.find(scene => scene.id === sceneForm.id)
       const body = {
         id: sceneForm.id.trim(),
         displayName: sceneForm.displayName.trim(),
@@ -955,16 +763,26 @@ export function useProviderRegistryAdmin() {
         },
         bindings: bindingRows.value
           .filter(row => row.providerId && row.capability.trim())
-          .map(row => ({
-            providerId: row.providerId,
-            capability: row.capability.trim(),
-            model: row.model.trim() || undefined,
-            priority: Number(row.priority) || 100,
-          })),
+          .map((row) => {
+            const existing = existingScene?.bindings.find(binding => binding.providerId === row.providerId && binding.capability === row.capability)
+            return {
+              providerId: row.providerId,
+              capability: row.capability.trim(),
+              model: row.model.trim() || null,
+              priority: Number(row.priority) || 100,
+              weight: existing?.weight,
+              status: existing?.status ?? 'enabled',
+              constraints: existing?.constraints,
+              metadata: existing?.metadata,
+            }
+          }),
       }
 
-      await sceneObservabilityService.createScene(body)
-      toast.success(t('dashboard.providerRegistry.scenes.created', 'Scene created.'))
+      if (existingScene)
+        await sceneObservabilityService.updateScene(existingScene.id, body)
+      else
+        await sceneObservabilityService.createScene(body)
+      toast.success(t('dashboard.providerRegistry.scenes.updated', 'Scene updated.'))
       await refresh()
       return true
     }
@@ -1162,16 +980,14 @@ export function useProviderRegistryAdmin() {
     sceneForm.id = template.id
     sceneForm.displayName = template.displayName
     sceneForm.owner = template.owner
-    sceneForm.requiredCapabilitiesText = template.requiredCapabilities.join(', ')
-    bindingRows.value = template.requiredCapabilities.map((cap, index) => {
-      const matchingProvider = providers.value.find(p => p.capabilities.some(c => c.capability === cap))
-      return {
-        providerId: matchingProvider?.id || providers.value[0]?.id || '',
-        capability: cap,
-        model: '',
-        priority: (index + 1) * 10,
-      }
-    })
+    const existing = scenes.value.find(scene => scene.id === template.id)
+    sceneForm.requiredCapabilitiesText = (existing?.requiredCapabilities ?? template.requiredCapabilities).join(', ')
+    sceneForm.status = existing?.status ?? 'enabled'
+    sceneForm.strategyMode = existing?.strategyMode ?? 'priority'
+    sceneForm.fallback = existing?.fallback ?? 'enabled'
+    bindingRows.value = existing
+      ? existing.bindings.map(binding => ({ providerId: binding.providerId, capability: binding.capability, model: binding.model ?? '', priority: binding.priority }))
+      : template.requiredCapabilities.map((capability, index) => ({ providerId: '', capability, model: '', priority: (index + 1) * 10 }))
   }
 
   return {
@@ -1186,20 +1002,16 @@ export function useProviderRegistryAdmin() {
     listHealthChecks: sceneObservabilityService.listHealthChecks,
     adapterCatalog,
     bindingModelOptions,
+    bindingProviderOptions,
+    applyProviderProtocol,
     actionPending,
     addBindingRow,
-    addCapabilityRow,
-    addProviderCapabilityEditRow,
     addSceneBindingEditRow,
-    applyProviderCapabilityTemplate,
-    applyProviderServiceCategory,
-    applyProviderTemplate,
     authTypeOptions,
     bindingRows,
     bindingStatusOptions,
     capabilities,
     capabilityCount,
-    capabilityRows,
     checkProvider,
     createProvider,
     createScene,
@@ -1243,21 +1055,13 @@ export function useProviderRegistryAdmin() {
     providerForm,
     providerObservabilityById,
     providerOptions,
-    providerCapabilityTemplateOptions,
     providerAdapterOptions,
-    providerMeteringUnitOptions,
     providerStatusOptions,
-    providerServiceCategoryId,
-    providerServiceCategoryOptions: providerServiceCategoryOptionsView,
-    providerTemplateId,
-    providerTemplateOptions,
     providers,
     providerQuotaPanels,
     providerQuotas,
     providerVendorOptions,
     removeBindingRow,
-    removeCapabilityRow,
-    removeProviderCapabilityEditRow,
     removeSceneBindingEditRow,
     resetProviderEditPanel,
     resetProviderQuotaPanel,

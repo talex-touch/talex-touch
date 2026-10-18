@@ -6,7 +6,7 @@ import type {
   ScreenshotSessionWindowFactory,
   ScreenshotSessionWindowHandle
 } from './session-manager'
-import { ScreenshotEditorWindowOption, ScreenshotOverlayWindowOption } from '../../config/default'
+import { ScreenshotOverlayWindowOption } from '../../config/default'
 
 interface ScreenshotBrowserWindowLike {
   webContents: { id: number }
@@ -64,17 +64,6 @@ export class ElectronScreenshotWindowFactory implements ScreenshotSessionWindowF
     return this.createHandle(touchWindow, display.id)
   }
 
-  createEditor(_input: {
-    sessionId: string
-    resource: NativeScreenshotCaptureResult
-  }): ScreenshotSessionWindowHandle {
-    const touchWindow = this.createWindow({ ...ScreenshotEditorWindowOption })
-    const browserWindow = touchWindow.window
-    browserWindow.setFullScreenable(false)
-    browserWindow.setSkipTaskbar(false)
-    return this.createHandle(touchWindow, null)
-  }
-
   private createHandle(
     touchWindow: ScreenshotTouchWindowLike,
     displayId: string | null
@@ -84,8 +73,14 @@ export class ElectronScreenshotWindowFactory implements ScreenshotSessionWindowF
       webContentsId: browserWindow.webContents.id,
       displayId,
       load: async () => await this.loadRenderer(touchWindow),
-      show: () => browserWindow.show(),
-      focus: () => browserWindow.focus(),
+      show: () => {
+        browserWindow.setAlwaysOnTop(true, 'screen-saver')
+        browserWindow.show()
+      },
+      focus: () => {
+        browserWindow.setAlwaysOnTop(true, 'screen-saver')
+        browserWindow.focus()
+      },
       destroy: () => browserWindow.destroy(),
       isDestroyed: () => browserWindow.isDestroyed(),
       onClosed: (listener) => {

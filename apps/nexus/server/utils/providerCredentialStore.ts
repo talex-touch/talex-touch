@@ -165,6 +165,14 @@ export async function storeProviderCredential(
   }
 }
 
+export async function hasProviderCredential(event: H3Event, authRef: string): Promise<boolean> {
+  const db = requireD1Database(event)
+  await ensureProviderCredentialSchema(db)
+  const row = await db.prepare(`SELECT 1 AS present FROM ${CREDENTIALS_TABLE} WHERE auth_ref = ?1 AND purpose = ?2 LIMIT 1`)
+    .bind(crypto.normalizeAuthRef(authRef), PROVIDER_CREDENTIAL_PURPOSE).first()
+  return Boolean(row)
+}
+
 export async function getProviderCredential(
   event: H3Event,
   authRef: string,
@@ -190,6 +198,7 @@ export async function getProviderCredential(
     return null
   }
 }
+export const resolveProviderCredential = getProviderCredential
 
 export async function deleteProviderCredential(
   event: H3Event,

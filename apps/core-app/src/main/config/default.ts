@@ -22,7 +22,7 @@ export const MainWindowOption: Electron.BrowserWindowConstructorOptions = {
   minWidth: 1100,
   minHeight: 680,
   height: 820,
-  width: 1100,
+  width: 1280,
   autoHideMenuBar: true,
   show: false,
   transparent: true,
@@ -119,6 +119,7 @@ export const ScreenshotOverlayWindowOption: Electron.BrowserWindowConstructorOpt
   frame: false,
   resizable: false,
   movable: false,
+  alwaysOnTop: true,
   minimizable: false,
   maximizable: false,
   fullscreenable: false,
@@ -135,30 +136,6 @@ export const ScreenshotOverlayWindowOption: Electron.BrowserWindowConstructorOpt
     additionalArguments: buildWindowArgs({
       touchType: 'screenshot',
       screenshotType: 'overlay'
-    })
-  })
-}
-
-export const ScreenshotEditorWindowOption: Electron.BrowserWindowConstructorOptions = {
-  title: `${AppName} Screenshot Editor`,
-  frame: false,
-  width: 960,
-  height: 640,
-  minWidth: 720,
-  minHeight: 480,
-  resizable: true,
-  movable: true,
-  skipTaskbar: false,
-  autoHideMenuBar: true,
-  show: false,
-  transparent: false,
-  backgroundColor: '#111315',
-  webPreferences: buildWindowWebPreferences('app', {
-    preload: CORE_APP_PRELOAD_PATH,
-    scrollBounce: false,
-    additionalArguments: buildWindowArgs({
-      touchType: 'screenshot',
-      screenshotType: 'editor'
     })
   })
 }

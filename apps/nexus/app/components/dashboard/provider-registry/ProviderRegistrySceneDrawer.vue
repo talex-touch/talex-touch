@@ -91,44 +91,13 @@ function selectRunCapability(capability: unknown) {
         <section class="RegistryForm-Grid">
           <AdminFormField class="RegistryForm-Wide" :label="t('dashboard.providerRegistry.routes.preset', 'Function preset')" :for="fieldId('preset')">
             <TuffSelect
-:id="fieldId('preset')" class="RegistryForm-Control" @change="(id: unknown) => {
+:id="fieldId('preset')" :model-value="admin.sceneForm.id" class="RegistryForm-Control" @change="(id: unknown) => {
               const tpl = admin.productSceneTemplates.find(item => item.id === String(id))
               if (tpl) admin.applyProductSceneTemplate(tpl)
             }"
 >
-              <TuffSelectItem value="" :label="t('dashboard.providerRegistry.routes.customPreset', 'Custom function')" />
               <TuffSelectItem v-for="tpl in admin.productSceneTemplates" :key="tpl.id" :value="tpl.id" :label="`${tpl.displayName} (${tpl.id})`" />
             </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.routeId', 'Route ID')" :for="fieldId('id')">
-            <TuffInput :id="fieldId('id')" v-model="admin.sceneForm.id" class="RegistryForm-Control" />
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.displayName', 'Display name')" :for="fieldId('display-name')">
-            <TuffInput :id="fieldId('display-name')" v-model="admin.sceneForm.displayName" class="RegistryForm-Control" />
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.owner', 'Owner')" :for="fieldId('owner')">
-            <TuffSelect :id="fieldId('owner')" v-model="admin.sceneForm.owner" class="RegistryForm-Control">
-              <TuffSelectItem v-for="owner in admin.sceneOwnerOptions" :key="owner" :value="owner" :label="valueLabel(owner)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.strategy', 'Strategy')" :for="fieldId('strategy')">
-            <TuffSelect :id="fieldId('strategy')" v-model="admin.sceneForm.strategyMode" class="RegistryForm-Control">
-              <TuffSelectItem v-for="strategy in admin.strategyOptions" :key="strategy" :value="strategy" :label="valueLabel(strategy)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.status', 'Status')" :for="fieldId('status')">
-            <TuffSelect :id="fieldId('status')" v-model="admin.sceneForm.status" class="RegistryForm-Control">
-              <TuffSelectItem value="enabled" :label="valueLabel('enabled')" />
-              <TuffSelectItem value="disabled" :label="valueLabel('disabled')" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.fallback', 'Fallback')" :for="fieldId('fallback')">
-            <TuffSelect :id="fieldId('fallback')" v-model="admin.sceneForm.fallback" class="RegistryForm-Control">
-              <TuffSelectItem v-for="fallback in admin.fallbackOptions" :key="fallback" :value="fallback" :label="valueLabel(fallback)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField class="RegistryForm-Wide" :label="t('dashboard.providerRegistry.fields.requiredCapabilities', 'Required capabilities')" :for="fieldId('required')">
-            <TuffInput :id="fieldId('required')" v-model="admin.sceneForm.requiredCapabilitiesText" class="RegistryForm-Control" placeholder="image.translate.e2e, text.translate" />
           </AdminFormField>
         </section>
 
@@ -137,8 +106,8 @@ function selectRunCapability(capability: unknown) {
             <h3 class="RegistryForm-GroupTitle">
               {{ t('dashboard.providerRegistry.routes.bindingsTitle', 'Provider bindings') }}
             </h3>
-            <TxButton variant="secondary" size="sm" :disabled="!admin.providers.value.length" @click="admin.addBindingRow">
-              {{ t('dashboard.providerRegistry.actions.addBinding', 'Add binding') }}
+            <TxButton v-for="capability in admin.parseRequiredCapabilities()" :key="capability" variant="secondary" size="sm" @click="admin.addBindingRow(capability)">
+              {{ t('dashboard.providerRegistry.actions.addBinding', 'Add binding') }} · {{ capability }}
             </TxButton>
           </div>
           <div class="RegistryRows">
@@ -146,27 +115,17 @@ function selectRunCapability(capability: unknown) {
               <span>{{ t('dashboard.providerRegistry.fields.provider', 'Provider') }}</span>
               <span>{{ t('dashboard.providerRegistry.fields.capability', 'Capability') }}</span>
               <span>{{ t('dashboard.providerRegistry.fields.model', 'Model') }}</span>
-              <span>{{ t('dashboard.providerRegistry.fields.priority', 'Priority') }}</span>
               <span />
             </div>
             <div v-for="(row, index) in admin.bindingRows.value" :key="index" class="RegistryRows-Row is-binding">
-              <TuffSelect v-model="row.providerId" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.provider', 'Provider'), index)" class="RegistryForm-Control">
-                <TuffSelectItem v-for="provider in admin.providerOptions.value" :key="provider.value" :value="provider.value" :label="provider.label" />
+              <TuffSelect v-model="row.providerId" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.provider', 'Provider'), index)" class="RegistryForm-Control" @change="row.model = ''">
+                <TuffSelectItem v-for="provider in admin.bindingProviderOptions(row.capability)" :key="provider.value" :value="provider.value" :label="provider.label" />
               </TuffSelect>
-              <TuffSelect
-                v-if="admin.parseRequiredCapabilities().length > 0"
-                v-model="row.capability"
-                :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)"
-                class="RegistryForm-Control"
-              >
-                <TuffSelectItem v-for="cap in admin.parseRequiredCapabilities()" :key="cap" :value="cap" :label="cap" />
-              </TuffSelect>
-              <TuffInput v-else v-model="row.capability" class="RegistryForm-Control" placeholder="image.translate.e2e" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)" />
+              <span class="RegistryForm-Hint">{{ row.capability }}</span>
               <TuffSelect v-model="row.model" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.model', 'Model'), index)" class="RegistryForm-Control" :placeholder="t('dashboard.providerRegistry.fields.model', 'Model')">
                 <TuffSelectItem value="" :label="t('dashboard.providerRegistry.providers.modelDefault', 'Use default model')" />
                 <TuffSelectItem v-for="model in admin.bindingModelOptions(row.providerId)" :key="model" :value="model" :label="model" />
               </TuffSelect>
-              <TuffInput v-model="row.priority" type="number" class="RegistryForm-Control" placeholder="10" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.priority', 'Priority'), index)" />
               <TxIconButton
                 size="xs"
                 icon="i-carbon-close"
@@ -181,81 +140,30 @@ function selectRunCapability(capability: unknown) {
       </template>
 
       <template v-else-if="mode === 'edit' && scene && editPanel">
-        <section class="RegistryForm-Grid">
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.displayName', 'Display name')" :for="fieldId('edit-display-name')">
-            <TuffInput :id="fieldId('edit-display-name')" v-model="editPanel.displayName" class="RegistryForm-Control" />
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.owner', 'Owner')" :for="fieldId('edit-owner')">
-            <TuffSelect :id="fieldId('edit-owner')" v-model="editPanel.owner" class="RegistryForm-Control">
-              <TuffSelectItem v-for="owner in admin.sceneOwnerOptions" :key="owner" :value="owner" :label="valueLabel(owner)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.ownerScope', 'Owner scope')" :for="fieldId('edit-owner-scope')">
-            <TuffSelect :id="fieldId('edit-owner-scope')" v-model="editPanel.ownerScope" class="RegistryForm-Control">
-              <TuffSelectItem v-for="scope in admin.ownerScopeOptions" :key="scope" :value="scope" :label="valueLabel(scope)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.ownerId', 'Owner ID')" :for="fieldId('edit-owner-id')">
-            <TuffInput :id="fieldId('edit-owner-id')" v-model="editPanel.ownerId" class="RegistryForm-Control" />
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.status', 'Status')" :for="fieldId('edit-status')">
-            <TuffSelect :id="fieldId('edit-status')" v-model="editPanel.status" class="RegistryForm-Control">
-              <TuffSelectItem v-for="status in admin.bindingStatusOptions" :key="status" :value="status" :label="valueLabel(status)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.strategy', 'Strategy')" :for="fieldId('edit-strategy')">
-            <TuffSelect :id="fieldId('edit-strategy')" v-model="editPanel.strategyMode" class="RegistryForm-Control">
-              <TuffSelectItem v-for="strategy in admin.strategyOptions" :key="strategy" :value="strategy" :label="valueLabel(strategy)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.fallback', 'Fallback')" :for="fieldId('edit-fallback')">
-            <TuffSelect :id="fieldId('edit-fallback')" v-model="editPanel.fallback" class="RegistryForm-Control">
-              <TuffSelectItem v-for="fallback in admin.fallbackOptions" :key="fallback" :value="fallback" :label="valueLabel(fallback)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.requiredCapabilities', 'Required capabilities')" :for="fieldId('edit-required')">
-            <TuffInput :id="fieldId('edit-required')" v-model="editPanel.requiredCapabilitiesText" class="RegistryForm-Control" placeholder="image.translate.e2e, text.translate" />
-          </AdminFormField>
-          <AdminFormField class="RegistryForm-Wide" :label="t('dashboard.providerRegistry.fields.meteringPolicyJson', 'Metering policy JSON')" :for="fieldId('edit-metering')">
-            <TuffInput :id="fieldId('edit-metering')" v-model="editPanel.meteringPolicyText" type="textarea" :rows="3" class="RegistryForm-Control is-mono" placeholder="{ }" />
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.auditPolicyJson', 'Audit policy JSON')" :for="fieldId('edit-audit')">
-            <TuffInput :id="fieldId('edit-audit')" v-model="editPanel.auditPolicyText" type="textarea" :rows="4" class="RegistryForm-Control is-mono" placeholder="{ &quot;persistInput&quot;: false, &quot;persistOutput&quot;: false }" />
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.metadataJson', 'Metadata JSON')" :for="fieldId('edit-metadata')">
-            <TuffInput :id="fieldId('edit-metadata')" v-model="editPanel.metadataText" type="textarea" :rows="4" class="RegistryForm-Control is-mono" placeholder="{ }" />
-          </AdminFormField>
-        </section>
+        <p class="RegistryForm-Hint">
+{{ scene.displayName }} · {{ scene.id }}
+</p>
 
         <section class="RegistryForm-Group">
           <div class="RegistryForm-GroupHead">
             <h3 class="RegistryForm-GroupTitle">
               {{ t('dashboard.providerRegistry.routes.bindingsTitle', 'Provider bindings') }}
             </h3>
-            <TxButton variant="secondary" size="sm" :disabled="!admin.providers.value.length" @click="admin.addSceneBindingEditRow(scene)">
-              {{ t('dashboard.providerRegistry.actions.addBinding', 'Add binding') }}
+            <TxButton v-for="capability in scene.requiredCapabilities" :key="capability" variant="secondary" size="sm" @click="admin.addSceneBindingEditRow(scene, capability)">
+              {{ t('dashboard.providerRegistry.actions.addBinding', 'Add binding') }} · {{ capability }}
             </TxButton>
           </div>
           <div class="RegistryRows">
             <div v-for="(row, index) in editPanel.bindings" :key="index" class="RegistryRows-Item">
               <div class="RegistryRows-Row is-binding">
-                <TuffSelect v-model="row.providerId" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.provider', 'Provider'), index)" class="RegistryForm-Control">
-                  <TuffSelectItem v-for="providerOption in admin.providerOptions.value" :key="providerOption.value" :value="providerOption.value" :label="providerOption.label" />
+                <TuffSelect v-model="row.providerId" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.provider', 'Provider'), index)" class="RegistryForm-Control" @change="row.model = ''">
+                  <TuffSelectItem v-for="providerOption in admin.bindingProviderOptions(row.capability)" :key="providerOption.value" :value="providerOption.value" :label="providerOption.label" />
                 </TuffSelect>
-              <TuffSelect
-                v-if="admin.sceneCapabilities(scene).length > 0"
-                v-model="row.capability"
-                :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)"
-                class="RegistryForm-Control"
-              >
-                <TuffSelectItem v-for="cap in admin.sceneCapabilities(scene)" :key="cap" :value="cap" :label="cap" />
-              </TuffSelect>
-              <TuffInput v-else v-model="row.capability" class="RegistryForm-Control" placeholder="image.translate.e2e" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)" />
+              <span class="RegistryForm-Hint">{{ row.capability }}</span>
               <TuffSelect v-model="row.model" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.model', 'Model'), index)" class="RegistryForm-Control" :placeholder="t('dashboard.providerRegistry.fields.model', 'Model')">
                 <TuffSelectItem value="" :label="t('dashboard.providerRegistry.providers.modelDefault', 'Use default model')" />
                 <TuffSelectItem v-for="model in admin.bindingModelOptions(row.providerId)" :key="model" :value="model" :label="model" />
               </TuffSelect>
-                <TuffInput v-model="row.priority" type="number" class="RegistryForm-Control" placeholder="100" :aria-label="rowLabel(t('dashboard.providerRegistry.fields.priority', 'Priority'), index)" />
                 <TxIconButton
                   size="xs"
                   icon="i-carbon-close"
@@ -263,22 +171,6 @@ function selectRunCapability(capability: unknown) {
                   :label="rowLabel(t('common.remove', 'Remove'), index)"
                   @click="admin.removeSceneBindingEditRow(scene, index)"
                 />
-              </div>
-              <div class="RegistryForm-Grid">
-                <AdminFormField :label="t('dashboard.providerRegistry.fields.weight', 'Weight')" :for="fieldId(`binding-${index}-weight`)">
-                  <TuffInput :id="fieldId(`binding-${index}-weight`)" v-model="row.weightText" type="number" class="RegistryForm-Control" />
-                </AdminFormField>
-                <AdminFormField :label="t('dashboard.providerRegistry.fields.bindingStatus', 'Binding status')" :for="fieldId(`binding-${index}-status`)">
-                  <TuffSelect :id="fieldId(`binding-${index}-status`)" v-model="row.status" class="RegistryForm-Control">
-                    <TuffSelectItem v-for="status in admin.bindingStatusOptions" :key="status" :value="status" :label="valueLabel(status)" />
-                  </TuffSelect>
-                </AdminFormField>
-                <AdminFormField :label="t('dashboard.providerRegistry.fields.constraintsJson', 'Constraints JSON')" :for="fieldId(`binding-${index}-constraints`)">
-                  <TuffInput :id="fieldId(`binding-${index}-constraints`)" v-model="row.constraintsText" type="textarea" :rows="3" class="RegistryForm-Control is-mono" placeholder="{ &quot;cost&quot;: 0.01 }" />
-                </AdminFormField>
-                <AdminFormField :label="t('dashboard.providerRegistry.fields.metadataJson', 'Metadata JSON')" :for="fieldId(`binding-${index}-metadata`)">
-                  <TuffInput :id="fieldId(`binding-${index}-metadata`)" v-model="row.metadataText" type="textarea" :rows="3" class="RegistryForm-Control is-mono" placeholder="{ }" />
-                </AdminFormField>
               </div>
             </div>
           </div>
@@ -527,7 +419,7 @@ function selectRunCapability(capability: unknown) {
 
 .RegistryRows-Head.is-binding,
 .RegistryRows-Row.is-binding {
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 88px 32px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 32px;
 }
 
 .RegistryRows-Item {

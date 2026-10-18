@@ -29,7 +29,8 @@ const TARGET_NATIVE_ADDONS: Array<[target: string, expectedAddons: string[]]> = 
       'tuff_native_ocr.node',
       'tuff_native_audio.node',
       'tuff-native-translation',
-      'tuff-native-update'
+      'tuff-native-update',
+      'tuff-browser-bridge'
     ]
   ],
   [
@@ -38,12 +39,29 @@ const TARGET_NATIVE_ADDONS: Array<[target: string, expectedAddons: string[]]> = 
       'tuff_native_ocr.node',
       'tuff_native_audio.node',
       'tuff-native-translation',
-      'tuff-native-update'
+      'tuff-native-update',
+      'tuff-browser-bridge'
     ]
   ],
-  ['linux', ['tuff_native_ocr.node', 'tuff_native_audio.node']],
-  ['win', ['tuff_native_ocr.node', 'tuff_native_audio.node', 'tuff_native_everything.node']],
-  ['win32', ['tuff_native_ocr.node', 'tuff_native_audio.node', 'tuff_native_everything.node']]
+  ['linux', ['tuff_native_ocr.node', 'tuff_native_audio.node', 'tuff-browser-bridge']],
+  [
+    'win',
+    [
+      'tuff_native_ocr.node',
+      'tuff_native_audio.node',
+      'tuff_native_everything.node',
+      'tuff-browser-bridge.exe'
+    ]
+  ],
+  [
+    'win32',
+    [
+      'tuff_native_ocr.node',
+      'tuff_native_audio.node',
+      'tuff_native_everything.node',
+      'tuff-browser-bridge.exe'
+    ]
+  ]
 ]
 
 describe('required native addon projection', () => {

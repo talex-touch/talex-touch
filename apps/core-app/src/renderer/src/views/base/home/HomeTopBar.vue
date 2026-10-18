@@ -4,6 +4,7 @@ import type { ConversationTurnMeta } from '~/modules/conversation/useHomeConvers
 import { TxIcon } from '@talex-touch/tuffex/icon'
 import { useI18n } from 'vue-i18n'
 import MetaHintBadge from '~/components/shell/MetaHintBadge.vue'
+import ShellAccountAvatar from '~/components/shell/ShellAccountAvatar.vue'
 import HomeModelMenu from './HomeModelMenu.vue'
 import HomeTurnInfoMenu from './HomeTurnInfoMenu.vue'
 
@@ -63,7 +64,7 @@ const { t } = useI18n()
               class="HomeTopBar-ModePill"
               :class="{ 'is-secondary': Boolean(props.title) }"
               type="button"
-              :aria-label="t('home.model')"
+              :aria-label="`${t('home.model')} · ${props.modelName}`"
               :aria-expanded="open"
             >
               <TxIcon
@@ -114,6 +115,8 @@ const { t } = useI18n()
           </template>
         </HomeTurnInfoMenu>
       </div>
+      <!-- The unified Tuff account / Chrome profiles entry. It closes itself when Home deactivates. -->
+      <ShellAccountAvatar />
       <!-- Last, so it sits against the panel it opens: the panel runs the full height beside this
            bar, and its tabs start just past the toggle. -->
       <button

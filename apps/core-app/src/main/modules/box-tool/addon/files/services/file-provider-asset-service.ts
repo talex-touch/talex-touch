@@ -32,6 +32,11 @@ interface ThumbnailStatusPayload {
 
 type FileRecord = typeof filesSchema.$inferSelect
 type ThumbnailFileSnapshot = Pick<FileRecord, 'mtime' | 'size'>
+export interface IndexedActionPathResolution {
+  path: string
+  isDirectory: boolean
+  identity: { dev: number; ino: number }
+}
 
 type LogMeta = Record<string, unknown>
 
@@ -124,6 +129,47 @@ export class FileProviderAssetService {
         .limit(1)
         .then((rows) => rows[0])
       return canonical?.type === 'file' && (await fs.stat(realPath)).isFile() ? realPath : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Resolves an indexed live file or directory for a host file action. The exact indexed row and
+   * its realpath twin must both exist, so a renderer cannot turn this into arbitrary filesystem
+   * access or follow an unindexed symlink target.
+   */
+  async resolveIndexedActionPath(rawPath: string): Promise<IndexedActionPathResolution | null> {
+    const dbUtils = this.deps.getDbUtils()
+    if (!dbUtils || typeof rawPath !== 'string') return null
+
+    const candidate = normalizeFsPath(rawPath)
+    if (!candidate || !path.isAbsolute(candidate)) return null
+    const indexed = await dbUtils
+      .getFileIndexReadDb()
+      .select({ path: filesSchema.path, type: filesSchema.type, isDir: filesSchema.isDir })
+      .from(filesSchema)
+      .where(eq(filesSchema.path, candidate))
+      .limit(1)
+      .then((rows) => rows[0])
+    if (!indexed || indexed.type !== 'file') return null
+
+    try {
+      const realPath = normalizeFsPath(await fs.realpath(indexed.path))
+      const canonical = await dbUtils
+        .getFileIndexReadDb()
+        .select({ type: filesSchema.type, isDir: filesSchema.isDir })
+        .from(filesSchema)
+        .where(eq(filesSchema.path, realPath))
+        .limit(1)
+        .then((rows) => rows[0])
+      if (!canonical || canonical.type !== 'file') return null
+      const stats = await fs.stat(realPath)
+      const isDirectory = stats.isDirectory()
+      if (!stats.isFile() && !isDirectory) return null
+      if (Boolean(indexed.isDir) !== isDirectory || Boolean(canonical.isDir) !== isDirectory)
+        return null
+      return { path: realPath, isDirectory, identity: { dev: stats.dev, ino: stats.ino } }
     } catch {
       return null
     }

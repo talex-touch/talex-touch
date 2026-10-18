@@ -1,0 +1,177 @@
+{
+  "contractVersion": "talex.plugin-source-audit/v1",
+  "generatedAt": "2026-10-18T08:57:54.132Z",
+  "evidenceLevel": "local",
+  "sourceRevision": "481b9246dcf6eeeefb8095c298c9521391cf49c1",
+  "dirty": false,
+  "dirtyAllowed": true,
+  "toolchain": {
+    "node": "v26.0.0",
+    "pnpm": "11.24.0",
+    "sourceDateEpoch": "1792292806"
+  },
+  "selectedTargets": [
+    "touch-quickops"
+  ],
+  "artifactPathBase": "report-directory",
+  "prerequisiteCommands": [],
+  "targets": [
+    {
+      "pluginName": "touch-quickops",
+      "packageName": "@talex-touch/touch-quickops-plugin",
+      "sourceRoot": "plugins/touch-quickops",
+      "manifest": "plugins/touch-quickops/manifest.json",
+      "identity": {
+        "id": "com.tuffex.quickops",
+        "name": "touch-quickops",
+        "version": "0.1.1"
+      },
+      "gates": {
+        "build": {
+          "required": true
+        },
+        "test": {
+          "required": true
+        },
+        "typecheck": {
+          "required": false,
+          "reason": "The package ships a JavaScript Prelude and declares no standalone typecheck script."
+        },
+        "lint": {
+          "required": false,
+          "reason": "The package declares no standalone lint script; repository plugin lint covers its maintained source."
+        }
+      },
+      "runs": [
+        {
+          "run": 1,
+          "artifactPath": "artifacts/touch-quickops/touch-quickops-0.1.1-run-1-9403097d23c71880e11ca701bb55bab687efb2409569f388de92366e5e1918f0.tpex",
+          "artifactSha256": "9403097d23c71880e11ca701bb55bab687efb2409569f388de92366e5e1918f0",
+          "artifactSize": 65024,
+          "inventorySha256": "79e5bd17e8bb255376d634cf668ef4bf87ba3a9ded9ed8becd34d29ac43cf63d",
+          "entryCount": 2,
+          "expandedBytes": 62425,
+          "policyVersion": "1",
+          "scan": {
+            "decision": "passed",
+            "reportSha256": "d769c320b67d0776169428246aeef4d6f7550c76c77820320cad8948c6fbabe1",
+            "scannerVersion": "1",
+            "ruleSetVersion": "1",
+            "findingCount": 0
+          },
+          "signature": {
+            "algorithm": "Ed25519",
+            "keyId": "ephemeral-local-audit",
+            "payloadSha256": "1b6dff13b4761147ee1e831df530b8938632d4cd046477d0b6fe07e1256d56a7",
+            "mode": "ephemeral-local"
+          },
+          "projection": {
+            "configured": true,
+            "matched": true,
+            "inventorySha256": "79e5bd17e8bb255376d634cf668ef4bf87ba3a9ded9ed8becd34d29ac43cf63d"
+          },
+          "commands": [
+            {
+              "id": "touch-quickops:test",
+              "label": "pnpm run test @ plugins/touch-quickops",
+              "status": "passed",
+              "exitCode": 0,
+              "durationMs": 546
+            },
+            {
+              "id": "touch-quickops:typecheck",
+              "label": "touch-quickops:typecheck",
+              "status": "not-applicable",
+              "exitCode": null,
+              "durationMs": 0,
+              "reason": "The package ships a JavaScript Prelude and declares no standalone typecheck script."
+            },
+            {
+              "id": "touch-quickops:lint",
+              "label": "touch-quickops:lint",
+              "status": "not-applicable",
+              "exitCode": null,
+              "durationMs": 0,
+              "reason": "The package declares no standalone lint script; repository plugin lint covers its maintained source."
+            },
+            {
+              "id": "touch-quickops:build",
+              "label": "pnpm run build @ plugins/touch-quickops",
+              "status": "passed",
+              "exitCode": 0,
+              "durationMs": 622
+            }
+          ]
+        },
+        {
+          "run": 2,
+          "artifactPath": "artifacts/touch-quickops/touch-quickops-0.1.1-run-2-e231f8db85851952217add8ecead668a712f46f9cbb83d8976d65cfa8bb874f3.tpex",
+          "artifactSha256": "e231f8db85851952217add8ecead668a712f46f9cbb83d8976d65cfa8bb874f3",
+          "artifactSize": 65024,
+          "inventorySha256": "79e5bd17e8bb255376d634cf668ef4bf87ba3a9ded9ed8becd34d29ac43cf63d",
+          "entryCount": 2,
+          "expandedBytes": 62425,
+          "policyVersion": "1",
+          "scan": {
+            "decision": "passed",
+            "reportSha256": "1ceb26b33feb1c88be08f70f75791e085b9b2157c8d047f2085b835fc6c1eb37",
+            "scannerVersion": "1",
+            "ruleSetVersion": "1",
+            "findingCount": 0
+          },
+          "signature": {
+            "algorithm": "Ed25519",
+            "keyId": "ephemeral-local-audit",
+            "payloadSha256": "4ab09154002b0235b5efce51e85a3249f39bb476c0e94ebf80564af8cf239c5a",
+            "mode": "ephemeral-local"
+          },
+          "projection": {
+            "configured": true,
+            "matched": true,
+            "inventorySha256": "79e5bd17e8bb255376d634cf668ef4bf87ba3a9ded9ed8becd34d29ac43cf63d"
+          },
+          "commands": [
+            {
+              "id": "touch-quickops:test",
+              "label": "pnpm run test @ plugins/touch-quickops",
+              "status": "passed",
+              "exitCode": 0,
+              "durationMs": 534
+            },
+            {
+              "id": "touch-quickops:typecheck",
+              "label": "touch-quickops:typecheck",
+              "status": "not-applicable",
+              "exitCode": null,
+              "durationMs": 0,
+              "reason": "The package ships a JavaScript Prelude and declares no standalone typecheck script."
+            },
+            {
+              "id": "touch-quickops:lint",
+              "label": "touch-quickops:lint",
+              "status": "not-applicable",
+              "exitCode": null,
+              "durationMs": 0,
+              "reason": "The package declares no standalone lint script; repository plugin lint covers its maintained source."
+            },
+            {
+              "id": "touch-quickops:build",
+              "label": "pnpm run build @ plugins/touch-quickops",
+              "status": "passed",
+              "exitCode": 0,
+              "durationMs": 619
+            }
+          ]
+        }
+      ],
+      "reproducibility": {
+        "normalizedInventory": "passed",
+        "artifactContainer": "different"
+      },
+      "status": "passed",
+      "blockers": []
+    }
+  ],
+  "status": "passed",
+  "blockers": []
+}

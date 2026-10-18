@@ -38,20 +38,14 @@ describe('window-role', () => {
   })
 
 
-  it('round-trips screenshot overlay and editor roles to dedicated renderer modes', () => {
+  it('round-trips the screenshot overlay role to its dedicated renderer mode', () => {
     const overlayRole = {
       touchType: 'screenshot' as const,
       screenshotType: 'overlay' as const,
     }
-    const editorRole = {
-      touchType: 'screenshot' as const,
-      screenshotType: 'editor' as const,
-    }
 
     expect(parseWindowArgs(buildWindowArgs(overlayRole))).toMatchObject(overlayRole)
     expect(resolveRendererWindowMode(overlayRole)).toBe('ScreenshotOverlay')
-    expect(parseWindowArgs(buildWindowArgs(editorRole))).toMatchObject(editorRole)
-    expect(resolveRendererWindowMode(editorRole)).toBe('ScreenshotEditor')
   })
 
   it('does not enter a screenshot surface for an unknown screenshot subtype', () => {
