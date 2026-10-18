@@ -580,7 +580,6 @@ export function tencentTranslateProviderBody() {
     vendor: 'tencent-cloud',
     status: 'enabled',
     authType: 'secret_pair',
-    authRef: 'secure://providers/tencent-cloud-mt-main',
     ownerScope: 'system',
     endpoint: 'https://tmt.tencentcloudapi.com',
     region: 'ap-shanghai',

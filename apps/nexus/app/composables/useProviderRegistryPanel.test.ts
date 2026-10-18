@@ -96,6 +96,8 @@ function fakeAdmin(providers: ProviderRegistryRecord[] = []) {
     providerCreateError: ref<string | null>('old error'),
     lastSaveError: ref<string | null>(null),
     sceneCreateError: ref<string | null>(null),
+    productSceneTemplates: [],
+    applyProductSceneTemplate: vi.fn(),
     getProviderEditPanel: (record: ProviderRegistryRecord) => (editPanels[record.id] ??= createProviderEditPanel(record)),
     getSceneEditPanel: (record: SceneRegistryRecord) => (sceneEditPanels[record.id] ??= createSceneEditPanel(record)),
     getSceneRunPanel: vi.fn(),
@@ -252,7 +254,7 @@ describe('saves that delete', () => {
     const record = provider('a', ['text.chat', 'vision.ocr'])
     panel.openProviderDrawer('edit', record)
     const editor = admin.getProviderEditPanel(record)
-    editor.removedCapabilityIds.push(record.capabilities[1]!.id)
+    editor.adapterKey = 'local-overlay'
 
     panel.submitProviderDrawer()
     expect(admin.saveProviderEdit).not.toHaveBeenCalled()
@@ -343,6 +345,32 @@ describe('which drawer a save closes', () => {
     await Promise.resolve()
 
     expect(panel.sceneDrawer.open).toBe(true)
+  })
+
+  it('keeps a provider create drawer open until credential binding succeeds, including a failed attempt', async () => {
+    const { admin, panel } = fakeAdmin()
+    const failing = deferred<boolean>()
+    admin.createProvider.mockReturnValueOnce(failing.promise)
+    panel.openProviderDrawer('create', null)
+
+    panel.submitProviderDrawer()
+    expect(panel.providerDrawer.open).toBe(true)
+    admin.providerCreateError.value = 'Credential storage refused.'
+    failing.resolve(false)
+    await failing.promise
+    await Promise.resolve()
+
+    expect(panel.providerDrawer.open).toBe(true)
+    expect(admin.providerCreateError.value).toBe('Credential storage refused.')
+    const succeeding = deferred<boolean>()
+    admin.createProvider.mockReturnValueOnce(succeeding.promise)
+    panel.submitProviderDrawer()
+    expect(panel.providerDrawer.open).toBe(true)
+    succeeding.resolve(true)
+    await succeeding.promise
+    await Promise.resolve()
+
+    expect(panel.providerDrawer.open).toBe(false)
   })
 
   it('opens a fresh editor and clears the last create failure', () => {

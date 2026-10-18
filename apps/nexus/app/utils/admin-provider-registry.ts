@@ -18,6 +18,8 @@ import type {
   SceneStrategyBindingRecord,
   UsageLedgerFilter,
 } from '~/utils/provider-registry-admin'
+import { toRegistryCapabilityId } from '@talex-touch/tuff-intelligence/light'
+import { resolveProviderProtocol } from '../../shared/provider-registry'
 import { ADMIN_FORMAT_EMPTY } from '~/composables/useAdminFormat'
 import { createClientListFetcher } from '~/utils/admin-client-list'
 import { resolveAdminErrorMessage } from '~/utils/admin-request-error'
@@ -515,21 +517,16 @@ export function formatRegistryLatency(milliseconds: number | null | undefined, f
 
 // ─── What a save is about to delete ────────────────────────────────────────
 
-/**
- * The declared capabilities a provider save will delete: rows removed from the
- * editor, and existing rows whose capability was blanked (the save skips them
- * and deletes what they were).
- */
+/** Capabilities removed when an operator switches the provider's protocol. */
 export function capabilitiesRemovedBySave(
   provider: ProviderRegistryRecord,
-  panel: Pick<ProviderEditPanelState, 'capabilities' | 'removedCapabilityIds'>,
+  panel: Pick<ProviderEditPanelState, 'adapterKey'>,
 ): ProviderCapabilityRecord[] {
-  const ids = new Set(panel.removedCapabilityIds)
-  for (const row of panel.capabilities) {
-    if (row.id && !row.capability.trim())
-      ids.add(row.id)
-  }
-  return provider.capabilities.filter(capability => ids.has(capability.id))
+  const protocol = resolveProviderProtocol(panel.adapterKey)
+  if (!protocol)
+    return []
+  const capabilities = protocol.capabilities.map(toRegistryCapabilityId)
+  return provider.capabilities.filter(capability => !capabilities.includes(toRegistryCapabilityId(capability.capability)))
 }
 
 // The server keys a binding by provider and capability (`sceneRegistryStore`

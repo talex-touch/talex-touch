@@ -4,24 +4,6 @@ import { fetchProviderModels } from '../../../../../utils/intelligenceModels'
 import { getProviderCredential } from '../../../../../utils/providerCredentialStore'
 import { getProviderRegistryEntry } from '../../../../../utils/providerRegistryStore'
 
-const VALID_MODEL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'deepseek', 'siliconflow', 'local', 'custom'])
-
-function readStringMetadata(metadata: Record<string, unknown> | null | undefined, key: string): string | null {
-  const value = metadata?.[key]
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
-}
-
-function resolveModelProviderType(provider: Awaited<ReturnType<typeof getProviderRegistryEntry>>): string {
-  const metadataType = readStringMetadata(provider?.metadata, 'intelligenceType')
-  if (metadataType && VALID_MODEL_PROVIDER_TYPES.has(metadataType))
-    return metadataType
-
-  const vendor = provider?.vendor
-  if (vendor === 'openai' || vendor === 'deepseek')
-    return vendor
-
-  return 'custom'
-}
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -36,10 +18,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Provider registry entry not found.' })
   }
 
-  const type = resolveModelProviderType(provider)
+  const adapterKey = provider.metadata?.adapterKey
+  if (adapterKey !== 'openai-compatible' && adapterKey !== 'openai-responses')
+    throw createError({ statusCode: 400, statusMessage: 'Model discovery is not supported by this protocol.' })
+  const type = 'custom'
   let apiKey: string | null = null
 
-  if (type !== 'local') {
+  {
     if (provider.authType !== 'api_key' || !provider.authRef) {
       throw createError({ statusCode: 400, statusMessage: 'Provider API key credential is required to fetch models.' })
     }

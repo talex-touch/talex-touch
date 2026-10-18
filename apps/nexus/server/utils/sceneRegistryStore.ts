@@ -110,6 +110,7 @@ interface SceneStrategyBindingRow {
 }
 
 export interface SceneStrategyBindingInput {
+  id?: unknown
   providerId: unknown
   capability: unknown
   model?: unknown
@@ -118,6 +119,7 @@ export interface SceneStrategyBindingInput {
   status?: unknown
   constraints?: unknown
   metadata?: unknown
+  createdAt?: unknown
 }
 
 export interface CreateSceneRegistryInput {
@@ -380,7 +382,12 @@ function normalizeBindings(value: unknown): NormalizedSceneStrategyBindingInput[
     const constraints = normalizeOptionalJsonObject(input.constraints, `bindings[${index}].constraints`)
     const metadata = normalizeOptionalJsonObject(input.metadata, `bindings[${index}].metadata`)
 
+    const id = typeof input.id === 'string' && input.id.trim() ? input.id.trim() : null
+    const createdAt = typeof input.createdAt === 'string' && input.createdAt.trim() ? input.createdAt.trim() : null
+
     return {
+      id,
+      createdAt,
       providerId,
       capability,
       model: normalizeOptionalString(input.model, `bindings[${index}].model`, 160),
@@ -448,6 +455,7 @@ function normalizeScenePatch(existing: SceneRegistryRecord, input: UpdateSceneRe
     metadata: input.metadata === undefined ? existing.metadata : input.metadata,
     bindings: input.bindings === undefined
       ? existing.bindings.map(binding => ({
+          id: binding.id,
           providerId: binding.providerId,
           capability: binding.capability,
           model: binding.model,
@@ -456,6 +464,7 @@ function normalizeScenePatch(existing: SceneRegistryRecord, input: UpdateSceneRe
           status: binding.status,
           constraints: binding.constraints,
           metadata: binding.metadata,
+          createdAt: binding.createdAt,
         }))
       : input.bindings,
   })
@@ -539,7 +548,7 @@ async function replaceSceneBindings(
       )
       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);
     `).bind(
-      randomUUID(),
+      binding.id || randomUUID(),
       sceneId,
       binding.providerId,
       binding.capability,
@@ -549,7 +558,7 @@ async function replaceSceneBindings(
       binding.status,
       binding.constraintsJson,
       binding.metadataJson,
-      now,
+      binding.createdAt || now,
       now,
     )),
   ])

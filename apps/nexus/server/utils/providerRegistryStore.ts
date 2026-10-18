@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import type { H3Event } from 'h3'
+import { toRegistryCapabilityId } from '@talex-touch/tuff-intelligence/light'
 import { randomUUID } from 'node:crypto'
 import { createError } from 'h3'
 import { readCloudflareBindings } from './cloudflare'
@@ -459,7 +460,7 @@ function normalizeProviderInput(input: CreateProviderRegistryInput): NormalizedP
   if (capabilities.length === 0 && inputAdapterKey && isKnownSceneCapabilityAdapterKey(inputAdapterKey)) {
     const catalog = SCENE_CAPABILITY_ADAPTER_CATALOG.find(entry => entry.key === inputAdapterKey)
     if (catalog) {
-      capabilities = catalog.capabilities.map(capability => ({
+      capabilities = [...new Set(catalog.capabilities.map(toRegistryCapabilityId))].map(capability => ({
         capability,
         schemaRef: null,
         metering: null,

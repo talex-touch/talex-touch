@@ -3,7 +3,7 @@ import type { ProviderDrawerMode } from '~/utils/admin-provider-registry'
 import type { ProviderRegistryAdmin } from '~/composables/useProviderRegistryAdmin'
 import type { ProviderRegistryRecord } from '~/utils/provider-registry-admin'
 import { TxAlert } from '@talex-touch/tuffex/alert'
-import { TxButton, TxIconButton } from '@talex-touch/tuffex/button'
+import { TxButton } from '@talex-touch/tuffex/button'
 import { TxDrawer } from '@talex-touch/tuffex/drawer'
 import { TuffInput } from '@talex-touch/tuffex/input'
 import { TuffSelect, TuffSelectItem } from '@talex-touch/tuffex/select'
@@ -69,9 +69,6 @@ function modelOptions(text: string): string[] {
 const createModelOptions = computed(() => modelOptions(admin.providerForm.modelsText))
 const editModelOptions = computed(() => editPanel.value ? modelOptions(editPanel.value.modelsText) : [])
 
-function rowLabel(label: string, index: number): string {
-  return t('dashboard.providerRegistry.form.rowField', { field: label, row: index + 1 }, `${label}, row ${index + 1}`)
-}
 
 function quotaLimit(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) ? format.number(value) : ADMIN_FORMAT_EMPTY
@@ -89,34 +86,11 @@ function quotaLimit(value: unknown): string {
           {{ t('dashboard.providerRegistry.providers.createHint', 'Credentials are saved in secure storage when this provider needs authentication.') }}
         </p>
         <section class="RegistryForm-Grid">
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.serviceCategory', 'Service category')" :for="fieldId('service-category')">
-            <TuffSelect :id="fieldId('service-category')" v-model="admin.providerServiceCategoryId.value" class="RegistryForm-Control" @change="admin.applyProviderServiceCategory">
-              <TuffSelectItem
-                v-for="category in admin.providerServiceCategoryOptions.value"
-                :key="category.value"
-                :value="category.value"
-                :label="valueLabel(category.value)"
-              />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.preset', 'Preset')" :for="fieldId('preset')">
-            <TuffSelect :id="fieldId('preset')" v-model="admin.providerTemplateId.value" class="RegistryForm-Control" @change="admin.applyProviderTemplate">
-              <TuffSelectItem v-for="template in admin.providerTemplateOptions.value" :key="template.value" :value="template.value" :label="template.label" />
-            </TuffSelect>
-          </AdminFormField>
           <AdminFormField :label="t('dashboard.providerRegistry.fields.name', 'Name')" :for="fieldId('name')">
             <TuffInput :id="fieldId('name')" v-model="admin.providerForm.name" class="RegistryForm-Control" />
           </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.displayName', 'Display name')" :for="fieldId('display-name')">
-            <TuffInput :id="fieldId('display-name')" v-model="admin.providerForm.displayName" class="RegistryForm-Control" />
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.vendor', 'Vendor')" :for="fieldId('vendor')">
-            <TuffSelect :id="fieldId('vendor')" v-model="admin.providerForm.vendor" class="RegistryForm-Control">
-              <TuffSelectItem v-for="vendor in admin.providerVendorOptions" :key="vendor" :value="vendor" :label="valueLabel(vendor)" />
-            </TuffSelect>
-          </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.adapter', 'Adapter format')" :for="fieldId('adapter')">
-            <TuffSelect :id="fieldId('adapter')" v-model="admin.providerForm.adapterKey" class="RegistryForm-Control">
+          <AdminFormField :label="t('dashboard.providerRegistry.fields.protocol', 'Protocol')" :for="fieldId('adapter')">
+            <TuffSelect :id="fieldId('adapter')" v-model="admin.providerForm.adapterKey" class="RegistryForm-Control" @change="admin.applyProviderProtocol($event)">
               <TuffSelectItem v-for="adapter in admin.providerAdapterOptions.value" :key="adapter.value" :value="adapter.value" :label="adapter.label" />
             </TuffSelect>
           </AdminFormField>
@@ -125,18 +99,13 @@ function quotaLimit(value: unknown): string {
               <TuffSelectItem v-for="status in admin.providerStatusOptions" :key="status" :value="status" :label="valueLabel(status)" />
             </TuffSelect>
           </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.authType', 'Auth type')" :for="fieldId('auth-type')">
-            <TuffSelect :id="fieldId('auth-type')" v-model="admin.providerForm.authType" class="RegistryForm-Control">
-              <TuffSelectItem v-for="type in admin.authTypeOptions" :key="type" :value="type" :label="valueLabel(type)" />
-            </TuffSelect>
-          </AdminFormField>
           <AdminFormField v-if="admin.providerForm.authType === 'api_key'" :label="t('dashboard.providerRegistry.fields.apiKey', 'API Key')" :for="fieldId('api-key')">
             <TuffInput :id="fieldId('api-key')" v-model="admin.providerForm.apiKey" class="RegistryForm-Control" type="password" autocomplete="new-password" />
           </AdminFormField>
           <AdminFormField :label="t('dashboard.providerRegistry.fields.endpoint', 'Endpoint')" :for="fieldId('endpoint')">
             <TuffInput :id="fieldId('endpoint')" v-model="admin.providerForm.endpoint" class="RegistryForm-Control" />
           </AdminFormField>
-          <AdminFormField :label="t('dashboard.providerRegistry.fields.region', 'Region')" :for="fieldId('region')">
+          <AdminFormField v-if="admin.providerForm.authType === 'secret_pair'" :label="t('dashboard.providerRegistry.fields.region', 'Region')" :for="fieldId('region')">
             <TuffInput :id="fieldId('region')" v-model="admin.providerForm.region" class="RegistryForm-Control" />
           </AdminFormField>
           <AdminFormField v-if="admin.providerForm.authType === 'secret_pair'" :label="t('dashboard.providerRegistry.fields.secretId', 'SecretId')" :for="fieldId('secret-id')">
@@ -158,6 +127,7 @@ function quotaLimit(value: unknown): string {
               </p>
             </div>
             <TxButton
+              v-if="['openai-compatible', 'openai-responses'].includes(admin.providerForm.adapterKey)"
               variant="secondary"
               size="sm"
               icon="i-carbon-download"
@@ -223,57 +193,7 @@ function quotaLimit(value: unknown): string {
             </div>
           </div>
         </section>
-
-        <section class="RegistryForm-Group">
-          <div class="RegistryForm-GroupHead">
-            <h3 class="RegistryForm-GroupTitle">
-              {{ t('dashboard.providerRegistry.providers.capabilitiesTitle', 'Capabilities') }}
-            </h3>
-            <TxButton variant="secondary" size="sm" @click="admin.addCapabilityRow">
-              {{ t('dashboard.providerRegistry.actions.addCapability', 'Add capability') }}
-            </TxButton>
-          </div>
-          <div class="RegistryRows">
-            <div class="RegistryRows-Head is-create" aria-hidden="true">
-              <span>{{ t('dashboard.providerRegistry.fields.capability', 'Capability') }}</span>
-              <span>{{ t('dashboard.providerRegistry.fields.meteringUnit', 'Metering unit') }}</span>
-              <span />
-            </div>
-            <div v-for="(row, index) in admin.capabilityRows.value" :key="index" class="RegistryRows-Row is-create">
-              <TuffSelect
-                v-model="row.capability"
-                :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)"
-                class="RegistryForm-Control"
-                :placeholder="t('dashboard.providerRegistry.fields.capability', 'Capability')"
-                @change="admin.applyProviderCapabilityTemplate(row, $event)"
-              >
-                <TuffSelectItem
-                  v-for="capability in admin.providerCapabilityTemplateOptions.value"
-                  :key="capability.capability"
-                  :value="capability.capability"
-                  :label="capability.capability"
-                />
-              </TuffSelect>
-              <TuffSelect
-                v-model="row.meteringUnit"
-                :aria-label="rowLabel(t('dashboard.providerRegistry.fields.meteringUnit', 'Metering unit'), index)"
-                class="RegistryForm-Control"
-                :placeholder="t('dashboard.providerRegistry.fields.meteringUnit', 'Metering unit')"
-              >
-                <TuffSelectItem v-for="unit in admin.providerMeteringUnitOptions.value" :key="unit" :value="unit" :label="unit" />
-              </TuffSelect>
-              <TxIconButton
-                size="xs"
-                icon="i-carbon-close"
-                :disabled="admin.capabilityRows.value.length <= 1"
-                :title="t('common.remove', 'Remove')"
-                :label="rowLabel(t('common.remove', 'Remove'), index)"
-                @click="admin.removeCapabilityRow(index)"
-              />
-            </div>
-          </div>
-        </section>
-      </template>
+</template>
 
       <template v-else-if="mode === 'edit' && provider && editPanel">
         <section class="RegistryForm-Group">
@@ -283,31 +203,21 @@ function quotaLimit(value: unknown): string {
           <p class="RegistryForm-Hint">
             {{ t('dashboard.providerRegistry.providers.basicHint', 'Edit the visible name, vendor, endpoint, and availability state for this service channel.') }}
           </p>
+          <p v-if="editPanel.authType !== 'none'" class="RegistryForm-Hint">
+            {{ provider.hasCredential ? t('dashboard.providerRegistry.providers.credentialSet', 'Credential configured') : t('dashboard.providerRegistry.providers.credentialMissing', 'Credential not configured') }}
+          </p>
           <div class="RegistryForm-Grid">
             <AdminFormField :label="t('dashboard.providerRegistry.fields.name', 'Name')" :for="fieldId('edit-name')">
               <TuffInput :id="fieldId('edit-name')" v-model="editPanel.name" class="RegistryForm-Control" />
             </AdminFormField>
-            <AdminFormField :label="t('dashboard.providerRegistry.fields.displayName', 'Display name')" :for="fieldId('edit-display-name')">
-              <TuffInput :id="fieldId('edit-display-name')" v-model="editPanel.displayName" class="RegistryForm-Control" />
-            </AdminFormField>
-            <AdminFormField :label="t('dashboard.providerRegistry.fields.vendor', 'Vendor')" :for="fieldId('edit-vendor')">
-              <TuffSelect :id="fieldId('edit-vendor')" v-model="editPanel.vendor" class="RegistryForm-Control">
-                <TuffSelectItem v-for="vendor in admin.providerVendorOptions" :key="vendor" :value="vendor" :label="valueLabel(vendor)" />
-              </TuffSelect>
-            </AdminFormField>
-            <AdminFormField :label="t('dashboard.providerRegistry.fields.adapter', 'Adapter format')" :for="fieldId('edit-adapter')">
-              <TuffSelect :id="fieldId('edit-adapter')" v-model="editPanel.adapterKey" class="RegistryForm-Control">
+            <AdminFormField :label="t('dashboard.providerRegistry.fields.protocol', 'Protocol')" :for="fieldId('edit-adapter')">
+              <TuffSelect :id="fieldId('edit-adapter')" v-model="editPanel.adapterKey" class="RegistryForm-Control" @change="admin.applyProviderProtocol($event, provider)">
                 <TuffSelectItem v-for="adapter in admin.providerAdapterOptions.value" :key="adapter.value" :value="adapter.value" :label="adapter.label" />
               </TuffSelect>
             </AdminFormField>
             <AdminFormField :label="t('dashboard.providerRegistry.fields.status', 'Status')" :for="fieldId('edit-status')">
               <TuffSelect :id="fieldId('edit-status')" v-model="editPanel.status" class="RegistryForm-Control">
                 <TuffSelectItem v-for="status in admin.providerStatusOptions" :key="status" :value="status" :label="valueLabel(status)" />
-              </TuffSelect>
-            </AdminFormField>
-            <AdminFormField :label="t('dashboard.providerRegistry.fields.authType', 'Auth type')" :for="fieldId('edit-auth-type')">
-              <TuffSelect :id="fieldId('edit-auth-type')" v-model="editPanel.authType" class="RegistryForm-Control">
-                <TuffSelectItem v-for="type in admin.authTypeOptions" :key="type" :value="type" :label="valueLabel(type)" />
               </TuffSelect>
             </AdminFormField>
             <AdminFormField v-if="editPanel.authType === 'api_key'" :label="t('dashboard.providerRegistry.fields.apiKey', 'API Key')" :for="fieldId('edit-api-key')">
@@ -349,6 +259,7 @@ function quotaLimit(value: unknown): string {
               </p>
             </div>
             <TxButton
+              v-if="['openai-compatible', 'openai-responses'].includes(editPanel.adapterKey)"
               variant="secondary"
               size="sm"
               icon="i-carbon-download"
@@ -423,9 +334,6 @@ function quotaLimit(value: unknown): string {
             <AdminFormField class="RegistryForm-Wide" :label="t('dashboard.providerRegistry.fields.providerId', 'Provider ID')" :for="fieldId('edit-id')">
               <TuffInput :id="fieldId('edit-id')" :model-value="provider.id" class="RegistryForm-Control is-mono" readonly />
             </AdminFormField>
-            <AdminFormField :label="t('dashboard.providerRegistry.fields.authRef', 'Auth ref')" :for="fieldId('edit-auth-ref')">
-              <TuffInput :id="fieldId('edit-auth-ref')" v-model="editPanel.authRef" class="RegistryForm-Control is-mono" />
-            </AdminFormField>
             <AdminFormField :label="t('dashboard.providerRegistry.fields.ownerScope', 'Owner scope')" :for="fieldId('edit-owner-scope')">
               <TuffSelect :id="fieldId('edit-owner-scope')" v-model="editPanel.ownerScope" class="RegistryForm-Control">
                 <TuffSelectItem v-for="scope in admin.ownerScopeOptions" :key="scope" :value="scope" :label="valueLabel(scope)" />
@@ -439,87 +347,7 @@ function quotaLimit(value: unknown): string {
             </AdminFormField>
           </div>
         </details>
-
-        <section class="RegistryForm-Group">
-          <div class="RegistryForm-GroupHead">
-            <h3 class="RegistryForm-GroupTitle">
-              {{ t('dashboard.providerRegistry.providers.capabilitiesTitle', 'Capabilities') }}
-            </h3>
-            <TxButton variant="secondary" size="sm" @click="admin.addProviderCapabilityEditRow(provider)">
-              {{ t('dashboard.providerRegistry.actions.addCapability', 'Add capability') }}
-            </TxButton>
-          </div>
-          <div class="RegistryRows">
-            <div class="RegistryRows-Head is-edit" aria-hidden="true">
-              <span>{{ t('dashboard.providerRegistry.fields.capability', 'Capability') }}</span>
-              <span>{{ t('dashboard.providerRegistry.fields.meteringUnit', 'Metering unit') }}</span>
-              <span>{{ t('dashboard.providerRegistry.fields.providerModel', 'Model') }}</span>
-              <span />
-            </div>
-            <div v-for="(row, index) in editPanel.capabilities" :key="index" class="RegistryRows-Item">
-              <div class="RegistryRows-Row is-edit">
-                <TuffInput
-                  v-model="row.capability"
-                  class="RegistryForm-Control"
-                  placeholder="text.chat"
-                  :aria-label="rowLabel(t('dashboard.providerRegistry.fields.capability', 'Capability'), index)"
-                />
-                <TuffInput
-                  v-model="row.meteringUnit"
-                  class="RegistryForm-Control"
-                  placeholder="token"
-                  :aria-label="rowLabel(t('dashboard.providerRegistry.fields.meteringUnit', 'Metering unit'), index)"
-                />
-                <TuffSelect
-                  v-if="editModelOptions.length"
-                  v-model="row.providerModel"
-                  :aria-label="rowLabel(t('dashboard.providerRegistry.fields.providerModel', 'Model'), index)"
-                  class="RegistryForm-Control"
-                  searchable
-                  :search-placeholder="t('dashboard.providerRegistry.providers.modelSearchPlaceholder', 'Search models...')"
-                  :placeholder="t('dashboard.providerRegistry.fields.providerModel', 'Model')"
-                >
-                  <TuffSelectItem value="" :label="t('dashboard.providerRegistry.providers.modelDefault', 'Use default model')" />
-                  <TuffSelectItem v-for="model in editModelOptions" :key="model" :value="model" :label="model" />
-                </TuffSelect>
-                <TuffInput
-                  v-else
-                  v-model="row.providerModel"
-                  class="RegistryForm-Control"
-                  placeholder="gpt-4.1-mini"
-                  :aria-label="rowLabel(t('dashboard.providerRegistry.fields.providerModel', 'Model'), index)"
-                />
-                <TxIconButton
-                  size="xs"
-                  icon="i-carbon-close"
-                  :title="t('common.remove', 'Remove')"
-                  :label="rowLabel(t('common.remove', 'Remove'), index)"
-                  @click="admin.removeProviderCapabilityEditRow(provider, index)"
-                />
-              </div>
-              <details class="RegistryForm-Details is-row">
-                <summary class="RegistryForm-Summary">
-                  {{ t('dashboard.providerRegistry.providers.capabilityAdvancedTitle', 'Advanced capability JSON') }}
-                </summary>
-                <div class="RegistryForm-Grid">
-                  <AdminFormField :label="t('dashboard.providerRegistry.fields.maxImageBytes', 'Max image bytes')" :for="fieldId(`cap-${index}-max-image`)">
-                    <TuffInput :id="fieldId(`cap-${index}-max-image`)" v-model="row.maxImageBytes" type="number" class="RegistryForm-Control" placeholder="5242880" />
-                  </AdminFormField>
-                  <AdminFormField :label="t('dashboard.providerRegistry.fields.meteringJson', 'Metering JSON')" :for="fieldId(`cap-${index}-metering`)">
-                    <TuffInput :id="fieldId(`cap-${index}-metering`)" v-model="row.meteringText" type="textarea" :rows="3" class="RegistryForm-Control is-mono" placeholder="{ }" />
-                  </AdminFormField>
-                  <AdminFormField :label="t('dashboard.providerRegistry.fields.constraintsJson', 'Constraints JSON')" :for="fieldId(`cap-${index}-constraints`)">
-                    <TuffInput :id="fieldId(`cap-${index}-constraints`)" v-model="row.constraintsText" type="textarea" :rows="3" class="RegistryForm-Control is-mono" placeholder="{ }" />
-                  </AdminFormField>
-                  <AdminFormField :label="t('dashboard.providerRegistry.fields.metadataJson', 'Metadata JSON')" :for="fieldId(`cap-${index}-metadata`)">
-                    <TuffInput :id="fieldId(`cap-${index}-metadata`)" v-model="row.metadataText" type="textarea" :rows="3" class="RegistryForm-Control is-mono" placeholder="{ }" />
-                  </AdminFormField>
-                </div>
-              </details>
-            </div>
-          </div>
-        </section>
-      </template>
+</template>
 
       <template v-else-if="mode === 'quota' && provider && quotaPanel">
         <p class="RegistryForm-Hint">

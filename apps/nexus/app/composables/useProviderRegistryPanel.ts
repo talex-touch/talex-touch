@@ -175,8 +175,12 @@ export function useProviderRegistryPanel(admin: ProviderRegistryAdmin, t: Regist
       admin.resetSceneEditPanel(scene)
     if (scene && mode === 'run')
       admin.getSceneRunPanel(scene)
-    if (mode === 'create')
+    if (mode === 'create') {
       admin.sceneCreateError.value = null
+      const definition = admin.productSceneTemplates.find(item => item.id === admin.sceneForm.id)
+      if (definition)
+        admin.applyProductSceneTemplate(definition)
+    }
     sceneDrawer.token += 1
     sceneDrawer.mode = mode
     sceneDrawer.scene = scene

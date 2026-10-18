@@ -12,17 +12,9 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const scene = await updateSceneRegistryEntry(event, id, {
-    displayName: body?.displayName,
-    owner: body?.owner,
-    ownerScope: body?.ownerScope,
-    ownerId: body?.ownerId,
     status: body?.status,
-    requiredCapabilities: body?.requiredCapabilities,
     strategyMode: body?.strategyMode,
     fallback: body?.fallback,
-    meteringPolicy: body?.meteringPolicy,
-    auditPolicy: body?.auditPolicy,
-    metadata: body?.metadata,
     bindings: body?.bindings,
   })
 
