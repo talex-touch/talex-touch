@@ -362,7 +362,7 @@ async function mountList(): Promise<VueWrapper> {
 
 /**
  * The sidebar, with the real conversation list inside when `withList` is set — the single-highlight
- * rule spans New Chat (sidebar) and the folder and conversation rows (list), so only the two together
+ * rule spans sidebar navigation and the folder and conversation rows, so only the two together
  * can show it holds.
  */
 async function mountSidebar(
@@ -981,7 +981,6 @@ describe('shell sidebar single current row', () => {
 
     expect(currentRows(wrapper)).toEqual(['in-project'])
     expect(folderNamed(wrapper, 'talex-touch').classes()).not.toContain('is-current')
-    expect(sidebarNav(wrapper, 'shell.newChat').classes()).not.toContain('active')
   })
 
   it('lights only the project row, opened, on a blank conversation inside it', async () => {
@@ -991,16 +990,7 @@ describe('shell sidebar single current row', () => {
     expect(currentRows(wrapper)).toEqual(['talex-touch'])
     expect(folder.classes()).toContain('is-current')
     expect(isExpanded(folder)).toBe(true)
-    expect(sidebarNav(wrapper, 'shell.newChat').classes()).not.toContain('active')
     expect(wrapper.find('.ShellConversationList-Section--chats').text()).toContain('hi')
-  })
-
-  it('lights only New Chat on a blank conversation outside every project', async () => {
-    const wrapper = await mountSidebar({ withList: true, activeProjectId: null })
-
-    expect(currentRows(wrapper)).toEqual(['shell.newChat'])
-    expect(sidebarNav(wrapper, 'shell.newChat').classes()).toContain('active')
-    expect(folderNamed(wrapper, 'talex-touch').classes()).not.toContain('is-current')
   })
 
   it('leaves the project row alone on another page, where that page is current', async () => {
@@ -1042,20 +1032,6 @@ describe('shellConversationList new project', () => {
 })
 
 describe('shellSidebar navigation', () => {
-  it('clears the pending project owner when New Chat is chosen', async () => {
-    listState.picked = project({ id: 'p1' })
-    const wrapper = await mountSidebar({ withList: true })
-    const store = useProjectStore()
-
-    await wrapper.find('.ShellConversationList-SectionAction').trigger('click')
-    await flushPromises()
-    expect(store.pendingProjectId).toBe('p1')
-
-    await sidebarNav(wrapper, 'shell.newChat').trigger('click')
-
-    expect(store.pendingProjectId).toBeNull()
-  })
-
   it('moves New Project off the expanded nav and keeps it on the rail', async () => {
     const expanded = await mountSidebar()
     expect(
@@ -1390,7 +1366,7 @@ describe('shellConversationList chats section', () => {
     expect(projectsAdd.classes()).not.toContain('ShellConversationList-SectionAction--reveal')
   })
 
-  it('starts a blank conversation outside every project, as the sidebar New Chat does', async () => {
+  it('starts a blank conversation outside every project', async () => {
     listState.projects = [project({ id: 'p1' })]
     historyHolder.conversations!.value = [conversation({ id: 'hi' })]
     const wrapper = await mountList()

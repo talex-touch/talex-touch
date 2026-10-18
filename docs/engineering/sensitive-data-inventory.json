@@ -1,8 +1,30 @@
 {
   "schema": "talex.touch.sensitive-data-inventory/v1",
-  "updatedAt": "2026-10-12",
+  "updatedAt": "2026-10-17",
   "verificationCommand": "corepack pnpm privacy:inventory:verify",
   "entries": [
+    {
+      "id": "browser-workspace",
+      "classification": "behavioral-metadata",
+      "owner": "BrowserModule/BrowserWorkspaceManager",
+      "storageLocations": [
+        "main SQLite app_config_entries: browser-workspace (saved tabs, recent pages and bookmarks)",
+        "dedicated non-persistent Electron session: website cookies and session storage"
+      ],
+      "writers": ["owner-authorized BrowserEvents", "owned guest navigation and title events"],
+      "readers": ["main-window browser workspace through the typed BrowserSdk"],
+      "exportPolicy": "local-only; excluded from the cloud sync allowlist, generic renderer storage projection and portable secrets",
+      "deletionPolicy": "closing a tab releases its guest; bookmark toggle removes the saved entry; recent entries are evicted by the 60-page bound; app-data reset removes the workspace; website session data expires with this application run",
+      "retentionPolicy": "up to 16 saved tabs, 60 recent pages and 100 bookmarks; no eager guest allocation for restored inactive tabs",
+      "rendererExposure": "URL, title, favicon URL, visit time and navigation state only to the exact live main-window frame; guest websites receive no app preload, Node or typed host bridge",
+      "portable": false,
+      "migrationStatus": "additive SQLite config key; no new tables or legacy JSON fallback",
+      "evidence": [
+        "apps/core-app/src/main/modules/browser/workspace-manager.ts#symbol=BrowserWorkspaceManager",
+        "apps/core-app/src/main/modules/browser/policy.ts#symbol=assertBrowserOwner",
+        "apps/core-app/src/main/modules/browser/index.ts#symbol=secureBrowserSession"
+      ]
+    },
     {
       "id": "voice-insights",
       "classification": "behavioral-metadata",

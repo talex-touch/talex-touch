@@ -16,8 +16,10 @@ import type {
 } from '@talex-touch/utils/transport/sdk/domains/agent-workspace'
 import type { AgentWorkspaceError } from '~/modules/conversation/useAgentWorkspace'
 import type { HomeOpeningPhase, HomeOpeningSource } from '~/modules/home-push/opening'
+import type { MainWindowCommandHandler } from '~/modules/shortcuts/main-window-shortcuts'
 import { TxAttachmentTray } from '@talex-touch/tuffex/attachment-tray'
 import { TxBorderBeam } from '@talex-touch/tuffex/border-beam'
+import { TxButton } from '@talex-touch/tuffex/button'
 import { TxChainOfThought } from '@talex-touch/tuffex/chain-of-thought'
 import { TxChoiceCard } from '@talex-touch/tuffex/choice-card'
 import { TxMessageActions } from '@talex-touch/tuffex/message-actions'
@@ -130,6 +132,17 @@ import HomeWorkspaceQueue from './workspace/HomeWorkspaceQueue.vue'
  * draft and the navigation-scoped effects of asynchronous submissions.
  */
 const { t, locale } = useI18n()
+
+const props = withDefaults(
+  defineProps<{
+    browserLanding?: boolean
+    browserActive?: boolean
+    browserNavigate?: (input: string) => Promise<void>
+  }>(),
+  { browserLanding: false, browserActive: true }
+)
+const browserMode = ref<'browse' | 'ask'>('browse')
+const browserNavigating = ref(false)
 
 const MAX_INPUT_HEIGHT = 200
 
@@ -254,7 +267,11 @@ const panelOpen = ref(false)
  * Whether this page is the one on screen. Read by the surface watcher below and by the composer's
  * commands, which an off-screen page must not offer as runnable.
  */
-const isHomeRoute = computed(() => route.path === '/home' || route.path.startsWith('/home/c/'))
+const isHomeRoute = computed(() =>
+  props.browserLanding
+    ? route.path === '/browser' && props.browserActive
+    : route.path === '/home' || route.path.startsWith('/home/c/')
+)
 
 /** Both pills read this: the pinned model with its mark, or the routing label with the auto mark. */
 const modelPill = computed(() =>
@@ -315,6 +332,7 @@ const canSend = computed(
     (typeof route.params.id !== 'string' || route.params.id === conversationId.value) &&
     !dictation.active.value &&
     !sending.value &&
+    !browserNavigating.value &&
     !workspace.loading.value &&
     !workspace.loadError.value
 )
@@ -434,7 +452,12 @@ watch(isHomeRoute, (visible) => {
  * dictation, which lights the box from below with the voice glow.
  */
 const composerBeamActive = computed(
-  () => isEmpty.value && !isStreaming.value && !dictation.active.value
+  () =>
+    !props.browserLanding &&
+    isHomeRoute.value &&
+    isEmpty.value &&
+    !isStreaming.value &&
+    !dictation.active.value
 )
 
 /**
@@ -976,7 +999,20 @@ async function enqueueDraft(voice?: VoiceSend): Promise<void> {
 }
 
 async function submit(voice?: VoiceSend): Promise<void> {
+  if (props.browserLanding && voice) browserMode.value = 'ask'
   if (voice ? voiceSendBlocked.value : !canSend.value) return
+  if (props.browserLanding && browserMode.value === 'browse' && !voice) {
+    if (!props.browserNavigate || browserNavigating.value) return
+    browserNavigating.value = true
+    try {
+      await props.browserNavigate(draft.value)
+    } catch {
+      // BrowserPage owns the visible transport error; the typed draft remains available for retry.
+    } finally {
+      browserNavigating.value = false
+    }
+    return
+  }
   if (agentProfileMissing()) {
     toast.error(t('home.workspace.profile.required'))
     return
@@ -1032,7 +1068,8 @@ async function submit(voice?: VoiceSend): Promise<void> {
     }
     lead = push.takeLead() ?? undefined
   }
-  const liftable = !voice && !attachments && !!input && !prefersReducedMotion()
+  const liftable =
+    !props.browserLanding && !voice && !attachments && !!input && !prefersReducedMotion()
   let lift: SendLift | null = null
   if (liftable && input) {
     // A lift still in the air lands first — before this one lays its bubble over the draft.
@@ -1129,6 +1166,11 @@ async function submit(voice?: VoiceSend): Promise<void> {
   if (minted) void history.refresh()
   if (!ownsPage()) return
   warnUnsentAttachments(attachments)
+  if (props.browserLanding) {
+    await router.push(`/home/c/${idAtSend}`)
+    await resetBlankConversation(null)
+    return
+  }
   // Landing on the conversation's own URL is what lets the sidebar and a reload return to it.
   if (route.params.id !== idAtSend) void router.replace(`/home/c/${idAtSend}`)
 
@@ -1232,7 +1274,7 @@ async function pressSend(): Promise<void> {
 
 function handleKeydown(event: KeyboardEvent): void {
   // `isComposing` keeps Enter from cutting an IME candidate selection short.
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return
   event.preventDefault()
   void pressSend()
 }
@@ -1329,6 +1371,7 @@ function toAttachment(file: File): AiAttachment {
 function addFiles(files: File[]): void {
   // Allowed while a reply streams, like typing: only sending waits for the turn to end.
   if (files.length === 0) return
+  if (props.browserLanding) browserMode.value = 'ask'
   pendingAttachments.value = [...pendingAttachments.value, ...files.map(toAttachment)]
 }
 
@@ -1454,6 +1497,7 @@ const currentProject = computed(() =>
 watch(
   projectId,
   (id) => {
+    if (props.browserLanding) return
     projectStore.setActiveProjectId(id)
   },
   { immediate: true }
@@ -1520,7 +1564,7 @@ async function resetBlankConversation(nextProjectId: string | null): Promise<voi
   conversation.reset()
   generatedTitle.value = null
   await nextTick()
-  inputRef.value?.focus()
+  if (!props.browserLanding) inputRef.value?.focus()
   if (composerEl && first && !prefersReducedMotion()) {
     const dy = first.top - composerEl.getBoundingClientRect().top
     if (Math.abs(dy) > 8) choreography.playComposerFlip(dy)
@@ -1534,8 +1578,9 @@ async function resetBlankConversation(nextProjectId: string | null): Promise<voi
  * between two stored conversations reuses this component instance, so mount never fires again.
  */
 watch(
-  () => route.params.id,
-  async (id) => {
+  () => [route.path, route.params.id] as const,
+  async ([path, id]) => {
+    if (props.browserLanding || (path !== '/home' && !path.startsWith('/home/c/'))) return
     const target = typeof id === 'string' ? id : null
     // Claimed before any await, so a plain /home navigation also invalidates a restore in flight -
     // otherwise it would land on top of the blank thread reset() just produced.
@@ -1590,6 +1635,7 @@ watch(
 watch(
   () => projectStore.pendingProjectId,
   async (pendingProjectId) => {
+    if (props.browserLanding || !isHomeRoute.value) return
     if (pendingProjectId === undefined || typeof route.params.id === 'string') return
     restoreSequence.claim()
     await resetBlankConversation(projectStore.consumePendingProjectId())
@@ -1611,7 +1657,9 @@ watch(
  * empty too while its thread loads, and must not pay for an opening it is about to replace.
  */
 /** Whether Home personal-assistant recommendations are enabled (`appSetting.tools.homeRecommendations`, off by default, Beta). */
-const homeRecommendationsEnabled = computed(() => appSetting.tools?.homeRecommendations === true)
+const homeRecommendationsEnabled = computed(
+  () => !props.browserLanding && appSetting.tools?.homeRecommendations === true
+)
 
 const push = useHomePush({
   active: () =>
@@ -1928,10 +1976,10 @@ const modelLimits = computed(() => toHomeModelLimits(modelScope.resolvedChoice.v
  * Home route being visible, because the shell keeps this page alive while the user is in Settings
  * and an enabled-looking row that quietly toggles an off-screen panel is a lie.
  */
-const disposeCommands = registerMainWindowCommandHandlers([
+const commandHandlers: MainWindowCommandHandler[] = [
   {
     id: 'toggle-panel',
-    enabled: () => isHomeRoute.value,
+    enabled: () => isHomeRoute.value && !props.browserLanding,
     run: () => {
       panelOpen.value = !panelOpen.value
     }
@@ -1952,9 +2000,18 @@ const disposeCommands = registerMainWindowCommandHandlers([
     enabled: () => isHomeRoute.value && isStreaming.value,
     run: () => conversation.stop()
   }
-])
+]
 
-onBeforeUnmount(disposeCommands)
+let disposeCommands: (() => void) | undefined
+watch(
+  isHomeRoute,
+  (visible) => {
+    disposeCommands?.()
+    disposeCommands = visible ? registerMainWindowCommandHandlers(commandHandlers) : undefined
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => disposeCommands?.())
 </script>
 
 <template>
@@ -1965,6 +2022,7 @@ onBeforeUnmount(disposeCommands)
     :style="{ '--home-composer-height': composerClearance }"
   >
     <HomeTopBar
+      v-if="!browserLanding"
       :title="conversationTitle"
       :model-name="modelPill.label"
       :model-icon="modelPill.icon"
@@ -1986,7 +2044,7 @@ onBeforeUnmount(disposeCommands)
             <div v-if="isEmpty" ref="headRef" class="HomePage-Head">
               <AppLogo class="HomePage-Mark" />
               <h1 class="HomePage-Greeting">
-                {{ t('home.greeting') }}
+                {{ t(browserLanding ? 'browser.greeting' : 'home.greeting') }}
               </h1>
               <!-- The assistant speaks first. Three lines tall whatever it holds — skeleton, a
                    stream, or nothing — so the composer and the card below never move for it. -->
@@ -2473,9 +2531,14 @@ onBeforeUnmount(disposeCommands)
                   v-model="draft"
                   class="HomePage-Input"
                   rows="1"
-                  :aria-label="t('home.placeholder')"
-                  :placeholder="t('home.placeholder')"
+                  :aria-label="
+                    t(browserLanding ? 'browser.composerPlaceholder' : 'home.placeholder')
+                  "
+                  :placeholder="
+                    t(browserLanding ? 'browser.composerPlaceholder' : 'home.placeholder')
+                  "
                   :readonly="dictation.active.value"
+                  :disabled="browserNavigating"
                   @input="autoGrow"
                   @keydown="handleKeydown"
                   @paste="onPaste"
@@ -2499,7 +2562,30 @@ onBeforeUnmount(disposeCommands)
                   @reset-approvals="resetRememberedApprovals"
                 >
                   <template #mode>
+                    <template v-if="browserLanding">
+                      <TxButton
+                        size="sm"
+                        variant="flat"
+                        :type="browserMode === 'browse' ? 'primary' : 'text'"
+                        :aria-pressed="browserMode === 'browse'"
+                        :disabled="pendingAttachments.length > 0 || browserNavigating"
+                        icon="i-ri-global-line"
+                        @click="browserMode = 'browse'"
+                        >{{ t('browser.browse') }}</TxButton
+                      >
+                      <TxButton
+                        size="sm"
+                        variant="flat"
+                        :type="browserMode === 'ask' ? 'primary' : 'text'"
+                        :aria-pressed="browserMode === 'ask'"
+                        :disabled="browserNavigating"
+                        icon="i-ri-search-line"
+                        @click="browserMode = 'ask'"
+                        >{{ t('browser.ask') }}</TxButton
+                      >
+                    </template>
                     <HomeWorkspaceModeMenu
+                      v-if="!browserLanding"
                       :mode="workspace.settings.value.mode"
                       :profile-id="workspace.settings.value.profileId"
                       :profiles="workspace.profiles.value"
@@ -2562,6 +2648,7 @@ onBeforeUnmount(disposeCommands)
                 </div>
               </div>
             </Transition>
+            <slot v-if="browserLanding" name="browser-footer" />
           </div>
         </div>
       </div>

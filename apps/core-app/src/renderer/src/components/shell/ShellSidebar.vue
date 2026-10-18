@@ -5,7 +5,6 @@ import { useRoute } from 'vue-router'
 import { useTuffTransport } from '@talex-touch/utils/transport'
 import { CoreBoxEvents } from '@talex-touch/utils/transport/events'
 import { useConversationEntry } from '~/modules/conversation/useConversationEntry'
-import { blankConversationOwner } from '~/modules/layout/useProjectFolders'
 import { useShellSidebar } from '~/modules/layout/useShellSidebar'
 import { groupedSettingNavigation } from '~/modules/settings/categories'
 import { useCoreBoxShortcut } from '~/modules/shortcuts/useCoreBoxShortcut'
@@ -30,7 +29,7 @@ const projectStore = useProjectStore()
 const transport = useTuffTransport()
 const { packageJson } = useEnv()
 const { collapsed, isDragging, startDrag } = useShellSidebar()
-const { enterConversation, enterPickedProjectConversation } = useConversationEntry()
+const { enterPickedProjectConversation } = useConversationEntry()
 const { effectiveLabel: coreBoxShortcutLabel } = useCoreBoxShortcut()
 
 /**
@@ -91,17 +90,6 @@ function openCoreBox(): void {
 onMounted(() => {
   void projectStore.initialize()
 })
-
-/**
- * New Chat is current only on a blank conversation that belongs to no project. A stored thread
- * lights its own row and a project's blank conversation lights that project's folder, so the
- * sidebar never shows two current rows at once. The row has no `to`: entering a conversation is
- * the store's job before the route's, and two writers to the same navigation is how the pending
- * owner gets claimed twice.
- */
-const isNewChatActive = computed(
-  () => blankConversationOwner(route.path, projectStore.activeProjectId) === null
-)
 </script>
 
 <template>
@@ -157,14 +145,7 @@ const isNewChatActive = computed(
         />
 
         <nav class="ShellSidebar-Nav">
-          <ShellNavItem
-            icon="i-ri-edit-box-line"
-            :label="t('shell.newChat')"
-            :active="isNewChatActive"
-            @select="enterConversation(null)"
-          >
-            <template #hint><MetaHintBadge command="new-chat" placement="trailing" /></template>
-          </ShellNavItem>
+          <ShellNavItem icon="i-ri-global-line" :label="t('shell.browser')" to="/browser" />
           <!--
             Expanded, New Project is the + on the Projects section title. The rail hides that whole
             list, so without this row the action would have no button there at all.

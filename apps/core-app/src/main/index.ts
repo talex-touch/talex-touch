@@ -30,6 +30,7 @@ import { authModule } from './modules/auth'
 import { coreBoxModule } from './modules/box-tool/core-box/index'
 import FileSystemWatcher from './modules/box-tool/file-system-watcher'
 import { buildVerificationModule } from './modules/build-verification'
+import { browserModule } from './modules/browser'
 import { catalogModule } from './modules/catalog'
 import { clipboardModule } from './modules/clipboard'
 import { conversationModule } from './modules/conversation'
@@ -222,6 +223,7 @@ const foregroundModulesToLoad = [
   toolGatewayModule,
   mcpHostModule,
   storageModule,
+  browserModule,
   fileProtocolModule,
   shortcutModule,
   commonChannelModule,

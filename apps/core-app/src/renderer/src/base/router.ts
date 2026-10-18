@@ -206,7 +206,16 @@ const HomePageRouteComponent = withRouteComponentPerf(
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/home'
+    redirect: APP_SURFACE_ROUTES.browser
+  },
+  {
+    path: APP_SURFACE_ROUTES.browser,
+    name: '$I18n:router.browser',
+    component: withRouteComponentPerf(
+      '/browser',
+      () => import('../views/base/browser/BrowserPage.vue')
+    ),
+    meta: { index: 0, keepAlive: true, keepAliveKey: 'browser-workspace' }
   },
   {
     path: APP_SURFACE_ROUTES.home,

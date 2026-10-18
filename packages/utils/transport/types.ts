@@ -3,6 +3,7 @@
  * @module @talex-touch/utils/transport/types
  */
 
+import type { WebFrameMain } from 'electron'
 import type { TuffEvent } from './event/types'
 import type {
   TransportPortUpgradeRequest,
@@ -350,6 +351,9 @@ export interface HandlerContext {
    * The WebContents that sent this request.
    */
   sender: ElectronWebContents
+
+  /** Actual Electron IPC frame; absent for in-process calls, null after frame destruction. */
+  senderFrame?: WebFrameMain | null
 
   /**
    * The event name being handled.

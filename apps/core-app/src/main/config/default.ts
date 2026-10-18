@@ -22,7 +22,7 @@ export const MainWindowOption: Electron.BrowserWindowConstructorOptions = {
   minWidth: 1100,
   minHeight: 680,
   height: 820,
-  width: 1100,
+  width: 1280,
   autoHideMenuBar: true,
   show: false,
   transparent: true,

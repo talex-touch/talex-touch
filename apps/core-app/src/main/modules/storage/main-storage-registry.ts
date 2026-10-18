@@ -26,6 +26,9 @@ import { redactProviderConfigDocument } from '../ai/provider-credential-service'
 import { normalizeLocalSkillConfig } from '../ai/skill-local-sources'
 import { DEFAULT_MCP_HOST_SETTINGS, normalizeMcpHostSettings } from '../mcp-host/mcp-host-settings'
 
+// Browser history is local-only and accessible solely through the owner-authorized browser SDK.
+export const BROWSER_WORKSPACE_STORAGE_KEY = 'browser-workspace'
+
 export const AUTH_REAUTHENTICATION_REQUIRED_FIELD = 'requiresReauthenticationOnNextStartup'
 /**
  * Nexus origin that issued the stored account credential.

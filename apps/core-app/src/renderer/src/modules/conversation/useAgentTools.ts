@@ -13,6 +13,8 @@ import {
 import { getCurrentScope, onScopeDispose, ref } from 'vue'
 
 const agentToolsLog = createRendererLogger('AgentTools')
+/** Cached conversation and browser landing pages share one host confirmation capability. */
+const visibleConfirmationSurfaces = new Set<symbol>()
 /**
  * What the composer's permission pill offers: the gate's two behaviours, plus
  * "no tools at all". `off` is not a gate mode — it closes the gateway — so it
@@ -50,6 +52,8 @@ export function useAgentTools(): UseAgentToolsReturn {
   const transport = useTuffTransport()
   const sdk = createAgentToolsSdk(transport)
 
+  const surfaceOwner = Symbol('agent-confirmation-surface')
+  let surfaceDisposed = false
   const pending = ref<AgentToolConfirmRequest | null>(null)
   const queued = ref<AgentToolConfirmRequest[]>([])
   const decisionsInFlight = new Set<string>()
@@ -83,15 +87,16 @@ export function useAgentTools(): UseAgentToolsReturn {
     transport.on(AgentToolEvents.confirmSettled, removeSettled)
   ]
 
-  /**
-   * This composable is what puts the card on screen, so its lifetime answers
-   * "can the user be asked at all". The gateway needs that when a call comes
-   * from outside the app — the local MCP server — where waiting for a prompt
-   * that no page renders would just be a two-minute hang ending in a denial.
-   */
+  /** A hidden or disposed page must not retract another visible page's confirmation surface. */
   function announce(visible: boolean): void {
+    if (surfaceDisposed) return
+    const previouslyVisible = visibleConfirmationSurfaces.size > 0
+    if (visible) visibleConfirmationSurfaces.add(surfaceOwner)
+    else visibleConfirmationSurfaces.delete(surfaceOwner)
+    const anyVisible = visibleConfirmationSurfaces.size > 0
+    if (anyVisible === previouslyVisible) return
     void sdk
-      .setConfirmationSurface(visible)
+      .setConfirmationSurface(anyVisible)
       .catch((error) => agentToolsLog.warn('Failed to announce the confirmation surface', error))
   }
 
@@ -125,9 +130,8 @@ export function useAgentTools(): UseAgentToolsReturn {
   if (getCurrentScope()) {
     onScopeDispose(() => {
       for (const dispose of disposers) dispose()
-      // Retracted with the surface itself: whatever is left in `pending` has no
-      // card to be answered from any more.
       announce(false)
+      surfaceDisposed = true
     })
   }
 

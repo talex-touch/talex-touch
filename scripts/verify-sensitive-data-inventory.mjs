@@ -39,6 +39,7 @@ const REQUIRED_IDS = new Set([
   'sync-payload-key',
   'machine-seed',
   'clipboard-history',
+  'browser-workspace',
   'voice-insights',
   'ocr-history-and-assets',
   'search-history-and-usage',
