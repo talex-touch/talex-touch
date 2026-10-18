@@ -29,6 +29,14 @@ export interface BarChartProps extends EChartSharedProps {
   barWidth?: number | string
   /** Value labels on every bar. @default false */
   showLabel?: boolean
+  /**
+   * Zoom and pan the categories: ⌘/Ctrl + wheel or a pinch zooms around the pointer,
+   * a drag pans once zoomed in, and a double-click returns to the full range.
+   * @default true
+   */
+  zoom?: boolean
+  /** Plain wheel scrolls the page; see `TxEChart`. @default true */
+  cooperativeWheel?: boolean
 }
 
 /** Pure option builder — colours, axes and legend styling come from TxEChart. */
@@ -43,6 +51,7 @@ export function buildBarChartOption(props: BarChartProps): EChartsOption {
     horizontal = false,
     barWidth,
     showLabel = false,
+    zoom = true,
   } = props
   const showLegend = props.showLegend ?? series.length > 1
 
@@ -61,6 +70,9 @@ export function buildBarChartOption(props: BarChartProps): EChartsOption {
     ...(showLegend ? { legend: {} } : {}),
     grid: {},
     tooltip: { trigger: 'axis' },
+    ...(zoom
+      ? { dataZoom: [{ type: 'inside', ...(horizontal ? { yAxisIndex: 0 } : { xAxisIndex: 0 }), filterMode: 'none' }] }
+      : {}),
     xAxis: horizontal ? named(valueAxis, xAxisName) : named(categoryAxis, xAxisName),
     yAxis: horizontal ? named(categoryAxis, yAxisName) : named(valueAxis, yAxisName),
     series: series.map(entry => ({

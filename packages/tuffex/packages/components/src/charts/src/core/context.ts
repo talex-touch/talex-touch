@@ -1,15 +1,40 @@
 import type { ComputedRef, InjectionKey, Ref } from 'vue'
 import type { ChartXScale, ChartYScale } from './scales'
 import type { ChartPadding, PlotArea, ScaleKind, SeriesExtent } from './types'
-import { computed, inject, reactive, shallowReactive } from 'vue'
+import { computed, inject, reactive, ref, shallowReactive } from 'vue'
 import { ChartPalette } from '../palette'
-import { createXScale, createYScale } from './scales'
+import { createXScale, createYScale, isBandScale, xPosition } from './scales'
 
-/** Live pointer position in container pixel coordinates. */
+/**
+ * The live reading position in container pixel coordinates. A mouse writes it
+ * while it hovers; a press-drag (mouse, touch or pen) keeps writing it outside
+ * the plot, clamped to the plot's edge; keyboard stepping writes the position
+ * of the datum it lands on.
+ */
 export interface ChartPointer {
   x: number
   y: number
+  /** A reading is showing. */
   inside: boolean
+  /** A press-drag past the 4px slop holds the pointer. */
+  pressed: boolean
+  /** What placed the reading: a pointer, or keyboard stepping. */
+  source: 'pointer' | 'keyboard'
+}
+
+/** A gesture that moves the chart's view; readings pause while it pans or pinches. */
+export type ChartGesture = 'brush' | 'pan' | 'pinch' | null
+
+/**
+ * A layer that answers keys on the focused chart: a pie stepping its slices,
+ * a viewport zooming. Layers are asked newest first, before the chart's own
+ * stepping through x values.
+ */
+export interface ChartKeyLayer {
+  /** Handle a key; return true when it was consumed. */
+  key: (event: KeyboardEvent) => boolean
+  /** Drop any reading the layer placed (the chart lost focus, or Escape). */
+  clear?: () => void
 }
 
 /** A bar series registered for lane/stack layout. */
@@ -33,6 +58,13 @@ export interface TxChartContext {
   height: Readonly<Ref<number>>
   plot: ComputedRef<PlotArea>
   xType: Readonly<Ref<ScaleKind>>
+  /** The full x domain the data spans, before any view window. */
+  xDomainFull: ComputedRef<Array<string | number>>
+  /**
+   * The x window a view layer shows in place of the full domain, in data
+   * units; `null` shows it all. Continuous scales only.
+   */
+  xView: Ref<[number, number] | null>
   xScale: ComputedRef<ChartXScale | null>
   yScale: ComputedRef<ChartYScale | null>
   /** id of the plot-area clipPath series should reference. */
@@ -45,6 +77,28 @@ export interface TxChartContext {
   allocateColor: () => string
   registerBar: (entry: BarSeriesEntry) => () => void
   barLayout: ComputedRef<BarLayout>
+  /**
+   * Every x a mounted series has a datum at, in axis order: the band domain on
+   * band scales, sorted distinct values on continuous ones.
+   */
+  xStops: ComputedRef<Array<string | number>>
+  /** The stop drawn nearest a container x inside the current x domain, or `null`. */
+  nearestXStop: (px: number) => string | number | null
+  /** Add a key layer; returns an unregister function. */
+  registerKeyLayer: (layer: ChartKeyLayer) => () => void
+  /** Registered key layers, newest last. */
+  keyLayers: readonly ChartKeyLayer[]
+  /**
+   * While true, series draw the current scales on the same frame instead of
+   * morphing towards them: a pan or zoom moves the scales every frame.
+   */
+  immediate: Ref<boolean>
+  /** The view gesture in progress, if any. */
+  gesture: Ref<ChartGesture>
+  /** A view layer zooms this chart; its keyboard instructions say so. */
+  zoomable: Ref<boolean>
+  /** Text for the chart's polite live region; layers write their keyboard readings here. */
+  announcement: Ref<string>
 }
 
 export const chartContextKey: InjectionKey<TxChartContext> = Symbol('tx-chart-context')
@@ -75,7 +129,8 @@ export function createChartContext(input: CreateChartContextInput): TxChartConte
   interface ExtentEntry { source: Ref<SeriesExtent | null> }
   const extents = shallowReactive<ExtentEntry[]>([])
   const barEntries = shallowReactive<BarSeriesEntry[]>([])
-  const pointer = reactive<ChartPointer>({ x: 0, y: 0, inside: false })
+  const keyLayers = shallowReactive<ChartKeyLayer[]>([])
+  const pointer = reactive<ChartPointer>({ x: 0, y: 0, inside: false, pressed: false, source: 'pointer' })
 
   // Slots are assigned in registration order and not reclaimed on unregister —
   // remounting series keeps stable hues, transient removals don't reshuffle.
@@ -162,11 +217,14 @@ export function createChartContext(input: CreateChartContextInput): TxChartConte
     return [lo, hi]
   })
 
+  const xView = ref<[number, number] | null>(null)
+
   const xScale = computed<ChartXScale | null>(() => {
     const area = plot.value
     if (area.width <= 0)
       return null
-    const domain = xDomainAuto.value
+    const view = input.xType.value === 'band' ? null : xView.value
+    const domain = view ?? xDomainAuto.value
     if (domain.length === 0)
       return null
     return createXScale(input.xType.value, domain, [area.x, area.x + area.width])
@@ -182,6 +240,64 @@ export function createChartContext(input: CreateChartContextInput): TxChartConte
       input.yNice.value,
     )
   })
+
+  const xStops = computed<Array<string | number>>(() => {
+    if (input.xType.value === 'band')
+      return xDomainAuto.value
+    const values: number[] = []
+    for (const entry of extents) {
+      for (const value of entry.source.value?.xValues ?? [])
+        values.push(value)
+    }
+    values.sort((a, b) => a - b)
+    return values.filter((value, index) => index === 0 || value !== values[index - 1])
+  })
+
+  function nearestXStop(px: number): string | number | null {
+    const scale = xScale.value
+    const stops = xStops.value
+    if (!scale || stops.length === 0)
+      return null
+    if (isBandScale(scale)) {
+      let best: string | number | null = null
+      let distance = Infinity
+      for (const stop of stops) {
+        const gap = Math.abs(xPosition(scale, stop) - px)
+        if (gap < distance) {
+          distance = gap
+          best = stop
+        }
+      }
+      return best
+    }
+    // Continuous stops are sorted: binary search the inverted x, then keep the
+    // nearer neighbour by drawn distance, inside the current domain only.
+    const [d0, d1] = scale.domain().map(Number) as [number, number]
+    const lo = Math.min(d0, d1)
+    const hi = Math.max(d0, d1)
+    const numeric = stops as number[]
+    let start = 0
+    while (start < numeric.length && numeric[start]! < lo)
+      start++
+    let end = numeric.length - 1
+    while (end >= start && numeric[end]! > hi)
+      end--
+    if (start > end)
+      return null
+    const inverted = Number(scale.invert(px))
+    let left = start
+    let right = end
+    while (left < right) {
+      const middle = (left + right) >> 1
+      if (numeric[middle]! < inverted)
+        left = middle + 1
+      else
+        right = middle
+    }
+    const after = numeric[left]!
+    const before = left > start ? numeric[left - 1]! : after
+    return Math.abs(xPosition(scale, before) - px) <= Math.abs(xPosition(scale, after) - px) ? before : after
+  }
 
   const barLayout = computed<BarLayout>(() => {
     const laneByKey = new Map<string, number>()
@@ -217,6 +333,8 @@ export function createChartContext(input: CreateChartContextInput): TxChartConte
     height: input.height,
     plot,
     xType: input.xType,
+    xDomainFull: xDomainAuto,
+    xView,
     xScale,
     yScale,
     clipId,
@@ -241,5 +359,20 @@ export function createChartContext(input: CreateChartContextInput): TxChartConte
       }
     },
     barLayout,
+    xStops,
+    nearestXStop,
+    registerKeyLayer: (layer) => {
+      keyLayers.push(layer)
+      return () => {
+        const index = keyLayers.indexOf(layer)
+        if (index >= 0)
+          keyLayers.splice(index, 1)
+      }
+    },
+    keyLayers,
+    immediate: ref(false),
+    gesture: ref<ChartGesture>(null),
+    zoomable: ref(false),
+    announcement: ref(''),
   }
 }

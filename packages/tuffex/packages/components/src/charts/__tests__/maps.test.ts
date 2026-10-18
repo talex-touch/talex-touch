@@ -1,8 +1,11 @@
+import type { VueWrapper } from '@vue/test-utils'
+import type { RoamBounds, RoamState } from '../src/maps/src/roam'
 import type { MapGeoJson } from '../src/maps/src/types'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
-import { toRaw } from 'vue'
-import { TxBubbleMap, TxChoroplethMap } from '../src/maps'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick, toRaw } from 'vue'
+import { projectMomentum } from '../../../../utils/gesture'
+import { MAP_DEFAULT_LABELS, TxBubbleMap, TxChoroplethMap } from '../src/maps'
 import { DEFAULT_MAP_SCALE_VARS, rampColor, rampGradient } from '../src/maps/src/color'
 import {
   createDefaultProjection,
@@ -10,7 +13,18 @@ import {
   fitProjectionToWindow,
   projectedAspect,
 } from '../src/maps/src/projection'
-import { applyRoam, clampScale, IDENTITY_ROAM, initialRoam, panBy, scaleAboutPoint } from '../src/maps/src/roam'
+import {
+  applyRoam,
+  clampRoam,
+  clampScale,
+  glideAxis,
+  IDENTITY_ROAM,
+  initialRoam,
+  panBy,
+  resistRoam,
+  roamBounds,
+  scaleAboutPoint,
+} from '../src/maps/src/roam'
 
 function square(name: string, west: number): MapGeoJson['features'][number] {
   return {
@@ -32,6 +46,40 @@ function square(name: string, west: number): MapGeoJson['features'][number] {
 const world: MapGeoJson = {
   type: 'FeatureCollection',
   features: [square('Alpha', 0), square('Beta', 20)],
+}
+
+/** Dispatches a pointer event at a chosen time; jsdom has no PointerEvent. */
+function firePointer(
+  target: Element,
+  type: string,
+  { x, y, t, id = 1, buttons, ctrlKey = false }: { x: number, y: number, t: number, id?: number, buttons?: number, ctrlKey?: boolean },
+): void {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'timeStamp', { value: t })
+  Object.assign(event, {
+    clientX: x,
+    clientY: y,
+    pointerId: id,
+    button: 0,
+    buttons: buttons ?? (type === 'pointerup' || type === 'pointercancel' ? 0 : 1),
+    ctrlKey,
+    pointerType: 'mouse',
+    isPrimary: true,
+  })
+  target.dispatchEvent(event)
+}
+
+/** The roam transform a map draws, read back from its layer. */
+function roamOf(wrapper: VueWrapper): RoamState {
+  const match = /translate\(([^,]+), ([^)]+)\) scale\(([^)]+)\)/.exec(wrapper.find('svg > g').attributes('transform') ?? '')
+  return { tx: Number(match?.[1]), ty: Number(match?.[2]), k: Number(match?.[3]) }
+}
+
+function expectRoam(wrapper: VueWrapper, expected: RoamState): void {
+  const actual = roamOf(wrapper)
+  expect(actual.k).toBeCloseTo(expected.k, 6)
+  expect(actual.tx).toBeCloseTo(expected.tx, 6)
+  expect(actual.ty).toBeCloseTo(expected.ty, 6)
 }
 
 describe('projection helpers', () => {
@@ -87,6 +135,47 @@ describe('roam math', () => {
 
   it('pans additively', () => {
     expect(panBy({ k: 2, tx: 5, ty: 5 }, 10, -5)).toEqual({ k: 2, tx: 15, ty: 0 })
+  })
+
+  it('keeps a map larger than the container covering it and a smaller one inside it', () => {
+    // A 400 × 200 window fitted into a 400 × 300 container.
+    const box = { x0: 0, y0: 50, x1: 400, y1: 250 }
+    // As wide as the container, so no horizontal room; shorter, so it moves within the letterbox.
+    expect(roamBounds(1, box, 400, 300)).toEqual({ tx: [0, 0], ty: [-50, 50] })
+    // At 2× (800 × 400) it pans until an edge meets the container's.
+    expect(roamBounds(2, box, 400, 300)).toEqual({ tx: [-400, 0], ty: [-200, -100] })
+  })
+
+  it('keeps the requested home view reachable at every scale', () => {
+    const box = { x0: 0, y0: 50, x1: 400, y1: 250 }
+    // A centre on the east edge puts home past the plain bound.
+    const home = { k: 2, tx: -600, ty: -150 }
+    expect(roamBounds(2, box, 400, 300, home).tx).toEqual([-600, 0])
+    // Rescaled about the container centre at 4×: 200 - (200 + 600) × 2.
+    expect(roamBounds(4, box, 400, 300, home).tx).toEqual([-1400, 0])
+  })
+
+  it('resists a drag past the bounds, more the further it goes', () => {
+    const bounds: RoamBounds = { tx: [-400, 0], ty: [-200, -100] }
+    expect(resistRoam({ k: 2, tx: -100, ty: -150 }, bounds, 400, 300)).toEqual({ k: 2, tx: -100, ty: -150 })
+    const near = resistRoam({ k: 2, tx: 20, ty: -150 }, bounds, 400, 300).tx
+    const far = resistRoam({ k: 2, tx: 400, ty: -150 }, bounds, 400, 300).tx
+    expect(near).toBeGreaterThan(0)
+    expect(near).toBeLessThan(20)
+    // Never reaches the pull: the band tops out below c × the container size.
+    expect(far).toBeLessThan(400 * 0.55)
+    expect(resistRoam({ k: 2, tx: -420, ty: -150 }, bounds, 400, 300).tx).toBeCloseTo(-400 - near)
+    expect(clampRoam({ k: 2, tx: 400, ty: 0 }, bounds)).toEqual({ k: 2, tx: 0, ty: -100 })
+  })
+
+  it('coasts a released pan as far as projectMomentum says', () => {
+    let position = 0
+    let velocity = 1000
+    for (let frame = 0; frame < 600; frame++)
+      [position, velocity] = glideAxis(position, velocity, 1 / 60)
+    // 0.998 per millisecond: a 1000 px/s flick carries about 499 px.
+    expect(position).toBeCloseTo(projectMomentum(1000), -1)
+    expect(Math.abs(velocity)).toBeLessThan(1)
   })
 })
 
@@ -162,31 +251,37 @@ describe('txBubbleMap', () => {
     expect(wrapper.find('.tx-map__tooltip').exists()).toBe(false)
   })
 
-  it('keeps bubble presses selectable without panning while background drags still move the map', async () => {
-    const wrapper = mountBubble({ roam: true, zoom: 2 })
+  it('pans from anywhere past 4 px and swallows the click it ends in, while a tap still clicks', async () => {
+    const wrapper = mountBubble({ zoom: 2 })
     try {
       const bubble = wrapper.findAll('.tx-map__bubble')[1]!
-      const layer = wrapper.find('svg > g')
-      const initialTransform = layer.attributes('transform')
+      const root = wrapper.element
+      expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
 
-      // jsdom has no pointer capture/retargeting; assert the visible drag
-      // boundary here, not a mocked setPointerCapture call count.
-      await bubble.trigger('pointerdown', { button: 0, clientX: 100, clientY: 80 })
-      await wrapper.trigger('pointermove', { clientX: 125, clientY: 95 })
-      expect(layer.attributes('transform')).toBe(initialTransform)
-      await bubble.trigger('pointerup', { clientX: 125, clientY: 95 })
+      // Under 4 px a press stays a click on the bubble it started on.
+      firePointer(bubble.element, 'pointerdown', { x: 100, y: 80, t: 0 })
+      firePointer(root, 'pointermove', { x: 102, y: 82, t: 16 })
+      firePointer(bubble.element, 'pointerup', { x: 102, y: 82, t: 32 })
       await bubble.trigger('click')
-      expect(wrapper.emitted('bubbleClick')).toHaveLength(1)
+      expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
       expect(toRaw(wrapper.emitted('bubbleClick')![0]![0])).toBe(data[1])
 
-      await wrapper.find('.tx-map__land').trigger('pointerdown', { button: 0, clientX: 100, clientY: 80 })
-      await wrapper.trigger('pointermove', { clientX: 110, clientY: 85 })
-      await wrapper.trigger('pointermove', { clientX: 125, clientY: 95 })
-      expect(layer.attributes('transform')).toBe('translate(-175, -135) scale(2)')
-      await wrapper.trigger('pointerup', { clientX: 125, clientY: 95 })
-      await wrapper.trigger('pointermove', { clientX: 150, clientY: 110 })
-      expect(layer.attributes('transform')).toBe('translate(-175, -135) scale(2)')
+      // Past it the map follows 1:1 from the press, a bubble included...
+      firePointer(bubble.element, 'pointerdown', { x: 100, y: 80, t: 1000 })
+      firePointer(root, 'pointermove', { x: 110, y: 85, t: 1016 })
+      firePointer(root, 'pointermove', { x: 125, y: 95, t: 1032 })
+      await nextTick()
+      expect(wrapper.find('svg > g').attributes('transform')).toBe('translate(-175, -135) scale(2)')
+      expect(wrapper.classes()).toContain('is-dragging')
+      // ...held still before letting go, so nothing glides...
+      firePointer(bubble.element, 'pointerup', { x: 125, y: 95, t: 1200 })
+      // ...and the click that ends the pan selects nothing.
+      await bubble.trigger('click')
       expect(wrapper.emitted('bubbleClick')).toHaveLength(1)
+      firePointer(root, 'pointermove', { x: 150, y: 110, t: 1300 })
+      await nextTick()
+      expect(wrapper.find('svg > g').attributes('transform')).toBe('translate(-175, -135) scale(2)')
+      expect(wrapper.classes()).not.toContain('is-dragging')
     }
     finally {
       wrapper.unmount()
@@ -271,5 +366,252 @@ describe('txChoroplethMap', () => {
     // The legend row (22px) is subtracted from the plot, so the fitted
     // projection — and the SVG drawing it — stops above the legend.
     expect(withLegend.find('.tx-map__svg').attributes('viewBox')).toBe('0 0 400 278')
+  })
+})
+
+describe('map roam', () => {
+  interface Colo { code: string, lon: number, lat: number, requests: number }
+  const data: Colo[] = [
+    { code: 'BIG', lon: 5, lat: 5, requests: 100 },
+    { code: 'SML', lon: 25, lat: 5, requests: 25 },
+  ]
+  const originalMatchMedia = window.matchMedia
+  let reduce = false
+
+  beforeEach(() => {
+    reduce = false
+    window.matchMedia = ((query: string) => ({
+      matches: reduce && query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    window.matchMedia = originalMatchMedia
+  })
+
+  function mountBubble(extra: Record<string, unknown> = {}) {
+    return mount(TxBubbleMap, {
+      props: {
+        geoJson: world,
+        data,
+        lng: 'lon',
+        lat: 'lat',
+        value: 'requests',
+        width: 400,
+        height: 300,
+        zoom: 2,
+        ...extra,
+      } as never,
+    })
+  }
+
+  it('zooms around the pointer only on ⌘/Ctrl + wheel and leaves a plain wheel to the page', async () => {
+    reduce = true
+    const wrapper = mountBubble()
+    const root = wrapper.element
+    const plain = new WheelEvent('wheel', { deltaY: 100, clientX: 100, clientY: 80, bubbles: true, cancelable: true })
+    root.dispatchEvent(plain)
+    await nextTick()
+    expect(plain.defaultPrevented).toBe(false)
+    expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
+
+    // A trackpad pinch streams small Ctrl + wheel deltas and follows on the frame.
+    const pinch = new WheelEvent('wheel', { deltaY: -20, ctrlKey: true, clientX: 100, clientY: 80, bubbles: true, cancelable: true })
+    root.dispatchEvent(pinch)
+    await nextTick()
+    expect(pinch.defaultPrevented).toBe(true)
+    const factor = 2 ** (20 / 200)
+    // The map point under the pointer stays under it.
+    expectRoam(wrapper, { k: 2 * factor, tx: 100 - 300 * factor, ty: 80 - 230 * factor })
+
+    // A ⌘ + wheel notch zooms out by √2.
+    const notch = new WheelEvent('wheel', { deltaY: 100, metaKey: true, clientX: 200, clientY: 150, bubbles: true, cancelable: true })
+    root.dispatchEvent(notch)
+    await nextTick()
+    expect(notch.defaultPrevented).toBe(true)
+    expect(roamOf(wrapper).k).toBeCloseTo(2 * factor * Math.SQRT1_2)
+  })
+
+  it('pans and zooms from the keys and resets with 0 or a double-click', async () => {
+    reduce = true
+    const wrapper = mountBubble()
+    await wrapper.trigger('keydown', { key: 'ArrowRight' })
+    expectRoam(wrapper, { k: 2, tx: -240, ty: -150 })
+    await wrapper.trigger('keydown', { key: 'ArrowDown' })
+    expectRoam(wrapper, { k: 2, tx: -240, ty: -180 })
+    await wrapper.trigger('keydown', { key: '+' })
+    const zoomed = roamOf(wrapper)
+    expect(zoomed.k).toBeCloseTo(2 * Math.SQRT2)
+    // About the centre: the map point in the middle stays there.
+    expect((200 - zoomed.tx) / zoomed.k).toBeCloseTo(220)
+    expect((150 - zoomed.ty) / zoomed.k).toBeCloseTo(165)
+    // ⌘/Ctrl + plus stays the browser's zoom.
+    await wrapper.trigger('keydown', { key: '+', metaKey: true })
+    expectRoam(wrapper, zoomed)
+    await wrapper.trigger('keydown', { key: '0' })
+    expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
+    await wrapper.trigger('keydown', { key: 'ArrowLeft' })
+    expectRoam(wrapper, { k: 2, tx: -160, ty: -150 })
+    await wrapper.trigger('dblclick')
+    expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
+  })
+
+  it('puts the map back when Escape cancels a pan', async () => {
+    reduce = true
+    const wrapper = mountBubble()
+    const root = wrapper.element
+    firePointer(root, 'pointerdown', { x: 100, y: 80, t: 0 })
+    firePointer(root, 'pointermove', { x: 140, y: 100, t: 16 })
+    await nextTick()
+    expectRoam(wrapper, { k: 2, tx: -160, ty: -130 })
+    await wrapper.trigger('keydown', { key: 'Escape' })
+    expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
+    expect(wrapper.classes()).not.toContain('is-dragging')
+    firePointer(root, 'pointermove', { x: 180, y: 120, t: 32 })
+    firePointer(root, 'pointerup', { x: 180, y: 120, t: 48 })
+    await nextTick()
+    expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
+  })
+
+  it('glides a flick to rest inside the bounds and springs an overshoot back', async () => {
+    const wrapper = mountBubble()
+    const root = wrapper.element
+    // About 1000 px/s to the right carries some 500 px: past the map's west edge (tx 0).
+    firePointer(root, 'pointerdown', { x: 100, y: 80, t: 0 })
+    firePointer(root, 'pointermove', { x: 116, y: 80, t: 16 })
+    firePointer(root, 'pointermove', { x: 133, y: 80, t: 32 })
+    firePointer(root, 'pointermove', { x: 150, y: 80, t: 48 })
+    firePointer(root, 'pointerup', { x: 150, y: 80, t: 50 })
+    vi.advanceTimersByTime(100)
+    await nextTick()
+    expect(roamOf(wrapper).tx).toBeGreaterThan(-150)
+    vi.advanceTimersByTime(5000)
+    await nextTick()
+    expectRoam(wrapper, { k: 2, tx: 0, ty: -150 })
+
+    // Pulled past the edge, it resists; let go without momentum, it returns to the edge.
+    firePointer(root, 'pointerdown', { x: 100, y: 80, t: 6000 })
+    firePointer(root, 'pointermove', { x: 300, y: 80, t: 6016 })
+    await nextTick()
+    const pulled = roamOf(wrapper).tx
+    expect(pulled).toBeGreaterThan(0)
+    expect(pulled).toBeLessThan(200)
+    firePointer(root, 'pointerup', { x: 300, y: 80, t: 6200 })
+    vi.advanceTimersByTime(2000)
+    await nextTick()
+    expectRoam(wrapper, { k: 2, tx: 0, ty: -150 })
+  })
+
+  it('stays fixed with roam off: no focus stop, no pan, and the zoom wheel stays the page\'s', async () => {
+    const wrapper = mountBubble({ roam: false })
+    expect(wrapper.attributes('tabindex')).toBeUndefined()
+    expect(wrapper.attributes('role')).toBeUndefined()
+    expect(wrapper.classes()).not.toContain('is-roam')
+    expect(wrapper.find('.tx-map__instructions').exists()).toBe(false)
+    const root = wrapper.element
+    firePointer(root, 'pointerdown', { x: 100, y: 80, t: 0 })
+    firePointer(root, 'pointermove', { x: 150, y: 120, t: 16 })
+    const wheel = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true })
+    root.dispatchEvent(wheel)
+    await wrapper.trigger('keydown', { key: '+' })
+    expect(wheel.defaultPrevented).toBe(false)
+    expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
+  })
+
+  it('names the roaming map and its controls, overridable through labels', () => {
+    const wrapper = mount(TxChoroplethMap, {
+      props: { geoJson: world, data: [], name: 'country', value: 'score', width: 400, height: 300, labels: { map: 'Weltkarte' } } as never,
+    })
+    expect(wrapper.attributes('tabindex')).toBe('0')
+    expect(wrapper.attributes('role')).toBe('application')
+    expect(wrapper.attributes('aria-label')).toBe('Weltkarte')
+    const instructions = wrapper.find('.tx-map__instructions')
+    expect(wrapper.attributes('aria-describedby')).toBe(instructions.attributes('id'))
+    expect(instructions.text()).toBe(MAP_DEFAULT_LABELS.instructions)
+  })
+
+  it('does not click the region a pan starts on', async () => {
+    const wrapper = mount(TxChoroplethMap, {
+      props: { geoJson: world, data: [{ country: 'Beta', score: 5 }], name: 'country', value: 'score', width: 400, height: 300 } as never,
+    })
+    const beta = wrapper.findAll('.tx-map__region')[1]!
+    firePointer(beta.element, 'pointerdown', { x: 100, y: 80, t: 0 })
+    firePointer(beta.element, 'pointermove', { x: 130, y: 80, t: 16 })
+    firePointer(beta.element, 'pointerup', { x: 130, y: 80, t: 200 })
+    await beta.trigger('click')
+    expect(wrapper.emitted('regionClick')).toBeUndefined()
+    // The next press that stays put clicks again.
+    firePointer(beta.element, 'pointerdown', { x: 130, y: 80, t: 1000 })
+    firePointer(beta.element, 'pointerup', { x: 130, y: 80, t: 1050 })
+    await beta.trigger('click')
+    expect(wrapper.emitted('regionClick')).toHaveLength(1)
+  })
+
+  it('clicks regions as usual once roam is switched off after a pan', async () => {
+    const wrapper = mount(TxChoroplethMap, {
+      props: { geoJson: world, data: [{ country: 'Beta', score: 5 }], name: 'country', value: 'score', width: 400, height: 300 } as never,
+    })
+    const beta = wrapper.findAll('.tx-map__region')[1]!
+    firePointer(beta.element, 'pointerdown', { x: 100, y: 80, t: 0 })
+    firePointer(beta.element, 'pointermove', { x: 130, y: 80, t: 16 })
+    firePointer(beta.element, 'pointerup', { x: 130, y: 80, t: 200 })
+    await wrapper.setProps({ roam: false })
+    await beta.trigger('click')
+    expect(wrapper.emitted('regionClick')).toHaveLength(1)
+  })
+
+  it('scales the view it was left in with the container and keeps the map inside', async () => {
+    reduce = true
+    const wrapper = mountBubble()
+    await wrapper.trigger('keydown', { key: 'ArrowRight' })
+    expectRoam(wrapper, { k: 2, tx: -240, ty: -150 })
+    await wrapper.setProps({ width: 200, height: 150 })
+    // The same stretch of map stays in view, at half the size.
+    expectRoam(wrapper, { k: 2, tx: -120, ty: -75 })
+
+    // Pushed against the far corner, it is still against the far corner of a smaller container.
+    for (let i = 0; i < 12; i++) {
+      await wrapper.trigger('keydown', { key: 'ArrowRight' })
+      await wrapper.trigger('keydown', { key: 'ArrowDown' })
+    }
+    const corner = roamOf(wrapper)
+    await wrapper.setProps({ width: 100, height: 75 })
+    expectRoam(wrapper, { k: 2, tx: corner.tx / 2, ty: corner.ty / 2 })
+  })
+
+  it('ignores a ⌃-press, which macOS turns into a context menu that takes the release', async () => {
+    reduce = true
+    const wrapper = mountBubble()
+    const root = wrapper.element
+    firePointer(root, 'pointerdown', { x: 100, y: 80, t: 0, ctrlKey: true })
+    firePointer(root, 'pointermove', { x: 160, y: 80, t: 16 })
+    await nextTick()
+    expect(wrapper.classes()).not.toContain('is-dragging')
+    expectRoam(wrapper, { k: 2, tx: -200, ty: -150 })
+  })
+
+  it('lets go of a pan whose release it never heard about', async () => {
+    reduce = true
+    const wrapper = mountBubble()
+    const root = wrapper.element
+    firePointer(root, 'pointerdown', { x: 100, y: 80, t: 0 })
+    firePointer(root, 'pointermove', { x: 140, y: 80, t: 16 })
+    await nextTick()
+    expect(wrapper.classes()).toContain('is-dragging')
+    expectRoam(wrapper, { k: 2, tx: -160, ty: -150 })
+    // The button came up where the page could not see it; moving on without it is hover.
+    firePointer(root, 'pointermove', { x: 200, y: 80, t: 1000, buttons: 0 })
+    await nextTick()
+    expect(wrapper.classes()).not.toContain('is-dragging')
+    expectRoam(wrapper, { k: 2, tx: -160, ty: -150 })
   })
 })

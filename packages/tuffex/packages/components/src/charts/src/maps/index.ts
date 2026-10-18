@@ -4,6 +4,7 @@ import type {
   MapAccessor,
   MapBaseProps,
   MapGeoJson,
+  MapLabels,
   MapStyle,
 } from './src/types'
 import { withInstall } from '../utils/with-install'
@@ -27,12 +28,14 @@ export {
 } from './src/projection'
 export { applyRoam, clampScale, initialRoam, panBy, scaleAboutPoint } from './src/roam'
 export type { RoamState } from './src/roam'
+export { MAP_DEFAULT_LABELS } from './src/types'
 export type {
   BubbleMapProps,
   ChoroplethMapProps,
   MapAccessor,
   MapBaseProps,
   MapGeoJson,
+  MapLabels,
   MapStyle,
 }
 // No *Instance types here: generic SFCs compile to functions, not

@@ -37,14 +37,18 @@ const markerLines = computed(() => {
   const xs = ctx.xScale.value
   if (!xs)
     return []
-  return props.clusters.map((cluster, index) => ({
-    key: `${cluster.timestamp}-${index}`,
-    x: xPosition(xs, cluster.timestamp),
-    dash: DASH[cluster.lineStyle ?? 'dashed'],
-    color: cluster.color,
-    label: cluster.label,
-    cluster,
-  }))
+  const plot = ctx.plot.value
+  return props.clusters
+    .map((cluster, index) => ({
+      key: `${cluster.timestamp}-${index}`,
+      x: xPosition(xs, cluster.timestamp),
+      dash: DASH[cluster.lineStyle ?? 'dashed'],
+      color: cluster.color,
+      label: cluster.label,
+      cluster,
+    }))
+    // A zoomed view leaves some markers off the plot; they are not drawn over the axes.
+    .filter(marker => marker.x >= plot.x - 0.5 && marker.x <= plot.x + plot.width + 0.5)
 })
 
 const thresholdLines = computed(() => {
@@ -145,9 +149,11 @@ const crosshair = computed(() => {
 
 <style lang="scss" scoped>
 .tx-ts-annotations {
+  // These sit above the viewport so markers stay hoverable; a press must still reach it.
   &__crosshair {
     stroke: var(--tx-chart-grid-line, rgb(107 114 128 / 20%));
     stroke-width: 1;
+    pointer-events: none;
   }
 
   &__marker-line {
@@ -183,6 +189,11 @@ const crosshair = computed(() => {
   &__threshold-line {
     stroke-width: 1;
     stroke-dasharray: 4 4;
+    pointer-events: none;
+  }
+
+  &__threshold-label {
+    pointer-events: none;
   }
 }
 </style>

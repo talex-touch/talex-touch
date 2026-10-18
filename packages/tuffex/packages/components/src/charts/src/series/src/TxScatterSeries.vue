@@ -61,7 +61,8 @@ const flatTarget = computed(() => targetDots.value.flatMap(dot => [dot.cx, dot.c
 const tweened = useTweenedNumbers(() => flatTarget.value, {
   duration: UPDATE_DURATION,
   easing: easings.cubicInOut,
-  enabled: () => animated.value,
+  // A pan or zoom moves the scales every frame; the geometry follows on that frame.
+  enabled: () => animated.value && !ctx.immediate.value,
 })
 
 const dots = computed<Dot[]>(() => {

@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="T">
 import type { ArcSeriesProps, ArcSliceDatum } from './types'
 import { arc, pie } from 'd3-shape'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ANIMATION_THRESHOLD,
   easings,
@@ -116,17 +116,132 @@ function enterSlice(slice: ArcSliceDatum<T>): void {
   emit('sliceHover', slice)
 }
 
-/**
- * Bound to the group, not the slices: moving between two neighbouring slices
- * fires `pointerleave` on the first before `pointerenter` on the second, so a
- * per-slice leave would emit a spurious `null`.
- */
 function leaveSlice(): void {
   if (hovered.value === null)
     return
   hovered.value = null
   emit('sliceHover', null)
 }
+
+/**
+ * Bound to the group, not the slices: moving between two neighbouring slices
+ * fires `pointerleave` on the first before `pointerenter` on the second, so a
+ * per-slice leave would emit a spurious `null`. A press-drag reads by angle
+ * instead, and the leave the chart's pointer capture causes is not the
+ * pointer leaving.
+ */
+function onGroupLeave(): void {
+  if (!ctx.pointer.pressed)
+    leaveSlice()
+}
+
+/** The slice whose angular span holds a point: a press-drag reads the ring like a dial. */
+function entryAt(x: number, y: number): ArcEntry | null {
+  const dx = x - center.value.x
+  const dy = y - center.value.y
+  if (dx === 0 && dy === 0)
+    return null
+  // d3's angles run clockwise from twelve o'clock.
+  let angle = Math.atan2(dx, -dy)
+  if (angle < 0)
+    angle += 2 * Math.PI
+  const list = entries.value
+  const hit = list.find(entry => angle >= entry.startAngle && angle < entry.endAngle)
+  if (hit)
+    return hit
+  // Rounding can leave a sliver past the last end angle; it belongs to the last drawn slice.
+  for (let index = list.length - 1; index >= 0; index--) {
+    if (list[index]!.endAngle > list[index]!.startAngle)
+      return list[index]!
+  }
+  return null
+}
+
+watch(
+  () => ctx.pointer.pressed && ctx.pointer.source === 'pointer' && ctx.pointer.inside
+    ? (entryAt(ctx.pointer.x, ctx.pointer.y)?.key ?? null)
+    : undefined,
+  (key, previous) => {
+    if (key === undefined) {
+      // The drag ended. Hover takes over again; a pointer resting on a slice
+      // enters it as soon as the chart lets go of the pointer.
+      if (previous !== undefined)
+        leaveSlice()
+      return
+    }
+    const entry = key === null ? undefined : entries.value.find(item => item.key === key)
+    if (!entry)
+      leaveSlice()
+    else if (hovered.value !== entry.key)
+      enterSlice(entry.slice)
+  },
+)
+
+// The chart swallows the click a drag ends with, so a click here is a click.
+function clickSlice(slice: ArcSliceDatum<T>): void {
+  emit('sliceClick', slice)
+}
+
+function describe(slice: ArcSliceDatum<T>): string {
+  if (props.announce)
+    return props.announce(slice)
+  return slice.name === undefined ? String(slice.value) : `${slice.name}: ${slice.value}`
+}
+
+/** A keyboard reading puts the chart's pointer on the slice, where a tooltip that follows it belongs. */
+function readSlice(entry: ArcEntry): void {
+  const mid = (entry.startAngle + entry.endAngle) / 2
+  const radius = outerRadius.value * (1 + props.innerRadius) / 2
+  ctx.pointer.x = center.value.x + Math.sin(mid) * radius
+  ctx.pointer.y = center.value.y - Math.cos(mid) * radius
+  ctx.pointer.inside = true
+  ctx.pointer.source = 'keyboard'
+  ctx.announcement.value = describe(entry.slice)
+  if (hovered.value !== entry.key)
+    enterSlice(entry.slice)
+}
+
+const unregisterKeys = ctx.registerKeyLayer({
+  key(event) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return false
+    const list = entries.value
+    if (list.length === 0)
+      return false
+    if (event.key === 'Escape') {
+      if (hovered.value === null)
+        return false
+      leaveSlice()
+      ctx.pointer.inside = false
+      ctx.pointer.source = 'pointer'
+      ctx.announcement.value = ''
+      return true
+    }
+    const current = list.findIndex(entry => entry.key === hovered.value)
+    const last = list.length - 1
+    let next: number
+    switch (event.key) {
+      case 'ArrowRight':
+        next = current < 0 ? 0 : Math.min(last, current + 1)
+        break
+      case 'ArrowLeft':
+        next = current < 0 ? last : Math.max(0, current - 1)
+        break
+      case 'Home':
+        next = 0
+        break
+      case 'End':
+        next = last
+        break
+      default:
+        return false
+    }
+    readSlice(list[next]!)
+    return true
+  },
+  clear: leaveSlice,
+})
+onBeforeUnmount(unregisterKeys)
 
 interface ArcGeometry {
   startAngle: number
@@ -182,7 +297,7 @@ const slices = computed<Slice[]>(() => {
   <g
     class="tx-series tx-series--arc"
     :transform="`translate(${center.x}, ${center.y})`"
-    @pointerleave="leaveSlice"
+    @pointerleave="onGroupLeave"
   >
     <path
       v-for="slice in slices"
@@ -192,13 +307,16 @@ const slices = computed<Slice[]>(() => {
       :fill="slice.fill"
       :transform="slice.transform"
       @pointerenter="enterSlice(slice.slice)"
-      @click="emit('sliceClick', slice.slice)"
+      @click="clickSlice(slice.slice)"
     />
   </g>
 </template>
 
 <style lang="scss" scoped>
 .tx-series__slice {
+  // A drag that starts on the ring reads around it, in every direction.
+  touch-action: none;
+
   // ECharts pie `stateAnimation` (300ms, `cubicOut`) drives `emphasis.scale`.
   @media (prefers-reduced-motion: no-preference) {
     transition: transform 300ms cubic-bezier(0.33, 1, 0.68, 1);

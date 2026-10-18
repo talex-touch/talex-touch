@@ -83,6 +83,14 @@ describe('buildBarChartOption', () => {
     expect(series.map(entry => readField(entry, 'barWidth'))).toEqual([12, 12])
   })
 
+  it('zooms the category axis inside the plot unless zoom is off', () => {
+    expect(readField(buildBarChartOption({ series: twoSeries }), 'dataZoom'))
+      .toEqual([{ type: 'inside', xAxisIndex: 0, filterMode: 'none' }])
+    expect(readField(buildBarChartOption({ series: twoSeries, horizontal: true }), 'dataZoom'))
+      .toEqual([{ type: 'inside', yAxisIndex: 0, filterMode: 'none' }])
+    expect(readField(buildBarChartOption({ series: twoSeries, zoom: false }), 'dataZoom')).toBeUndefined()
+  })
+
   it('lets a caller override a built key and replace the series array wholesale', () => {
     const base = buildBarChartOption({ series: twoSeries, categories: ['x', 'y', 'z'] })
 

@@ -25,8 +25,14 @@ export interface TreemapChartProps extends EChartSharedProps {
   showLabel?: boolean
   /** Suffix appended to values in the tooltip, e.g. `GB`. */
   unit?: string
-  /** Zoom and pan the tiles. @default false */
+  /**
+   * Zoom and pan the tiles: a drag pans, ⌘/Ctrl + wheel or a pinch zooms
+   * around the pointer, never below the fitted size, and a double-click lays
+   * the tiles out afresh. @default true
+   */
   roam?: boolean
+  /** Plain wheel scrolls the page; see `TxEChart`. @default true */
+  cooperativeWheel?: boolean
 }
 
 /** A treemap node in the shape the series consumes: colours live on `itemStyle`. */
@@ -39,7 +45,7 @@ interface TreemapSeriesNode {
 
 /** Pure option builder — colours, borders and tooltip chrome come from TxEChart. */
 export function buildTreemapChartOption(props: TreemapChartProps): EChartsOption {
-  const { data, maxDepth, showBreadcrumb = false, showLabel = true, unit, roam = false } = props
+  const { data, maxDepth, showBreadcrumb = false, showLabel = true, unit, roam = true } = props
   const hasChildren = data.some(node => (node.children?.length ?? 0) > 0)
   // ECharts limits treemap depth through `leafDepth` — `maxDepth` is not a
   // treemap series option, so the public prop maps onto the real one.
@@ -54,6 +60,7 @@ export function buildTreemapChartOption(props: TreemapChartProps): EChartsOption
       {
         type: 'treemap',
         roam,
+        ...(roam ? { scaleLimit: { min: 1 } } : {}),
         breadcrumb: { show: showBreadcrumb },
         label: { show: showLabel },
         upperLabel: { show: showLabel && hasChildren },

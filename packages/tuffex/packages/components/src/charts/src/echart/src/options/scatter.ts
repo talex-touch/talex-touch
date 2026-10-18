@@ -25,11 +25,19 @@ export interface ScatterChartProps extends EChartSharedProps {
   xMax?: number
   yMin?: number
   yMax?: number
+  /**
+   * Zoom and pan both axes: ⌘/Ctrl + wheel or a pinch zooms around the pointer,
+   * a drag pans once zoomed in, and a double-click returns to the full range.
+   * @default true
+   */
+  zoom?: boolean
+  /** Plain wheel scrolls the page; see `TxEChart`. @default true */
+  cooperativeWheel?: boolean
 }
 
 /** Pure option builder — colours, axes and legend styling come from TxEChart. */
 export function buildScatterChartOption(props: ScatterChartProps): EChartsOption {
-  const { series, xAxisName, yAxisName, symbolSize = 8, grid = true } = props
+  const { series, xAxisName, yAxisName, symbolSize = 8, grid = true, zoom = true } = props
   const showLegend = props.showLegend ?? series.length > 1
 
   return mergeChartOption<EChartsOption>({
@@ -39,6 +47,14 @@ export function buildScatterChartOption(props: ScatterChartProps): EChartsOption
       trigger: 'item',
       axisPointer: { type: 'cross' },
     },
+    ...(zoom
+      ? {
+          dataZoom: [
+            { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+            { type: 'inside', yAxisIndex: 0, filterMode: 'none' },
+          ],
+        }
+      : {}),
     xAxis: {
       type: 'value',
       ...(grid ? {} : { splitLine: { show: false } }),

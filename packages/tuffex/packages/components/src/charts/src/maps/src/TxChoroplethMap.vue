@@ -13,7 +13,7 @@ defineOptions({ name: 'TxChoroplethMap' })
 
 const props = withDefaults(defineProps<ChoroplethMapProps<T>>(), {
   zoom: 1.25,
-  roam: false,
+  roam: true,
   nameProperty: 'name',
   showTooltip: true,
   showLegend: false,
@@ -42,6 +42,7 @@ const LEGEND_INSET = 22
 
 const base = useMapBase(props, {
   heightInset: () => props.showLegend ? LEGEND_INSET : 0,
+  onDragStart: () => clearHover(),
 })
 
 const joined = computed(() => {
@@ -117,19 +118,24 @@ function regionOpacity(region: Region): number {
 }
 
 function onEnter(region: Region): void {
-  if (!region.data)
+  if (!region.data || base.dragging.value)
     return
   hovered.value = region
   emphasisState.enter(region.key)
   emit('regionHover', region.data.row)
 }
 
-function onLeave(region: Region): void {
-  if (!region.data)
+function clearHover(): void {
+  if (!hovered.value)
     return
   hovered.value = null
   emphasisState.leave()
   emit('regionHover', undefined)
+}
+
+function onLeave(region: Region): void {
+  if (region.data)
+    clearHover()
 }
 
 function onClick(region: Region): void {
@@ -144,12 +150,20 @@ const legendGradient = computed(() => rampGradient(props.colorRange))
   <div
     :ref="base.container"
     class="tx-map tx-map--choropleth"
+    :class="{ 'is-roam': props.roam, 'is-dragging': base.dragging.value }"
     :style="base.rootStyle.value"
+    v-bind="base.rootAttrs.value"
     @wheel="base.onWheel"
     @pointerdown="base.onPointerDown"
     @pointermove="base.onPointerMove"
     @pointerup="base.onPointerUp"
+    @pointercancel="base.onPointerCancel"
+    @lostpointercapture="base.onLostPointerCapture"
+    @keydown="base.onKeyDown"
+    @dblclick="base.onDblClick"
+    @click.capture="base.onClickCapture"
   >
+    <span v-if="props.roam" :id="base.instructionsId" class="tx-map__instructions">{{ base.labels.value.instructions }}</span>
     <svg
       v-if="base.ready.value"
       class="tx-map__svg"

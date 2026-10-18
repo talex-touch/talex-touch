@@ -75,6 +75,7 @@ export interface DitherChartLabels {
   capacity?: string
   less?: string
   more?: string
+  /** @deprecated Named the date-cursor slider, which the chart's own drag replaced; no longer rendered. */
   cursor?: string
 }
 export interface DitherChartProps extends DitherDataset {
@@ -85,7 +86,7 @@ export interface DitherChartProps extends DitherDataset {
   activeKeys?: readonly string[]
   selectedSeries?: string
   hover?: DitherHover | null
-  /** Controlled point index for growth/revenue/member date cursors. */
+  /** Controlled point index for growth/revenue/member date cursors; dragging the chart or the arrow keys move it. */
   dateCursor?: number | null
   title?: string
   description?: string

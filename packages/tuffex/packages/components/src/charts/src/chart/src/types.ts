@@ -34,4 +34,31 @@ export interface ChartProps {
    * complex images for writing a meaningful one.
    */
   ariaDescription?: string
+  /**
+   * Read values by hovering, press-dragging and the arrow keys. `false` leaves
+   * a static picture: no focus stop, no reading. @default true
+   */
+  interactive?: boolean
+  /**
+   * Live-region text for a keyboard reading at an x value. Defaults to the
+   * value formatted the way the x axis formats its ticks.
+   */
+  announce?: (x: string | number) => string
+  /** Accessible name and keyboard instructions. English by default. */
+  labels?: Partial<ChartLabels>
+}
+
+export interface ChartLabels {
+  /** Name of the chart surface when `ariaDescription` is not set. */
+  chart: string
+  /** Keyboard instructions, read as the chart's description. */
+  instructions: string
+  /** Keyboard instructions for a chart that also zooms; read instead of `instructions` there. */
+  zoomInstructions: string
+}
+
+export const CHART_DEFAULT_LABELS: ChartLabels = {
+  chart: 'Chart',
+  instructions: 'Use the left and right arrow keys to read values, Home and End to jump to the ends, and Escape to clear.',
+  zoomInstructions: 'Use the left and right arrow keys to read values, plus and minus to zoom, Shift with the left and right arrow keys to pan, 0 to show everything, and Escape to clear.',
 }

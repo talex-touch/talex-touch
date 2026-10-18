@@ -8,6 +8,7 @@ type BuiltOption = ReturnType<typeof buildTreemapChartOption>
 interface SeriesShape {
   type?: string
   roam?: boolean
+  scaleLimit?: { min?: number, max?: number }
   breadcrumb?: { show?: boolean }
   label?: { show?: boolean }
   upperLabel?: { show?: boolean }
@@ -93,12 +94,14 @@ describe('buildTreemapChartOption', () => {
     expect(hidden?.upperLabel?.show).toBe(false)
   })
 
-  it('passes roam through to the series', () => {
-    const still = seriesList(buildTreemapChartOption({ data: tree }))[0]
-    const roaming = seriesList(buildTreemapChartOption({ data: tree, roam: true }))[0]
+  it('roams by default, never below the fitted size, and passes roam: false through', () => {
+    const roaming = seriesList(buildTreemapChartOption({ data: tree }))[0]
+    const still = seriesList(buildTreemapChartOption({ data: tree, roam: false }))[0]
 
-    expect(still?.roam).toBe(false)
     expect(roaming?.roam).toBe(true)
+    expect(roaming?.scaleLimit).toEqual({ min: 1 })
+    expect(still?.roam).toBe(false)
+    expect(still?.scaleLimit).toBeUndefined()
   })
 
   it('appends the unit to tooltip values when one is given', () => {

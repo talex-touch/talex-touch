@@ -1,3 +1,5 @@
+import type { ChartLabels } from '../../chart/src/types'
+
 /** A single data series rendered on a `TxTimeseriesChart`. */
 export interface TimeseriesData {
   /** Display name shown in tooltips and legends. */
@@ -119,4 +121,13 @@ export interface TimeseriesChartProps {
   clusterLabel?: (count: number) => string
   /** Formatter for tooltip timestamps. Defaults to a compact locale format. */
   timestampFormat?: (ts: number) => string
+  /**
+   * Zoom and pan the time axis on the chart itself: drag across a range to
+   * zoom into it, drag a zoomed chart to pan, ⌘/Ctrl + wheel or a pinch to zoom
+   * around the pointer, double-click to show everything. `false` keeps the
+   * view fixed; a `time-range-change` listener still brushes. @default true
+   */
+  zoom?: boolean
+  /** Accessible name and keyboard instructions. English by default. */
+  labels?: Partial<ChartLabels>
 }

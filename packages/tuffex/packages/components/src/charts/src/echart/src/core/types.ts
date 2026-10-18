@@ -41,6 +41,13 @@ export interface EChartProps {
   ariaLabel?: string
   /** Shows the themed loading mask until the option has data. @default false */
   loading?: boolean
+  /**
+   * A plain wheel scrolls the page; only ⌘/Ctrl + wheel, which is also how a
+   * trackpad pinch arrives, zooms an inside dataZoom or a `roam`. `false` hands
+   * the wheel back to ECharts, which then zooms on any wheel over a roam area
+   * and keeps the page from scrolling. @default true
+   */
+  cooperativeWheel?: boolean
 }
 
 export interface EChartEmits {

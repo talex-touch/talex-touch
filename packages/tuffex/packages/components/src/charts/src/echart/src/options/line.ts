@@ -27,11 +27,19 @@ export interface LineChartProps extends EChartSharedProps {
   showLegend?: boolean
   /** Split lines behind the series. @default true */
   grid?: boolean
+  /**
+   * Zoom and pan the plot: ⌘/Ctrl + wheel or a pinch zooms around the pointer,
+   * a drag pans once zoomed in, and a double-click returns to the full range.
+   * @default true
+   */
+  zoom?: boolean
+  /** Plain wheel scrolls the page; see `TxEChart`. @default true */
+  cooperativeWheel?: boolean
 }
 
 /** Pure option builder — colours, axes and legend styling come from TxEChart. */
 export function buildLineChartOption(props: LineChartProps): EChartsOption {
-  const { series, categories, xAxisName, yAxisName, grid = true } = props
+  const { series, categories, xAxisName, yAxisName, grid = true, zoom = true } = props
   const showLegend = props.showLegend ?? series.length > 1
   const paired = series.some(entry => Array.isArray(entry.data[0]))
 
@@ -39,6 +47,8 @@ export function buildLineChartOption(props: LineChartProps): EChartsOption {
     ...(showLegend ? { legend: {} } : {}),
     grid: {},
     tooltip: { trigger: 'axis' },
+    // `none` keeps every point, so a line runs on to the plot's edge while panning.
+    ...(zoom ? { dataZoom: [{ type: 'inside', xAxisIndex: 0, filterMode: 'none' }] } : {}),
     xAxis: {
       type: categories || !paired ? 'category' : 'value',
       ...(categories ? { data: categories } : {}),

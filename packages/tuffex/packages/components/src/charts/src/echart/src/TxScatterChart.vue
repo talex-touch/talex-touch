@@ -17,6 +17,8 @@ const props = withDefaults(defineProps<ScatterChartProps>(), {
   xMax: undefined,
   yMin: undefined,
   yMax: undefined,
+  zoom: true,
+  cooperativeWheel: true,
   option: undefined,
   height: 320,
   theme: 'auto',
@@ -34,5 +36,6 @@ const chartOption = computed(() => mergeChartOption(buildScatterChartOption(prop
     :theme="theme"
     :aria-label="ariaLabel"
     :loading="loading"
+    :cooperative-wheel="cooperativeWheel"
   />
 </template>

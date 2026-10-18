@@ -17,6 +17,8 @@ const props = withDefaults(defineProps<BarChartProps>(), {
   horizontal: false,
   barWidth: undefined,
   showLabel: false,
+  zoom: true,
+  cooperativeWheel: true,
   option: undefined,
   height: 320,
   theme: 'auto',
@@ -34,5 +36,6 @@ const chartOption = computed(() => mergeChartOption(buildBarChartOption(props), 
     :theme="theme"
     :aria-label="ariaLabel"
     :loading="loading"
+    :cooperative-wheel="cooperativeWheel"
   />
 </template>

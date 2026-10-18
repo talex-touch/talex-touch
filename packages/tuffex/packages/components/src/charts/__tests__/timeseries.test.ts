@@ -92,28 +92,31 @@ describe('txTimeseriesChart', () => {
     expect(wrapper.attributes('aria-busy')).toBe('true')
   })
 
-  it('mounts the brush only when a time-range listener is attached', async () => {
+  it('with zoom off, brushes only when a time-range listener is attached', async () => {
     const plain = mount(TxTimeseriesChart, {
-      props: { data: twoSeries, width: 400 } as never,
+      props: { data: twoSeries, width: 400, zoom: false } as never,
     })
     await nextTick()
-    expect(plain.find('.tx-ts-brush').exists()).toBe(false)
+    expect(plain.find('.tx-chart-viewport').exists()).toBe(false)
 
     const ranges: Array<[number, number]> = []
+    const windows: unknown[] = []
     const brushed = mount(TxTimeseriesChart, {
       props: {
         data: twoSeries,
         width: 400,
-        onTimeRangeChange: (from: number, to: number) => ranges.push([from, to]),
+        zoom: false,
+        'onTimeRangeChange': (from: number, to: number) => ranges.push([from, to]),
+        'onUpdate:window': (window: unknown) => windows.push(window),
       } as never,
     })
     await nextTick()
-    const capture = brushed.find('.tx-ts-brush__capture')
+    const capture = brushed.find('.tx-chart-viewport__capture')
     expect(capture.exists()).toBe(true)
 
     await capture.trigger('pointerdown', { button: 0, clientX: 100, clientY: 50 })
     await capture.trigger('pointermove', { clientX: 200, clientY: 50 })
-    expect(brushed.find('.tx-ts-brush__selection').exists()).toBe(true)
+    expect(brushed.find('.tx-chart-viewport__selection').exists()).toBe(true)
     await capture.trigger('pointerup', { clientX: 200, clientY: 50 })
 
     expect(ranges).toHaveLength(1)
@@ -121,6 +124,42 @@ describe('txTimeseriesChart', () => {
     expect(from).toBeLessThan(to)
     expect(from).toBeGreaterThanOrEqual(H)
     expect(to).toBeLessThanOrEqual(H + 2 * HOUR)
+    // Selecting is all it does: the view stays put.
+    expect(windows).toHaveLength(0)
+  })
+
+  it('zooms to a brushed range, and a double-click shows everything again', async () => {
+    const ranges: Array<[number, number]> = []
+    const windows: Array<[number, number] | null> = []
+    const wrapper = mount(TxTimeseriesChart, {
+      props: {
+        data: twoSeries,
+        width: 400,
+        'onTimeRangeChange': (from: number, to: number) => ranges.push([from, to]),
+        'onUpdate:window': (window: [number, number] | null) => windows.push(window),
+      } as never,
+    })
+    await nextTick()
+    const capture = wrapper.find('.tx-chart-viewport__capture')
+
+    // A press that does not travel the 4px slop is a click, not a brush.
+    await capture.trigger('pointerdown', { button: 0, clientX: 100, clientY: 50 })
+    await capture.trigger('pointermove', { clientX: 103, clientY: 50 })
+    await capture.trigger('pointerup', { clientX: 103, clientY: 50 })
+    expect(windows).toHaveLength(0)
+
+    // 200 of the plot's 320px: wider than one data interval, the narrowest zoom.
+    await capture.trigger('pointerdown', { button: 0, clientX: 100, clientY: 50 })
+    await capture.trigger('pointermove', { clientX: 300, clientY: 50 })
+    await capture.trigger('pointerup', { clientX: 300, clientY: 50 })
+    expect(ranges).toHaveLength(1)
+    expect(windows).toHaveLength(1)
+    const [from, to] = windows[0]!
+    expect(from).toBeCloseTo(ranges[0]![0])
+    expect(to).toBeCloseTo(ranges[0]![1])
+
+    await capture.trigger('dblclick')
+    expect(windows).toEqual([[from, to], null])
   })
 
   it('dims the out-of-brush strips with a single mask over the series layer', async () => {
@@ -130,7 +169,7 @@ describe('txTimeseriesChart', () => {
     await nextTick()
     expect(wrapper.find('mask').exists()).toBe(false)
 
-    const capture = wrapper.find('.tx-ts-brush__capture')
+    const capture = wrapper.find('.tx-chart-viewport__capture')
     await capture.trigger('pointerdown', { button: 0, clientX: 100, clientY: 50 })
     await capture.trigger('pointermove', { clientX: 200, clientY: 50 })
 

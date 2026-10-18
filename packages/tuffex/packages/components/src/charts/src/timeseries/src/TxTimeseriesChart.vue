@@ -3,21 +3,22 @@
 // composed from the tuffex/charts primitives (no echarts).
 
 import type { TooltipRow } from '../../tooltip'
-import type { BrushRect } from './brush'
+import type { BrushRect } from '../../viewport'
 import type { TimeseriesChartProps, TimeseriesData, TimeseriesMarkerCluster } from './types'
 import { computed, getCurrentInstance, onBeforeUnmount, ref, watch } from 'vue'
 import { TxAxis } from '../../axis'
 import { TxChart } from '../../chart'
+import { xPosition } from '../../core/scales'
 import { TxGrid } from '../../grid'
 import { ChartPalette } from '../../palette'
 import { TxAreaSeries, TxBarSeries, TxLineSeries } from '../../series'
 import { TxChartTooltip } from '../../tooltip'
+import { TxChartViewport } from '../../viewport'
 import { formatTimestamp } from './format'
 import { splitIncompleteSegments } from './incomplete'
 import { clusterTimeseriesMarkers, getApproximateMarkerClusterInterval } from './markers'
 import { findNearest, getAllTooltipRowsAtTimestamp, limitTooltipRows } from './tooltip-data'
 import TxTimeseriesAnnotations from './TxTimeseriesAnnotations.vue'
-import TxTimeseriesBrush from './TxTimeseriesBrush.vue'
 import TxTimeseriesSkeleton from './TxTimeseriesSkeleton.vue'
 
 defineOptions({ name: 'TxTimeseriesChart' })
@@ -36,6 +37,7 @@ const props = withDefaults(defineProps<TimeseriesChartProps>(), {
   height: 350,
   clusterLabel: (count: number) => `${count} changes`,
   timestampFormat: formatTimestamp,
+  zoom: true,
 })
 
 const emit = defineEmits<{
@@ -45,6 +47,8 @@ const emit = defineEmits<{
 
 /** Series hidden from the chart and tooltip (drive it from a custom legend). */
 const hiddenSeries = defineModel<string[]>('hiddenSeries', { default: () => [] })
+/** The time window shown, `[from, to]` in ms; `null` shows the whole range. */
+const viewWindow = defineModel<[number, number] | null>('window', { default: null })
 
 const chartRef = ref<InstanceType<typeof TxChart> | null>(null)
 const ctx = computed(() => chartRef.value?.context ?? null)
@@ -92,7 +96,8 @@ const brushSelection = ref<BrushRect | null>(null)
  */
 const emphasizedSeries = computed<string | null>(() => {
   const chart = ctx.value
-  if (!chart || !chart.pointer.inside)
+  // A keyboard reading has no height: it reads every series alike.
+  if (!chart || !chart.pointer.inside || chart.pointer.source === 'keyboard')
     return null
   const ts = pointerTimestamp.value
   const yScale = chart.yScale.value
@@ -207,18 +212,16 @@ const yTickFormat = computed(() =>
 
 const hoveredCluster = ref<TimeseriesMarkerCluster | null>(null)
 
+/** The timestamp of the datum nearest the reading: the crosshair snaps to data. */
 const pointerTimestamp = computed<number | null>(() => {
   const chart = ctx.value
   if (!chart || !chart.pointer.inside)
     return null
-  const scale = chart.xScale.value
-  if (!scale || !('invert' in scale))
-    return null
   const plot = chart.plot.value
   if (chart.pointer.x < plot.x || chart.pointer.x > plot.x + plot.width)
     return null
-  const inverted = scale.invert(chart.pointer.x)
-  return inverted instanceof Date ? inverted.getTime() : inverted
+  const stop = chart.nearestXStop(chart.pointer.x)
+  return stop === null ? null : Number(stop)
 })
 
 function formatValue(value: number): string {
@@ -264,10 +267,20 @@ const tooltipOpen = computed(() => tooltipData.value !== null)
 
 const crosshairX = computed<number | null>(() => {
   const chart = ctx.value
-  if (!chart || !chart.pointer.inside || hoveredCluster.value)
+  const ts = pointerTimestamp.value
+  const scale = chart?.xScale.value
+  if (!chart || !scale || ts === null || hoveredCluster.value)
     return null
-  return chart.pointer.x
+  return xPosition(scale, ts)
 })
+
+/** What a keyboard reading says: the time, then each visible series' value. */
+function announceAt(x: string | number): string {
+  const ts = Number(x)
+  const rows = getAllTooltipRowsAtTimestamp(props.data, ts, hiddenSeries.value, seriesColor)
+  const values = rows.map(row => `${row.name} ${formatValue(row.value)}`).join(', ')
+  return values ? `${props.timestampFormat(ts)}: ${values}` : props.timestampFormat(ts)
+}
 
 // Fallback close: after a native context menu the browser can drop the events
 // that would flip `pointer.inside`, leaving the tooltip stuck open. Any mouse
@@ -275,7 +288,8 @@ const crosshairX = computed<number | null>(() => {
 function closeWhenOutside(event: MouseEvent): void {
   const chart = ctx.value
   const container = chart?.container.value
-  if (!chart || !container)
+  // A press-drag keeps reading outside the chart, on its edge.
+  if (!chart || !container || chart.pointer.pressed)
     return
   const rect = container.getBoundingClientRect()
   if (
@@ -299,7 +313,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousemove', closeWhenOutside)
 })
 
-// ── Brush ────────────────────────────────────────────────────────────────────
+// ── Brush and zoom ───────────────────────────────────────────────────────────
 
 // Declared emits don't appear in attrs; the vnode props carry the listener.
 const brushEnabled = computed(() => {
@@ -352,6 +366,8 @@ function onBrushRange(from: number, to: number): void {
       :y-domain="yDomain"
       :padding="padding"
       :aria-description="props.ariaDescription"
+      :announce="announceAt"
+      :labels="props.labels"
     >
       <TxGrid y :ticks="props.yAxisTickCount" />
       <TxAxis
@@ -460,17 +476,22 @@ function onBrushRange(from: number, to: number): void {
         </template>
       </g>
 
+      <!-- Under the annotations, so a marker is still hovered, not dragged. -->
+      <TxChartViewport
+        v-if="props.zoom || brushEnabled"
+        v-model:window="viewWindow"
+        v-model:selection="brushSelection"
+        :zoom="props.zoom"
+        :select="brushEnabled"
+        :format="props.timestampFormat"
+        @range="onBrushRange"
+      />
       <TxTimeseriesAnnotations
         :clusters="clusters"
         :thresholds="props.thresholds"
         :crosshair-x="crosshairX"
         @marker-enter="hoveredCluster = $event"
         @marker-leave="hoveredCluster = null"
-      />
-      <TxTimeseriesBrush
-        v-if="brushEnabled"
-        v-model:selection="brushSelection"
-        @range="onBrushRange"
       />
 
       <template #overlay>

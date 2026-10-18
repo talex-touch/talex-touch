@@ -13,6 +13,8 @@ const props = withDefaults(defineProps<LineChartProps>(), {
   yAxisName: undefined,
   showLegend: undefined,
   grid: true,
+  zoom: true,
+  cooperativeWheel: true,
   option: undefined,
   height: 320,
   theme: 'auto',
@@ -30,5 +32,6 @@ const chartOption = computed(() => mergeChartOption(buildLineChartOption(props),
     :theme="theme"
     :aria-label="ariaLabel"
     :loading="loading"
+    :cooperative-wheel="cooperativeWheel"
   />
 </template>
