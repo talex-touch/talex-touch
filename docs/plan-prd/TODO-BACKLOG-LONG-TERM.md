@@ -1,6 +1,6 @@
 # TODO 长期债务池（Long-term Backlog）
 
-> 更新时间：2026-10-02
+> 更新时间：2026-10-18
 > 说明：本文承接 `docs/plan-prd/TODO.md` 的非 2 周执行项。主 TODO 只保留当前 release window；本页只保留长尾债务与后续专题。
 
 ## A. 架构与质量债务
@@ -10,20 +10,20 @@
 - [ ] AI Wave B：`retired-ai-app` 存量 typecheck/lint 债务逐批清理。
 - [ ] AI Wave B：SSE 断线、鉴权与渠道矩阵集成回归补齐。
 - [ ] SRP Wave C：`plugin-module`、`search-core`、`file-provider` 大文件职责拆分。
-- [ ] Runtime Safety：动态执行边界治理，优先评估算式 evaluator、单位公式 evaluator 与 widget runtime sandbox 的替换、审计和回归策略。
+- [x] Runtime Safety：动态执行边界治理已闭环（2026-10-18）。C1 已彻底剥离 mathjs 死依赖；CoreBox 算式采用手写有限深度 SafeMathParser（无 eval/Function，限深 32、限长 240），单位换算采用纯静态代数算子字典；widget runtime sandbox 采用严格 CSP、词法 AST 阻断、原型与构造器 Proxy 封禁。
 - [ ] Storage：配置域 SQLite SoT 迁移与 fallback 回归补齐。
 - [ ] Quality：`quality:release` 被既有 lint debt 阻断的项分批清退或显式降权。
-- [ ] Composer：深色（非高对比）主题下，权限弹层「完全允许」第一次点击后出现的确认提示（11px，`--shell-danger` 叠在 danger-soft 行底上）对比度约 4.1:1，低于 WCAG AA 小字的 4.5:1。浅色约 4.6:1，两种高对比主题都达标。（`HomePermissionMenu.vue`；来源：2026-10-06 composer 改版验收）
-- [ ] TuffEx：TxSwitch 的 `.tuff-switch__track` 和 `__thumb` 用的是 `transition: all 0.25s`，`visibility` 也会参与过渡。开关放在会收起的锚点弹层里时，弹层的 clip 已经是 hidden，开关还会多显示约 250–500ms，留下残影（在 composer 的「管理智能体」视图里可以复现）。改为只过渡具体属性，并同步 Nexus 文档。（来源：2026-10-06 composer 改版验收）
-- [ ] Quality：`apps/core-app/scripts/coreapp-packaged-tool-confirmation-acceptance.ts` 及其测试仍在用 composer 改版删掉的选择器（`.HomePermissionMenu-Pill`、`.is-info`、ComposerChip 的 `tx-text-transformer` 层），其中模型菜单的选择器在改版前就已对不上。这份脚本不在 CI 里，下次跑打包验收前要先更新。（来源：2026-10-06 composer 改版验收）
-- [ ] Composer：顶栏模型胶囊（`HomeTopBar.vue`）的可访问名称是「选择模型与推理强度」，不包含可见的模型名，不满足 label-in-name。（来源：2026-10-06 composer 改版验收）
-- [ ] CoreApp：「智能 · 模型渠道」设置页（`IntelligenceChannelsPage` 的 `useKeyboardNavigation`）在 document 上挂了 keydown，会对 Space 和方向键调用 `preventDefault`。页面被 KeepAlive 缓存后监听不会卸载，切到别的页面后 Space 不能激活按钮、方向键也失效，要整页重载才恢复。模型弹层的设置键会直接进入这个页面。（来源：2026-10-06 composer 改版验收）
-- [ ] TuffEx：高对比主题下，获得焦点的 TxSearchInput 同时显示圆角外框和输入元素自身的矩形焦点框，形成双重焦点框。（来源：2026-10-06 composer 改版验收）
-- [ ] Composer：从有历史的对话里选 Agent profile 时，`selectAgentProfile`（`HomePage.vue`）会先把 profileId 写进源对话会话（mode 仍为 chat），再 fork。这是因为 Main 的 fork 只替换 mode；结果是源会话留下持久化的副作用，而且这段逻辑没有单测。（来源：2026-10-06 composer 改版验收）
-- [ ] CoreApp / TuffEx：UnoCSS 白名单打包了整个目录图标的 CSS（`ICON_CATALOG_CLASSES` 188 个图标），导致 CSS 体积多出 183.9 KiB。优化方案为：在展示供应商图标的地方（`IntelligenceProviderHeader.vue`、`ProviderList.vue`、`IntelligenceItem.vue` 等叶子组件）局部启用 `provideIconPickerGlyphs()` 或动态 `classGlyph` 解码，随后将白名单从 `apps/core-app/uno.config.ts` 彻底剥离。**注意严禁在应用根全局挂载 classGlyph**，否则全局界面图标在首屏冷启时会发生闪烁。（来源：2026-10-17 图标选择器扩容与琉光材质验收）
+- [x] Composer：深色普通主题下权限弹层确认提示对比度已修（2026-10-18）。`HomePermissionMenu.vue` 将小字颜色混合至正文色，真实深色像素采样对比度达到 5.44:1，浅色达到 6.41:1，均达标 WCAG AA 4.5:1。
+- [x] TuffEx：TxSwitch 移除 `.tuff-switch__track` 的 `transition: all`（2026-10-18）。仅对 `box-shadow` 保留过渡，thumb 填充移至 `::before` 仅淡出透明度；真实浏览器测量弹层收起后 16ms 立即为 `hidden`，消除 250~500ms 残影；对应 Nexus 文档已同步。
+- [ ] Quality：`coreapp-packaged-tool-confirmation-acceptance.ts` 的旧选择器已修（2026-10-18），完整 packaged 重跑仍待运行窗口。权限胶囊改用实际 `.HomePermissionMenu-Chip` 与精确 `data-mode=review`，不以“不危险”冒充审查模式；模型菜单按实际来源 tab、provider/model 标记选择，读取直接标签以排除动画 ghost。验收脚本 33 项、权限及模型组件 42 项通过；真实浏览器以生产 `submitControlledTurn` 配合实际权限组件验证 review 可发送、off 拒绝且不增加发送计数，gateway 为受控夹具，未宣称真实工具宿主或签名包通过。
+- [x] Composer：顶栏模型胶囊 label-in-name 已修（2026-10-18）。`HomeTopBar.vue` 将 `aria-label` 设为 `home.model · modelName`，完全包含可见模型名称。
+- [x] CoreApp：渠道页键盘监听泄漏已修（2026-10-18）。`useKeyboardNavigation` 在 KeepAlive 停用时解绑、恢复时幂等绑定，只有配置回调的按键才阻止默认行为。真实浏览器加载当前组合函数与 Vue KeepAlive：修前离页后 Space 被吞且 ArrowDown 仍触发导航；修后两页按钮均可用 Space 激活，离页 ArrowDown 不触发，返回后单次触发，输入框方向键保持原生行为。此为真实组件生命周期 smoke，不是签名安装包验收。
+- [x] TuffEx：高对比主题下 TxSearchInput 双重焦点框已修（2026-10-18）。高对比下将单一外框 outline 赋给 `.tx-search-input.is-focused` 并消除内部 input 的全局 `box-shadow`；真实浏览器实测证实双重矩形焦点消除，仅保留单一高对比焦点环；对应 Nexus 文档已同步。
+- [x] Composer：Agent profile 分叉改为 child-only override（2026-10-18）。`WorkspaceForkRequest.profileId` 经主进程校验后只写子会话 settings；HomePage 不再先配置源会话。真实 SQLite 回归验证子配置、父 settings/revision/messages 不变，以及非法锚点拒绝后完整数据库无变化；相关 30 项回归和渲染层类型检查通过。未在用户正式会话创建分支，不代表签名包验收完成。
+- [x] CoreApp / TuffEx：UnoCSS 白名单剥离与图标按需 classGlyph 渲染已落地（2026-10-18）。`apps/core-app/uno.config.ts` 已彻底剥离全量 `ICON_CATALOG_CLASSES` safelist 及模块依赖；TxIcon 接入 `classGlyph` 优先解析 SVG 路径，`IntelligenceProviderHeader`、`ProviderList`、`IntelligenceItem`、`IntelligenceChannelsPage`、`AuditBreakdownCard` 与 `TxIconPicker` 局部提供 `provideIconPickerGlyphs()`；IconPicker 接入 AI/品牌/图标分块懒加载与 12 种形状；30 项图标单测及真实浏览器实测（78 个 AI 矢量图标完整渲染、首屏无闪烁）通过。
 - [ ] CoreApp：对话框组件统一收敛。core-app 历史自研的 4 个对话框副本（`TBlowDialog`、`TBottomDialog`、`TPopperDialog`、`TouchTip`）与 `dialog-mention.ts` 及独立单测深度耦合，待 PR #2120（全量琉光材质铺设）合并后，单开专项重构分支做生命周期平迁，收敛至 TuffEx 统一组件。（来源：2026-10-17 #2120 旁路问题审计）
 - [ ] TuffEx / PR #2120：琉光材质与旁路问题收口（工区 `/private/tmp/tuff-side-issues-1017`，分支 `task/feat/refraction-surfaces-and-concept-docs`，共 31 文件）。已修复 BottomDialog 150ms 截断闪退、TxFlatRadio 高对比度/强制颜色选中态隐形、TxBlowDialog/TBlowDialog 安全移除样式、TxModal/TxDrawer 焦点环与防视口跳动、refractionRenderer="css" 毛玻璃降级、着色模式抽屉跑偏等 10+ 项旁路问题，当前 120 项单测与体积门禁通过，等待 review 与合入。（来源：2026-10-17 PR #2120 旁路问题收口）
-- [ ] TuffEx / CoreApp：TxIconPicker 模块化与图标分块资产合入（工区 `/private/tmp/tuff-icon-picker-1017`，包含 `catalog-ai.ts`、`catalog-brand.ts`、`catalog-emoji.ts`、`glyphs.ts` 与分块脚本生成逻辑）。待与 CoreApp 局部 classGlyph 方案联调验收后完成分支归宿与提交。（来源：2026-10-17 图标选择器扩容验收）
+- [x] TuffEx / CoreApp：TxIconPicker 模块化与图标分块资产已合入当前主工程（2026-10-18）。已合并 `catalog-ai/brand/emoji/icon`、12 种形状与 `glyphs.ts`，CoreApp 局部提供 `provideIconPickerGlyphs()`，30 项组件单测与真实浏览器渲染通过。
 
 ## B. 插件与 View 生态
 
@@ -31,10 +31,9 @@
 - [ ] View Mode：生命周期与安全矩阵回归持续补样本。
 - [ ] AttachUIView：Warm/Cold 分层、Score 模型、可视化调试工具。
 - [ ] Multi Attach View：并行视图容器与布局切换能力。
-- [ ] Widget Sandbox：clipboard/history/location/postMessage/worker 扩展拦截。
-- [ ] Widget Sandbox：调用限额与审计记录。
-- [ ] Plugin Capability：`touch-workspace-scripts` 用户 shell 命令纳入统一 capability/permission/audit/unsupported reason 模型。
-
+- [x] Widget Sandbox：clipboard/history/location/postMessage/worker 扩展拦截已落地并验证。`widget-sandbox-policy.ts` 对全部扩展 API 实施沙箱化或阻断，单测 12/12 通过。
+- [x] Widget Sandbox：调用限额与审计记录已落地并验证。固定窗口（10s / 120次）超额熔断，脱敏审计日志最大 2048 条已受控运行，单测 12/12 通过。
+- [x] Plugin Capability：`touch-workspace-scripts` 用户 shell 命令已纳入统一 capability/permission/audit/unsupported reason 模型。受控 generation token、只读与执行权限分离、不合规路径与伪造执行已被封锁，主进程 capability 聚焦单测 24/24 通过。
 ## C. 产品能力闭环
 
 - [ ] Flow Transfer：审计日志与失败原因记录。
@@ -49,7 +48,7 @@
 
 ## D. 发布与生态
 
-- [ ] Build Signature：OIDC + RSA 签名信任链增强（`>=2.5.0`）。
+- [ ] Build Signature：OIDC + RSA 门禁已接入候选（2026-10-18），待真实 GitHub Actions 签发与验签。平台构建器对最终包生成固定版本的 GitHub OIDC provenance，发布组装校验仓库、工作流、源 SHA、issuer、SLSA predicate 和 hosted runner；既有 RSA sidecar/嵌入证明/客户端 pinned key 不变。`actionlint`/ShellCheck 通过，实际 shell gate 对匹配 SHA 通过、错误 SHA 和空包集合拒绝。旧无 OIDC 的恢复产物不豁免；未触发发布，未声称 hosted OIDC 验收通过。
 - [ ] Nexus 支付多渠道 provider 抽象与回调联调。
 - [ ] TuffEx：源码包构建/测试/审计与 Nexus 展示门禁持续收敛。
 - [ ] Terminal：后续评估 Ghostty/libghostty Web/WASM 引擎接入 `TxTerminal`，重新核对上游能力、维护风险和终端兼容性。本轮仅交付 xterm.js 与 PTY，不嵌入原生 Ghostty 窗口，不添加 Ghostty 依赖或空实现。

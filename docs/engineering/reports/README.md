@@ -45,6 +45,7 @@
 - [`pulse-system-monitor-extension-analysis-2026-10-11.md`](./pulse-system-monitor-extension-analysis-2026-10-11.md)：Pulse 产品与平台边界调研，后续作为独立外置系统监控扩展；含 SDK 261011 现状、监控接口缺口、权限与生命周期设计及验收矩阵，建议未实施，未实测竞品性能。
 - [`betterwispr-competitive-analysis-2026-10-12.md`](./betterwispr-competitive-analysis-2026-10-12.md)：BetterWispr 0.1.5 听写产品与源码调研，含中文后处理、隐私与跨应用输入边界、Tuff 现有能力对照及清理／纠错学习规则实测；优化建议未实施，未安装竞品或实测语音识别性能。
 - [`voice-architecture-ecosystem-survey-2026-10-14.md`](./voice-architecture-ecosystem-survey-2026-10-14.md)：语音模型全景技术调研与 Tuff 指令二次确认/桌面语音选型报告，含阿里增强 7 模、智谱 GLM-ASR-Nano、SGLang-Omni MLX Native Voxt、通义 Qwen3-ASR-Flash 及 HN 爆火 EmbeddingGemma 288x 剖析；完成短指令控制与长语音听写的分层定位与三级架构设计。
+- [`electron-browser-feasibility-survey-2026-10-17.md`](./electron-browser-feasibility-survey-2026-10-17.md)：Electron 构建浏览器可行性与兼容性调研报告，含通用主力浏览器 vs. 垂直工作流/AI 浏览器的技术壁垒对照（Chrome 扩展 MV3 缺陷、Widevine DRM 授权缺失、自动填充与权限管理纯手搓、Tab 生命周期与内存膨胀、Brave/Muon 重构教训）及架构定界建议。
 
 ## 活报告
 
