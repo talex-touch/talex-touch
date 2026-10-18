@@ -284,21 +284,18 @@ function updateInputs(rect: ScreenshotGeometryRect | null): void {
   heightInput.value = rect ? String(Math.round(rect.height)) : ''
 }
 
-async function dispatchCommand(
-  command: ScreenshotOverlayCommand
-): Promise<ScreenshotOverlayState | null> {
+async function dispatchCommand(command: ScreenshotOverlayCommand): Promise<boolean> {
   const current = state.value
-  if (!current) return null
+  if (!current) return false
   try {
-    const nextState = await transport.send(ScreenshotSessionEvents.overlay.command, {
+    const response = await transport.send(ScreenshotSessionEvents.overlay.command, {
       sessionId: current.sessionId,
       command
     })
-    state.value = nextState
-    return nextState
-  } catch (error) {
+    return response.accepted
+  } catch {
     errorCode.value = 'transport-failed'
-    return null
+    return false
   }
 }
 
@@ -457,7 +454,7 @@ async function selectCandidate(): Promise<void> {
   updateInputs(next)
   await dispatchCommand({
     type: 'lock-candidate',
-    sequence: state.value?.pointerSequence ?? pointerSequence
+    sequence: pointerSequence
   })
 }
 
@@ -467,7 +464,7 @@ async function cycleCandidateLevel(): Promise<void> {
   const nextLevel = (candidate.level + 1) % candidate.levels
   await dispatchCommand({
     type: 'set-candidate-level',
-    sequence: state.value?.pointerSequence ?? pointerSequence,
+    sequence: pointerSequence,
     level: nextLevel
   })
 }
@@ -498,18 +495,12 @@ async function finishPointer(event: PointerEvent): Promise<void> {
   }
 }
 
-async function setMode(mode: 'frozen' | 'live'): Promise<void> {
-  if (state.value?.mode === mode) return
-  await dispatchCommand({ type: 'set-mode', mode })
-}
-
 async function setTargetMode(targetMode: 'free-region' | 'object'): Promise<void> {
   if (state.value?.targetMode === targetMode) return
-  const nextState = await dispatchCommand({ type: 'set-target-mode', targetMode })
-  if (nextState) {
+  const accepted = await dispatchCommand({ type: 'set-target-mode', targetMode })
+  if (accepted && state.value) {
     state.value = {
       ...state.value,
-      ...nextState,
       targetMode,
       candidate: undefined,
       selection: undefined
@@ -660,7 +651,7 @@ function handleCanvasPointerDown(event: PointerEvent): void {
   if (activeTool.value === 'select') {
     const hitIdx = annotationDoc.value.hitTest(pt)
     annotationDoc.value.selectedIndex = hitIdx
-    if (hitIdx !== -1) {
+    if (hitIdx !== null) {
       const initialObj = annotationDoc.value.objects[hitIdx]
       annotationDrag.value = {
         kind: 'move',
@@ -673,7 +664,7 @@ function handleCanvasPointerDown(event: PointerEvent): void {
     return
   }
 
-  annotationDoc.value.selectedIndex = -1
+  annotationDoc.value.selectedIndex = null
   const id = `anno_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
   const style = currentStyle.value
   let initialObj: AnnotationObject
@@ -696,10 +687,10 @@ function handleCanvasPointerDown(event: PointerEvent): void {
       initialObj = {
         id,
         kind: 'ellipse',
-        cx: pt.x,
-        cy: pt.y,
-        rx: 1,
-        ry: 1,
+        x: pt.x,
+        y: pt.y,
+        width: 1,
+        height: 1,
         color: style.color,
         strokeWidth: style.strokeWidth,
         filled: style.filled
@@ -709,8 +700,8 @@ function handleCanvasPointerDown(event: PointerEvent): void {
       initialObj = {
         id,
         kind: 'arrow',
-        from: pt,
-        to: pt,
+        start: pt,
+        end: pt,
         color: style.color,
         strokeWidth: style.strokeWidth
       }
@@ -719,8 +710,8 @@ function handleCanvasPointerDown(event: PointerEvent): void {
       initialObj = {
         id,
         kind: 'line',
-        from: pt,
-        to: pt,
+        start: pt,
+        end: pt,
         color: style.color,
         strokeWidth: style.strokeWidth
       }
@@ -744,6 +735,7 @@ function handleCanvasPointerDown(event: PointerEvent): void {
           y: pt.y,
           text: defaultText.trim(),
           color: style.color,
+          strokeWidth: 1,
           fontSize: Math.max(14, style.strokeWidth * 6)
         })
         redrawCanvas()
@@ -759,6 +751,8 @@ function handleCanvasPointerDown(event: PointerEvent): void {
         y: pt.y,
         width: 1,
         height: 1,
+        color: '',
+        strokeWidth: 0,
         blockSize: 8
       }
       break
@@ -793,16 +787,16 @@ function handleCanvasPointerMove(event: PointerEvent): void {
         break
       }
       case 'ellipse': {
-        const cx = (drag.start.x + pt.x) / 2
-        const cy = (drag.start.y + pt.y) / 2
-        const rx = Math.abs(pt.x - drag.start.x) / 2
-        const ry = Math.abs(pt.y - drag.start.y) / 2
-        drag.currentObject = { ...init, cx, cy, rx, ry }
+        const x = Math.min(drag.start.x, pt.x)
+        const y = Math.min(drag.start.y, pt.y)
+        const width = Math.abs(pt.x - drag.start.x)
+        const height = Math.abs(pt.y - drag.start.y)
+        drag.currentObject = { ...init, x, y, width, height }
         break
       }
       case 'arrow':
       case 'line': {
-        drag.currentObject = { ...init, to: pt }
+        drag.currentObject = { ...init, end: pt }
         break
       }
       case 'brush': {
@@ -824,9 +818,9 @@ function handleCanvasPointerMove(event: PointerEvent): void {
   } else if (drag.kind === 'move' && drag.initialObject) {
     const deltaX = pt.x - drag.start.x
     const deltaY = pt.y - drag.start.y
-    const moved = AnnotationDocument.translateObject(drag.initialObject, deltaX, deltaY)
+    const moved = AnnotationDocument.translate(drag.initialObject, deltaX, deltaY)
     drag.currentObject = moved
-    if (annotationDoc.value.selectedIndex !== -1) {
+    if (annotationDoc.value.selectedIndex !== null) {
       annotationDoc.value.replace(annotationDoc.value.selectedIndex, moved)
     }
     redrawCanvas()
@@ -860,9 +854,9 @@ function redoAnnotation(): void {
 }
 
 function deleteSelectedAnnotation(): void {
-  if (annotationDoc.value.selectedIndex !== -1) {
+  if (annotationDoc.value.selectedIndex !== null) {
     annotationDoc.value.remove(annotationDoc.value.selectedIndex)
-    annotationDoc.value.selectedIndex = -1
+    annotationDoc.value.selectedIndex = null
     redrawCanvas()
     void scheduleCommitEdit()
   }

@@ -53,7 +53,7 @@ describe('screenshot session transport contract', () => {
     expect(ScreenshotSessionEvents.lifecycle.start.toEventName()).toBe('screenshot-session:lifecycle:start')
     expect(ScreenshotSessionEvents.lifecycle.waitResult.toEventName()).toBe('screenshot-session:lifecycle:wait-result')
     expect(ScreenshotSessionEvents.overlay.command.toEventName()).toBe('screenshot-session:overlay:command')
-    expect(ScreenshotSessionEvents.editor.action.toEventName()).toBe('screenshot-session:editor:action')
+    expect(ScreenshotSessionEvents.overlay.ready.toEventName()).toBe('screenshot-session:overlay:ready')
   })
 
   it('normalizes only the bounded caller-authored start options', () => {

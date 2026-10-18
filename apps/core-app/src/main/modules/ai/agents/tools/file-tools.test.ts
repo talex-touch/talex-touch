@@ -26,7 +26,7 @@ describe('file-tools file.search', () => {
     const response = await toolRegistry.executeTool(
       'file.search',
       { pattern: 'hello_world' },
-      { workingDirectory: tmpRoot }
+      { taskId: 'test', agentId: 'test', workingDirectory: tmpRoot }
     )
     expect(response.success).toBe(true)
     const result = response.output as {
@@ -49,7 +49,7 @@ describe('file-tools file.search', () => {
     const response = await toolRegistry.executeTool(
       'file.search',
       { pattern: 'test\\d+', regex: true },
-      { workingDirectory: tmpRoot }
+      { taskId: 'test', agentId: 'test', workingDirectory: tmpRoot }
     )
     expect(response.success).toBe(true)
     const result = response.output as {
@@ -66,7 +66,7 @@ describe('file-tools file.search', () => {
     const response = await toolRegistry.executeTool(
       'file.search',
       { pattern: '[invalid', regex: true },
-      { workingDirectory: tmpRoot }
+      { taskId: 'test', agentId: 'test', workingDirectory: tmpRoot }
     )
     expect(response).toMatchObject({ success: false, error: 'INVALID_REGEX_PATTERN' })
   })
@@ -82,7 +82,7 @@ describe('file-tools file.search', () => {
     const response = await toolRegistry.executeTool(
       'file.search',
       { pattern: 'TARGET_TOKEN' },
-      { workingDirectory: tmpRoot }
+      { taskId: 'test', agentId: 'test', workingDirectory: tmpRoot }
     )
     expect(response.success).toBe(true)
     const result = response.output as { matches: unknown[]; count: number }
@@ -98,7 +98,7 @@ describe('file-tools file.search', () => {
     const response = await toolRegistry.executeTool(
       'file.search',
       { pattern: 'MATCH_ROW', maxResults: 5 },
-      { workingDirectory: tmpRoot }
+      { taskId: 'test', agentId: 'test', workingDirectory: tmpRoot }
     )
     expect(response.success).toBe(true)
     const result = response.output as { matches: unknown[]; count: number }

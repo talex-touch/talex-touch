@@ -2,7 +2,7 @@ import type {
   NativeScreenshotCaptureResult,
   NativeScreenshotDisplay
 } from '@talex-touch/utils/transport/events/types'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, type Mock, vi } from 'vitest'
 
 import {
   ScreenshotSessionManager,
@@ -56,20 +56,20 @@ function captureResult(display: NativeScreenshotDisplay): NativeScreenshotCaptur
 }
 
 interface TestWindowHandle extends ScreenshotSessionWindowHandle {
-  load: ReturnType<typeof vi.fn>
-  show: ReturnType<typeof vi.fn>
-  focus: ReturnType<typeof vi.fn>
-  destroy: ReturnType<typeof vi.fn>
-  isDestroyed: ReturnType<typeof vi.fn>
-  onClosed: ReturnType<typeof vi.fn>
+  load: Mock<() => Promise<void>>
+  show: Mock<() => void>
+  focus: Mock<() => void>
+  destroy: Mock<() => void>
+  isDestroyed: Mock<() => boolean>
+  onClosed: Mock<(listener: () => void) => () => void>
   emitClosed(): void
 }
 
 interface Harness {
   manager: ScreenshotSessionManager
   service: ScreenshotSessionCaptureService
-  factory: ScreenshotSessionWindowFactory
-  saveResource: ReturnType<typeof vi.fn>
+  factory: ScreenshotSessionWindowFactory & { createEditor: Mock<() => TestWindowHandle> }
+  saveResource: Mock<() => Promise<boolean>>
   windows: TestWindowHandle[]
   calls: string[]
 }
@@ -120,11 +120,15 @@ function createHarness(options: { failLoadAt?: number } = {}): Harness {
         y: candidate.bounds.y
       }
     }),
-    hitTestCandidate: vi.fn(async (point) => ({
-      kind: 'window' as const,
-      bounds: { x: point.x - 10, y: point.y - 5, width: 200, height: 100 },
-      generation: 'generation:test',
-      targetId: 'window:opaque'
+    hitTestCandidates: vi.fn(async (point) => ({
+      candidates: [
+        {
+          kind: 'window' as const,
+          bounds: { x: point.x - 10, y: point.y - 5, width: 200, height: 100 },
+          generation: 'generation:test',
+          targetId: 'window:opaque'
+        }
+      ]
     })),
     composeFrozenRegion: vi.fn(async (_sources, region) => {
       calls.push('compose:region')
@@ -137,7 +141,11 @@ function createHarness(options: { failLoadAt?: number } = {}): Harness {
         y: region.y
       }
     }),
-    writeCaptureResourceToClipboard: vi.fn(async () => true)
+    writeCaptureResourceToClipboard: vi.fn(async () => true),
+    applyEffects: vi.fn(async (resource) => resource),
+    grantCaptureReadback: vi.fn(async (url) => url),
+    storeEditedCapture: vi.fn(async (source) => source),
+    releaseTempArtifact: vi.fn(async () => true)
   }
 
   function createHandle(label: string, displayId: string | null): TestWindowHandle {
@@ -171,7 +179,7 @@ function createHarness(options: { failLoadAt?: number } = {}): Harness {
     return handle
   }
 
-  const factory: ScreenshotSessionWindowFactory = {
+  const factory: ScreenshotSessionWindowFactory & { createEditor: Mock<() => TestWindowHandle> } = {
     createOverlay: vi.fn(({ display }) => createHandle(display.id, display.id)),
     createEditor: vi.fn(() => createHandle('editor', null))
   }
@@ -387,7 +395,8 @@ describe('ScreenshotSessionManager', () => {
     expect(
       await harness.manager.command(sessionId, senderId, {
         type: 'pointer',
-        point: { x: 50, y: 40 }
+        point: { x: 50, y: 40 },
+        sequence: 1
       })
     ).toEqual({ accepted: true })
     const state = harness.manager.getOverlayState(sessionId, senderId)

@@ -585,7 +585,7 @@ export class NativeScreenshotService {
       return { candidates: [window], fallback }
     }
     const elementRecord = requireRecord(record.element)
-    const role = requireString(elementRecord.role)
+    const role = typeof elementRecord.role === 'string' ? elementRecord.role : undefined
     return {
       candidates: [
         {
@@ -593,12 +593,19 @@ export class NativeScreenshotService {
           bounds: parseWithGeometry(() => parseScreenshotGlobalDipRect(elementRecord.globalFrame)),
           generation: result.generation,
           targetId: requireString(elementRecord.id),
-          ...(AX_ROLE_PATTERN.test(role) ? { role } : {})
+          ...(role && AX_ROLE_PATTERN.test(role) ? { role } : {})
         },
         window
       ],
       fallback
     }
+  }
+  async hitTestCandidate(
+    point: ScreenshotGlobalDipPoint,
+    granularity: 'window' | 'ui-element'
+  ): Promise<ScreenshotNativeSelectionCandidate | null> {
+    const result = await this.hitTestCandidates(point, granularity)
+    return result.candidates[0] ?? null
   }
 
   async captureCandidate(

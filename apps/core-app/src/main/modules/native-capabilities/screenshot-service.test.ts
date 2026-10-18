@@ -46,6 +46,7 @@ vi.mock('node:fs/promises', () => ({
 }))
 
 vi.mock('electron', () => ({
+  app: { getAppPath: () => '/mock/app/path' },
   BrowserWindow: { getAllWindows: mocks.getAllWindows },
   clipboard: { writeImage: mocks.clipboardWriteImage },
   nativeImage: { createFromBuffer: mocks.createFromBuffer },

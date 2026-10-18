@@ -383,7 +383,7 @@ export function registerFileTools(): void {
             for (let i = 0; i < lines.length; i++) {
               if (matcher.test(lines[i]!)) {
                 matches.push({
-                  file: path.relative(ctx.workingDirectory, filePath),
+                  file: path.relative(ctx.workingDirectory || searchDir, filePath),
                   line: i + 1,
                   text: lines[i]!.slice(0, 300).trim()
                 })
