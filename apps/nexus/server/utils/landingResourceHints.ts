@@ -18,8 +18,13 @@ function isLandingRoute(path: string | null | undefined) {
   return normalizedPath === '/' || normalizedPath === '/new' || normalizedPath === '/next'
 }
 
+function isDocsRoute(path: string | null | undefined) {
+  const normalizedPath = normalizeRoutePath(path)
+  return normalizedPath.startsWith('/docs') || /^\/(?:zh|en)\/docs(?:\/|$)/.test(normalizedPath)
+}
+
 export function stripLandingImagePrefetches(html: string, routePath?: string | null) {
-  if (!isLandingRoute(routePath))
+  if (!isLandingRoute(routePath) && !isDocsRoute(routePath))
     return html
 
   return html.replace(IMAGE_PREFETCH_LINK_RE, '')

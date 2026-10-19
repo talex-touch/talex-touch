@@ -17,6 +17,16 @@ describe('stripLandingImagePrefetches', () => {
       stylesheet,
     ].join(''))
   })
+  it.each(['/docs', '/docs/dev/components/learning-curve', '/zh/docs/dev/components/learning-curve', '/en/docs'])('removes image prefetch hints from docs route %s', (routePath) => {
+    const html = [imagePrefetch, reversedImagePrefetch, modulePreload, imagePreload, stylesheet].join('')
+
+    expect(stripLandingImagePrefetches(html, routePath)).toBe([
+      modulePreload,
+      imagePreload,
+      stylesheet,
+    ].join(''))
+  })
+
 
   it('keeps image prefetch hints on non-landing routes', () => {
     expect(stripLandingImagePrefetches(imagePrefetch, '/store')).toBe(imagePrefetch)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { hasWindow } from '@talex-touch/utils/env'
 import { createSpringEase } from '@talex-touch/tuffex/utils'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { TxCommandPalette } from '@talex-touch/tuffex/command-palette'
@@ -411,10 +412,23 @@ const removeNavigationGuard = router.beforeEach(() => {
 // Mounted by an open, this shows straight away rather than from onMounted, which waits for the
 // whole page when the open came while it was still loading. Mounted idle, it fetches the index
 // now, so the first search does not wait for it: over a slow link that took seconds.
-if (open.value)
+if (open.value) {
   void show()
-else
-  preloadSearch()
+}
+else {
+  onMounted(() => {
+    if (hasWindow() && 'requestIdleCallback' in window) {
+      window.requestIdleCallback(() => {
+        preloadSearch()
+      }, { timeout: 4000 })
+    }
+    else {
+      setTimeout(() => {
+        preloadSearch()
+      }, 3000)
+    }
+  })
+}
 
 onBeforeUnmount(() => {
   removeNavigationGuard()
