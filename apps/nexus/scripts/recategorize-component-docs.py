@@ -311,6 +311,7 @@ TAXONOMY: dict[str, list[str]] = {
         "chart-colors",
         "echart-charts",
         "timeseries-chart",
+        "learning-curve",
         "maps",
         "mono-chart",
         "sankey-chart",

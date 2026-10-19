@@ -9,7 +9,7 @@ import { hasWindow } from '@talex-touch/utils/env'
 import type { DocsSuiteKey } from '~/utils/docs-suites'
 import { coerceJsonArray } from '~/utils/docs-api'
 import { CONCEPTS_MANUAL_GROUPS, CONCEPTS_MANUAL_PATH, isConceptsManualPath } from '~/utils/docs-concepts-manual'
-import { categoryI18nKey, CATEGORY_SUITE_MAP, SUITE_CATEGORY_KEYS } from '~/utils/docs-suites'
+import { categoryI18nKey, CATEGORY_SUITE_MAP, resolveStaticComponentSuite, SUITE_CATEGORY_KEYS } from '~/utils/docs-suites'
 import { requestDocsPage } from '~/utils/docs-page-client-cache'
 import { useTypedFetch } from '~/utils/request'
 import { canonicalDocsPageIdentity, normalizeDocsPagePath, resolveDocsLocaleFromRoute, toLocalizedDocsPath } from '#shared/utils/docs-path'
@@ -655,9 +655,13 @@ const suiteOfRoute = computed<SuiteKey | null>(() => {
   // Before the metadata lands (and during SSR) a suite's own standalone pages —
   // its overview, the concepts pages — still name it. Without this the switcher
   // read "Basics" on the Concepts overview until the fetch resolved.
-  return SUITES.value.find(suite =>
+  const standaloneSuite = SUITES.value.find(suite =>
     suite.standalonePages.some(page => canonicalDocsPageIdentity(page) === here),
-  )?.key ?? null
+  )?.key
+  if (standaloneSuite)
+    return standaloneSuite
+  // Static suite resolution for SSR and initial render before metadata fetch resolves
+  return resolveStaticComponentSuite(here)
 })
 
 // SSR and the first client frame resolve the suite the same way — from the
