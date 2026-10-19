@@ -60,6 +60,8 @@ export interface LearningCurveProps {
   xAxisName?: string
   /** Label for the value axis. */
   yAxisName?: string
+  /** Gap between the value axis and its name label in pixels. @default 56 */
+  yAxisNameGap?: number
   /** Step-axis tick formatter. Defaults to SI prefixes: `200k`, `1.5M`. */
   xAxisTickFormat?: (step: number) => string
   /** Value-axis tick formatter. */

@@ -363,7 +363,7 @@ function announceAt(x: string | number): string {
     >
       <TxGrid y />
       <TxAxis position="bottom" :format="xTickFormat" :name="props.xAxisName" />
-      <TxAxis position="left" :format="yTickFormat" :name="props.yAxisName" />
+      <TxAxis position="left" :format="yTickFormat" :name="props.yAxisName" :name-gap="props.yAxisNameGap ?? 56" />
       <TxLearningCurveLayer
         :runs="visibleRuns"
         :show-raw="showRaw"
