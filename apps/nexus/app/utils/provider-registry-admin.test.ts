@@ -164,10 +164,9 @@ describe('provider registry adapter readiness helpers', () => {
       reason: 'adapter-missing',
       fallbackKey: 'openai:text.translate',
     })
-    expect(createProviderEditPanel(provider).capabilities[0]).toMatchObject({
-      capability: 'text.translate',
-      meteringUnit: 'character',
-      meteringText: '',
+    expect(createProviderEditPanel(provider)).toMatchObject({
+      name: provider.name,
+      displayName: provider.displayName,
     })
   })
 })

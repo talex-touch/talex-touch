@@ -16,7 +16,9 @@
       "shadow": "Add shadow",
       "cancel": "Cancel capture",
       "confirm": "Confirm selection",
-      "resizeHandle": "Resize {handle}"
+      "resizeHandle": "Resize {handle}",
+      "anchor": "Resize anchor point",
+      "gridNavHint": "Press 1-9 / Q-C to subdivide, Backspace to go back, Enter to confirm, Esc to exit"
     },
     "editor": {
       "title": "Screenshot",

@@ -46,8 +46,8 @@ const readout = computed(() => {
       ? '在单元格上拖拽可框选一块；单击或按 Escape 清除。'
       : 'Drag across the cells to select a block; click or press Escape to clear.'
   }
-  const first = cells[0]
-  const last = cells[cells.length - 1]
+  const first = cells[0]!
+  const last = cells[cells.length - 1]!
   const average = Math.round(cells.reduce((sum, cell) => sum + cell.value, 0) / cells.length * 10) / 10
   const range = `${first.columnLabel} ${first.rowLabel}`
   const end = `${last.columnLabel} ${last.rowLabel}`

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChromeCookieRecord } from '@talex-touch/utils/transport/sdk/domains/browser-connection'
-import { TxButton, TxInput } from '@talex-touch/tuffex'
+import { TxButton } from '@talex-touch/tuffex/button'
+import { TxInput } from '@talex-touch/tuffex/input'
 import { TxModal } from '@talex-touch/tuffex/modal'
 import { TxSwitch } from '@talex-touch/tuffex/switch'
 import { computed, ref, watch } from 'vue'

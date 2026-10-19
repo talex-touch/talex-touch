@@ -4,7 +4,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useAdminResource } from '~/composables/useAdminResource'
 import { useToast } from '~/composables/useToast'
 import { resolveProviderRegistryError } from '~/utils/admin-provider-registry'
-import { resolveProviderProtocol } from '../../shared/provider-registry'
+import { resolveProviderProtocol } from '#shared/provider-registry'
 import {
   authTypeOptions,
   bindingStatusOptions,

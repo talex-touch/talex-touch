@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { PRODUCT_SCENE_TEMPLATES } from '../../shared/provider-registry'
+import { PRODUCT_SCENE_TEMPLATES } from '#shared/provider-registry'
 import { toRegistryCapabilityId, toRuntimeCapabilityId } from '@talex-touch/tuff-intelligence/light'
 import type { ProviderRegistryRecord } from './providerRegistryStore'
 import type { SceneRegistryRecord, SceneStrategyBindingInput } from './sceneRegistryStore'

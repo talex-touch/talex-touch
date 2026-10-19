@@ -2,7 +2,7 @@ import { createError, getRouterParam, readBody } from 'h3'
 import { randomUUID } from 'node:crypto'
 import { requireAdmin } from '../../../../utils/auth'
 import { assertNoPlainProviderSecrets, getProviderRegistryEntry, updateProviderRegistryEntry } from '../../../../utils/providerRegistryStore'
-import { resolveProviderProtocol } from '../../../../../shared/provider-registry'
+import { resolveProviderProtocol } from '#shared/provider-registry'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)

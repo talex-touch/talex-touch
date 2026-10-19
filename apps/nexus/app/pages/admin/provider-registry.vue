@@ -90,7 +90,7 @@ function refresh() {
         :disabled="!panel || !admin.providers.value.length"
         @click="panel?.openCreateScene()"
       >
-        {{ t('dashboard.providerRegistry.routes.create', 'Create route') }}
+        {{ t('dashboard.providerRegistry.routes.create', 'Configure function') }}
       </TxButton>
       <TxButton variant="secondary" size="sm" :disabled="registryBusy" @click="refresh">
         {{ t('common.refresh', 'Refresh') }}
@@ -121,7 +121,7 @@ function refresh() {
           @update:model-value="selectTab"
         >
           <TxFlatRadioItem value="providers" :label="t('dashboard.providerRegistry.tabs.providers', 'Providers')" icon="i-carbon-cloud-service-management" />
-          <TxFlatRadioItem value="routes" :label="t('dashboard.providerRegistry.tabs.routes', 'Capability routes')" icon="i-carbon-flow" />
+          <TxFlatRadioItem value="routes" :label="t('dashboard.providerRegistry.tabs.routes', 'Product functions')" icon="i-carbon-flow" />
           <TxFlatRadioItem value="usage" :label="t('dashboard.providerRegistry.tabs.usage', 'Usage')" icon="i-carbon-data-check" />
           <TxFlatRadioItem value="health" :label="t('dashboard.providerRegistry.tabs.health', 'Health')" icon="i-carbon-activity" />
         </TxFlatRadio>

@@ -341,7 +341,7 @@ describe('/api/dashboard/provider-registry/scenes', () => {
     expect(result.scene).toMatchObject({
       id: 'corebox.screenshot.translate',
       owner: 'core-app',
-      requiredCapabilities: ['image.translate.e2e'],
+      requiredCapabilities: ['vision.ocr', 'text.translate', 'overlay.render'],
       strategyMode: 'priority',
       fallback: 'enabled',
       bindings: [
@@ -441,7 +441,7 @@ describe('/api/dashboard/provider-registry/scenes', () => {
       strategyMode: 'balanced',
       requiredCapabilities: ['vision.ocr', 'text.translate', 'overlay.render'],
       meteringPolicy: {
-        units: ['character', 'image'],
+        units: ['image', 'character'],
       },
       auditPolicy: {
         persistInput: false,
@@ -449,7 +449,7 @@ describe('/api/dashboard/provider-registry/scenes', () => {
         persistTrace: true,
       },
       metadata: {
-        ownerTeam: 'corebox',
+        source: 'product-function-catalog',
       },
     })
     expect(result.scene.bindings[0]).toMatchObject({

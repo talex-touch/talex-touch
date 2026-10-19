@@ -234,7 +234,7 @@ const _appSettingOriginData = {
     settings: 0,
   },
   betaFeatures: {
-    screenshot: true,
+    screenshot: false,
     voiceDictation: false,
     voiceQuickEdit: false,
     omniPanel: false,

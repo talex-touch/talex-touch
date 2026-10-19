@@ -1,7 +1,7 @@
 import { createError, readBody } from 'h3'
 import { requireAdmin } from '../../../utils/auth'
 import { createSceneRegistryEntry, withSceneRegistryReadiness } from '../../../utils/sceneRegistryStore'
-import { PRODUCT_SCENE_TEMPLATES } from '../../../../shared/provider-registry'
+import { PRODUCT_SCENE_TEMPLATES } from '#shared/provider-registry'
 
 export default defineEventHandler(async (event) => {
   const { userId } = await requireAdmin(event)

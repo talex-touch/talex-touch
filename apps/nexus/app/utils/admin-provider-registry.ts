@@ -19,7 +19,7 @@ import type {
   UsageLedgerFilter,
 } from '~/utils/provider-registry-admin'
 import { toRegistryCapabilityId } from '@talex-touch/tuff-intelligence/light'
-import { resolveProviderProtocol } from '../../shared/provider-registry'
+import { resolveProviderProtocol } from '#shared/provider-registry'
 import { ADMIN_FORMAT_EMPTY } from '~/composables/useAdminFormat'
 import { createClientListFetcher } from '~/utils/admin-client-list'
 import { resolveAdminErrorMessage } from '~/utils/admin-request-error'

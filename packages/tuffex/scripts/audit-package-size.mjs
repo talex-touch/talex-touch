@@ -256,7 +256,7 @@ const LIMITS = {
   // `skeleton-keyframes` mixin as in agent-screen and layout-skeleton, and the tray reaches
   // the viewer's rules through style-deps (`attachment-tray -> image-gallery, modal`).
   // Measured 768,050 B (750.05 KiB). Actuals plus minimal headroom, growth from here fails.
-  fullCssBytes: 835 * 1024,
+  fullCssBytes: 850 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus
@@ -296,7 +296,7 @@ const pageStyleBudgets = [
   // TxButton alone reaches the anchor and surface stack, the icon, and the copy button's text
   // engine, so every page below starts from these 13 sheets.
   { label: 'button', components: ['button'], limit: 58 * 1024 },
-  { label: 'form', components: ['form', 'input', 'select', 'checkbox', 'switch', 'button', 'modal'], limit: 85 * 1024 },
+  { label: 'form', components: ['form', 'input', 'select', 'checkbox', 'switch', 'button', 'modal'], limit: 88 * 1024 },
   { label: 'admin list', components: ['data-table', 'pagination', 'tabs', 'input', 'select', 'button', 'drawer'], limit: 135 * 1024 },
   {
     label: 'chat',

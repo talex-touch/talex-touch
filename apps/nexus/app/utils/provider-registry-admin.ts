@@ -1,6 +1,6 @@
 import { listTuffIntelligenceBuiltinAbilities, pickTuffIntelligenceBuiltinAbilities } from '@talex-touch/tuff-intelligence/light'
-export { PRODUCT_SCENE_TEMPLATES } from '../../shared/provider-registry'
-export type { ProductSceneTemplate } from '../../shared/provider-registry'
+export { PRODUCT_SCENE_TEMPLATES } from '#shared/provider-registry'
+export type { ProductSceneTemplate } from '#shared/provider-registry'
 export type ProviderVendor = 'tencent-cloud' | 'openai' | 'deepseek' | 'dashscope' | 'exchange-rate' | 'custom'
 export type ProviderServiceCategory = 'ai' | 'exchange' | 'screenshot' | 'translation'
 export type ProviderStatus = 'enabled' | 'disabled' | 'degraded'
@@ -586,6 +586,16 @@ export function resolveFirstProviderTemplateForServiceCategory(
 ): ProviderRegistryTemplate | null {
   const normalized = String(category) as ProviderServiceCategory
   return providerRegistryTemplates.find(template => template.serviceCategory === normalized) ?? null
+}
+
+export function createProviderAuthRef(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .replace(/[^a-z0-9]+$/, '')
+  return `secure://providers/${slug || 'provider'}`
 }
 
 

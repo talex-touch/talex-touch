@@ -130,7 +130,8 @@ describe('providerList channel rows', () => {
 
     expect(row.get('h5').text()).toBe('DashScope')
     expect(row.get('p').text()).toBe(`settings.intelligence.providerTypeOptions.${channelType}`)
-    expect(row.get('i').classes()).toContain(
+    const icon = row.get('.tuff-icon')
+    expect(icon.attributes('data-icon-value')).toBe(
       providerIconForChannel(channelType, bailianChannel.type).value
     )
 

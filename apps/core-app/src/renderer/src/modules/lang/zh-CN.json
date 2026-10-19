@@ -16,7 +16,9 @@
       "shadow": "添加阴影",
       "cancel": "取消截图",
       "confirm": "确认选区",
-      "resizeHandle": "调整 {handle} 方向"
+      "resizeHandle": "调整 {handle} 方向",
+      "anchor": "缩放固定锚点",
+      "gridNavHint": "按 1-9 / Q-C 细分区域，Backspace 返回，Enter 确认，Esc 退出"
     },
     "editor": {
       "title": "截图编辑器",

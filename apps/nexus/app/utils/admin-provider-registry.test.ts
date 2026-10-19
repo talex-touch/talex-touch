@@ -2,7 +2,6 @@ import type { RouteI18nLocale } from '../../test/helpers/route-i18n'
 import type { RegistryTranslate } from './admin-provider-registry'
 import type {
   ProviderCapabilityRecord,
-  ProviderEditPanelState,
   ProviderObservabilitySummary,
   ProviderRegistryRecord,
   SceneEditPanelState,
@@ -262,20 +261,22 @@ describe('wording', () => {
 })
 
 describe('what a save deletes', () => {
-  function editPanel(capabilities: ProviderEditPanelState['capabilities'], removed: string[] = []) {
-    return { capabilities, removedCapabilityIds: removed }
+  function editPanel(adapterKey: string) {
+    return { adapterKey }
   }
 
-  function row(id: string | undefined, name: string) {
-    return { id, capability: name, schemaRef: '', meteringUnit: 'token', maxImageBytes: '', providerModel: '', meteringText: '', constraintsText: '', metadataText: '' }
-  }
+  it('lists the capabilities removed when switching protocols', () => {
+    const record = provider({
+      capabilities: [
+        capability('cap_1', 'text.chat'),
+        capability('cap_2', 'vision.ocr'),
+        capability('cap_3', 'text.translate')
+      ]
+    })
 
-  it('lists the capabilities removed from the editor and the ones blanked in it', () => {
-    const record = provider({ capabilities: [capability('cap_1', 'text.chat'), capability('cap_2', 'vision.ocr'), capability('cap_3', 'text.translate')] })
-
-    expect(capabilitiesRemovedBySave(record, editPanel([row('cap_1', 'text.chat'), row('cap_2', ' '), row(undefined, 'new.one')], ['cap_3'])).map(item => item.capability))
-      .toEqual(['vision.ocr', 'text.translate'])
-    expect(capabilitiesRemovedBySave(record, editPanel([row('cap_1', 'text.chat'), row('cap_2', 'vision.ocr'), row('cap_3', 'text.translate')]))).toEqual([])
+    expect(capabilitiesRemovedBySave(record, editPanel('tencent-translation')).map(item => item.capability))
+      .toEqual(['text.chat', 'vision.ocr'])
+    expect(capabilitiesRemovedBySave(record, editPanel('openai-compatible'))).toEqual([])
   })
 
   function sceneRow(providerId: string, capabilityName: string, model = ''): SceneEditPanelState['bindings'][number] {

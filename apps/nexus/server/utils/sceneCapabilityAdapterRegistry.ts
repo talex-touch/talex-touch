@@ -1,5 +1,5 @@
 import type { ProviderRegistryRecord } from './providerRegistryStore'
-import { PROVIDER_PROTOCOLS } from '../../shared/provider-registry'
+import { PROVIDER_PROTOCOLS } from '#shared/provider-registry'
 
 export interface SceneCapabilityAdapterRegistryReadiness {
   providerId: string

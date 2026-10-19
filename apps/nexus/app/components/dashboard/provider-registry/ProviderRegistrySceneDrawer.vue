@@ -49,14 +49,14 @@ const error = computed(() => {
 
 const title = computed(() => {
   if (props.mode === 'run')
-    return t('dashboard.providerRegistry.routes.runTitle', 'Run route')
+    return t('dashboard.providerRegistry.routes.runTitle', 'Run capability route')
   return props.mode === 'create'
-    ? t('dashboard.providerRegistry.routes.createTitle', 'Create route')
-    : t('dashboard.providerRegistry.routes.editTitle', 'Edit route')
+    ? t('dashboard.providerRegistry.routes.createTitle', 'Configure product function')
+    : t('dashboard.providerRegistry.routes.editTitle', 'Edit capability route')
 })
 
 const primaryLabel = computed(() => props.mode === 'create'
-  ? t('dashboard.providerRegistry.routes.create', 'Create route')
+  ? t('dashboard.providerRegistry.routes.create', 'Configure function')
   : t('common.save', 'Save'))
 
 function valueLabel(value: string | null | undefined): string {

@@ -494,7 +494,10 @@ describe('MetaOverlay panel', () => {
       'corebox.actions.copyFile',
       'corebox.actions.copyPath',
       'corebox.actions.copyTitle',
+      'corebox.actions.copyTo',
+      'corebox.actions.moveTo',
       'corebox.actions.pin',
+      'corebox.actions.moveToTrash',
       'corebox.actions.openSettings'
     ])
     expect(wrapper.findAll('.MetaPanel-SectionTitle').map((title) => title.text())).toEqual([

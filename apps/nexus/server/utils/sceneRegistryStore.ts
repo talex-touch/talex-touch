@@ -174,6 +174,8 @@ interface NormalizedSceneInput {
 }
 
 interface NormalizedSceneStrategyBindingInput {
+  id: string | null
+  createdAt: string | null
   providerId: string
   capability: string
   model: string | null

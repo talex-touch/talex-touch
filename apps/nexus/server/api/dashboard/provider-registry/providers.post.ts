@@ -1,6 +1,6 @@
 import { createError, readBody } from 'h3'
 import { randomUUID } from 'node:crypto'
-import { resolveProviderProtocol } from '../../../../shared/provider-registry'
+import { resolveProviderProtocol } from '#shared/provider-registry'
 import { requireAdmin } from '../../../utils/auth'
 import { assertNoPlainProviderSecrets, createProviderRegistryEntry } from '../../../utils/providerRegistryStore'
 

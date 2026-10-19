@@ -213,10 +213,7 @@ import {
 } from './services/file-provider-reconciliation-run-service'
 import { FileProviderReconciliationUpdateService } from './services/file-provider-reconciliation-update-service'
 import { FileProviderScanStrategyService } from './services/file-provider-scan-strategy-service'
-import {
-  FileProviderAssetService,
-  type IndexedActionPathResolution
-} from './services/file-provider-asset-service'
+import { FileProviderAssetService } from './services/file-provider-asset-service'
 import { FileProviderSearchResultService } from './services/file-provider-search-result-service'
 import FileSystemWatcher from '../../file-system-watcher'
 import {
@@ -469,7 +466,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     getEmbeddingService: () => this.embeddingService ?? null,
     logDebug: (m, meta) => this.logDebug(m, meta)
   })
-  private readonly assetService: FileProviderAssetService
+  public readonly assetService: FileProviderAssetService
   private readonly searchResultService: FileProviderSearchResultService
   private readonly maintenanceService = new FileProviderMaintenanceService({
     sourceId: this.id,
@@ -2442,8 +2439,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     return this.backgroundStartupPromise !== null
   }
 
-  public buildStartupDegradedNotice(query: TuffQuery): TuffItem | null {
-    void query
+  public buildStartupDegradedNotice(_query: TuffQuery): TuffItem | null {
     return null
   }
 
@@ -2456,17 +2452,11 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   }
 
   public ownsWatchPath(rawPath: string): boolean {
-    return this.watchService.ownsWatchPath(rawPath)
+    return this.isWithinWatchRoots(rawPath)
   }
 
-  public async resolvePreviewResourcePath(rawPath: string): Promise<string | null> {
-    return await this.assetService.resolvePreviewResourcePath(rawPath)
-  }
-
-  public async resolveIndexedActionPath(
-    rawPath: string
-  ): Promise<IndexedActionPathResolution | null> {
-    return await this.assetService.resolveIndexedActionPath(rawPath)
+  public resolvePreviewResourcePath(rawPath: string): Promise<string | null> {
+    return this.assetService.resolvePreviewResourcePath(rawPath)
   }
 
   public async *streamIndexedSourceSnapshot(
@@ -3439,7 +3429,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   }
 
   private isWithinWatchRoots(rawPath: string): boolean {
-    return this.watchService.ownsWatchPath(rawPath)
+    return Boolean(this.watchService?.ownsWatchPath?.(rawPath))
   }
 
   /** Current file-source scope; native providers keep their own admission rules. */
