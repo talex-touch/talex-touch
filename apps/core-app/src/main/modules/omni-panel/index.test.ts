@@ -340,6 +340,39 @@ describe('omniPanel Beta runtime gates', () => {
     }
   )
 
+  it('shows panel on project-local-ai even when betaFeatures.omniPanel is false', async () => {
+    const config = {
+      betaFeatures: { omniPanel: false },
+      omniPanel: { enableShortcut: false }
+    }
+    vi.mocked(getMainConfig).mockReturnValue(config as never)
+    const handlers = new Map<unknown, (payload: unknown) => Promise<void>>()
+    getTuffTransportMainMock.mockReturnValue({
+      on: vi.fn((event: unknown, handler: (payload: unknown) => Promise<void>) => {
+        handlers.set(event, handler)
+        return () => {}
+      }),
+      broadcast: vi.fn(),
+      broadcastToWindow: vi.fn(),
+      sendTo: vi.fn(),
+      sendToWindow: vi.fn()
+    } as never)
+    const module = new OmniPanelModule()
+    try {
+      await module.onInit({} as never)
+      const showPromise = handlers.get(omniPanelShowEvent)!({
+        captureSelection: false,
+        source: 'project-local-ai',
+        localAi: { projectId: 'p1', provider: 'pi' }
+      })
+      await handlers.get(omniPanelRendererReadyEvent)?.(undefined)
+      await showPromise
+      expect(touchWindowInstances).toHaveLength(1)
+    } finally {
+      module.onDestroy({} as never)
+    }
+  })
+
   it('stops and restarts the native hold hook as the effective key and feature gate change', async () => {
     const config = {
       betaFeatures: { omniPanel: true },

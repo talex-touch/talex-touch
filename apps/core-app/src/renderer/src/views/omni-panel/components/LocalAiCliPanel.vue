@@ -60,6 +60,7 @@ const terminalView = ref<TerminalInstance | null>(null)
 const terminalSessionId = ref<string | null>(null)
 const terminalVisible = ref(false)
 const terminalOpening = ref(false)
+const activeView = ref<'gui' | 'terminal'>('gui')
 let terminalGeneration = 0
 let terminalCreateController: AbortController | null = null
 let terminalCreation: Promise<LocalAiCliTerminalCreateResult> | null = null
@@ -231,11 +232,12 @@ function handleChunk(chunk: LocalAiCliTaskChunk): void {
       return
     case 'status':
       return
-    case 'text-delta':
-      output.value += chunk.text
-      return
     case 'approval':
       approval.value = chunk.approval
+      return
+    case 'text-delta':
+      output.value += chunk.text
+      writeTerminalOutput(chunk.text)
       return
     case 'complete':
       output.value = chunk.text || output.value
@@ -244,12 +246,14 @@ function handleChunk(chunk: LocalAiCliTaskChunk): void {
     case 'failed':
       errorCode.value = chunk.code
       phase.value = 'failed'
+      writeTerminalOutput(`\r\n[failed: ${chunk.code}]\r\n`)
       return
     case 'cancelled':
       phase.value = 'cancelled'
+      writeTerminalOutput('\r\n[cancelled]\r\n')
+      return
   }
 }
-
 function stableTaskErrorCode(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : String(error)
   for (const code of [
@@ -315,6 +319,9 @@ async function resolveApproval(decision: 'allow-once' | 'deny'): Promise<void> {
   const current = approval.value
   if (!current) return
   try {
+    if (terminalSessionId.value) {
+      handleTerminalInput(decision === 'allow-once' ? 'y\r' : 'n\r')
+    }
     await sdk.resolveApproval({ approvalId: current.approvalId, decision })
   } finally {
     approval.value = null
@@ -393,6 +400,7 @@ function handleTerminalReady(view: TerminalInstance): void {
 
 async function openTerminal(): Promise<void> {
   if (!provider.value || !canOpenTerminal.value) return
+  activeView.value = 'terminal'
   const generation = ++terminalGeneration
   const controller = new AbortController()
   terminalCreateController = controller
@@ -450,6 +458,15 @@ async function openTerminal(): Promise<void> {
   }
 }
 
+async function switchToTerminal(): Promise<void> {
+  activeView.value = 'terminal'
+  if (!terminalVisible.value && !terminalOpening.value && canOpenTerminal.value) {
+    await openTerminal()
+  } else {
+    terminalVisible.value = true
+  }
+}
+
 async function closeTerminal(): Promise<void> {
   terminalGeneration += 1
   const creation = terminalCreation
@@ -481,6 +498,7 @@ async function closeTerminal(): Promise<void> {
 async function newTask(): Promise<void> {
   cleanupTask()
   await closeTerminal()
+  activeView.value = 'gui'
   sessionRef.value = undefined
   prompt.value = ''
   contexts.value = []
@@ -495,6 +513,7 @@ async function reset(): Promise<void> {
   visible.value = false
   cleanupTask()
   await closeTerminal()
+  activeView.value = 'gui'
   prompt.value = ''
   contexts.value = []
   draftCapsule.value = undefined
@@ -645,7 +664,30 @@ defineExpose({ open, reset, newTask })
         </div>
       </div>
 
-      <div v-if="phase !== 'idle'" class="LocalAiCliPanel__result" :class="`is-${phase}`">
+      <div v-if="phase !== 'idle' || terminalVisible" class="LocalAiCliPanel__view-toggle">
+        <button
+          type="button"
+          class="LocalAiCliPanel__view-btn"
+          :class="{ 'is-active': activeView === 'gui' }"
+          @click="activeView = 'gui'"
+        >
+          <span class="i-carbon-chat" /> {{ t('localAiCliPanel.viewGui') || '界面 (GUI)' }}
+        </button>
+        <button
+          type="button"
+          class="LocalAiCliPanel__view-btn"
+          :class="{ 'is-active': activeView === 'terminal' }"
+          @click="switchToTerminal"
+        >
+          <span class="i-carbon-terminal" /> {{ t('localAiCliPanel.viewTerminal') || '终端 (TTY)' }}
+        </button>
+      </div>
+
+      <div
+        v-if="activeView === 'gui' && phase !== 'idle'"
+        class="LocalAiCliPanel__result"
+        :class="`is-${phase}`"
+      >
         <p v-if="phase === 'running' && !output">{{ t('localAiCliPanel.running') }}</p>
         <p v-else-if="phase === 'failed'">{{ t('localAiCliPanel.failed', { code: errorCode }) }}</p>
         <p v-else-if="phase === 'cancelled'">{{ t('localAiCliPanel.cancelled') }}</p>
@@ -653,7 +695,7 @@ defineExpose({ open, reset, newTask })
       </div>
 
       <TxTerminal
-        v-if="terminalVisible"
+        v-if="terminalVisible && (activeView === 'terminal' || !output)"
         ref="terminalView"
         class="LocalAiCliPanel__terminal"
         :read-only="!terminalSessionId"
@@ -752,6 +794,41 @@ defineExpose({ open, reset, newTask })
     padding: 9px 10px;
     border-radius: 10px;
     background: color-mix(in srgb, var(--tx-fill-color) 56%, transparent);
+  }
+
+  &__view-toggle {
+    display: inline-flex;
+    align-self: flex-start;
+    padding: 3px;
+    border: 1px solid color-mix(in srgb, var(--tx-border-color) 70%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--tx-bg-color) 75%, transparent);
+    gap: 4px;
+  }
+
+  &__view-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--tx-text-color-secondary);
+    background: transparent;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &.is-active {
+      color: var(--tx-color-primary);
+      background: color-mix(in srgb, var(--tx-color-primary) 14%, transparent);
+      font-weight: 500;
+    }
+
+    &:hover:not(.is-active) {
+      color: var(--tx-text-color-primary);
+      background: color-mix(in srgb, var(--tx-bg-color-overlay) 80%, transparent);
+    }
   }
 
   &__approval {

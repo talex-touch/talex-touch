@@ -150,8 +150,7 @@ export async function* runCliChat(
     child = spawn(spec.executable, resolveArgs(spec, attachments.paths), {
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
       stdio: ['ignore', 'pipe', 'pipe'],
-      // `node` beside the executable goes in front of PATH (see the helper); the provider's own
-      // variables go on top of that.
+      // `node` beside the executable goes in front of PATH; proxy and spec variables go on top.
       env: { ...withExecutableDirOnPath(process.env, spec.executable), ...spec.env }
     })
   } catch (error) {

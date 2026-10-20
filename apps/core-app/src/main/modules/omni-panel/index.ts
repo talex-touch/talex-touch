@@ -968,15 +968,24 @@ export class OmniPanelModule extends BaseModule {
     this.notifyFeatureRefresh(reason)
   }
 
-  private isPanelEntryEnabled(source?: OmniPanelShowRequest['source']): boolean {
+  private isPanelEntryEnabled(
+    source?: OmniPanelShowRequest['source'],
+    localAi?: OmniPanelShowRequest['localAi']
+  ): boolean {
     const settings = getMainConfig(OMNI_PANEL_SETTING_KEY)
-    return source === 'local-ai-shortcut'
-      ? settings.localAiCli?.enabled === true
-      : isBetaFeatureEnabled(settings, 'omniPanel')
+    if (
+      source === 'local-ai-shortcut' ||
+      source === 'project-local-ai' ||
+      source === 'corebox-local-ai' ||
+      Boolean(localAi)
+    ) {
+      return true
+    }
+    return isBetaFeatureEnabled(settings, 'omniPanel')
   }
 
   private async show(options?: OmniPanelShowRequest): Promise<void> {
-    if (!this.isPanelEntryEnabled(options?.source)) return
+    if (!this.isPanelEntryEnabled(options?.source, options?.localAi)) return
     const targetWindow = await this.ensureWindow()
     const normalizedSource = normalizeContextSource(options?.source)
     let text =
@@ -990,7 +999,7 @@ export class OmniPanelModule extends BaseModule {
 
     const capturedAt = Date.now()
     const capsule = await this.buildDesktopContextCapsule(text, normalizedSource.source, capturedAt)
-    if (!this.isPanelEntryEnabled(options?.source)) return
+    if (!this.isPanelEntryEnabled(options?.source, options?.localAi)) return
 
     this.positionWindowNearCursor(targetWindow)
     targetWindow.window.show()

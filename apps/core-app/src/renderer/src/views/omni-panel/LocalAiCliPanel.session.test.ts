@@ -586,4 +586,33 @@ describe('localAiCliPanel terminal lifecycle', () => {
     expect(terminalListeners.get(LocalAiCliEvents.terminal.exit)?.size).toBe(0)
     expect(killedSessions).toEqual(['term-1', 'term-2'])
   })
+
+  it('supports toggling between GUI result and Terminal view and displays approval banner', async () => {
+    const wrapper = await readyPanel()
+    expect(wrapper.find('.LocalAiCliPanel__view-toggle').exists()).toBe(true)
+    expect(wrapper.find('.LocalAiCliPanel__result').exists()).toBe(true)
+
+    streamState.callbacks?.onData({
+      type: 'approval',
+      approval: {
+        approvalId: 'appr-1',
+        provider: 'pi',
+        toolName: 'File Write',
+        operation: 'write',
+        summary: 'Write 10 lines to test.ts'
+      }
+    })
+    await flushPromises()
+
+    const approval = wrapper.find('.LocalAiCliPanel__approval')
+    expect(approval.exists()).toBe(true)
+    expect(approval.text()).toContain('File Write')
+    expect(approval.text()).toContain('Write 10 lines to test.ts')
+
+    const terminalBtn = wrapper.findAll('.LocalAiCliPanel__view-btn')[1]!
+    await terminalBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.LocalAiCliPanel__approval').exists()).toBe(true)
+  })
 })
