@@ -1,6 +1,8 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
 import TxTree from '../src/TxTree.vue'
+
+enableAutoUnmount(afterEach)
 
 describe('txTree', () => {
   const nodes = [
