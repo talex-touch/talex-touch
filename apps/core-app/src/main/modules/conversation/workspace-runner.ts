@@ -158,14 +158,21 @@ export class ConversationWorkspaceRunner {
       slot.context = turn.context ?? {}
       slot.assembler = new WorkspaceMessageAssembler(turn.assistant, turn.input.id)
       this.snapshot(slot)
-      slot.task = this.execute(slot).catch(async () => {
+      slot.task = this.execute(slot).catch(async (error) => {
         if (slot.ended || slot.pendingApproval) return
+        const detail = error instanceof Error && error.message ? error.message : String(error)
+        log.error('Workspace execution failed', {
+          conversationId: slot.conversationId,
+          turnId: slot.turn?.input.id,
+          error: detail
+        })
         await this.end(
           slot,
           slot.controller.signal.aborted
             ? 'WORKSPACE_TURN_CANCELLED'
             : 'WORKSPACE_EXECUTION_FAILED',
-          slot.controller.signal.aborted ? 'cancelled' : 'failed'
+          slot.controller.signal.aborted ? 'cancelled' : 'failed',
+          slot.controller.signal.aborted ? undefined : detail
         )
       })
       // Keep a rejection observer even if durable storage itself fails during the
@@ -193,11 +200,13 @@ export class ConversationWorkspaceRunner {
 
   private wireMessage(slot: ExecutionSlot, full = true): UiMessage {
     const snapshot = slot.assembler!.snapshot()
+    const errorDetail =
+      typeof snapshot.meta?.errorDetail === 'string' ? snapshot.meta.errorDetail : ''
     const host: WorkspaceHostMessage = {
       ...snapshot,
       parts: Array.isArray(snapshot.meta?.parts) ? snapshot.meta.parts : undefined,
       ...(typeof snapshot.meta?.errorCode === 'string'
-        ? { error: { code: snapshot.meta.errorCode, detail: '' } }
+        ? { error: { code: snapshot.meta.errorCode, detail: errorDetail } }
         : {})
     }
     return {
@@ -210,7 +219,10 @@ export class ConversationWorkspaceRunner {
         ? { providerId: snapshot.meta.provider }
         : {}),
       ...(typeof snapshot.meta?.model === 'string' ? { modelId: snapshot.meta.model } : {}),
-      ...(full ? { host } : {})
+      ...(full ? { host } : {}),
+      ...(typeof snapshot.meta?.errorCode === 'string'
+        ? { error: { code: snapshot.meta.errorCode, detail: errorDetail } }
+        : {})
     }
   }
 
@@ -659,10 +671,11 @@ export class ConversationWorkspaceRunner {
   private async end(
     slot: ExecutionSlot,
     code: string,
-    outcome: 'failed' | 'cancelled' | 'interrupted' = 'failed'
+    outcome: 'failed' | 'cancelled' | 'interrupted' = 'failed',
+    detail?: string
   ): Promise<void> {
     if (slot.ended || !slot.assembler || !slot.turn) return
-    slot.assembler.fail(code, outcome)
+    slot.assembler.fail(code, outcome, detail)
     await this.persist(slot, true)
     this.snapshot(slot)
     await this.service.finishTurn(slot.conversationId, slot.turn.input.id, outcome)

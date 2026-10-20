@@ -269,10 +269,15 @@ export class WorkspaceMessageAssembler {
     this.closeOpenParts()
   }
 
-  fail(code: string, outcome: 'failed' | 'cancelled' | 'interrupted' = 'failed'): void {
+  fail(
+    code: string,
+    outcome: 'failed' | 'cancelled' | 'interrupted' = 'failed',
+    detail?: string
+  ): void {
     this.status = 'failed'
     this.meta.errorCode = code
     this.meta.outcome = outcome
+    if (detail) this.meta.errorDetail = detail
     this.closeOpenParts()
   }
 
