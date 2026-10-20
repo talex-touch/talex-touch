@@ -952,6 +952,8 @@
     "copied": "已复制本机代理结果",
     "continueInTerminal": "在终端继续",
     "terminalFailed": "无法打开本机代理终端",
+    "viewGui": "界面 (GUI)",
+    "viewTerminal": "终端 (TTY)",
     "running": "本机代理正在处理…",
     "failed": "任务失败（{code}）",
     "cancelled": "任务已取消",

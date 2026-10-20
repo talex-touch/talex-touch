@@ -952,6 +952,8 @@
     "copied": "Local agent result copied",
     "continueInTerminal": "Continue in terminal",
     "terminalFailed": "Could not open the local agent terminal",
+    "viewGui": "GUI",
+    "viewTerminal": "Terminal (TTY)",
     "running": "The local agent is working…",
     "failed": "Task failed ({code})",
     "cancelled": "Task cancelled",
