@@ -7,7 +7,11 @@ import { TxStatusBadge } from '@talex-touch/tuffex/status-badge'
 import { formatCompactAccountLabel } from '@talex-touch/utils/account'
 import { computed, onActivated, onBeforeUnmount, onDeactivated, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useTuffTransport } from '@talex-touch/utils/transport'
+import { createBrowserSdk } from '@talex-touch/utils/transport/sdk/domains/browser'
+import { isBetaFeatureEnabled } from '../../../../shared/beta-features'
+import { appSetting } from '~/modules/storage/app-storage'
 import { toast } from 'vue-sonner'
 import { useUserIdentity } from '~/components/base/composables/useUserIdentity'
 import TuffUserInfo from '~/components/base/TuffUserInfo.vue'
@@ -31,7 +35,10 @@ const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true }
 const emit = defineEmits<{ 'overlay-change': [open: boolean] }>()
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
+const transport = useTuffTransport()
+const browserSdk = createBrowserSdk(transport)
 const { isLoading, authLoadingState, login, logout } = useAuth()
 const { isLoggedIn, displayName, displayEmail, avatarUrl } = useUserIdentity()
 const connection = useBrowserConnection()
@@ -101,6 +108,18 @@ function openAccountDetails(): void {
 async function openAccountSettings(): Promise<void> {
   open.value = false
   try {
+    if (isBetaFeatureEnabled(appSetting, 'browserWorkspace')) {
+      if (route.path !== '/browser') {
+        await router.push('/browser')
+      }
+      const s = await browserSdk.getState().catch(() => null)
+      if (s) {
+        const existing = s.tabs.find((tab) => tab.url.startsWith('tuff://setting'))
+        if (existing) await browserSdk.activateTab(existing.id)
+        else await browserSdk.createTab('tuff://settings')
+        return
+      }
+    }
     await router.push('/setting/overview')
   } catch (failure) {
     toast.error(t('accountMenu.settingsFailed'), {

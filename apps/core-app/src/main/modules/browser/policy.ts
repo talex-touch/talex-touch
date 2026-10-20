@@ -16,6 +16,11 @@ function hasUnsafeBrowserCharacters(value: string, allowSpaces: boolean): boolea
   return false
 }
 
+export function isRemoteWebUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  return value.startsWith('https://') || value.startsWith('http://')
+}
+
 export function isAllowedBrowserUrl(value: unknown): value is string {
   if (
     typeof value !== 'string' ||
@@ -26,6 +31,9 @@ export function isAllowedBrowserUrl(value: unknown): value is string {
     return false
   try {
     const url = new URL(value)
+    if (url.protocol === 'tuff:') {
+      return Boolean(url.hostname)
+    }
     return (
       (url.protocol === 'https:' || url.protocol === 'http:') &&
       Boolean(url.hostname) &&

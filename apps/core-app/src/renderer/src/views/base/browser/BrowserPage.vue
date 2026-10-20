@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   BrowserSavedPage,
+  BrowserTabState,
   BrowserViewportRequest,
   BrowserWorkspaceState
 } from '@talex-touch/utils/transport/sdk/domains/browser'
@@ -32,8 +33,10 @@ import {
   isOpenableBrowserUrl,
   useBrowserConnection
 } from '~/modules/browser-connection/useBrowserConnection'
+import Store from '~/views/base/Store.vue'
 import HomePage from '../home/HomePage.vue'
 import BrowserPluginToolbar from './BrowserPluginToolbar.vue'
+import BrowserSettingsTab from './BrowserSettingsTab.vue'
 import ChromeBookmarkDialog from './ChromeBookmarkDialog.vue'
 import ChromeLibraryPanel from './ChromeLibraryPanel.vue'
 import ChromeCookieDialog from './ChromeCookieDialog.vue'
@@ -72,6 +75,51 @@ const {
   describeError: describeChromeError
 } = useBrowserConnection()
 const isChromeConnected = computed(() => chromeProfile.value?.status === 'connected')
+const onRoute = computed(() => surfaceActive.value && route.path === '/browser')
+const tabMenuIndex = computed(
+  () => state.value?.tabs.findIndex((tab) => tab.id === tabMenuTargetId.value) ?? -1
+)
+const tabMenuTarget = computed(() => state.value?.tabs[tabMenuIndex.value])
+const activeTab = computed(() =>
+  state.value?.tabs.find((tab) => tab.id === state.value?.activeTabId)
+)
+const isStoreTab = computed(() => activeTab.value?.url?.startsWith('tuff://store') ?? false)
+const isSettingsTab = computed(
+  () =>
+    (activeTab.value?.url?.startsWith('tuff://setting') ||
+      activeTab.value?.url?.startsWith('tuff://settings')) ??
+    false
+)
+const isLandingTab = computed(() => Boolean(activeTab.value && !activeTab.value.url))
+const localPage = computed(() => isLandingTab.value || isStoreTab.value || isSettingsTab.value)
+
+function tabIcon(tab: BrowserTabState): string {
+  if (tab.loading) return 'i-ri-loader-4-line'
+  if (!tab.url) return 'i-ri-global-line'
+  if (tab.url.startsWith('tuff://store')) return 'i-ri-store-2-line'
+  if (tab.url.startsWith('tuff://setting')) return 'i-ri-settings-3-line'
+  return localIcon(tab.url)
+}
+
+function tabTitle(tab: BrowserTabState): string {
+  if (!tab.url) return t('browser.newTab')
+  if (tab.url.startsWith('tuff://store')) return t('shell.store')
+  if (tab.url.startsWith('tuff://setting')) return t('shell.setting')
+  return tab.title || tab.url
+}
+// Tuff's local bookmarks only; Chrome bookmarks are a separate library written back to Chrome.
+const bookmarked = computed(
+  () => state.value?.bookmarks.some((page) => page.url === activeTab.value?.url) ?? false
+)
+const currentPage = computed(() =>
+  activeTab.value?.url ? { title: activeTab.value.title, url: activeTab.value.url } : null
+)
+const canSaveToChrome = computed(
+  () => Boolean(chromeProfile.value) && isOpenableBrowserUrl(currentPage.value?.url)
+)
+const savedPages = computed(() =>
+  panel.value === 'bookmarks' ? (state.value?.bookmarks ?? []) : (state.value?.recent ?? [])
+)
 const currentDomain = computed(() => {
   const url = activeTab.value?.url
   if (!url) return ''
@@ -89,6 +137,7 @@ const canSyncCookies = computed(() => {
 async function syncCurrentCookies(): Promise<void> {
   const profile = chromeProfile.value
   const url = activeTab.value?.url
+  const tabId = activeTab.value?.id
   if (!profile || !url || syncingCookies.value) return
   if (!isChromeConnected.value) {
     toast.warning(t('browser.cookies.chromeOfflineHint'))
@@ -98,10 +147,14 @@ async function syncCurrentCookies(): Promise<void> {
   syncingCookies.value = true
   try {
     const domain = currentDomain.value
+    if (tabId && domain) {
+      autoSyncedTabDomains.set(tabId, domain)
+      lastAutoSyncTimes.set(domain, Date.now())
+    }
     const result = await importChromeCookies(profile.id, { url, domain })
     if (result.importedCount > 0) {
       toast.success(t('browser.syncCookiesSuccess', { count: result.importedCount, domain }))
-      await runActive('reload')
+      void runActive('reload')
     } else {
       toast.info(t('browser.syncCookiesEmpty', { domain }))
     }
@@ -113,35 +166,98 @@ async function syncCurrentCookies(): Promise<void> {
   }
 }
 function onCookieSyncSuccess(count: number, domain: string): void {
+  const tabId = activeTab.value?.id
+  if (tabId && domain) {
+    autoSyncedTabDomains.set(tabId, domain)
+    lastAutoSyncTimes.set(domain, Date.now())
+  }
   toast.success(t('browser.syncCookiesSuccess', { count, domain }))
   void runActive('reload')
 }
 const AUTO_SYNC_STORAGE_KEY = 'tuff-browser-cookie-auto-sync-sites'
+const autoSyncedTabDomains = new Map<string, string>()
+const lastAutoSyncTimes = new Map<string, number>()
+
 watch(
-  () => [
-    activeTab.value?.url,
-    chromeProfile.value?.id,
-    activeTab.value?.loading,
-    isChromeConnected.value
-  ],
-  async ([newUrl, profileId, loading, connected]) => {
-    if (!onRoute.value || loading || !newUrl || !profileId || !connected) return
+  () => state.value?.tabs,
+  (tabs) => {
+    if (!tabs) return
+    const openIds = new Set(tabs.map((t) => t.id))
+    for (const id of autoSyncedTabDomains.keys()) {
+      if (!openIds.has(id)) autoSyncedTabDomains.delete(id)
+    }
+  }
+)
+
+watch(
+  () =>
+    [
+      activeTab.value?.id,
+      activeTab.value?.url,
+      chromeProfile.value?.id,
+      activeTab.value?.loading,
+      isChromeConnected.value
+    ] as const,
+  async ([tabId, newUrl, profileId, loading, connected]) => {
+    if (!onRoute.value || loading || !tabId || !newUrl || !profileId || !connected) return
+    if (syncingCookies.value) return
     if (!canSyncCookies.value) return
     const domain = currentDomain.value
     if (!domain) return
+    if (autoSyncedTabDomains.get(tabId) === domain) return
+    const lastTime = lastAutoSyncTimes.get(domain) ?? 0
+    if (Date.now() - lastTime < 60_000) {
+      autoSyncedTabDomains.set(tabId, domain)
+      return
+    }
     try {
       const raw = localStorage.getItem(AUTO_SYNC_STORAGE_KEY)
       const sites: string[] = raw ? JSON.parse(raw) : []
       if (!sites.includes(domain)) return
+
+      autoSyncedTabDomains.set(tabId, domain)
+      lastAutoSyncTimes.set(domain, Date.now())
+      syncingCookies.value = true
+
       const res = await importChromeCookies(profileId as string, { url: newUrl as string, domain })
       if (res && res.importedCount > 0) {
         toast.success(t('browser.syncCookiesSuccess', { count: res.importedCount, domain }))
-        await runActive('reload')
+        void runActive('reload')
       }
     } catch {
       // silent background auto-sync failure
+    } finally {
+      syncingCookies.value = false
     }
   }
+)
+
+watch(
+  () => [route.query.category, route.query.tab] as const,
+  async ([category, tab]) => {
+    if (category) {
+      const s = state.value ?? (await sdk.getState().catch(() => null))
+      if (s) {
+        const existing = s.tabs.find((t) => t.url.startsWith('tuff://setting'))
+        if (existing) {
+          if (existing.id !== s.activeTabId) await sdk.activateTab(existing.id)
+        } else {
+          await sdk.createTab('tuff://settings')
+        }
+      }
+    } else if (tab === 'store') {
+      const s = state.value ?? (await sdk.getState().catch(() => null))
+      if (s) {
+        const existing = s.tabs.find((t) => t.url.startsWith('tuff://store'))
+        if (existing) {
+          if (existing.id !== s.activeTabId) await sdk.activateTab(existing.id)
+        } else {
+          await sdk.createTab('tuff://store')
+        }
+      }
+    }
+  },
+  { immediate: true }
 )
 const snapshots = ref<Record<string, string>>({})
 const currentSnapshot = computed(() => {
@@ -161,6 +277,7 @@ const isSuspended = computed(() => {
     Boolean(panel.value)
   )
 })
+let unsubscribeSnapshot: (() => void) | undefined
 watch(isSuspended, (suspended) => {
   if (suspended && activeTab.value?.id) {
     const tabId = activeTab.value.id
@@ -171,36 +288,33 @@ watch(isSuspended, (suspended) => {
     })
   }
 })
-let unsubscribeSnapshot: (() => void) | undefined
-const tabMenuIndex = computed(
-  () => state.value?.tabs.findIndex((tab) => tab.id === tabMenuTargetId.value) ?? -1
-)
-const tabMenuTarget = computed(() => state.value?.tabs[tabMenuIndex.value])
-const activeTab = computed(() =>
-  state.value?.tabs.find((tab) => tab.id === state.value?.activeTabId)
-)
-const onRoute = computed(() => surfaceActive.value && route.path === '/browser')
-const localPage = computed(() => Boolean(activeTab.value && !activeTab.value.url))
-// Tuff's local bookmarks only; Chrome bookmarks are a separate library written back to Chrome.
-const bookmarked = computed(
-  () => state.value?.bookmarks.some((page) => page.url === activeTab.value?.url) ?? false
-)
-const currentPage = computed(() =>
-  activeTab.value?.url ? { title: activeTab.value.title, url: activeTab.value.url } : null
-)
-const canSaveToChrome = computed(
-  () => Boolean(chromeProfile.value) && isOpenableBrowserUrl(currentPage.value?.url)
-)
-const savedPages = computed(() =>
-  panel.value === 'bookmarks' ? (state.value?.bookmarks ?? []) : (state.value?.recent ?? [])
-)
 const shortcuts = [
-  { title: 'Google', url: 'https://www.google.com', icon: 'i-simple-icons-google' },
-  { title: 'GitHub', url: 'https://github.com', icon: 'i-simple-icons-github' },
-  { title: 'Figma', url: 'https://www.figma.com', icon: 'i-simple-icons-figma' },
-  { title: 'Notion', url: 'https://www.notion.so', icon: 'i-simple-icons-notion' },
-  { title: 'YouTube', url: 'https://www.youtube.com', icon: 'i-simple-icons-youtube' },
-  { title: '知乎', url: 'https://www.zhihu.com', icon: 'i-simple-icons-zhihu' }
+  {
+    title: 'Google',
+    url: 'https://www.google.com',
+    icon: 'i-simple-icons-google',
+    color: '#4285F4'
+  },
+  {
+    title: 'GitHub',
+    url: 'https://github.com',
+    icon: 'i-simple-icons-github',
+    color: 'currentColor'
+  },
+  { title: 'Figma', url: 'https://www.figma.com', icon: 'i-simple-icons-figma', color: '#F24E1E' },
+  {
+    title: 'Notion',
+    url: 'https://www.notion.so',
+    icon: 'i-simple-icons-notion',
+    color: 'currentColor'
+  },
+  { title: '知乎', url: 'https://www.zhihu.com', icon: 'i-simple-icons-zhihu', color: '#0066FF' },
+  {
+    title: 'YouTube',
+    url: 'https://www.youtube.com',
+    icon: 'i-simple-icons-youtube',
+    color: '#FF0000'
+  }
 ]
 let retryAction: (() => Promise<BrowserWorkspaceState>) | null = null
 
@@ -718,19 +832,15 @@ onBeforeUnmount(() => {
             :aria-description="t('browser.reorderTabsHint')"
             :aria-expanded="tabMenuOpen && tabMenuTargetId === tab.id"
             class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-t-lg px-3 text-sm outline-offset-[-3px]"
-            :title="tab.url || t('browser.newTab')"
+            :title="tabTitle(tab)"
             :draggable="!tabMovePending"
             @dragstart="startTabDrag(tab.id, $event)"
             @dragend="resetTabDrag"
             @click="command(() => sdk.activateTab(tab.id))"
             @keydown="tabKeydown($event, index)"
           >
-            <span
-              class="inline-flex h-4 w-4 flex-none"
-              :class="tab.loading ? 'i-ri-loader-4-line' : localIcon(tab.url)"
-              aria-hidden="true"
-            />
-            <span class="truncate">{{ tab.url ? tab.title || tab.url : t('browser.newTab') }}</span>
+            <span class="inline-flex h-4 w-4 flex-none" :class="tabIcon(tab)" aria-hidden="true" />
+            <span class="truncate">{{ tabTitle(tab) }}</span>
           </button>
           <TxIconButton
             icon="i-ri-close-line"
@@ -780,6 +890,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div
+      v-if="!isSettingsTab && !isStoreTab"
       class="flex h-14 flex-none items-center gap-1 border-b border-[var(--tx-border-color-light)] px-3"
     >
       <TxIconButton
@@ -801,14 +912,29 @@ onBeforeUnmount(() => {
         @click="runActive('refresh')"
       />
       <label
-        class="mx-2 flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl bg-[var(--tx-fill-color-light)] px-3 focus-within:ring-2 focus-within:ring-[var(--tx-color-primary)]"
+        class="mx-2 flex h-9.5 min-w-0 flex-1 items-center gap-2 rounded-xl border border-transparent bg-[var(--tx-fill-color-light)] px-3 transition-colors focus-within:border-[var(--tx-color-primary-light-5)] focus-within:bg-[var(--tx-bg-color)] focus-within:ring-2 focus-within:ring-[var(--tx-color-primary)]"
       >
-        <span class="i-ri-global-line inline-flex h-4 w-4 flex-none" aria-hidden="true" />
+        <span
+          :class="
+            activeTab?.url?.startsWith('tuff://')
+              ? `${tabIcon(activeTab)} text-[var(--tx-color-primary)]`
+              : activeTab?.url?.startsWith('https')
+                ? 'i-ri-lock-2-line text-[var(--tx-color-success)]'
+                : 'i-ri-global-line text-[var(--tx-text-color-secondary)]'
+          "
+          aria-hidden="true"
+        />
         <input
           ref="addressInput"
           v-model="address"
           :aria-label="t('browser.address')"
-          :placeholder="t('browser.addressPlaceholder')"
+          :placeholder="
+            isStoreTab
+              ? t('shell.store')
+              : isSettingsTab
+                ? t('shell.setting')
+                : t('browser.addressPlaceholder')
+          "
           :disabled="!activeTab"
           spellcheck="false"
           autocomplete="off"
@@ -858,6 +984,13 @@ onBeforeUnmount(() => {
         >
           <span class="i-ri-more-2-line text-xs" />
         </button>
+      </div>
+      <div
+        class="flex items-center gap-1 rounded-lg border border-[var(--tx-border-color-light)] bg-[var(--tx-fill-color-light)]/80 px-2 py-1 text-xs text-[var(--tx-text-color-regular)] select-none"
+        :title="t('browser.egoIndicator') || 'Ego 自动化助手已就绪'"
+      >
+        <span class="i-ri-flashlight-line text-[var(--tx-color-primary)]" />
+        <span class="font-medium text-[var(--tx-text-color-primary)]">Ego</span>
       </div>
       <TxIconButton
         icon="i-ri-layout-right-line"
@@ -926,30 +1059,52 @@ onBeforeUnmount(() => {
       </div>
       <HomePage
         v-if="state"
-        v-show="localPage && !panel"
+        v-show="isLandingTab && !panel"
         browser-landing
-        :browser-active="onRoute && localPage && !panel"
+        :browser-active="onRoute && isLandingTab && !panel"
         :browser-navigate="navigate"
         style="--home-chat-lane-width: min(920px, calc(100% - 64px))"
       >
         <template #browser-footer>
+          <!-- Top Sites / 快捷常用站点 -->
           <div
-            class="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
+            class="mt-6 flex flex-wrap items-center justify-center gap-6"
             :aria-label="t('browser.shortcuts')"
           >
-            <TxButton
+            <button
               v-for="site in shortcuts"
               :key="site.url"
-              variant="ghost"
-              size="sm"
-              :icon="site.icon"
+              type="button"
+              class="group flex flex-col items-center gap-2 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[var(--tx-color-primary)] rounded-xl"
               @click="navigate(site.url).catch(() => {})"
-              >{{ site.title }}</TxButton
             >
+              <div
+                class="flex h-13 w-13 items-center justify-center rounded-2xl border border-[var(--tx-border-color-light)] bg-[var(--tx-fill-color-light)] shadow-xs transition-all duration-200 group-hover:scale-105 group-hover:border-[var(--tx-color-primary-light-5)] group-hover:bg-[var(--tx-fill-color)] group-hover:shadow-md"
+              >
+                <span
+                  class="inline-flex h-6 w-6 transition-transform group-hover:scale-110"
+                  :class="site.icon"
+                  :style="{ color: site.color !== 'currentColor' ? site.color : undefined }"
+                  aria-hidden="true"
+                />
+              </div>
+              <span
+                class="text-xs font-medium text-[var(--tx-text-color-secondary)] transition-colors group-hover:text-[var(--tx-text-color-primary)]"
+              >
+                {{ site.title }}
+              </span>
+            </button>
           </div>
-          <section class="mt-7 w-full" :aria-label="t('browser.recent')">
-            <div class="mb-2 flex items-center justify-between">
-              <h2 class="m-0 text-sm font-medium">{{ t('browser.recent') }}</h2>
+
+          <!-- 继续上次工作现场 / 历史现场 -->
+          <section class="mt-9 w-full" :aria-label="t('browser.recent')">
+            <div class="mb-3 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="i-ri-history-line text-sm text-[var(--tx-text-color-secondary)]" />
+                <h2 class="m-0 text-sm font-medium text-[var(--tx-text-color-primary)]">
+                  {{ t('browser.recentWorkspaces') || t('browser.recent') }}
+                </h2>
+              </div>
               <TxButton
                 v-if="state.recent.length"
                 variant="ghost"
@@ -958,41 +1113,71 @@ onBeforeUnmount(() => {
                 >{{ t('browser.showAll') }}</TxButton
               >
             </div>
-            <div
-              class="grid grid-cols-1 gap-1 border-y border-[var(--tx-border-color-light)] py-2 md:grid-cols-2"
-            >
-              <p
-                v-if="!state.recent.length"
-                class="col-span-full m-0 py-3 text-xs text-[var(--tx-text-color-regular)]"
-              >
-                {{ t('browser.recentEmpty') }}
-              </p>
+            <div v-if="state.recent.length" class="grid grid-cols-1 gap-3 md:grid-cols-2">
               <button
                 v-for="page in state.recent.slice(0, 4)"
                 :key="page.url"
                 type="button"
-                class="flex min-w-0 items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-[var(--tx-fill-color-light)] focus-visible:outline-2 focus-visible:outline-[var(--tx-color-primary)]"
+                class="group flex min-w-0 items-center gap-3.5 rounded-xl border border-[var(--tx-border-color-light)] bg-[var(--tx-fill-color-light)]/50 p-3 text-left transition-all duration-150 hover:border-[var(--tx-border-color)] hover:bg-[var(--tx-fill-color-light)] hover:shadow-sm focus-visible:outline-2 focus-visible:outline-[var(--tx-color-primary)] cursor-pointer"
                 :title="page.url"
                 @click="openSaved(page)"
               >
                 <span
-                  class="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[var(--tx-fill-color-light)]"
-                  ><span
+                  class="inline-flex h-10 w-10 flex-none items-center justify-center rounded-lg border border-[var(--tx-border-color-light)] bg-[var(--tx-bg-color)] text-[var(--tx-color-primary)] shadow-2xs group-hover:scale-105 transition-transform"
+                >
+                  <span
                     class="inline-flex h-5 w-5"
                     :class="localIcon(page.url)"
                     aria-hidden="true"
-                /></span>
-                <span class="min-w-0 flex-1"
-                  ><span class="block truncate text-sm">{{ page.title || page.url }}</span
-                  ><span class="block text-xs text-[var(--tx-text-color-regular)]">{{
-                    dateLabel(page)
-                  }}</span></span
-                >
+                  />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span
+                    class="block truncate text-sm font-medium text-[var(--tx-text-color-primary)] group-hover:text-[var(--tx-color-primary)] transition-colors"
+                  >
+                    {{ page.title || page.url }}
+                  </span>
+                  <span
+                    class="mt-0.5 flex items-center gap-2 text-xs text-[var(--tx-text-color-regular)]"
+                  >
+                    <span class="truncate max-w-[180px]">{{ page.url }}</span>
+                    <span>·</span>
+                    <span class="shrink-0">{{ dateLabel(page) }}</span>
+                  </span>
+                </span>
+                <span
+                  class="i-ri-arrow-right-s-line flex-none text-lg text-[var(--tx-text-color-secondary)] opacity-40 transition-all group-hover:translate-x-0.5 group-hover:opacity-100"
+                />
               </button>
+            </div>
+            <div
+              v-else
+              class="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--tx-border-color-light)] py-6 text-center text-xs text-[var(--tx-text-color-regular)]"
+            >
+              <span
+                class="i-ri-compass-3-line mb-1 text-xl text-[var(--tx-text-color-secondary)]/50"
+              />
+              <span>{{ t('browser.recentEmpty') }}</span>
             </div>
           </section>
         </template>
       </HomePage>
+
+      <!-- 插件商店 Tab -->
+      <div
+        v-if="state && isStoreTab && !panel"
+        class="h-full w-full overflow-y-auto bg-[var(--tx-bg-color)]"
+      >
+        <Store />
+      </div>
+
+      <!-- 设置中心 Tab -->
+      <div
+        v-if="state && isSettingsTab && !panel"
+        class="h-full w-full overflow-hidden bg-[var(--tx-bg-color)]"
+      >
+        <BrowserSettingsTab />
+      </div>
       <section
         v-if="panel"
         class="absolute inset-0 overflow-y-auto bg-[var(--tx-bg-color)] px-6 py-5"

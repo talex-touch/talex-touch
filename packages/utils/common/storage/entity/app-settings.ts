@@ -238,7 +238,7 @@ const _appSettingOriginData = {
     voiceDictation: false,
     voiceQuickEdit: false,
     omniPanel: false,
-    browserWorkspace: false,
+    browserWorkspace: true,
   },
   omniPanel: {
     enableShortcut: false,

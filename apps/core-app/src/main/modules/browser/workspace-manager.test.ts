@@ -798,3 +798,43 @@ describe('browser durable bookmark authority', () => {
     ])
   })
 })
+
+describe('internal workspace tabs (tuff://)', () => {
+  it('allows tuff://store and tuff://settings as internal tabs without attaching guest views', async () => {
+    const guests: GuestView[] = []
+    const owner = new OwnerWindow()
+    const manager = new BrowserWorkspaceManager({
+      owner: owner as never,
+      createView: () => {
+        const guest = new GuestView()
+        guests.push(guest)
+        return guest as never
+      },
+      persist: async () => {},
+      notify: () => {}
+    })
+
+    manager.setViewport({
+      visible: true,
+      bounds: { x: 0, y: 0, width: 800, height: 600 }
+    })
+
+    await manager.createTab('tuff://store')
+    expect(manager.getState().tabs).toHaveLength(2)
+    const storeTab = manager.getState().tabs[1]!
+    expect(storeTab.url).toBe('tuff://store')
+    expect(storeTab.title).toBe('插件')
+    expect(owner.attached.size).toBe(0)
+    expect(guests.length).toBe(0)
+
+    await manager.createTab('tuff://settings')
+    expect(manager.getState().tabs).toHaveLength(3)
+    const settingsTab = manager.getState().tabs[2]!
+    expect(settingsTab.url).toBe('tuff://settings')
+    expect(settingsTab.title).toBe('设置')
+    expect(owner.attached.size).toBe(0)
+    expect(guests.length).toBe(0)
+
+    await manager.dispose()
+  })
+})

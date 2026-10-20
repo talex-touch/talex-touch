@@ -1477,6 +1477,7 @@
     "closeLibrary": "关闭浏览记录与收藏",
     "shortcuts": "常用网站",
     "recent": "继续上次",
+    "recentWorkspaces": "继续上次工作现场",
     "showAll": "查看全部",
     "history": "浏览记录",
     "bookmarks": "Tuff 收藏",
@@ -1485,7 +1486,8 @@
     "loading": "正在加载网页",
     "actionFailed": "浏览器操作未完成。",
     "pageFailed": "网页未能加载",
-    "retry": "重试"
+    "retry": "重试",
+    "egoIndicator": "Ego 智能代操作助手就绪"
   },
   "accountMenu": {
     "title": "账号与 Chrome 连接",
@@ -1606,7 +1608,11 @@
       "BROWSER_CONNECTION_DISPOSED": "Chrome 连接服务已停止。",
       "BROWSER_SEND_FAILED": "未能发送到 Chrome。",
       "BROWSER_CONNECTION_STORAGE_INVALID": "Chrome 连接数据已损坏，无法读取。",
-      "BROWSER_INVALID_TEXT": "输入内容过长或包含无效字符。"
+      "BROWSER_INVALID_TEXT": "输入内容过长或包含无效字符。",
+      "BROWSER_COOKIES_RESULT_ABORTED": "与 Chrome 扩展的连接意外中断。请在 Chrome 或 ego 的扩展管理页（chrome://extensions）重新加载扩展并重试。",
+      "BROWSER_COOKIES_RESULT_TIMEOUT": "获取 Chrome Cookie 响应超时。请确认 Chrome 正在运行并在 chrome://extensions 中重新加载扩展。",
+      "BROWSER_COOKIES_FAILED": "Chrome 扩展未能获取指定站点的 Cookie。",
+      "cookiesApiUnavailable": "Chrome 扩展未被授予 Cookie 读取权限，请在扩展管理中检查权限设置。"
     }
   },
   "chromeLibrary": {

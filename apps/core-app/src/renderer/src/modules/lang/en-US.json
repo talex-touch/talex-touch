@@ -1477,6 +1477,7 @@
     "closeLibrary": "Close history and bookmarks",
     "shortcuts": "Quick links",
     "recent": "Continue where you left off",
+    "recentWorkspaces": "Recent workspaces",
     "showAll": "View all",
     "history": "History",
     "bookmarks": "Tuff saved",
@@ -1485,7 +1486,8 @@
     "loading": "Loading page",
     "actionFailed": "The browser action could not be completed.",
     "pageFailed": "This page could not be loaded",
-    "retry": "Retry"
+    "retry": "Retry",
+    "egoIndicator": "Ego browser agent ready"
   },
   "accountMenu": {
     "title": "Account and Chrome connection",
@@ -1606,7 +1608,11 @@
       "BROWSER_CONNECTION_DISPOSED": "The Chrome connection service has stopped.",
       "BROWSER_SEND_FAILED": "Couldn't send to Chrome.",
       "BROWSER_CONNECTION_STORAGE_INVALID": "Chrome connection data is damaged and can't be read.",
-      "BROWSER_INVALID_TEXT": "The input is too long or contains invalid characters."
+      "BROWSER_INVALID_TEXT": "The input is too long or contains invalid characters.",
+      "BROWSER_COOKIES_RESULT_ABORTED": "The connection to the Chrome extension was aborted. Please reload the extension in chrome://extensions and try again.",
+      "BROWSER_COOKIES_RESULT_TIMEOUT": "Fetching Chrome cookies timed out. Make sure Chrome is running and reload the extension in chrome://extensions.",
+      "BROWSER_COOKIES_FAILED": "The Chrome extension failed to fetch cookies for the specified site.",
+      "cookiesApiUnavailable": "The Chrome extension does not have permission to access cookies. Please check its permissions."
     }
   },
   "chromeLibrary": {

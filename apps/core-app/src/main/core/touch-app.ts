@@ -272,8 +272,8 @@ export class TouchApp implements TalexTouch.TouchApp {
       const primary = screen.getPrimaryDisplay()
 
       const defaultSize = {
-        width: typeof MainWindowOption.width === 'number' ? MainWindowOption.width : 1100,
-        height: typeof MainWindowOption.height === 'number' ? MainWindowOption.height : 680
+        width: typeof MainWindowOption.width === 'number' ? MainWindowOption.width : 1440,
+        height: typeof MainWindowOption.height === 'number' ? MainWindowOption.height : 900
       }
       const minSize = {
         width: typeof MainWindowOption.minWidth === 'number' ? MainWindowOption.minWidth : 0,

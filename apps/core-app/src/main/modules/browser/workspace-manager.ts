@@ -135,10 +135,15 @@ export class BrowserWorkspaceManager {
   }
 
   private blankTab(id: string = randomUUID(), url = '', title = ''): BrowserTabState {
+    let defaultTitle = title
+    if (!defaultTitle) {
+      if (url === 'tuff://store') defaultTitle = '插件'
+      else if (url === 'tuff://settings' || url === 'tuff://setting') defaultTitle = '设置'
+    }
     return {
       id,
       url,
-      title,
+      title: defaultTitle,
       favicon: null,
       loading: false,
       canGoBack: false,
@@ -257,9 +262,12 @@ export class BrowserWorkspaceManager {
     tab.url = url
     tab.error = null
     tab.favicon = null
-    if (!url) {
+    const isRemote = Boolean(url && (url.startsWith('https://') || url.startsWith('http://')))
+    if (!isRemote) {
       this.closeGuest(id)
-      Object.assign(tab, this.blankTab(id))
+      if (!url) {
+        Object.assign(tab, this.blankTab(id))
+      }
     } else {
       const guest = this.guests.get(id)
       if (guest) this.load(tab, guest)
@@ -308,7 +316,10 @@ export class BrowserWorkspaceManager {
 
   async toggleBookmark(id: string): Promise<BrowserWorkspaceState> {
     const tab = this.tab(id)
-    if (!isAllowedBrowserUrl(tab.url)) throw new Error('BROWSER_BOOKMARK_INVALID')
+    const isRemote = Boolean(
+      tab.url && (tab.url.startsWith('https://') || tab.url.startsWith('http://'))
+    )
+    if (!isAllowedBrowserUrl(tab.url) || !isRemote) throw new Error('BROWSER_BOOKMARK_INVALID')
     const page = {
       url: tab.url,
       title: tab.title,
@@ -377,11 +388,14 @@ export class BrowserWorkspaceManager {
     const [width, height] = this.deps.owner.getContentSize()
     const bounds = clampBrowserViewport(this.viewport, { width, height })
     const tab = this.tabs.find((item) => item.id === this.activeTabId)
-    if (bounds && this.deps.owner.isVisible() && tab?.url && !this.guests.has(tab.id))
-      this.createGuest(tab)
+    const isRemote = Boolean(
+      tab?.url && (tab.url.startsWith('https://') || tab.url.startsWith('http://'))
+    )
+    if (bounds && this.deps.owner.isVisible() && isRemote && !this.guests.has(tab!.id))
+      this.createGuest(tab!)
     for (const [id, guest] of this.guests) {
       const visible = Boolean(
-        bounds && this.deps.owner.isVisible() && id === this.activeTabId && tab?.url
+        bounds && this.deps.owner.isVisible() && id === this.activeTabId && isRemote
       )
       if (visible && bounds) {
         guest.view.setBounds(bounds)
