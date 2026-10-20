@@ -14,6 +14,7 @@ import type { ConversationProjectRow } from '~/modules/conversation/conversation
 import { TxDropdownItem, TxDropdownMenu } from '@talex-touch/tuffex/dropdown-menu'
 import { onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useConversationLoading } from '~/modules/conversation/useConversationLoading'
 
 /** How long an armed delete waits for its second click before it turns back into the trash can. */
 const DELETE_CONFIRM_WINDOW_MS = 3000
@@ -35,6 +36,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { isConversationLoading } = useConversationLoading()
 const openSessionMenuRef = ref<string | null>(null)
 /** The conversation whose trash can has turned into 「确认？」, if any. */
 const armedId = ref<string | null>(null)
@@ -120,7 +122,10 @@ onBeforeUnmount(disarm)
     <div
       v-if="row.kind === 'conversation'"
       class="ShellProjectRows-Row"
-      :class="{ active: row.conversation.id === activeId }"
+      :class="{
+        active: row.conversation.id === activeId,
+        'is-loading': isConversationLoading(row.conversation.id)
+      }"
       @mouseleave="release(row.conversation.id)"
     >
       <button
@@ -132,6 +137,14 @@ onBeforeUnmount(disarm)
       >
         {{ conversationTitle(row.conversation) }}
       </button>
+      <div
+        v-if="isConversationLoading(row.conversation.id)"
+        class="ShellProjectRows-LoadingIndicator"
+        :title="t('shell.history.loading')"
+        :aria-label="t('shell.history.loading')"
+      >
+        <span class="ShellProjectRows-Spinner" aria-hidden="true" />
+      </div>
       <!-- One button in both states, so focus stays put when the icon turns into 「确认？」. -->
       <button
         class="ShellProjectRows-Action ShellProjectRows-Delete"
@@ -197,6 +210,7 @@ onBeforeUnmount(disarm)
  * folder sets `--shell-rows-indent` so its rows start in the nav labels' column.
  */
 .ShellProjectRows-Row {
+  position: relative;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -211,6 +225,38 @@ onBeforeUnmount(disarm)
 
   &.active {
     background: var(--shell-primary-soft);
+  }
+
+  &.is-loading {
+    border-color: color-mix(in srgb, var(--shell-primary) 32%, transparent);
+    animation: shell-row-glow-pulse 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      padding: 1px;
+      background: conic-gradient(
+        from var(--shell-row-spin-angle, 0deg) in srgb,
+        transparent 0deg,
+        transparent 40deg,
+        var(--shell-primary) 100deg,
+        color-mix(in srgb, var(--shell-primary) 70%, #93c5fd) 140deg,
+        transparent 180deg
+      );
+      pointer-events: none;
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: shell-row-spin-angle 2.4s linear infinite;
+      z-index: 2;
+    }
   }
 }
 
@@ -321,8 +367,85 @@ onBeforeUnmount(disarm)
   line-height: 1;
 }
 
+.ShellProjectRows-LoadingIndicator {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  color: var(--shell-primary);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.ShellProjectRows-Spinner {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid color-mix(in srgb, var(--shell-primary) 28%, transparent);
+  border-top-color: var(--shell-primary);
+  border-radius: 50%;
+  animation: shell-spinner-rotate 0.75s linear infinite;
+}
+
+.ShellProjectRows-Row:has(.ShellProjectRows-Delete.is-armed) .ShellProjectRows-LoadingIndicator {
+  display: none;
+}
+
+@property --shell-row-spin-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes shell-row-spin-angle {
+  to {
+    --shell-row-spin-angle: 360deg;
+  }
+}
+
+@keyframes shell-row-glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--shell-primary) 20%, transparent),
+      inset 0 0 8px color-mix(in srgb, var(--shell-primary) 12%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--shell-primary) 50%, transparent),
+      inset 0 0 12px color-mix(in srgb, var(--shell-primary) 28%, transparent);
+  }
+}
+
+@keyframes shell-spinner-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 /** Reduced motion swaps icon and label outright; the fade that reveals the button stays. */
 @media (prefers-reduced-motion: reduce) {
+  .ShellProjectRows-Row.is-loading {
+    animation: none;
+    border-color: var(--shell-primary-border);
+    box-shadow: inset 0 0 0 1px var(--shell-primary-border);
+
+    &::before {
+      display: none;
+    }
+  }
+
+  .ShellProjectRows-Spinner {
+    animation: none;
+    border-top-color: var(--shell-primary);
+  }
+
   .ShellProjectRows-Delete {
     transition: opacity 0.15s ease;
   }

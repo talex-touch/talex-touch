@@ -17,6 +17,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, inject, nextTick, provide, ref, watch } from 'vue'
+import {
+  resetConversationLoading,
+  setConversationLoading
+} from '~/modules/conversation/useConversationLoading'
 import { useProjectStore } from '~/stores/projects'
 
 import { omniPanelShowEvent } from '../../../../shared/events/omni-panel'
@@ -1429,6 +1433,25 @@ describe('shellConversationList rail mode', () => {
 
     await items[0]!.trigger('click')
     expect(pushMock).toHaveBeenCalledWith('/home/c/c1')
+    wrapper.unmount()
+  })
+
+  it('renders loading dot and is-loading class on rail item when conversation is loading', async () => {
+    sidebarHolder.collapsed!.value = true
+    historyHolder.conversations!.value = [
+      conversation({ id: 'c-loading', title: 'Loading Chat', updatedAt: 200 }),
+      conversation({ id: 'c-idle', title: 'Idle Chat', updatedAt: 100 })
+    ]
+    setConversationLoading('c-loading', true)
+    const wrapper = await mountList()
+
+    const items = wrapper.findAll('.ShellConversationList-RailItem')
+    expect(items[0]!.classes()).toContain('is-loading')
+    expect(items[0]!.find('.ShellConversationList-RailLoadingDot').exists()).toBe(true)
+
+    expect(items[1]!.classes()).not.toContain('is-loading')
+    expect(items[1]!.find('.ShellConversationList-RailLoadingDot').exists()).toBe(false)
+    resetConversationLoading()
     wrapper.unmount()
   })
 })

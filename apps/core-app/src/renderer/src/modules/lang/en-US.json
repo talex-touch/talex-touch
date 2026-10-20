@@ -1726,7 +1726,8 @@
       "untitled": "New chat",
       "delete": "Delete conversation",
       "deleteConfirm": "Delete?",
-      "deleteConfirmLabel": "Delete “{title}”?"
+      "deleteConfirmLabel": "Delete “{title}”?",
+      "loading": "Generating…"
     },
     "projects": {
       "section": "Projects",

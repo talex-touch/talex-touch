@@ -84,6 +84,7 @@ import {
   createConversationId,
   useConversationHistory
 } from '~/modules/conversation/useConversationHistory'
+import { useConversationLoading } from '~/modules/conversation/useConversationLoading'
 import { useHomeConversation } from '~/modules/conversation/useHomeConversation'
 import {
   AgentWorkspaceRequestError,
@@ -262,6 +263,7 @@ const conversation = useHomeConversation({ workspace: () => workspace.adapter })
 const { isCompacting, isEmpty, isStreaming, lastTurn, messages } = conversation
 
 const panelOpen = ref(false)
+const { setConversationLoading } = useConversationLoading()
 
 /**
  * Whether this page is the one on screen. Read by the surface watcher below and by the composer's
@@ -321,6 +323,19 @@ const dictation = useComposerDictation({
  * must not send it twice.
  */
 const sending = ref(false)
+watch(
+  [
+    () => (typeof route.params.id === 'string' ? route.params.id : conversationId.value),
+    isStreaming,
+    sending
+  ],
+  ([id, streaming, isSending]) => {
+    if (id) {
+      setConversationLoading(id, Boolean(streaming || isSending))
+    }
+  },
+  { immediate: true }
+)
 const pageSubmissionSequence = createLatestOnly()
 
 // A plain send waits for dictation to finish; while it runs the send key means 「结束并发送」 (D10-d).
@@ -1122,6 +1137,7 @@ async function submit(voice?: VoiceSend): Promise<void> {
   const head = measureLeavingHead()
 
   sending.value = true
+  if (idAtSend) setConversationLoading(idAtSend, true)
   let disposition: WorkspaceSubmitDisposition
   try {
     disposition = await workspace.submit(text, attachments, {
@@ -1148,6 +1164,7 @@ async function submit(voice?: VoiceSend): Promise<void> {
       pendingAttachments.value = [...(attachments ?? []), ...pendingAttachments.value]
     }
     if (minted) {
+      if (idAtSend) setConversationLoading(idAtSend, false)
       conversationId.value = null
       idAtSend = null
     }

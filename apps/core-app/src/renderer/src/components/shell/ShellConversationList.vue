@@ -18,6 +18,7 @@ import { projectConversationGroups } from '~/modules/conversation/conversation-p
 import { continueLocalAiSession } from '~/modules/conversation/local-ai-session-entry'
 import { useConversationEntry } from '~/modules/conversation/useConversationEntry'
 import { useConversationHistory } from '~/modules/conversation/useConversationHistory'
+import { useConversationLoading } from '~/modules/conversation/useConversationLoading'
 import { blankConversationOwner, useProjectFolders } from '~/modules/layout/useProjectFolders'
 import { useProjectStore } from '~/stores/projects'
 import MetaHintBadge from './MetaHintBadge.vue'
@@ -25,6 +26,7 @@ import ShellProjectFolder from './ShellProjectFolder.vue'
 import ShellProjectRows from './ShellProjectRows.vue'
 
 const { t } = useI18n()
+const { isConversationLoading } = useConversationLoading()
 /**
  * The skeleton's folder-name bars, one per row. In pixels because a percentage has nothing to resolve
  * against in a content-sized box; at the narrowest sidebar the widest still stops short of the ⋯.
@@ -308,22 +310,35 @@ function onRailRowClick(row: RailConversationRow): void {
         <template #reference>
           <button
             class="ShellConversationList-RailItem"
-            :class="{ active: row.kind === 'conversation' && row.id === activeId }"
+            :class="{
+              active: row.kind === 'conversation' && row.id === activeId,
+              'is-loading': Boolean(row.id && isConversationLoading(row.id))
+            }"
             type="button"
             :aria-label="row.title"
             @click="onRailRowClick(row)"
           >
             <span class="ShellConversationList-RailShortTitle">{{ shortTitle(row.title) }}</span>
+            <span
+              v-if="row.id && isConversationLoading(row.id)"
+              class="ShellConversationList-RailLoadingDot"
+              aria-hidden="true"
+            />
           </button>
         </template>
 
         <div class="ShellConversationList-RailPopover">
           <div class="ShellConversationList-RailPopoverHeader">
             <span class="ShellConversationList-RailPopoverTitle">{{ row.title }}</span>
+            <span
+              v-if="row.id && isConversationLoading(row.id)"
+              class="ShellConversationList-RailPopoverLoading"
+            >
+              {{ t('shell.history.loading') }}
+            </span>
             <button
               v-if="row.kind === 'conversation' && row.id"
               class="ShellConversationList-RailPopoverDelete"
-              type="button"
               :title="t('shell.history.delete')"
               :aria-label="t('shell.history.delete')"
               @click.stop="removeConversation(row.id)"
@@ -679,9 +694,11 @@ function onRailRowClick(row: RailConversationRow): void {
 }
 
 .ShellConversationList-RailItem {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   width: 38px;
   height: 32px;
   padding: 0 4px;
@@ -706,6 +723,38 @@ function onRailRowClick(row: RailConversationRow): void {
     border-color: transparent;
     background: var(--shell-primary-soft);
     color: var(--shell-primary);
+  }
+
+  &.is-loading {
+    border-color: color-mix(in srgb, var(--shell-primary) 32%, transparent);
+    animation: shell-rail-glow-pulse 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      padding: 1px;
+      background: conic-gradient(
+        from var(--shell-rail-spin-angle, 0deg) in srgb,
+        transparent 0deg,
+        transparent 40deg,
+        var(--shell-primary) 100deg,
+        color-mix(in srgb, var(--shell-primary) 70%, #93c5fd) 140deg,
+        transparent 180deg
+      );
+      pointer-events: none;
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: shell-rail-spin-angle 2.4s linear infinite;
+      z-index: 2;
+    }
   }
 }
 
@@ -741,6 +790,80 @@ function onRailRowClick(row: RailConversationRow): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.ShellConversationList-RailLoadingDot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--shell-primary);
+  box-shadow: 0 0 5px var(--shell-primary);
+  pointer-events: none;
+  animation: shell-rail-dot-pulse 1.4s ease-in-out infinite;
+  z-index: 3;
+}
+
+.ShellConversationList-RailPopoverLoading {
+  flex: 0 0 auto;
+  font-size: var(--shell-fs-caption);
+  color: var(--shell-primary);
+  font-weight: 500;
+}
+
+@property --shell-rail-spin-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes shell-rail-spin-angle {
+  to {
+    --shell-rail-spin-angle: 360deg;
+  }
+}
+
+@keyframes shell-rail-glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--shell-primary) 20%, transparent),
+      inset 0 0 8px color-mix(in srgb, var(--shell-primary) 12%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--shell-primary) 50%, transparent),
+      inset 0 0 12px color-mix(in srgb, var(--shell-primary) 28%, transparent);
+  }
+}
+
+@keyframes shell-rail-dot-pulse {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ShellConversationList-RailItem.is-loading {
+    animation: none;
+    border-color: var(--shell-primary-border);
+    box-shadow: inset 0 0 0 1px var(--shell-primary-border);
+
+    &::before {
+      display: none;
+    }
+  }
+
+  .ShellConversationList-RailLoadingDot {
+    animation: none;
+  }
 }
 
 .ShellConversationList-RailPopoverDelete {

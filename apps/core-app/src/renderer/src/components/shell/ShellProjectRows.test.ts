@@ -7,7 +7,10 @@ import type { ConversationProjectRow } from '~/modules/conversation/conversation
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
-
+import {
+  resetConversationLoading,
+  setConversationLoading
+} from '~/modules/conversation/useConversationLoading'
 import ShellProjectRows from './ShellProjectRows.vue'
 
 vi.mock('vue-i18n', () => ({
@@ -257,5 +260,47 @@ describe('shellProjectRows delete confirmation', () => {
     const next = mountRows([conversationRow('c2')])
     await deleteButton(next, 'c2').trigger('click')
     expect(isArmed(next, 'c2')).toBe(true)
+  })
+})
+
+describe('shellProjectRows loading state', () => {
+  afterEach(() => {
+    resetConversationLoading()
+  })
+
+  it('shows loading indicator and adds is-loading class when conversation is loading', () => {
+    setConversationLoading('loading-conv', true)
+    const wrapper = mountRows([
+      conversationRow('loading-conv', 'Loading Chat'),
+      conversationRow('idle-conv', 'Idle Chat')
+    ])
+
+    const rows = wrapper.findAll('.ShellProjectRows-Row')
+    expect(rows[0].classes()).toContain('is-loading')
+    expect(rows[0].find('.ShellProjectRows-LoadingIndicator').exists()).toBe(true)
+    expect(rows[0].find('.ShellProjectRows-Spinner').exists()).toBe(true)
+
+    expect(rows[1].classes()).not.toContain('is-loading')
+    expect(rows[1].find('.ShellProjectRows-LoadingIndicator').exists()).toBe(false)
+  })
+
+  it('updates reactively when loading status changes', async () => {
+    const wrapper = mountRows([conversationRow('dyn-conv', 'Dynamic Chat')])
+    const row = wrapper.find('.ShellProjectRows-Row')
+
+    expect(row.classes()).not.toContain('is-loading')
+    expect(row.find('.ShellProjectRows-LoadingIndicator').exists()).toBe(false)
+
+    setConversationLoading('dyn-conv', true)
+    await wrapper.vm.$nextTick()
+
+    expect(row.classes()).toContain('is-loading')
+    expect(row.find('.ShellProjectRows-LoadingIndicator').exists()).toBe(true)
+
+    setConversationLoading('dyn-conv', false)
+    await wrapper.vm.$nextTick()
+
+    expect(row.classes()).not.toContain('is-loading')
+    expect(row.find('.ShellProjectRows-LoadingIndicator').exists()).toBe(false)
   })
 })

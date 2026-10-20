@@ -1726,7 +1726,8 @@
       "untitled": "新对话",
       "delete": "删除对话",
       "deleteConfirm": "确认？",
-      "deleteConfirmLabel": "确认删除「{title}」？"
+      "deleteConfirmLabel": "确认删除「{title}」？",
+      "loading": "生成中…"
     },
     "projects": {
       "section": "项目",
