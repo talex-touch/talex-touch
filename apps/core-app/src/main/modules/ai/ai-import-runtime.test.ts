@@ -2,6 +2,7 @@ import type {
   AiImportApplyRequest,
   AiImportCandidate,
   AiImportSourceSnapshot,
+  AiConfigImportCandidate,
   AiMcpImportCandidate
 } from '@talex-touch/utils/types/ai-orchestrator'
 import { createHash } from 'node:crypto'
@@ -217,6 +218,71 @@ describe('AiImportRuntimeService secret migration', () => {
       'ai-import-secret'
     )
     expect(runtimeMocks.writeContent).not.toHaveBeenCalled()
+  })
+  it('migrates CLI model provider secrets and records provider projections', async () => {
+    const content = JSON.stringify({
+      providers: {
+        'fast-cpa': {
+          baseUrl: 'https://cpa.example.com/v1',
+          apiKey: 'sk-model-secret-key',
+          models: [{ id: 'gpt-5.6-turbo', name: 'GPT 5.6 Turbo' }]
+        }
+      }
+    })
+    const path = join(fixtureRoot, 'models.json')
+    await writeFile(path, content, 'utf8')
+
+    const configCandidate: AiConfigImportCandidate = {
+      id: 'candidate-config-models',
+      sourceId: 'claude:project:release-root',
+      provider: 'pi',
+      scope: 'project',
+      targetScope: 'global',
+      canonicalRootId: 'root',
+      sourceKey: 'config:models.json',
+      kind: 'config',
+      name: 'models',
+      path,
+      fingerprint: fingerprint(content),
+      state: 'added',
+      warnings: [],
+      ignoredFields: [],
+      blockingIssues: [],
+      keyPaths: ['providers.fast-cpa.baseUrl'],
+      sensitiveKeyPaths: ['providers.fast-cpa.apiKey']
+    }
+
+    const transaction = await new AiImportRuntimeService().prepare(
+      fixtureRoot,
+      [configCandidate],
+      {
+        scanId: 'scan-models',
+        candidateIds: ['candidate-config-models'],
+        confirmSecretMigration: true
+      },
+      sources(fixtureRoot)
+    )
+
+    const item = transaction.items[0]!
+    expect(item.secrets).toEqual([
+      expect.objectContaining({
+        keyPath: 'providers.fast-cpa.apiKey',
+        authRef: expect.any(String),
+        reauthRequired: false
+      })
+    ])
+    expect(JSON.stringify(item.projection)).not.toContain('sk-model-secret-key')
+    const modelProviders =
+      item.projection && 'modelProviders' in item.projection
+        ? item.projection.modelProviders
+        : undefined
+    expect(modelProviders).toEqual([
+      expect.objectContaining({
+        id: 'cli-pi-fast-cpa',
+        baseUrl: 'https://cpa.example.com/v1',
+        models: [expect.objectContaining({ id: 'gpt-5.6-turbo' })]
+      })
+    ])
   })
 })
 

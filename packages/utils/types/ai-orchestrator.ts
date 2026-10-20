@@ -212,10 +212,21 @@ export interface AiRuleImportCandidate extends AiImportCandidateBase {
   alwaysApply: boolean;
 }
 
+export interface AiImportModelProviderMetadata {
+  id: string;
+  name: string;
+  api: string;
+  baseUrl?: string;
+  hasApiKey: boolean;
+  modelsCount: number;
+  models: Array<{ id: string; name?: string }>;
+}
+
 export interface AiConfigImportCandidate extends AiImportCandidateBase {
   kind: "config";
   keyPaths: string[];
   sensitiveKeyPaths: string[];
+  modelProviders?: AiImportModelProviderMetadata[];
 }
 
 export type AiImportCandidate =
@@ -252,6 +263,10 @@ export interface AiImportMcpServerSelection {
    */
   disabled?: string[];
 }
+export interface AiImportModelProviderSelection {
+  include?: string[];
+}
+
 
 export interface AiImportApplyRequest {
   scanId: string;
@@ -281,6 +296,7 @@ export interface AiImportApplyRequest {
    * marked invalid can be taken this way, leaving out the servers that made it so.
    */
   mcpServers?: Record<string, AiImportMcpServerSelection>;
+  modelProviders?: Record<string, AiImportModelProviderSelection>;
 }
 
 export interface AiImportApplyItemResult {

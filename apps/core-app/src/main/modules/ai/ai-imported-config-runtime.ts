@@ -1,3 +1,4 @@
+import type { IntelligenceProviderConfig } from '@talex-touch/tuff-intelligence'
 import type { AiAgentProfile, AiImportedConfigItem } from '@talex-touch/utils/types/ai-orchestrator'
 import { isAbsolute, matchesGlob, relative, resolve } from 'node:path'
 import { aiImportContentStore } from './ai-import-content-store'
@@ -21,6 +22,27 @@ export function mcpProfilesFromItem(item: AiImportedConfigItem): IntelligenceMcp
         Boolean(profile && typeof profile === 'object' && 'id' in profile && 'transport' in profile)
       )
     : []
+}
+
+export function modelProvidersFromItem(item: AiImportedConfigItem): IntelligenceProviderConfig[] {
+  const providers = item.normalizedProjection?.modelProviders
+  return Array.isArray(providers)
+    ? providers.filter((provider): provider is IntelligenceProviderConfig =>
+        Boolean(provider && typeof provider === 'object' && 'id' in provider && 'type' in provider)
+      )
+    : []
+}
+
+export type ImportedModelProviderReconciler = (
+  providers: IntelligenceProviderConfig[]
+) => Promise<void> | void
+
+let modelProviderReconciler: ImportedModelProviderReconciler | null = null
+
+export function setImportedModelProviderReconciler(
+  reconciler: ImportedModelProviderReconciler | null
+): void {
+  modelProviderReconciler = reconciler
 }
 
 function applyScopePrecedence(items: AiImportedConfigItem[]): AiImportedConfigItem[] {
@@ -178,6 +200,18 @@ export class AiImportedConfigRuntime {
     }
   }
 
+  private async reconcileModelProviders(items: AiImportedConfigItem[]): Promise<void> {
+    if (!modelProviderReconciler) return
+    const desired: IntelligenceProviderConfig[] = []
+    for (const item of items) {
+      if (!item.active || item.state !== 'active') continue
+      for (const provider of modelProvidersFromItem(item)) {
+        if (provider.enabled !== false) desired.push(provider)
+      }
+    }
+    await modelProviderReconciler(desired)
+  }
+
   private async refreshAgentProfiles(profileIds: Iterable<string>): Promise<void> {
     const uniqueIds = [...new Set(profileIds)]
     if (uniqueIds.length === 0) return
@@ -196,6 +230,7 @@ export class AiImportedConfigRuntime {
   async refresh(): Promise<void> {
     const items = await aiOrchestratorStore.listImportedItems()
     await this.reconcileMcpProfiles(items)
+    await this.reconcileModelProviders(items)
     for (const item of items) {
       const profileId = agentProfileId(item)
       if (profileId) this.knownAgentProfileIds.add(profileId)

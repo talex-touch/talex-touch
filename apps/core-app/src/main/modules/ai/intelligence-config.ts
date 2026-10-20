@@ -48,6 +48,7 @@ import {
   getResolvedPiExecutable
 } from './providers/pi-cli-runtime'
 const intelligenceConfigLog = getLogger('intelligence-config')
+import { setImportedModelProviderReconciler } from './ai-imported-config-runtime'
 
 const SUPPORTED_PROVIDER_TYPES = new Set([
   'openai',
@@ -1576,6 +1577,47 @@ export function setupConfigUpdateListener(): void {
       intelligenceConfigLog.warn('Nexus auth reconciliation deferred', { error })
     }
   }
+
+  setImportedModelProviderReconciler((desiredProviders) => {
+    const stored = getLatestConfig()
+    if (!stored) return
+    const currentProviders = Array.isArray(stored.providers) ? [...stored.providers] : []
+    let changed = false
+
+    const desiredMap = new Map(desiredProviders.map((p) => [p.id, p]))
+    const nextProviders = currentProviders.map((existing) => {
+      if (!existing.id.startsWith('cli-') && !existing.metadata?.importedCandidateId) {
+        return existing
+      }
+      const desired = desiredMap.get(existing.id)
+      if (!desired) {
+        if (existing.enabled) {
+          changed = true
+          return { ...existing, enabled: false }
+        }
+        return existing
+      }
+      desiredMap.delete(existing.id)
+      if (!existing.enabled) {
+        changed = true
+        return { ...desired, enabled: true }
+      }
+      return existing
+    })
+
+    for (const [, provider] of desiredMap) {
+      if (!nextProviders.some((p) => p.id === provider.id)) {
+        nextProviders.push(provider)
+        changed = true
+      }
+    }
+
+    if (changed) {
+      stored.providers = nextProviders
+      saveMainConfig(StorageList.IntelligenceConfig, stored)
+      ensureIntelligenceConfigLoaded(true)
+    }
+  })
 }
 
 /**

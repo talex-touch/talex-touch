@@ -5,6 +5,8 @@ import type {
   AiImportSecretDescriptor,
   AiImportSourceSnapshot
 } from '@talex-touch/utils/types/ai-orchestrator'
+import type { IntelligenceProviderConfig } from '@talex-touch/tuff-intelligence'
+import { IntelligenceProviderType } from '@talex-touch/tuff-intelligence'
 import type { AiPreparedImportTransaction } from './ai-import-types'
 import type { IntelligenceMcpProfile } from './intelligence-mcp-registry'
 import { createHash } from 'node:crypto'
@@ -18,7 +20,13 @@ import {
   setSecureStoreValue
 } from '../../utils/secure-store'
 import { readBoundedImportFile } from './ai-import-bounded-file'
-import { parseConfig, parseMcpProfiles, type ParsedMcpProfile } from './ai-import-config-parser'
+import {
+  parseConfig,
+  parseMcpProfiles,
+  parseModelProviders,
+  type ParsedMcpProfile,
+  type ParsedModelProvider
+} from './ai-import-config-parser'
 import { aiImportContentStore } from './ai-import-content-store'
 
 const SECURE_VALUE_PREFIX = '$secure:'
@@ -194,6 +202,19 @@ function sanitizeMcpSecrets(config: Record<string, unknown>, candidateId: string
       writes.push(secure(`${prefix}.${authKey}`, serialized, true))
       record[authKey] = '$reauth-required'
     }
+  }
+  return writes
+}
+
+function sanitizeModelSecrets(
+  providers: ParsedModelProvider[],
+  candidateId: string
+): SecretWrite[] {
+  const writes: SecretWrite[] = []
+  for (const provider of providers) {
+    if (!provider.apiKey) continue
+    const keyPath = `${provider.rootKey}.${provider.id}.apiKey`
+    writes.push(secureDescriptor(candidateId, provider.name, keyPath, provider.apiKey))
   }
   return writes
 }
@@ -409,7 +430,8 @@ function projectionFor(
   candidate: AiImportCandidate,
   contentRef: string,
   mcpProfiles: IntelligenceMcpProfile[],
-  sanitizedContent: string
+  sanitizedContent: string,
+  modelProviders: IntelligenceProviderConfig[] = []
 ): Record<string, unknown> {
   const description = 'description' in candidate ? candidate.description : undefined
   return {
@@ -427,7 +449,8 @@ function projectionFor(
     triggerMode: candidate.kind === 'command' ? 'explicit' : undefined,
     globs: candidate.kind === 'rule' ? candidate.globs : undefined,
     alwaysApply: candidate.kind === 'rule' ? candidate.alwaysApply : undefined,
-    mcpProfiles
+    mcpProfiles,
+    ...(modelProviders.length > 0 ? { modelProviders } : {})
   }
 }
 
@@ -495,6 +518,48 @@ export class AiImportRuntimeService {
           writes = sanitizeMcpSecrets(parsed, candidate.id)
           sanitizedContent = JSON.stringify(parsed, null, 2)
         }
+        let modelProviders: IntelligenceProviderConfig[] = []
+        if (candidate.kind === 'config' && parsed) {
+          const parsedProviders = parseModelProviders(parsed, candidate.provider)
+          const selection = request.modelProviders?.[candidate.id]?.include
+          const activeProviders =
+            selection && selection.length > 0
+              ? parsedProviders.filter((p) => selection.includes(p.id))
+              : parsedProviders
+
+          writes.push(...sanitizeModelSecrets(activeProviders, candidate.id))
+          for (const p of activeProviders) {
+            const providerId = `cli-${candidate.provider}-${p.id}`
+            modelProviders.push({
+              id: providerId,
+              type:
+                p.api === 'anthropic'
+                  ? IntelligenceProviderType.ANTHROPIC
+                  : IntelligenceProviderType.OPENAI,
+              name: `${p.name} (${candidate.provider})`,
+              enabled: true,
+              priority: 5,
+              baseUrl: p.baseUrl,
+              timeout: 120000,
+              capabilities: ['text.chat'],
+              models: p.models.map((m) => ({
+                id: m.id,
+                name: m.name,
+                contextWindow: m.contextWindow,
+                maxTokens: m.maxTokens,
+                reasoning: m.reasoning
+              })),
+              defaultModel: p.defaultModel || p.models[0]?.id,
+              metadata: {
+                importedCandidateId: candidate.id,
+                importedFrom: candidate.provider,
+                headers: p.headers,
+                thinkingLevelMap: p.models.find((m) => m.thinkingLevelMap)?.thinkingLevelMap
+              }
+            })
+          }
+          sanitizedContent = JSON.stringify(redactSensitiveSnapshot(parsed), null, 2)
+        }
 
         // A value already in the secure store under its reference was migrated — and confirmed —
         // by an earlier import: applying it again asks nothing and rewrites nothing. Only a value
@@ -547,7 +612,13 @@ export class AiImportRuntimeService {
               : undefined,
           alias: override?.alias?.trim() || undefined,
           contentRef: content.ref,
-          projection: projectionFor(candidate, content.ref, mcpProfiles, sanitizedContent),
+          projection: projectionFor(
+            candidate,
+            content.ref,
+            mcpProfiles,
+            sanitizedContent,
+            modelProviders
+          ),
           secrets: writes.map((write) => write.descriptor),
           mcpProfiles
         })

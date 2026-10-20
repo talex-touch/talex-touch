@@ -691,4 +691,46 @@ describe('aiCliImportService canonical ingress', () => {
       })
     )
   }, 20_000)
+
+  it('discovers CLI models configuration and unlocks it for import', async () => {
+    await writeFixture(
+      fixtureRoot,
+      'home/.omp/agent/models.yml',
+      'providers:\n  custom-cpa:\n    baseUrl: "https://cpa.example.com/v1"\n    apiKey: "sk-test"\n    models:\n      - id: "gpt-5.6"\n        name: "GPT 5.6"\n'
+    )
+    const workspace = join(fixtureRoot, 'workspace')
+    await mkdir(workspace, { recursive: true })
+    const scan = await new AiCliImportService().preview({
+      cwd: workspace,
+      providerIds: ['oh-my-pi']
+    })
+    const config = scan.candidates.find(
+      (item) => item.provider === 'oh-my-pi' && item.kind === 'config' && item.name === 'models'
+    )
+
+    expect(config).toBeDefined()
+    expect(config?.blockingIssues).toEqual([])
+    const modelProviders = config && 'modelProviders' in config ? config.modelProviders : undefined
+    expect(modelProviders).toEqual([
+      expect.objectContaining({
+        id: 'custom-cpa',
+        baseUrl: 'https://cpa.example.com/v1',
+        hasApiKey: true,
+        modelsCount: 1,
+        models: [{ id: 'gpt-5.6', name: 'GPT 5.6' }]
+      })
+    ])
+
+    const transaction = { items: [], createdContentRefs: [], secretUndo: [] }
+    importRuntimeMocks.prepare.mockResolvedValue(transaction)
+    importStoreMocks.applyPreparedImportScan.mockResolvedValue({ items: [] })
+
+    const result = await new AiCliImportService().apply({
+      scanId: scan.scanId,
+      candidateIds: [config!.id],
+      confirmSecretMigration: true
+    })
+    expect(result).toBeDefined()
+    expect(importRuntimeMocks.prepare).toHaveBeenCalled()
+  })
 })

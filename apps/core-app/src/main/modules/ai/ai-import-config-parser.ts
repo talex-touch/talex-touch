@@ -1,3 +1,5 @@
+import YAML from 'yaml'
+
 export interface ParsedMcpProfile {
   rootKey: string
   name: string
@@ -198,7 +200,14 @@ export function parseConfig(content: string, extension: string): Record<string, 
       return isRecord(parsed) ? parsed : null
     }
     if (extension === '.toml') return parseToml(content)
-    if (extension === '.yaml' || extension === '.yml') return parseYaml(content)
+    if (extension === '.yaml' || extension === '.yml') {
+      try {
+        const parsed = YAML.parse(content)
+        return isRecord(parsed) ? parsed : null
+      } catch {
+        return parseYaml(content)
+      }
+    }
     return null
   } catch {
     return null
@@ -291,5 +300,183 @@ export function parseMcpProfiles(config: Record<string, unknown>): ParsedMcpProf
       )
     })
   }
+  return result
+}
+
+export interface ParsedImportedModel {
+  id: string
+  name?: string
+  reasoning?: boolean
+  input?: string[]
+  contextWindow?: number
+  maxTokens?: number
+  thinkingLevelMap?: Record<string, string | null>
+}
+
+export interface ParsedModelProvider {
+  rootKey: string
+  id: string
+  name: string
+  api: 'openai' | 'openai-responses' | 'anthropic' | 'custom'
+  baseUrl?: string
+  apiKey?: string
+  headers: Record<string, string>
+  models: ParsedImportedModel[]
+  defaultModel?: string
+  source: 'pi' | 'omp' | 'codex' | 'claude'
+}
+
+export function parseModelProviders(
+  config: Record<string, unknown>,
+  sourceHint?: string
+): ParsedModelProvider[] {
+  const result: ParsedModelProvider[] = []
+
+  if (isRecord(config.providers)) {
+    for (const [providerKey, providerVal] of Object.entries(config.providers)) {
+      if (!providerKey.trim() || !isRecord(providerVal)) continue
+      const baseUrl =
+        typeof providerVal.baseUrl === 'string' && providerVal.baseUrl.trim()
+          ? providerVal.baseUrl.trim()
+          : undefined
+      const apiKey =
+        typeof providerVal.apiKey === 'string' && providerVal.apiKey.trim()
+          ? providerVal.apiKey.trim()
+          : undefined
+      const rawApi = typeof providerVal.api === 'string' ? providerVal.api.trim() : 'openai'
+      let api: ParsedModelProvider['api'] = 'openai'
+      if (rawApi === 'openai-responses') api = 'openai-responses'
+      else if (rawApi === 'anthropic') api = 'anthropic'
+      else if (rawApi === 'custom') api = 'custom'
+
+      const headers = isRecord(providerVal.headers) ? stringRecord(providerVal.headers) : {}
+      const models: ParsedImportedModel[] = []
+      if (Array.isArray(providerVal.models)) {
+        for (const m of providerVal.models) {
+          if (!isRecord(m) || typeof m.id !== 'string' || !m.id.trim()) continue
+          models.push({
+            id: m.id.trim(),
+            name: typeof m.name === 'string' ? m.name.trim() : m.id.trim(),
+            reasoning: typeof m.reasoning === 'boolean' ? m.reasoning : undefined,
+            input: Array.isArray(m.input)
+              ? m.input.filter((i): i is string => typeof i === 'string')
+              : undefined,
+            contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : undefined,
+            maxTokens: typeof m.maxTokens === 'number' ? m.maxTokens : undefined,
+            thinkingLevelMap: isRecord(m.thinkingLevelMap)
+              ? (m.thinkingLevelMap as Record<string, string | null>)
+              : undefined
+          })
+        }
+      }
+
+      result.push({
+        rootKey: 'providers',
+        id: providerKey.trim(),
+        name:
+          typeof providerVal.name === 'string' && providerVal.name.trim()
+            ? providerVal.name.trim()
+            : providerKey.trim(),
+        api,
+        baseUrl,
+        apiKey,
+        headers,
+        models,
+        source: sourceHint === 'oh-my-pi' || sourceHint === 'omp' ? 'omp' : 'pi'
+      })
+    }
+  }
+
+  if (isRecord(config.model_providers)) {
+    const defaultModel = typeof config.model === 'string' ? config.model.trim() : undefined
+    const activeProvider =
+      typeof config.model_provider === 'string' ? config.model_provider.trim() : undefined
+    for (const [providerKey, providerVal] of Object.entries(config.model_providers)) {
+      if (!providerKey.trim() || !isRecord(providerVal)) continue
+      const baseUrl =
+        typeof providerVal.base_url === 'string' && providerVal.base_url.trim()
+          ? providerVal.base_url.trim()
+          : typeof config.openai_base_url === 'string' && config.openai_base_url.trim()
+            ? config.openai_base_url.trim()
+            : undefined
+      const apiKey =
+        typeof providerVal.experimental_bearer_token === 'string' &&
+        providerVal.experimental_bearer_token.trim()
+          ? providerVal.experimental_bearer_token.trim()
+          : undefined
+      const wireApi =
+        typeof providerVal.wire_api === 'string' ? providerVal.wire_api.trim() : 'responses'
+      const headers = isRecord(providerVal.http_headers)
+        ? stringRecord(providerVal.http_headers)
+        : {}
+      const name =
+        typeof providerVal.name === 'string' && providerVal.name.trim()
+          ? providerVal.name.trim()
+          : providerKey.trim()
+      const models: ParsedImportedModel[] = []
+      if (defaultModel && (providerKey === activeProvider || !activeProvider)) {
+        models.push({ id: defaultModel, name: defaultModel })
+      }
+
+      result.push({
+        rootKey: 'model_providers',
+        id: `codex-${providerKey.trim()}`,
+        name: `Codex ${name}`,
+        api: wireApi === 'responses' ? 'openai-responses' : 'openai',
+        baseUrl,
+        apiKey,
+        headers,
+        models,
+        defaultModel: providerKey === activeProvider ? defaultModel : undefined,
+        source: 'codex'
+      })
+    }
+  }
+
+  if (
+    isRecord(config.env) &&
+    (typeof config.env.ANTHROPIC_BASE_URL === 'string' ||
+      typeof config.env.ANTHROPIC_AUTH_TOKEN === 'string')
+  ) {
+    const baseUrl =
+      typeof config.env.ANTHROPIC_BASE_URL === 'string' && config.env.ANTHROPIC_BASE_URL.trim()
+        ? config.env.ANTHROPIC_BASE_URL.trim()
+        : undefined
+    const apiKey =
+      typeof config.env.ANTHROPIC_AUTH_TOKEN === 'string' && config.env.ANTHROPIC_AUTH_TOKEN.trim()
+        ? config.env.ANTHROPIC_AUTH_TOKEN.trim()
+        : undefined
+    const defaultModel = typeof config.model === 'string' ? config.model.trim() : undefined
+    const models: ParsedImportedModel[] = []
+    if (defaultModel) models.push({ id: defaultModel, name: defaultModel })
+    for (const key of [
+      'ANTHROPIC_DEFAULT_SONNET_MODEL',
+      'ANTHROPIC_DEFAULT_OPUS_MODEL',
+      'ANTHROPIC_DEFAULT_HAIKU_MODEL'
+    ]) {
+      const modelVal = config.env[key]
+      if (
+        typeof modelVal === 'string' &&
+        modelVal.trim() &&
+        !models.some((m) => m.id === modelVal.trim())
+      ) {
+        models.push({ id: modelVal.trim(), name: modelVal.trim() })
+      }
+    }
+
+    result.push({
+      rootKey: 'env',
+      id: 'claude-settings',
+      name: 'Claude Code Settings',
+      api: 'anthropic',
+      baseUrl,
+      apiKey,
+      headers: {},
+      models,
+      defaultModel,
+      source: 'claude'
+    })
+  }
+
   return result
 }

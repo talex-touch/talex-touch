@@ -32,7 +32,12 @@ import {
 import process from 'node:process'
 import { aiOrchestratorStore } from './ai-orchestrator-store'
 import { readBoundedImportFile } from './ai-import-bounded-file'
-import { parseConfig, parseMcpProfiles } from './ai-import-config-parser'
+import {
+  parseConfig,
+  parseMcpProfiles,
+  parseModelProviders,
+  type ParsedModelProvider
+} from './ai-import-config-parser'
 import { aiImportRuntimeService } from './ai-import-runtime'
 import { aiImportedConfigRuntime, mcpProfilesFromItem } from './ai-imported-config-runtime'
 import { frontmatterFields, frontmatterText } from './frontmatter-fields'
@@ -66,6 +71,7 @@ interface CandidateMetadata {
   globs?: string[]
   alwaysApply?: boolean
   frontmatterKeys?: string[]
+  modelProviders?: ParsedModelProvider[]
 }
 
 const SENSITIVE_KEY_PATTERN = /token|api.?key|secret|password|credential|authorization|authref/i
@@ -163,6 +169,9 @@ function layouts(home: string): SourceLayout[] {
       userRoot: join(home, '.omp', 'agent'),
       userFiles: [
         { path: 'config.yml', kind: 'config' },
+        { path: 'models.yml', kind: 'config' },
+        { path: 'models.yaml', kind: 'config' },
+        { path: 'models.json', kind: 'config' },
         { path: 'settings.json', kind: 'config' },
         { path: 'AGENTS.md', kind: 'instruction' },
         { path: 'SYSTEM.md', kind: 'instruction' }
@@ -316,7 +325,11 @@ function collectObjectMetadata(
   }
 }
 
-function configMetadata(content: string, extension: string): CandidateMetadata {
+function configMetadata(
+  content: string,
+  extension: string,
+  sourceHint?: string
+): CandidateMetadata {
   const parsed = parseConfig(content, extension)
   if (!parsed)
     return {
@@ -340,12 +353,18 @@ function configMetadata(content: string, extension: string): CandidateMetadata {
       ...(profile.requiresReauth ? [`${prefix}.reauth-required`] : [])
     ]
   })
+  const modelProviders = parseModelProviders(parsed, sourceHint)
+  const modelSecretPaths = modelProviders
+    .filter((p) => Boolean(p.apiKey))
+    .map((p) => `${p.rootKey}.${p.id}.apiKey`)
+
   return {
     keyPaths: Array.from(new Set(keyPaths)).sort(),
     sensitiveKeyPaths: Array.from(new Set(sensitiveKeyPaths)).sort(),
     serverNames: profiles.map((profile) => profile.name).sort(),
     transportTypes: Array.from(new Set(profiles.map((profile) => profile.type))).sort(),
-    secretKeyPaths: Array.from(new Set(secretKeyPaths)).sort()
+    secretKeyPaths: Array.from(new Set([...secretKeyPaths, ...modelSecretPaths])).sort(),
+    modelProviders
   }
 }
 
@@ -471,7 +490,7 @@ async function buildCandidate(
       kind === 'mcp'
         ? mcpFileMetadata(content, extension)
         : kind === 'config'
-          ? configMetadata(content, extension)
+          ? configMetadata(content, extension, source.provider)
           : parseFrontmatter(content)
     const base = {
       id: `${source.id}:${kind}:${hash(canonicalPath).slice(0, 20)}`,
@@ -582,13 +601,26 @@ async function buildCandidate(
     }
     if (kind === 'mcp') return [mcpCandidate]
 
+    const modelProviders = metadata.modelProviders ?? []
+    const hasModelProviders = modelProviders.length > 0
     const config: AiConfigImportCandidate = {
       ...base,
       kind: 'config',
       keyPaths: metadata.keyPaths ?? [],
       sensitiveKeyPaths: metadata.sensitiveKeyPaths ?? [],
       ignoredFields: metadata.keyPaths ?? [],
-      blockingIssues: ['Provider and authentication configuration is preview-only']
+      blockingIssues: hasModelProviders
+        ? []
+        : ['Provider and authentication configuration is preview-only'],
+      modelProviders: modelProviders.map((p) => ({
+        id: p.id,
+        name: p.name,
+        api: p.api,
+        baseUrl: p.baseUrl,
+        hasApiKey: Boolean(p.apiKey),
+        modelsCount: p.models.length,
+        models: p.models.map((m) => ({ id: m.id, name: m.name }))
+      }))
     }
     return hasMcpProjection ? [config, mcpCandidate] : [config]
   } catch (error) {
