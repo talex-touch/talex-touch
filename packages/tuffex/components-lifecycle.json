@@ -1,8 +1,22 @@
 {
   "$schema": "./components-lifecycle.schema.json",
-  "currentVersion": "0.8.0",
+  "currentVersion": "0.9.0",
   "totalComponents": 185,
   "versions": [
+    {
+      "version": "0.9.0",
+      "date": "2026-10-20",
+      "title": "学习曲线、手势交互与折射材质 (Learning Curves, Gestures and Refraction)",
+      "newComponents": [],
+      "updatedComponents": [
+        "alert", "allocation-bar", "attachment-tray", "base-surface", "card-spread",
+        "carousel-3d", "charts", "command-palette", "dialog", "drawer",
+        "fine-tune-card", "flip-book", "image-gallery", "markdown-editor", "modal",
+        "motion-dock", "physics-motion", "stream-element", "stream-markdown",
+        "stream-text", "thinking-orb", "toast"
+      ],
+      "summary": "新增学习曲线与图表读数、缩放及平移，补齐拖动与动量交互；浮层采用折射材质，Markdown 编辑器支持块编辑与协作接口，图片预览统一焦点与无障碍行为。"
+    },
     {
       "version": "0.8.0",
       "date": "2026-10-14",

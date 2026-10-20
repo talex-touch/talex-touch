@@ -13,11 +13,24 @@ verified: false
 
 | 项目 | 值 |
 |------|----|
-| 源码版本 | **0.8.0** |
-| 发布版本 | **0.8.0**（本轮 npm 发布） |
+| 源码版本 | **0.9.0** |
+| 发布版本 | **0.9.0**（本轮 npm 发布） |
 | 组件模块 | **185**：基础 94 · 进阶 56 · AI 35 |
 
 ## 版本更新历程
+
+### 0.9.0 版本（2026-10-20）
+
+学习曲线、手势交互与折射材质，包含此前未发布的组件改动。
+
+- **新增组件**：无新增独立组件模块；学习曲线从 `charts` 导出。
+- **主要更新组件**：alert、allocation-bar、attachment-tray、base-surface、card-spread、carousel-3d、charts、command-palette、dialog、drawer、fine-tune-card、flip-book、image-gallery、markdown-editor、modal、motion-dock、physics-motion、stream-element、stream-markdown、stream-text、thinking-orb、toast
+- **关键特性**：
+  - `TxLearningCurve` 支持平滑、多种子区间和可见窗口；图表补齐按住读数、缩放、平移与键盘操作，并修复学习曲线 Y 轴名称重叠。
+  - 轮播、翻书、卡片堆与物理动效支持直接拖动和动量释放；Motion Dock 更新材质与放大布局。
+  - Modal、Drawer、Command Palette 与对话框采用折射材质，透明窗口可使用 `systemBackdrop`。
+  - Markdown 编辑器支持块编辑、按需加载的 CodeMirror、图片上传、AI 改写、评论与协作接口。
+  - 附件托盘和图库共用预览器，补齐焦点恢复、加载失败与图标按钮的无障碍名称；Thinking Orb 新增渐变配色。
 
 ### 0.8.0 版本（2026-10-14）
 

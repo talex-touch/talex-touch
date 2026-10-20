@@ -13,11 +13,24 @@ verified: false
 
 | Item | Value |
 |------|-------|
-| Source version | **0.8.0** |
-| Release version | **0.8.0** (this npm release) |
+| Source version | **0.9.0** |
+| Release version | **0.9.0** (this npm release) |
 | Component modules | **185**: Base 94 · Pro 56 · AI 35 |
 
 ## Release History
+
+### Version 0.9.0 (2026-10-20)
+
+Learning curves, gesture interactions and refraction surfaces, including the previously unreleased component changes.
+
+- **New components**: No new standalone component modules; the learning curve is exported from `charts`.
+- **Main updated components**: alert, allocation-bar, attachment-tray, base-surface, card-spread, carousel-3d, charts, command-palette, dialog, drawer, fine-tune-card, flip-book, image-gallery, markdown-editor, modal, motion-dock, physics-motion, stream-element, stream-markdown, stream-text, thinking-orb, toast
+- **Key features**:
+  - `TxLearningCurve` supports smoothing, multi-seed bands and viewport windows. Charts add press-to-read, zoom, pan and keyboard controls; the learning curve's Y-axis name no longer overlaps its ticks.
+  - Carousel, flip book, card spread and physics motion support direct dragging and momentum release; Motion Dock updates its surface and magnification layout.
+  - Modal, Drawer, Command Palette and dialogs use refraction surfaces; transparent windows can enable `systemBackdrop`.
+  - Markdown Editor supports block editing, lazy-loaded CodeMirror, image uploads, AI rewrites, comments and collaboration interfaces.
+  - Attachment Tray and Image Gallery share a previewer with focus restoration, failure states and accessible icon-button labels; Thinking Orb adds gradient palettes.
 
 ### Version 0.8.0 (2026-10-14)
 
