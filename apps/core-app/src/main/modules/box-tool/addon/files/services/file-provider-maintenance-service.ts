@@ -29,7 +29,8 @@ import type {
   ExpectedMissingFileSearchRecord,
   FileDeletionCommitReceipt,
   FileRecordRemovalOptions,
-  FilePersistencePort
+  FilePersistencePort,
+  UpsertFileRecord
 } from '../../../search-engine/search-index-writer'
 import {
   acknowledgeFileDeletionCommitsInPrimaryHome,
@@ -42,6 +43,7 @@ import {
   isIndexMaintenanceIdle,
   waitForIndexMaintenanceIdle
 } from '../../../search-engine/search-activity'
+import { WHITELISTED_EXTENSIONS } from '../constants'
 import type {
   FileIndexedSourceRuntimeMutationDelegate,
   FileIndexRunOptions
@@ -51,6 +53,7 @@ import {
   getFileTraversalExclusionReason,
   isLinkedWorktreeRoot
 } from '../file-traversal-policy'
+import { FileProviderCapacityService } from './file-provider-capacity-service'
 import {
   FileProviderCleanupDeleteService,
   type FileProviderCleanupDeleteResult
@@ -128,6 +131,8 @@ export interface FileProviderMaintenanceDeps {
   normalizePath: (filePath: string) => string
   mapRecord: (record: IndexedFileSourceRecordRow) => IndexedSourceRecord
   onBaseCommitReady: () => void
+  /** A capacity sweep removed files, so a scan the cap stopped can go on. */
+  onCapacityEvicted?: () => void
   emitCleanupProgress: (current: number, total: number) => void
   /** Whether a folder is a linked worktree; defaults to reading its `.git`. Tests inject one. */
   isLinkedWorktreeRoot?: (directoryPath: string) => Promise<boolean>
@@ -169,8 +174,26 @@ export class FileProviderMaintenanceService {
     FileProviderReconciliationDbRecord,
     FileIndexRunOptions | undefined
   >
+  public readonly capacity: FileProviderCapacityService
 
   constructor(private readonly deps: FileProviderMaintenanceDeps) {
+    this.capacity = new FileProviderCapacityService({
+      sourceId: deps.sourceId,
+      getDbUtils: () => this.dbUtils,
+      isSplitEnabled: () => this.deps.isSplitEnabled(),
+      writeProgress: async (statements) => {
+        await searchIndexWriter.execWrite(statements, 'transaction')
+      },
+      canContinue: (options) => this.canContinueFileMaintenance(options),
+      evict: async (records, options) => {
+        const result = await this.deleteFileRecords(records, 'capacity', options)
+        return { deleted: result.deleted.length, deferred: result.deferred }
+      },
+      onEvicted: () => this.deps.onCapacityEvicted?.(),
+      scheduleMaintenance: () => this.scheduleFileMaintenance(),
+      logInfo: (message, meta) => this.deps.logInfo(message, meta),
+      logWarn: (message, error, meta) => this.deps.logWarn(message, error, meta)
+    })
     this.reconciliationDeleteService = new FileProviderReconciliationDeleteService({
       sourceId: deps.sourceId,
       deleteRecords: (records, options) => this.deleteFileRecords(records, 'missing', options)
@@ -394,6 +417,28 @@ export class FileProviderMaintenanceService {
     })
   }
 
+  /**
+   * What a scan batch may write: supported files under the watch roots that no filter or pending
+   * exclusion cleanup covers, and that a full index still takes.
+   */
+  public async admitScanRecords(records: UpsertFileRecord[]): Promise<UpsertFileRecord[]> {
+    return await this.capacity.admit(
+      records.filter((record) => {
+        const extension = record.extension?.toLowerCase() || path.extname(record.name).toLowerCase()
+        return (
+          WHITELISTED_EXTENSIONS.has(extension) &&
+          fileFilterService.getIndexExclusionReason({
+            path: record.path,
+            name: record.name,
+            extension
+          }) === null &&
+          this.deps.isWithinWatchRoots(record.path) &&
+          !this.isStaleExcludedIndexPath(record.path)
+        )
+      })
+    )
+  }
+
   /** Current file-source scope; native providers keep their own admission rules. */
   public isSearchPathAdmitted(filePath: string): boolean {
     if (!this.deps.isWithinWatchRoots(filePath) || this.isStaleExcludedIndexPath(filePath))
@@ -578,6 +623,7 @@ export class FileProviderMaintenanceService {
       | 'configuration'
       | 'missing'
       | 'watch'
+      | 'capacity'
       | {
           keptFileId: number
         },
@@ -603,8 +649,14 @@ export class FileProviderMaintenanceService {
         signal: options?.signal ?? this.maintenanceAbortController.signal,
         isStillCurrent: () => this.watchConfigurationGeneration === configurationGeneration
       }
+      const evictable =
+        evidence === 'capacity' ? await this.capacity.authorizeEviction(observed) : null
       for (const record of observed) {
         options?.signal?.throwIfAborted()
+        if (evictable) {
+          if (evictable.has(record.id)) authorized.push(record)
+          continue
+        }
         if (typeof evidence === 'object') {
           const rows = await this.dbUtils!.getFileIndexReadDb()
             .select()
@@ -1217,6 +1269,11 @@ export class FileProviderMaintenanceService {
           maintenanceDeadlineAt: performance.now() + FILE_MAINTENANCE_ROUND_BUDGET_MS
         }
         if (!(await this.replayPendingFileDeletionCommits(options))) {
+          this.scheduleFileMaintenance()
+          return
+        }
+        // New files wait on the sweep, so it goes before the rest.
+        if (await this.capacity.runSweepSlice(options)) {
           this.scheduleFileMaintenance()
           return
         }

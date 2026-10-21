@@ -468,6 +468,10 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     normalizePath: (filePath) => this.normalizePath(filePath),
     mapRecord: (record) => this.mapFileToIndexedSourceRecord(record),
     onBaseCommitReady: () => this.enrichmentResumeService.resume('base-maintenance-commit'),
+    onCapacityEvicted: () => {
+      if (isIndexFullFailure(this.initializationFailure)) this.initializationFailure = null
+      void this.runAutoIndexing()
+    },
     emitCleanupProgress: (current, total) => {
       if (this.isInitializing !== null) {
         this.progressState.emit('cleanup', current, total)
@@ -775,8 +779,13 @@ class FileProvider implements ISearchProvider<ProviderContext> {
           runOptions?.signal,
           onStats
         ),
-      insertRecords: (rootPath, records, runOptions) =>
-        this.fullScanInsertService.execute(rootPath, records, runOptions),
+      // Admitted before the paced chunks, so the files a full index refuses cost no pauses.
+      insertRecords: async (rootPath, records, runOptions) =>
+        this.fullScanInsertService.execute(
+          rootPath,
+          await this.maintenanceService.capacity.admit(records),
+          runOptions
+        ),
       emitProgress: (current, total) => this.progressState.emit('scanning', current, total),
       yieldAfterScan: async () => {
         await new Promise<void>((resolve) => setImmediate(resolve))
@@ -1283,6 +1292,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     if (!this.indexedSourceRuntimeResetDelegate) {
       throw new Error('INDEXED_SOURCE_RUNTIME_RESET_DELEGATE_UNAVAILABLE')
     }
+    if (request.clearSearchIndex) await this.maintenanceService.capacity.reset()
     return await this.indexedSourceRuntimeResetDelegate(request)
   }
 
@@ -1317,20 +1327,6 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     return await this.requireRuntimeMutationDelegate().countSource(providerId, mutationLeaseId)
   }
 
-  private filterSearchIndexUpsertRecords(records: UpsertFileRecord[]): UpsertFileRecord[] {
-    return records.filter((record) => {
-      const extension = record.extension?.toLowerCase() || path.extname(record.name).toLowerCase()
-      return (
-        WHITELISTED_EXTENSIONS.has(extension) &&
-        fileFilterService.getIndexExclusionReason({
-          path: record.path,
-          name: record.name,
-          extension
-        }) === null
-      )
-    })
-  }
-
   private async persistAndPublishFullScanBatch(
     records: UpsertFileRecord[],
     options?: FileIndexRunOptions
@@ -1342,11 +1338,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       const result = await this.maintenanceService.withFileMutationSlice(
         options,
         async (mutationLeaseId) => {
-          const acceptedRecords = this.filterSearchIndexUpsertRecords(records).filter(
-            (record) =>
-              this.isWithinWatchRoots(record.path) &&
-              !this.maintenanceService.isStaleExcludedIndexPath(record.path)
-          )
+          const acceptedRecords = await this.maintenanceService.admitScanRecords(records)
           if (acceptedRecords.length === 0) return { persistedCount: 0, metrics: undefined }
           const mutation = this.requireRuntimeMutationDelegate().applyBatchWithPersistence
           return await mutation(
@@ -1462,11 +1454,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         options,
         async (mutationLeaseId) => {
           if (!this.dbUtils) throw new Error('FILE_PROVIDER_PERSISTENCE_UNAVAILABLE')
-          const accepted = this.filterSearchIndexUpsertRecords(chunk).filter(
-            (record) =>
-              this.isWithinWatchRoots(record.path) &&
-              !this.maintenanceService.isStaleExcludedIndexPath(record.path)
-          )
+          const accepted = await this.maintenanceService.admitScanRecords(chunk)
           if (accepted.length === 0) return { added: 0, changed: 0, persistedCount: 0 }
           const rows = await this.dbUtils
             .getFileIndexReadDb()
@@ -1892,6 +1880,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
           retryable: report.retryable,
           reportId: report.id
         }
+        void this.maintenanceService.capacity.relieve(error)
         this.logError(`File indexing ${source} run failed`, error)
         this.progressState.emit('idle', 0, 0)
         if (source === 'manual') this.manualRebuildPendingNotification = false
@@ -2332,6 +2321,11 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       contentIndexingState: contentSettings.state,
       contentIndexStorage: contentSettings.storage
     }
+  }
+
+  /** Capacity mode's horizon in ms: files at or before it are out of a full index. */
+  public async getCapacityHorizonMs(): Promise<number | null> {
+    return await this.maintenanceService.capacity.readHorizonMs()
   }
 
   /**
@@ -2951,7 +2945,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         })
       }
 
-      return {
+      const record = {
         path: rawPath,
         name,
         extension,
@@ -2962,6 +2956,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         isDir: false,
         type: 'file'
       }
+      if (manualForce) return record
+      return (await this.maintenanceService.capacity.admit([record]))[0] ?? null
     } catch (error) {
       const err = error as NodeJS.ErrnoException
       if (err?.code !== 'ENOENT') {
