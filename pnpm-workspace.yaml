@@ -172,7 +172,7 @@ overrides:
   fast-uri: 3.1.7
   fast-xml-parser: 5.10.1
   flatted: 3.4.2
-  follow-redirects: 1.16.0
+  follow-redirects: 1.16.1
   form-data: 4.0.6
   h3: 1.15.11
   hono: 4.12.34
@@ -181,7 +181,7 @@ overrides:
   js-cookie: 3.0.7
   js-yaml: 4.3.2
   langsmith: 0.6.0
-  launch-editor: 2.14.1
+  launch-editor: 2.14.2
   lodash: 4.18.1
   lodash-es: 4.18.1
   mdast-util-to-hast: 13.2.1
@@ -203,7 +203,7 @@ overrides:
   rollup@^4.0.0: 4.62.2
   semver@^7.0.0: 7.8.5
   serialize-javascript: 7.0.7
-  shell-quote: 1.9.0
+  shell-quote: 1.12.0
   simple-git: 3.36.0
   socket.io-parser@^4.0.0: 4.2.7
   srvx: 0.11.21
@@ -214,7 +214,7 @@ overrides:
   unhead: 2.1.15
   unplugin: catalog:build
   uuid: 14.0.1
-  vite: 7.3.6
+  vite: 7.3.7
   ws: 8.21.0
   yaml@^1.0.0: 1.10.3
   yaml@^2.0.0: 2.9.0

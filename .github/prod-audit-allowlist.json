@@ -223,28 +223,6 @@
       "reason": "Upstream transitive dependency advisory for sharp; allowlisted for release parity with active audit gate.",
       "owner": "#328",
       "expires": "2026-11-09"
-    },
-    {
-      "id": "GHSA-pqg4-j6r4-53mv",
-      "module": "shell-quote",
-      "severity": "critical",
-      "versions": [
-        "1.9.0"
-      ],
-      "reason": "Upstream transitive dependency advisory for shell-quote; allowlisted for release parity with active audit gate.",
-      "owner": "#328",
-      "expires": "2026-11-09"
-    },
-    {
-      "id": "GHSA-6qxp-vccf-f47h",
-      "module": "@modelcontextprotocol/sdk",
-      "severity": "high",
-      "versions": [
-        "1.30.0"
-      ],
-      "reason": "Upstream transitive dependency advisory for @modelcontextprotocol/sdk; allowlisted for release parity with active audit gate.",
-      "owner": "#328",
-      "expires": "2026-11-09"
     }
   ]
 }
