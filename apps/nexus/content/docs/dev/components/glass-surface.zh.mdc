@@ -142,13 +142,14 @@ rows:
 
 - 按能力依次选择渲染路径：支持 `backdrop-filter: url()` 时用 SVG 位移折射；否则用 `blur()` 毛玻璃；仍不支持时退为半透明背景加边框。
 - Safari、Firefox、SSR 与没有 `CSS.supports` 的环境不走折射路径；降级路径保留尺寸、圆角与可读性，但没有 RGB 折射。
-- 位移图按实测尺寸生成，容器尺寸或光学参数变化时重算。
+- 位移图按实测尺寸的长宽比画成位图，长边不超过 256px，再拉伸铺满；容器尺寸或光学参数变化时重画。浏览器不走 SVG 滤镜路径或拿不到 2D canvas 时，位移图仍是 SVG。
 - 生成的 SVG 只做装饰，不可交互，位于内容层之下。
 - 高对比度下（触发条件见《[主题定制](./theming.zh.mdc)》）不折射、不模糊，改画不透明的浮层底色。
 
 ## 技术实现
 
 - 三个 `feDisplacementMap` 分别位移红、绿、蓝通道后合成，形成色散折射。
+- 位移图用位图而不用整幅 SVG：Chromium 每出一帧，都要在 CPU 上把 `feImage` 按绘制尺寸栅格化后随合成帧提交，整幅大小的位移图在大面板上每帧要花上百毫秒。
 - 源码：`packages/tuffex/packages/components/src/glass-surface/`。
 
 <TuffDocSourceLink />

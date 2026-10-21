@@ -50,7 +50,7 @@ const labels = computed(() => {
       <TxBaseSurface mode="glass" :blur="11" :radius="10" class="base-surface-modes-demo__item">
         {{ labels.glass }}
       </TxBaseSurface>
-      <TxBaseSurface mode="refraction" :blur="11" :displace="0.8" :distortion-scale="-200" :radius="10" class="base-surface-modes-demo__item">
+      <TxBaseSurface mode="refraction" :blur="11" :radius="10" class="base-surface-modes-demo__item">
         {{ labels.refraction }}
       </TxBaseSurface>
       <TxBaseSurface mode="acrylic" :radius="10" class="base-surface-modes-demo__item">

@@ -165,7 +165,7 @@ describe('txBaseSurface', () => {
       props: {
         mode: 'refraction',
         preset: 'card',
-        refractionRenderer: 'css',
+        refractionRenderer: 'svg',
         refractionProfile: 'cinematic',
         refractionTone: 'vivid',
         refractionStrength: 100,
@@ -182,7 +182,7 @@ describe('txBaseSurface', () => {
       'tx-base-surface--with-filter',
       'tx-base-surface--with-mask',
       'tx-base-surface--with-refraction-edge',
-      'tx-base-surface--refraction-renderer-css',
+      'tx-base-surface--refraction-renderer-svg',
       'tx-base-surface--refraction-profile-cinematic',
       'tx-base-surface--refraction-tone-vivid',
     ]))

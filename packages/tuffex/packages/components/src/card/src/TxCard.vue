@@ -80,6 +80,10 @@ const specularY = ref(50)
 const specularLit = ref(false)
 // A card that answers clicks shows where the pointer is; any card can opt in or out.
 const specularEnabled = computed(() => !props.disabled && (props.specular ?? props.clickable))
+// The surface draws the SVG glass layer: glass, or refraction with the svg renderer.
+const hasGlassLayer = computed(() =>
+  props.background === 'glass' || (props.background === 'refraction' && props.refractionRenderer === 'svg'),
+)
 
 const resolvedRadius = computed(() => {
   if (typeof props.radius === 'number')
@@ -539,6 +543,7 @@ function onKeydown(ev: KeyboardEvent) {
         'is-loading': loading,
         'is-disabled': disabled,
         'is-inertial': inertial,
+        'has-glass-layer': hasGlassLayer,
       },
     ]"
     :style="{
@@ -571,6 +576,8 @@ function onKeydown(ev: KeyboardEvent) {
       :refraction-profile="surfaceRefractionProfile"
       :refraction-tone="surfaceRefractionTone"
       :refraction-angle="surfaceRefractionAngle"
+      :refraction-renderer="refractionRenderer"
+      :refraction-glass-opacity="refractionGlassOpacity"
       :refraction-light-x="surfaceRefractionLightX"
       :refraction-light-y="surfaceRefractionLightY"
       :flow-light="flowLight"
@@ -632,6 +639,21 @@ function onKeydown(ev: KeyboardEvent) {
   // Read by the layers inside the border; set on every card so a nested one never inherits it.
   --tx-card-border-width: 0px;
   @include tx-squircle(var(--tx-card-radius, 14px));
+
+  // With the SVG glass layer the card and its surface keep circular corners of their plain radii.
+  // Chromium drops a backdrop `url()` filter under a smooth-corner (`corner-shape`) overflow clip in
+  // some nestings, and still pays for it every frame: the surface's own clip inside a rounded
+  // container, or a host that clips the card (`overflow: hidden`, as the console's panels do).
+  // The two outlines differ by about 0.3px at R = 18px.
+  &.has-glass-layer {
+    border-radius: var(--tx-card-radius, 14px);
+    corner-shape: round;
+  }
+
+  &.has-glass-layer > .tx-card__surface {
+    border-radius: max(0px, calc(var(--tx-card-radius, 14px) - var(--tx-card-border-width, 0px)));
+    corner-shape: round;
+  }
 
   &.is-solid,
   &.is-dashed {

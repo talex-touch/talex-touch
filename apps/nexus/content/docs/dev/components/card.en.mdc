@@ -103,7 +103,7 @@ code: |
 :::
 
 ### Backgrounds
-`background` picks the surface material from the same values as [BaseSurface](/docs/dev/components/base-surface)'s `mode`; `refraction` is the default and the recommendation.
+`background` picks the surface material from the same values as [BaseSurface](/docs/dev/components/base-surface)'s `mode`; `refraction` is the default and the recommendation. Refraction runs no SVG displacement layer by default; pass `refraction-renderer="svg"` where the backdrop has detail and the refraction should show, and set its strength with `refraction-glass-opacity`.
 :::TuffDemoWrapper{demo="CardCardBackgroundsScrollDemo" code-lang="vue"}
 ---
 code: |
@@ -263,6 +263,8 @@ code: |
 | refractionProfile | `'soft' \| 'filmic' \| 'cinematic'` | `'filmic'` | Refraction style preset. |
 | refractionTone | `'mist' \| 'balanced' \| 'vivid'` | `'vivid'` | Refraction tone preset; `vivid` avoids a gray cast. |
 | refractionAngle | `number` | `-24` | Main dispersion direction in degrees. |
+| refractionRenderer | `'css' \| 'svg'` | `'css'` | Refraction renderer, as on `TxBaseSurface`: `css` runs no SVG displacement layer, `svg` adds it. |
+| refractionGlassOpacity | `number` | `0.3` | Opacity of the displacement layer under the `svg` renderer (0–1). |
 | refractionLightFollowMouse | `boolean` | `false` | Makes the highlight anchor follow the pointer. |
 | refractionLightFollowIntensity | `number` | `0.45` | Follow weight (0–1) on dispersion angle and strength. |
 | refractionLightSpring | `boolean` | `true` | Springs the light as it follows the pointer. |

@@ -301,7 +301,13 @@ const pageStyleBudgets = [
   {
     label: 'chat',
     components: ['chat', 'conversation-stream', 'stream-markdown', 'prompt-bar', 'attachment-tray', 'image-gallery', 'message-actions', 'thinking-orb', 'modal'],
-    limit: 155 * 1024,
+    // 155 -> 155.5 on 2026-10-21 for 0.9.1's refraction fix, in two sheets every page here
+    // reaches: TxCard goes back to round corners while it hosts a glass layer, because Chromium
+    // drops the SVG backdrop filter under a superellipse clip (`card/style.css` +268 B), and the
+    // glass layer takes its strength from a variable the layer fade zeroes (`base-surface/style.css`
+    // +73 B). 0.9.0 measured 158,569 B against the 158,720 B limit; this measures 158,910 B.
+    // Actuals plus minimal headroom, growth from here fails.
+    limit: 155.5 * 1024,
   },
 ]
 

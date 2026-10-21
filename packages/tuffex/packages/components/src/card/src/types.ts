@@ -27,6 +27,13 @@ export interface TxCardProps {
   refractionProfile?: 'soft' | 'filmic' | 'cinematic'
   refractionTone?: TxCardRefractionTone
   refractionAngle?: number
+  /**
+   * `refraction` renderer, as on TxBaseSurface: 'css' (default) without the SVG displacement layer,
+   * 'svg' with it, at `refractionGlassOpacity`.
+   */
+  refractionRenderer?: 'css' | 'svg'
+  /** Opacity of the SVG displacement layer under `refractionRenderer="svg"` (0-1); 0.3 when absent. */
+  refractionGlassOpacity?: number
   refractionLightFollowMouse?: boolean
   refractionLightFollowIntensity?: number
   refractionLightSpring?: boolean

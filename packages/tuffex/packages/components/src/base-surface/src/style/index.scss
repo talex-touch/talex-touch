@@ -66,6 +66,10 @@ $grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width=
 
   .tx-base-surface__layer--glass {
     z-index: 0;
+    // The glass layer's strength (`refractionGlassOpacity`), on the layer itself: an ancestor's
+    // opacity would make it a backdrop root, leaving the filter only the surface to sample. The
+    // motion rule still takes it to 0, and the layer fade zeroes the variable at its ends.
+    opacity: var(--tx-surface-glass-opacity, 1);
     // TxGlassSurface writes its own radius inline for its displacement map, so it keeps a
     // circular corner of that radius; a superellipse of it would cut inside the host's outline.
     corner-shape: round;
@@ -358,6 +362,7 @@ $grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width=
 
 .tx-surface-layer-fade-enter-from,
 .tx-surface-layer-fade-leave-to {
+  --tx-surface-glass-opacity: 0;
   opacity: 0;
 }
 

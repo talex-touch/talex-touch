@@ -1,5 +1,21 @@
 # TouchX UI 更新日志
 
+## [Unreleased]
+
+### 📦 组件变动 (Components)
+
+- **更新组件**: `base-surface`, `card`, `glass-surface`
+
+### ✨ 组件增强
+
+- `TxBaseSurface` 的 `refractionRenderer` 默认值由 `'svg'` 改为 `'css'`，此前 `'css'` 不起作用。`css` 渲染器只画滤镜层、着色、光晕与描边，不跑 SVG 位移滤镜；`svg` 渲染器另加 SVG 位移（玻璃）层，新增 `refractionGlassOpacity` 控制它的不透明度（0–1，默认 `0.3`）。`TxCard` 新增同名的 `refractionRenderer` 与 `refractionGlassOpacity`，转发给表面。**行为变化**：`refraction` 材质默认不再画 SVG 位移层。纯色或内容少的底上看不出差别；有内容的底上原先能看到的折射与色散，需要传 `refraction-renderer="svg"`，传 `:refraction-glass-opacity="1"` 恢复完整强度。`glass` 材质照常画玻璃层。
+- 新增页面级的极致性能模式：`setSurfacePerformanceMode('max')` 让所有表面的 `refraction`、`glass`、`acrylic`、`blur`、`mica` 换成 `flat`，开没开 `autoDetect` 都生效，铺在系统材质上的表面（`systemBackdrop`）不受影响；传 `'default'` 恢复。新增导出 `setSurfacePerformanceMode`、`getSurfacePerformanceMode` 与 `SurfacePerformanceMode` 类型，`getSurfaceEnvironment()` 多返回一个只读的 `performanceMode`。
+
+### 🐛 组件修复
+
+- `TxGlassSurface` 的位移图改为长边不超过 256px 的位图，按容器的长宽比画出后拉伸铺满。此前位移图是与容器同尺寸的 SVG：Chromium 每出一帧都要在 CPU 上把它栅格化后随合成帧提交，1526×1886 的面板每帧约 100–200ms，页面滚动、悬停、动画都掉到个位数帧率。改后每帧不到 1ms，位移结果与此前相差在一个量化步长内。拿不到 2D canvas、或浏览器不走 SVG 滤镜路径时，仍用 SVG 位移图。
+- 卡片外层被宿主用 `overflow: hidden` 裁切，或放在另一层圆角裁切容器里时，`TxCard` 的 SVG 玻璃层不再消失。Chromium 在超椭圆（`corner-shape`）的溢出裁切下会整条丢掉 `backdrop-filter: url()`，但每帧照样付出代价；`TxCard` 画玻璃层时（`background="glass"`，或 `refraction` 配 `svg` 渲染器），卡片与表面改用同一半径的圆角，与超椭圆轮廓相差约 0.3px。
+
 ## [0.9.0] - 2026-10-20
 
 ### 📦 组件变动 (Components)

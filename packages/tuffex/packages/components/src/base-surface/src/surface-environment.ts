@@ -145,6 +145,34 @@ export function setSurfacePowerSaving(value: boolean | null) {
   powerSavingOverride.value = value
 }
 
+/**
+ * What surfaces may spend on their material. `max` gives every surface on the page, with
+ * `autoDetect` or without, a solid fill in place of a material that samples the backdrop
+ * (refraction, glass, acrylic, blur) or repaints with each scroll (mica). A surface over a system
+ * backdrop keeps its material: the system draws it.
+ */
+export type SurfacePerformanceMode = 'default' | 'max'
+
+const performanceMode = ref<SurfacePerformanceMode>('default')
+
+/** Switches the page-wide performance mode; an app can bind it to a user setting. */
+export function setSurfacePerformanceMode(mode: SurfacePerformanceMode) {
+  performanceMode.value = mode === 'max' ? 'max' : 'default'
+}
+
+/** The current performance mode; reactive when read inside a computed or a render. */
+export function getSurfacePerformanceMode(): SurfacePerformanceMode {
+  return performanceMode.value
+}
+
+/** The material a surface renders under a performance mode. */
+export function applySurfacePerformance(mode: BaseSurfaceMode, performance: SurfacePerformanceMode): BaseSurfaceMode {
+  if (performance !== 'max')
+    return mode
+  const costly = mode === 'refraction' || mode === 'glass' || mode === 'acrylic' || mode === 'blur' || mode === 'mica'
+  return costly ? 'flat' : mode
+}
+
 /** The environment as surfaces with `autoDetect` see it, read-only. */
 export function getSurfaceEnvironment() {
   return {
@@ -152,6 +180,7 @@ export function getSurfaceEnvironment() {
     windowMoving: readonly(windowMoving),
     powerSaving: readonly(powerSaving),
     frameTier: readonly(frameTier),
+    performanceMode: readonly(performanceMode),
   }
 }
 

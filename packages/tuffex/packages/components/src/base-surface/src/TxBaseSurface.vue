@@ -17,7 +17,7 @@ import {
   SURFACE_MOTION_DURATION_MS,
   useBaseSurfaceMotion,
 } from './base-surface-motion'
-import { degradeSurfaceMode, useSurfaceEnvironment } from './surface-environment'
+import { applySurfacePerformance, degradeSurfaceMode, getSurfacePerformanceMode, useSurfaceEnvironment } from './surface-environment'
 
 defineOptions({
   name: 'TxBaseSurface',
@@ -51,7 +51,8 @@ const props = withDefaults(defineProps<BaseSurfaceProps>(), {
   fakeIndex: 0,
   preset: 'default',
   systemBackdrop: false,
-  refractionRenderer: 'svg',
+  refractionRenderer: 'css',
+  refractionGlassOpacity: 0.3,
   refractionTone: 'balanced',
   overlayOpacity: 0,
   tag: 'div',
@@ -66,10 +67,14 @@ const settleDelayMs = computed(() => Math.max(toFinite(props.transitionDuration,
 // the layers cost nothing to drop frames over, so the surface senses neither.
 const environment = useSurfaceEnvironment(() => !!props.autoDetect && !props.systemBackdrop)
 
-/** 当前环境下渲染的材质：`autoDetect` 在省电或掉帧时把重材质换成轻的 */
-const surfaceMode = computed<BaseSurfaceMode>(() =>
-  degradeSurfaceMode(props.mode, environment.frameTier.value, environment.powerSaving.value),
-)
+/**
+ * 当前环境下渲染的材质：`autoDetect` 在省电或掉帧时把重材质换成轻的；全局极致性能模式
+ * （`setSurfacePerformanceMode('max')`）把所有表面的重材质换成实色，系统材质上的表面不受影响
+ */
+const surfaceMode = computed<BaseSurfaceMode>(() => {
+  const mode = degradeSurfaceMode(props.mode, environment.frameTier.value, environment.powerSaving.value)
+  return props.systemBackdrop ? mode : applySurfacePerformance(mode, getSurfacePerformanceMode())
+})
 
 /** 需要降级的模式（blur / glass / acrylic 在运动中降级） */
 const needsFallback = computed(() =>
@@ -147,10 +152,15 @@ const easedRefractionParamProgress = computed(() => {
   return easeOutQuad(refractionParamProgress.value)
 })
 
-// The glass layer is a backdrop filter and nothing else, so a system backdrop drops it.
-const showLayerGlass = computed(() =>
-  !props.systemBackdrop && (activeMode.value === 'glass' || activeMode.value === 'refraction'),
-)
+// The glass layer is a backdrop filter and nothing else, so a system backdrop drops it. Refraction
+// draws it only with the `svg` renderer; the default `css` renderer is the blur, tint and rim alone.
+const showLayerGlass = computed(() => {
+  if (props.systemBackdrop)
+    return false
+  if (activeMode.value === 'glass')
+    return true
+  return activeMode.value === 'refraction' && props.refractionRenderer === 'svg'
+})
 
 const showLayerFilter = computed(() =>
   activeMode.value === 'blur' || activeMode.value === 'refraction' || activeMode.value === 'acrylic',
@@ -654,6 +664,13 @@ const cssVars = computed(() => {
       ? modelHaloOpacity
       : clamp(toFinite(props.refractionHaloOpacity, modelHaloOpacity, ['refraction-halo-opacity', 'refractionHaloOpacity']), 0, 1)
     vars['--tx-surface-refraction-halo-opacity'] = `${haloOpacity}`
+  }
+
+  // Set in glass mode too, so a glass surface nested in a refraction one does not inherit its strength.
+  if (showLayerGlass.value) {
+    vars['--tx-surface-glass-opacity'] = activeMode.value === 'refraction'
+      ? `${clamp(toFinite(props.refractionGlassOpacity, 0.3, ['refraction-glass-opacity', 'refractionGlassOpacity']), 0, 1)}`
+      : '1'
   }
 
   // fake 模式变量

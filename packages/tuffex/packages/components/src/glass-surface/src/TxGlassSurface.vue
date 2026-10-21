@@ -71,10 +71,90 @@ function supportsBackdropFilter() {
   return CSS.supports('backdrop-filter', 'blur(10px)')
 }
 
-function generateDisplacementMap() {
-  const rect = containerRef.value?.getBoundingClientRect()
-  const actualWidth = rect?.width || 400
-  const actualHeight = rect?.height || 200
+/**
+ * Longest side of the displacement map, in pixels. Chromium copies an feImage into every compositor
+ * frame that draws a backdrop `url()` filter, rasterized on the CPU at the size it is drawn, so a
+ * map as large as the surface cost a 1526×1886 panel 100–200ms a frame. The map is two ramps under
+ * a blurred rect: drawn at this size and stretched, it displaces within a pixel of the full one.
+ */
+const MAP_MAX_SIDE = 256
+
+/** The canvas name of the blend mode the map's blue ramp uses; null for the one canvas lacks, which keeps the SVG map. */
+function canvasBlendOperation(mode: GlassSurfaceProps['mixBlendMode']): GlobalCompositeOperation | null {
+  if (!mode || mode === 'normal')
+    return 'source-over'
+  if (mode === 'plus-lighter')
+    return 'lighter'
+  if (mode === 'plus-darker')
+    return null
+  return mode
+}
+
+function roundedRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2))
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + width, y, x + width, y + height, r)
+  ctx.arcTo(x + width, y + height, x, y + height, r)
+  ctx.arcTo(x, y + height, x, y, r)
+  ctx.arcTo(x, y, x + width, y, r)
+  ctx.closePath()
+}
+
+/**
+ * The map below, drawn into a canvas of at most MAP_MAX_SIDE pixels; null where the SVG filter is not
+ * used (the map is then never read), or a 2D context or the blend mode is unavailable. Both ramps
+ * start from transparent black, as the SVG stops do, so Chrome gives the two the same channel values.
+ */
+function drawDisplacementMap(width: number, height: number): string | null {
+  const blend = canvasBlendOperation(props.mixBlendMode)
+  if (!blend || !supportsSVGFilters())
+    return null
+  const scale = Math.min(1, MAP_MAX_SIDE / Math.max(width, height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(width * scale))
+  canvas.height = Math.max(1, Math.round(height * scale))
+  let ctx: CanvasRenderingContext2D | null = null
+  try {
+    ctx = canvas.getContext('2d')
+  }
+  catch {
+    ctx = null
+  }
+  if (!ctx)
+    return null
+
+  ctx.scale(canvas.width / width, canvas.height / height)
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, width, height)
+
+  const red = ctx.createLinearGradient(width, 0, 0, 0)
+  red.addColorStop(0, 'rgba(0, 0, 0, 0)')
+  red.addColorStop(1, '#f00')
+  roundedRectPath(ctx, 0, 0, width, height, props.borderRadius)
+  ctx.fillStyle = red
+  ctx.fill()
+
+  const blue = ctx.createLinearGradient(0, 0, 0, height)
+  blue.addColorStop(0, 'rgba(0, 0, 0, 0)')
+  blue.addColorStop(1, '#00f')
+  ctx.globalCompositeOperation = blend
+  roundedRectPath(ctx, 0, 0, width, height, props.borderRadius)
+  ctx.fillStyle = blue
+  ctx.fill()
+  ctx.globalCompositeOperation = 'source-over'
+
+  // Canvas filters ignore the transform, so the blur is scaled by hand.
+  const edgeSize = Math.min(width, height) * (props.borderWidth * 0.5)
+  ctx.filter = `blur(${props.blur * scale}px)`
+  ctx.fillStyle = `hsl(0 0% ${props.brightness}% / ${props.opacity})`
+  roundedRectPath(ctx, edgeSize, edgeSize, width - edgeSize * 2, height - edgeSize * 2, props.borderRadius)
+  ctx.fill()
+
+  return canvas.toDataURL('image/png')
+}
+
+function svgDisplacementMap(actualWidth: number, actualHeight: number) {
   const edgeSize = Math.min(actualWidth, actualHeight) * (props.borderWidth * 0.5)
 
   const svgContent = `
@@ -104,7 +184,10 @@ function updateDisplacementMap() {
     return
 
   if (feImageRef.value) {
-    feImageRef.value.setAttribute('href', generateDisplacementMap())
+    const rect = containerRef.value?.getBoundingClientRect()
+    const width = rect?.width || 400
+    const height = rect?.height || 200
+    feImageRef.value.setAttribute('href', drawDisplacementMap(width, height) ?? svgDisplacementMap(width, height))
   }
 }
 

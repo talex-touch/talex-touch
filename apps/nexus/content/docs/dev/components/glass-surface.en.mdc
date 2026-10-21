@@ -142,13 +142,14 @@ rows:
 
 - The rendering path follows support: SVG displacement refraction with `backdrop-filter: url()`, else a `blur()` frosted backdrop, else a translucent background with a border.
 - Safari, Firefox, SSR, and environments without `CSS.supports` skip refraction; the fallbacks keep size, radius, and readability but drop RGB refraction.
-- The displacement map is built from the measured size and regenerated when the size or an optical prop changes.
+- The displacement map is drawn as a bitmap at the measured aspect ratio, at most 256px on its long side, and stretched to fill; it is redrawn when the size or an optical prop changes. Where the SVG filter path is not taken or no 2D canvas is available, the map stays an SVG.
 - The generated SVG is decorative, non-interactive, and sits below the content layer.
 - Under high contrast (triggers in [Theming](./theming.en.mdc)) it neither refracts nor blurs, and paints the opaque overlay background instead.
 
 ## Technologies
 
 - Three `feDisplacementMap` passes shift the red, green, and blue channels separately and recombine them into a chromatic refraction.
+- The map is a bitmap, not a full-size SVG, because Chromium rasterizes an `feImage` on the CPU at its drawn size for every frame and sends it with the compositor frame; a full-size map cost a large panel over 100ms a frame.
 - Source: `packages/tuffex/packages/components/src/glass-surface/`.
 
 <TuffDocSourceLink />

@@ -21,7 +21,7 @@ code: |
     <TxBaseSurface mode="mask" :opacity="0.6">Mask</TxBaseSurface>
     <TxBaseSurface mode="blur" :blur="8">Blur</TxBaseSurface>
     <TxBaseSurface mode="glass" :blur="12" :saturation="1.8">Glass</TxBaseSurface>
-    <TxBaseSurface mode="refraction" :blur="11" :displace="0.8" :distortion-scale="-200">Refraction</TxBaseSurface>
+    <TxBaseSurface mode="refraction" :blur="11">Refraction</TxBaseSurface>
     <TxBaseSurface mode="acrylic">Acrylic</TxBaseSurface>
     <TxBaseSurface mode="mica">Mica</TxBaseSurface>
     <TxBaseSurface mode="plain">Plain</TxBaseSurface>
@@ -30,7 +30,7 @@ code: |
 :::
 
 ### Advanced Lab
-`filter*` props tune the filter layer, `refraction*` props the refraction layer, and `preset="card"` applies the card tuning.
+`filter*` props tune the filter layer, `refraction*` props the refraction layer, and `preset="card"` applies the card tuning. Displacement, distortion, and the RGB offsets take effect only with `refractionRenderer="svg"`.
 :::TuffDemoWrapper{demo="BaseSurfaceAdvancedDemo" code-lang="vue"}
 ---
 code: |
@@ -38,6 +38,8 @@ code: |
     <TxBaseSurface
       mode="refraction"
       preset="card"
+      refraction-renderer="svg"
+      :refraction-glass-opacity="1"
       :radius="18"
       :blur="24"
       :filter-saturation="1.6"
@@ -126,6 +128,16 @@ notifySurfaceWindowMotion()
 setSurfacePowerSaving(true)
 ```
 
+### Maximum performance
+`setSurfacePerformanceMode('max')` gives every surface on the page a solid fill (`flat`): `refraction`, `glass`, `acrylic` and `blur` stop sampling the backdrop, and `mica` stops repainting with each scroll. It applies with `autoDetect` or without; a surface over a system backdrop (`systemBackdrop`) keeps its material. Pass `'default'` to restore.
+
+```ts
+import { setSurfacePerformanceMode } from '@talex-touch/tuffex'
+
+// Bound to a "prefer performance" switch in the app's settings, say
+setSurfacePerformanceMode(settings.maxPerformance ? 'max' : 'default')
+```
+
 ### Flow light
 `flowLight` lays a fixed brand-colour light ([FlowLight](/docs/dev/components/flow-light)) over the veil and under the edge, in any `mode`.
 :::TuffDemoWrapper{demo="BaseSurfaceFlowLightDemo" code-lang="vue"}
@@ -151,9 +163,11 @@ A transparent Electron window lets the desktop show through its own system mater
 
 - Prefer `TxCard` for product containers, since it owns container semantics and interaction; use `TxBaseSurface` only to tune material, fallback, or refraction directly.
 - Pass `moving` when the parent owns the animation state; use `autoDetect` only for motion whose state you can't reach, or to switch to a lighter material under power saving and dropped frames.
+- When an app offers its users a "prefer performance" option, call `setSurfacePerformanceMode('max')` instead of changing each `mode`.
 - Keep `fallbackMode="mask"` so `blur` / `glass` / `acrylic` content stays readable in motion; use `pure` only when a flat color is acceptable.
 - Tune refraction through `refractionStrength`, `refractionProfile`, and `refractionTone`; keep RGB channel offsets for visual experiments.
-- Use `refractionRenderer="css"` only where its lower optical fidelity is acceptable.
+- `refraction` uses the `css` renderer by default: over a plain or sparse backdrop it looks the same as `svg` without running the SVG displacement filter. Pass `refractionRenderer="svg"` only where the backdrop has detail and the refraction should show, and set its strength with `refractionGlassOpacity`.
+- Keep `svg` off page-sized panels: the displacement layer's GPU cost grows with its area.
 
 ## API Reference
 
@@ -189,7 +203,8 @@ A transparent Electron window lets the desktop show through its own system mater
 | `flowLight` | `'corners' \| 'rim' \| 'aurora' \| false` | - | The flow light's variant; absent or `false` is off, any `mode` can have it. |
 | `flowLightIntensity` | `number` | `1` | Flow light strength, multiplying the theme opacity. |
 | `preset` | `'default' \| 'card'` | `'default'` | Visual preset; `card` applies the card tuning. |
-| `refractionRenderer` | `'svg' \| 'css'` | `'svg'` | Refraction renderer. |
+| `refractionRenderer` | `'css' \| 'svg'` | `'css'` | Refraction renderer: `css` uses the filter layer, tint, halo and rim only; `svg` adds the SVG displacement (glass) layer, which shows only over a backdrop with detail. |
+| `refractionGlassOpacity` | `number` | `0.3` | Opacity of the glass layer under the `svg` renderer (0–1); `1` is full strength. |
 | `systemBackdrop` | `boolean` | `false` | The surface sits on the window's own system material (vibrancy or Mica in a transparent Electron window): it runs no `backdrop-filter` and leaves the blur to the system; `moving` and `autoDetect` have no effect. |
 | `moving` | `boolean` | `false` | Marks the surface as moving, which triggers the fallback. |
 | `fallbackMode` | `'pure' \| 'mask' \| 'flat'` | `'mask'` | Mode used while moving; `flat` is the same as `pure`. |
@@ -241,7 +256,9 @@ Import from `@talex-touch/tuffex`.
 |--------|-----------|-------------|
 | `notifySurfaceWindowMotion()` | `() => void` | Call it as the host forwards window moves; the window counts as still once 140ms pass without a call. |
 | `setSurfacePowerSaving(value)` | `(value: boolean \| null) => void` | Overrides the power-saving reading from the host; `null` hands it back to the Battery Status API (not charging, at or below 20%). |
-| `getSurfaceEnvironment()` | `() => { pointerMoving, windowMoving, powerSaving, frameTier }` | Reads the page's current environment as read-only refs; `frameTier` is `'ok' \| 'reduced' \| 'minimal'`. |
+| `setSurfacePerformanceMode(mode)` | `(mode: 'default' \| 'max') => void` | Switches the page-wide performance mode; `max` gives every surface a solid fill, see Maximum performance. |
+| `getSurfacePerformanceMode()` | `() => 'default' \| 'max'` | Reads the current performance mode; reactive when read in a computed or a render. |
+| `getSurfaceEnvironment()` | `() => { pointerMoving, windowMoving, powerSaving, frameTier, performanceMode }` | Reads the page's current environment as read-only refs; `frameTier` is `'ok' \| 'reduced' \| 'minimal'`. |
 | `useSurfaceMotionGuard(emitFallback, options?)` | `(emitFallback: (isFallback: boolean) => void, { settleMs? }) => { onMotionStart, onMotionEnd, dispose }` | For hosts that know when they move: drives `moving` with the asymmetric clock, calling back `true` at once on start and `false` after `settleMs` (140ms by default) of quiet. |
 | `SURFACE_POINTER_SPEED_THRESHOLD` / `SURFACE_MOTION_SETTLE_MS` / `SURFACE_LOW_BATTERY_LEVEL` | `1.2` / `140` / `0.2` | The pointer speed threshold (px/ms), how long a motion signal stays quiet before it ends (ms), and the low-battery level. |
 
@@ -250,14 +267,17 @@ Import from `@talex-touch/tuffex`.
 - `pure` and `flat` render only the root background; `mask` renders a mask layer with opacity clamped to `0..1`; `acrylic` is a filter layer blurring three times as wide under a tint whose alpha carries fractal noise; `mica` paints the root with an opaque base and two glows anchored to the viewport (`background-attachment: fixed`), reading no backdrop but repainting with every scroll of its container, so keep it off bases that scroll; `plain` keeps only the radius and the overflow clip.
 - `blur`, `glass` and `acrylic` degrade while `moving` is set or `autoDetect` senses motion: `fallbackMode="mask"` prefers `fallbackMaskOpacity`, and `pure` and `flat` render no mask layer.
 - `refraction` keeps its mode in motion: the glass / blur layers that lose their sampling fade out, a translucent motion cover holds the weight, and both cross-fade back on settle.
+- The glass layer renders only in `glass` mode and under `refraction`'s `svg` renderer, where its opacity is `refractionGlassOpacity`. The `css` renderer draws the filter layer, tint, halo and rim only.
 - Passing any of `refractionStrength`, `refractionAngle`, or `refractionProfile` switches to the derived refraction model; unset ones fall back to `62` / `-24` / `'filmic'`.
 - `autoDetect` listens on the root and every ancestor for their own `transform` / `translate` transitions (`transitionstart` / `transitionend` / `transitioncancel`) and watches their inline `style` with a `MutationObserver`; the pointer, window, frame-probe and battery listeners are page-wide, shared by every surface with `autoDetect`, and removed when the last one unmounts.
 - With `systemBackdrop`, the glass layer doesn't render and the filter layer's `backdrop-filter` is `none`, keeping its tint; neither the motion fallback nor environment sensing runs. The veil, mask, flow light and rim are unaffected.
+- Under the `max` performance mode, `refraction`, `glass`, `acrylic`, `blur` and `mica` all render as `flat`, except on `systemBackdrop` surfaces.
 - Under high contrast (triggers in [Theming](./theming.en.mdc)), every mode but `plain` paints only the opaque root background, like `pure`: the glass, blur, mask, motion-cover and refraction-edge layers don't render, and the `fake` base shows at full opacity; `plain` gets no fill even then.
 
 ## Technologies
 
-- Glass and refraction render through `TxGlassSurface`; fallback timing lives in `base-surface-motion.ts`, and the page-wide environment sensing and material degradation in `surface-environment.ts`.
+- The glass layer renders through `TxGlassSurface`; fallback timing lives in `base-surface-motion.ts`, and the page-wide environment sensing, performance mode and material degradation in `surface-environment.ts`.
+- For every frame, Chromium rasterizes the displacement map an `feImage` references inside `backdrop-filter: url()` on the CPU, at its drawn size, and sends it with the compositor frame. The map is therefore drawn as a bitmap at most 256px on its long side and stretched, so its cost no longer grows with the surface.
 - Source: `packages/tuffex/packages/components/src/base-surface/`.
 
 <TuffDocSourceLink />

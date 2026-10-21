@@ -103,7 +103,7 @@ code: |
 :::
 
 ### 背景材质
-`background` 选择表面材质，取值与 [BaseSurface](/docs/dev/components/base-surface) 的 `mode` 相同，默认且推荐 `refraction`。
+`background` 选择表面材质，取值与 [BaseSurface](/docs/dev/components/base-surface) 的 `mode` 相同，默认且推荐 `refraction`。折射默认不跑 SVG 位移层；背景有内容、要看到折射时传 `refraction-renderer="svg"`，强弱用 `refraction-glass-opacity` 调。
 :::TuffDemoWrapper{demo="CardCardBackgroundsScrollDemo" code-lang="vue"}
 ---
 code: |
@@ -263,6 +263,8 @@ code: |
 | `refractionProfile` | `'soft' \| 'filmic' \| 'cinematic'` | `'filmic'` | 折射风格预设。 |
 | `refractionTone` | `'mist' \| 'balanced' \| 'vivid'` | `'vivid'` | 折射色调预设；`vivid` 避免发灰。 |
 | `refractionAngle` | `number` | `-24` | 色散主方向（度）。 |
+| `refractionRenderer` | `'css' \| 'svg'` | `'css'` | 折射渲染器，同 `TxBaseSurface`：`css` 不跑 SVG 位移层，`svg` 加上它。 |
+| `refractionGlassOpacity` | `number` | `0.3` | `svg` 渲染器下位移层的不透明度（0–1）。 |
 | `refractionLightFollowMouse` | `boolean` | `false` | 高光锚点跟随指针。 |
 | `refractionLightFollowIntensity` | `number` | `0.45` | 跟随权重（0–1），影响色散角度与强度。 |
 | `refractionLightSpring` | `boolean` | `true` | 光源跟随使用弹簧过渡。 |

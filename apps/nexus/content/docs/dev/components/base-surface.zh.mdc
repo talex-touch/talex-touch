@@ -21,7 +21,7 @@ code: |
     <TxBaseSurface mode="mask" :opacity="0.6">遮罩</TxBaseSurface>
     <TxBaseSurface mode="blur" :blur="8">模糊</TxBaseSurface>
     <TxBaseSurface mode="glass" :blur="12" :saturation="1.8">毛玻璃</TxBaseSurface>
-    <TxBaseSurface mode="refraction" :blur="11" :displace="0.8" :distortion-scale="-200">折射</TxBaseSurface>
+    <TxBaseSurface mode="refraction" :blur="11">折射</TxBaseSurface>
     <TxBaseSurface mode="acrylic">亚克力</TxBaseSurface>
     <TxBaseSurface mode="mica">云母</TxBaseSurface>
     <TxBaseSurface mode="plain">无材质</TxBaseSurface>
@@ -30,7 +30,7 @@ code: |
 :::
 
 ### 参数实验
-`filter*` 调滤镜层，`refraction*` 调折射层，`preset="card"` 套用卡片调校。
+`filter*` 调滤镜层，`refraction*` 调折射层，`preset="card"` 套用卡片调校。位移、扭曲与 RGB 偏移只在 `refractionRenderer="svg"` 下生效。
 :::TuffDemoWrapper{demo="BaseSurfaceAdvancedDemo" code-lang="vue"}
 ---
 code: |
@@ -38,6 +38,8 @@ code: |
     <TxBaseSurface
       mode="refraction"
       preset="card"
+      refraction-renderer="svg"
+      :refraction-glass-opacity="1"
       :radius="18"
       :blur="24"
       :filter-saturation="1.6"
@@ -126,6 +128,16 @@ notifySurfaceWindowMotion()
 setSurfacePowerSaving(true)
 ```
 
+### 极致性能
+`setSurfacePerformanceMode('max')` 让页面上的所有表面换成实色（`flat`）：`refraction`、`glass`、`acrylic`、`blur` 不再采样背景，`mica` 不再随滚动重绘。开没开 `autoDetect` 都生效；铺在系统材质上的表面（`systemBackdrop`）保持原样。传 `'default'` 恢复。
+
+```ts
+import { setSurfacePerformanceMode } from '@talex-touch/tuffex'
+
+// 例如绑定到应用设置里的「性能优先」开关
+setSurfacePerformanceMode(settings.maxPerformance ? 'max' : 'default')
+```
+
 ### 流光底
 `flowLight` 在遮罩之上、描边之下叠一层固定的品牌色光（[FlowLight](/docs/dev/components/flow-light)），任何 `mode` 都能开。
 :::TuffDemoWrapper{demo="BaseSurfaceFlowLightDemo" code-lang="vue"}
@@ -151,9 +163,11 @@ code: |
 
 - 业务容器优先用 `TxCard`，它负责容器语义与交互；只在直接调材质、降级或折射参数时用 `TxBaseSurface`。
 - 父层持有动画状态时传 `moving`；拿不到状态的运动，或要随省电、掉帧换更轻的材质时，才用 `autoDetect`。
+- 应用要给用户一个「性能优先」选项时，调用 `setSurfacePerformanceMode('max')`，不要逐个改 `mode`。
 - `blur` / `glass` / `acrylic` 运动中保持 `fallbackMode="mask"` 以保证可读；能接受纯色时才用 `pure`。
 - 折射优先调 `refractionStrength`、`refractionProfile`、`refractionTone`；RGB 通道偏移只用于视觉实验。
-- `refractionRenderer="css"` 光学保真度较低，只在页面能接受时使用。
+- `refraction` 默认用 `css` 渲染器：纯色或内容少的底上，它与 `svg` 看起来一样，却不跑 SVG 位移滤镜。背景有内容、要看到折射时才传 `refractionRenderer="svg"`，强弱用 `refractionGlassOpacity` 调。
+- 整页大小的面板不要开 `svg`：位移层在 GPU 上的开销随面积增长。
 
 ## API 参考
 
@@ -189,7 +203,8 @@ code: |
 | `flowLight` | `'corners' \| 'rim' \| 'aurora' \| false` | - | 流光底的画法；不传或 `false` 即关闭，任何 `mode` 都能开。 |
 | `flowLightIntensity` | `number` | `1` | 流光底强度，乘到主题透明度上。 |
 | `preset` | `'default' \| 'card'` | `'default'` | 视觉预设；`card` 为卡片调校。 |
-| `refractionRenderer` | `'svg' \| 'css'` | `'svg'` | 折射渲染器。 |
+| `refractionRenderer` | `'css' \| 'svg'` | `'css'` | 折射渲染器：`css` 只用滤镜层、着色、光晕与描边；`svg` 另加 SVG 位移（玻璃）层，背景有内容时才看得出折射。 |
+| `refractionGlassOpacity` | `number` | `0.3` | `svg` 渲染器下玻璃层的不透明度（0–1）；`1` 为完整强度。 |
 | `systemBackdrop` | `boolean` | `false` | 表面铺在窗口自身的系统材质上（透明 Electron 窗口的 vibrancy、Mica）：不跑 `backdrop-filter`，模糊交给系统；`moving`、`autoDetect` 随之失效。 |
 | `moving` | `boolean` | `false` | 标记正在运动，触发降级。 |
 | `fallbackMode` | `'pure' \| 'mask' \| 'flat'` | `'mask'` | 运动中的降级模式；`flat` 同 `pure`。 |
@@ -241,7 +256,9 @@ code: |
 |------|------|--------|
 | `notifySurfaceWindowMotion()` | `() => void` | 宿主转发窗口移动时调用；140ms 内没有新的调用即视为停止。 |
 | `setSurfacePowerSaving(value)` | `(value: boolean \| null) => void` | 宿主覆盖省电判断；`null` 交还给 Battery Status API（未充电且电量不高于 20%）。 |
-| `getSurfaceEnvironment()` | `() => { pointerMoving, windowMoving, powerSaving, frameTier }` | 读取页面当前的环境，均为只读 ref；`frameTier` 取 `'ok' \| 'reduced' \| 'minimal'`。 |
+| `setSurfacePerformanceMode(mode)` | `(mode: 'default' \| 'max') => void` | 切换页面级的性能模式；`max` 让所有表面换成实色，见「极致性能」。 |
+| `getSurfacePerformanceMode()` | `() => 'default' \| 'max'` | 读取当前性能模式；在 computed 或渲染中读取时是响应式的。 |
+| `getSurfaceEnvironment()` | `() => { pointerMoving, windowMoving, powerSaving, frameTier, performanceMode }` | 读取页面当前的环境，均为只读 ref；`frameTier` 取 `'ok' \| 'reduced' \| 'minimal'`。 |
 | `useSurfaceMotionGuard(emitFallback, options?)` | `(emitFallback: (isFallback: boolean) => void, { settleMs? }) => { onMotionStart, onMotionEnd, dispose }` | 自己知道何时在动的宿主，用它的非对称时钟驱动 `moving`：开始时立即回调 `true`，停止 `settleMs`（默认 140ms）后回调 `false`。 |
 | `SURFACE_POINTER_SPEED_THRESHOLD` / `SURFACE_MOTION_SETTLE_MS` / `SURFACE_LOW_BATTERY_LEVEL` | `1.2` / `140` / `0.2` | 指针速度阈值（px/ms）、运动信号的静默时长（ms）、低电量阈值。 |
 
@@ -250,14 +267,17 @@ code: |
 - `pure`、`flat` 只渲染根背景；`mask` 渲染遮罩层，透明度限制在 `0..1`；`acrylic` 是三倍模糊的滤镜层，上面一层 alpha 带分形噪点的着色层；`mica` 在根上画不透明底与两道锚定视口（`background-attachment: fixed`）的色晕，不读背景，但容器每次滚动都要重绘，不要用在会滚动的底板上；`plain` 只保留圆角与溢出裁切。
 - `blur`、`glass`、`acrylic` 在 `moving` 或 `autoDetect` 感知到运动时降级：`fallbackMode="mask"` 优先用 `fallbackMaskOpacity`，`pure`、`flat` 不渲染遮罩层。
 - `refraction` 运动中不切换模式：失去采样的 glass / blur 层各自淡出，由半透明运动罩接住，停止后交叉淡回。
+- 玻璃层只出现在 `glass` 模式与 `refraction` 的 `svg` 渲染器下；`svg` 时它的不透明度取 `refractionGlassOpacity`。`css` 渲染器只画滤镜层、着色、光晕与描边。
 - 显式传入 `refractionStrength`、`refractionAngle`、`refractionProfile` 任一项即启用派生折射模型，未传的项按 `62` / `-24` / `'filmic'` 兜底。
 - `autoDetect` 在根节点及每个祖先上监听它们自身的 `transform` / `translate` 过渡（`transitionstart` / `transitionend` / `transitioncancel`），并用 `MutationObserver` 观察它们的内联 `style`；指针、窗口、帧探针与电池订阅是页面级的，所有打开 `autoDetect` 的表面共用一套，最后一个卸载时移除。
 - `systemBackdrop` 时玻璃层不渲染，滤镜层的 `backdrop-filter` 置为 `none`、保留着色，运动降级与环境感知都不启用；底色、遮罩、流光与描边不受影响。
+- 性能模式为 `max` 时，除 `systemBackdrop` 的表面外，`refraction`、`glass`、`acrylic`、`blur`、`mica` 一律按 `flat` 渲染。
 - 高对比度下（触发条件见《[主题定制](./theming.zh.mdc)》），除 `plain` 外的每种模式都像 `pure` 一样只画不透明的根背景：glass、blur、遮罩、运动罩与折射边缘层不渲染，`fake` 的底色满不透明度；`plain` 高对比度下也不加底色。
 
 ## 技术实现
 
-- glass 与 refraction 由 `TxGlassSurface` 渲染，降级时序在 `base-surface-motion.ts`，页面级的环境感知与材质降级在 `surface-environment.ts`。
+- 玻璃层由 `TxGlassSurface` 渲染，降级时序在 `base-surface-motion.ts`，页面级的环境感知、性能模式与材质降级在 `surface-environment.ts`。
+- Chromium 每出一帧，都要在 CPU 上把 `backdrop-filter: url()` 里 `feImage` 引用的位移图按绘制尺寸栅格化，随合成帧提交。所以位移图画成长边不超过 256px 的位图再拉伸，开销不再随表面尺寸增长。
 - 源码：`packages/tuffex/packages/components/src/base-surface/`。
 
 <TuffDocSourceLink />

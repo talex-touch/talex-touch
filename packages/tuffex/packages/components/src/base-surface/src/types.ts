@@ -94,8 +94,13 @@ export interface BaseSurfaceProps {
    * backdrop-filter：模糊交给系统，表面只铺底色、光与描边；`moving`、`autoDetect` 也随之失效
    */
   systemBackdrop?: boolean
-  /** refraction 模式渲染器：svg 或 css */
+  /**
+   * refraction 模式渲染器，默认 'css'：只用模糊、着色、光晕与描边，不跑 SVG 位移滤镜。
+   * 'svg' 在其下加一层 SVG 位移（玻璃）层，背景有内容时才看得出折射，强度见 `refractionGlassOpacity`
+   */
   refractionRenderer?: BaseSurfaceRefractionRenderer
+  /** `refractionRenderer="svg"` 时 SVG 位移层的不透明度（0-1），默认 0.3；1 为完整强度 */
+  refractionGlassOpacity?: number
   /** 非 mask 模式下的可选 mask 层透明度（用于 1+3、2+3、1+2+3） */
   overlayOpacity?: number
   /**

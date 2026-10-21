@@ -6,10 +6,14 @@ const { locale } = useI18n()
 type SurfaceMode = 'blur' | 'glass' | 'refraction'
 type RefractionProfile = 'soft' | 'filmic' | 'cinematic'
 type RefractionTone = 'mist' | 'balanced' | 'vivid'
+type RefractionRenderer = 'css' | 'svg'
 
 const mode = ref<SurfaceMode>('refraction')
 const profile = ref<RefractionProfile>('filmic')
 const tone = ref<RefractionTone>('vivid')
+// svg at full strength, so the displacement sliders below have something to move.
+const renderer = ref<RefractionRenderer>('svg')
+const glassOpacity = ref(1)
 
 const blur = ref(22)
 const overlayOpacity = ref(0.16)
@@ -40,8 +44,10 @@ const labels = computed(() => {
       mode: '模式',
       profile: 'Profile',
       tone: 'Tone',
+      renderer: '渲染器',
       filterTitle: 'Filter Layer',
       refractionTitle: 'Refraction Layer',
+      glassOpacity: 'glass opacity',
       blur: 'blur',
       overlayOpacity: 'overlay opacity',
       filterSaturation: 'filter saturation',
@@ -77,8 +83,10 @@ const labels = computed(() => {
     mode: 'Mode',
     profile: 'Profile',
     tone: 'Tone',
+    renderer: 'Renderer',
     filterTitle: 'Filter Layer',
     refractionTitle: 'Refraction Layer',
+    glassOpacity: 'glass opacity',
     blur: 'blur',
     overlayOpacity: 'overlay opacity',
     filterSaturation: 'filter saturation',
@@ -147,6 +155,18 @@ const labels = computed(() => {
           </TxRadio>
           <TxRadio value="cinematic">
             {{ labels.profileCinematic }}
+          </TxRadio>
+        </TxRadioGroup>
+      </div>
+
+      <div v-if="mode === 'refraction'" class="bs-adv__row">
+        <span class="bs-adv__label">{{ labels.renderer }}</span>
+        <TxRadioGroup v-model="renderer" size="small">
+          <TxRadio value="svg">
+            svg
+          </TxRadio>
+          <TxRadio value="css">
+            css
           </TxRadio>
         </TxRadioGroup>
       </div>
@@ -256,7 +276,19 @@ const labels = computed(() => {
             class="bs-adv__slider"
           />
         </label>
-        <label class="bs-adv__control">
+        <label v-if="renderer === 'svg'" class="bs-adv__control">
+          <span>{{ labels.glassOpacity }}</span>
+          <TxSlider
+            v-model="glassOpacity"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            v-bind="sliderCommon"
+            :format-value="formatFixed2"
+            class="bs-adv__slider"
+          />
+        </label>
+        <label v-if="renderer === 'svg'" class="bs-adv__control">
           <span>{{ labels.displace }}</span>
           <TxSlider
             v-model="displace"
@@ -268,19 +300,19 @@ const labels = computed(() => {
             class="bs-adv__slider"
           />
         </label>
-        <label class="bs-adv__control">
+        <label v-if="renderer === 'svg'" class="bs-adv__control">
           <span>{{ labels.distortionScale }}</span>
           <TxSlider v-model="distortionScale" :min="-520" :max="-20" :step="1" v-bind="sliderCommon" class="bs-adv__slider" />
         </label>
-        <label class="bs-adv__control">
+        <label v-if="renderer === 'svg'" class="bs-adv__control">
           <span>{{ labels.redOffset }}</span>
           <TxSlider v-model="redOffset" :min="-40" :max="40" :step="1" v-bind="sliderCommon" class="bs-adv__slider" />
         </label>
-        <label class="bs-adv__control">
+        <label v-if="renderer === 'svg'" class="bs-adv__control">
           <span>{{ labels.greenOffset }}</span>
           <TxSlider v-model="greenOffset" :min="-40" :max="40" :step="1" v-bind="sliderCommon" class="bs-adv__slider" />
         </label>
-        <label class="bs-adv__control">
+        <label v-if="renderer === 'svg'" class="bs-adv__control">
           <span>{{ labels.blueOffset }}</span>
           <TxSlider v-model="blueOffset" :min="-40" :max="40" :step="1" v-bind="sliderCommon" class="bs-adv__slider" />
         </label>
@@ -324,6 +356,8 @@ const labels = computed(() => {
         :filter-brightness="filterBrightness"
         :refraction-profile="profile"
         :refraction-tone="tone"
+        :refraction-renderer="renderer"
+        :refraction-glass-opacity="glassOpacity"
         :refraction-strength="refractionStrength"
         :refraction-angle="refractionAngle"
         :refraction-halo-opacity="refractionHaloOpacity"
