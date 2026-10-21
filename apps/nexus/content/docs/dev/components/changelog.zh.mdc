@@ -13,11 +13,23 @@ verified: false
 
 | 项目 | 值 |
 |------|----|
-| 源码版本 | **0.9.0** |
-| 发布版本 | **0.9.0**（本轮 npm 发布） |
+| 源码版本 | **0.9.1** |
+| 发布版本 | **0.9.1**（本轮 npm 发布） |
 | 组件模块 | **185**：基础 94 · 进阶 56 · AI 35 |
 
 ## 版本更新历程
+
+### 0.9.1 版本（2026-10-21）
+
+修复 0.9.0 折射材质在大面板上的卡顿。
+
+- **新增组件**：无。
+- **主要更新组件**：base-surface、card、glass-surface
+- **关键特性**：
+  - `TxGlassSurface` 的位移图改为长边不超过 256px 的位图再拉伸。Chromium 每出一帧都要在 CPU 上栅格化位移图，原先整幅大小的位移图让大面板每帧花 100–200ms，改后不到 1ms。
+  - `refraction` 默认改用 `css` 渲染器，不再画 SVG 玻璃层；要看到折射时传 `refractionRenderer="svg"`，强弱用新增的 `refractionGlassOpacity` 调（默认 `0.3`）。`TxCard` 透传这两个属性。
+  - 新增 `setSurfacePerformanceMode('max')`：页面上所有重材质换成实色，`systemBackdrop` 的表面除外。
+  - `TxCard` 被宿主用 `overflow: hidden` 裁切，或放在圆角裁切容器里时，SVG 玻璃层不再消失。
 
 ### 0.9.0 版本（2026-10-20）
 

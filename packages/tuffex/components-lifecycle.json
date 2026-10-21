@@ -1,8 +1,20 @@
 {
   "$schema": "./components-lifecycle.schema.json",
-  "currentVersion": "0.9.0",
+  "currentVersion": "0.9.1",
   "totalComponents": 185,
   "versions": [
+    {
+      "version": "0.9.1",
+      "date": "2026-10-21",
+      "title": "折射材质性能修复 (Refraction Surface Performance)",
+      "newComponents": [],
+      "updatedComponents": [
+        "base-surface",
+        "card",
+        "glass-surface"
+      ],
+      "summary": "修复 0.9.0 折射材质在大面板上的卡顿：位移图改为长边不超过 256px 的位图，refraction 默认改用 css 渲染器，SVG 玻璃层改为可选并可调不透明度；新增页面级极致性能模式，TxCard 被宿主裁切时不再丢失玻璃层。"
+    },
     {
       "version": "0.9.0",
       "date": "2026-10-20",

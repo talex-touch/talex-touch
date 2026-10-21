@@ -13,11 +13,23 @@ verified: false
 
 | Item | Value |
 |------|-------|
-| Source version | **0.9.0** |
-| Release version | **0.9.0** (this npm release) |
+| Source version | **0.9.1** |
+| Release version | **0.9.1** (this npm release) |
 | Component modules | **185**: Base 94 · Pro 56 · AI 35 |
 
 ## Release History
+
+### Version 0.9.1 (2026-10-21)
+
+Fixes the refraction-surface jank that 0.9.0 brought to large panels.
+
+- **New components**: None.
+- **Main updated components**: base-surface, card, glass-surface
+- **Key features**:
+  - `TxGlassSurface` draws its displacement map as a bitmap at most 256px on its long side and stretches it. Chromium rasterizes the map on the CPU for every frame; the full-size map cost a large panel 100–200ms a frame, the bitmap under 1ms.
+  - `refraction` uses the `css` renderer by default and draws no SVG glass layer. Pass `refractionRenderer="svg"` where the refraction should show, and set its strength with the new `refractionGlassOpacity` (`0.3` by default). `TxCard` forwards both props.
+  - `setSurfacePerformanceMode('max')` gives every costly material on the page a solid fill, except on `systemBackdrop` surfaces.
+  - `TxCard`'s SVG glass layer no longer disappears when a host clips the card with `overflow: hidden` or nests it in a rounded clipping container.
 
 ### Version 0.9.0 (2026-10-20)
 
