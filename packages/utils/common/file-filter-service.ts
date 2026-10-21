@@ -54,6 +54,22 @@ export interface TraversalContext {
    * never looked, which is why the two cannot be collapsed.
    */
   siblingNames?: readonly string[];
+  /**
+   * The parent or a folder above it holds a project marker, a home directory never counting (see
+   * {@link FileFilterService.isInsideProject}). Siblings only answer for the parent, while the
+   * build output of a monorepo package (`packages/x/dist`) or of an app folder (`web/out`) sits
+   * below a project whose marker is further up. On 2026-10-20, 761 of the 844 files a
+   * sibling-only check admitted from ordinary-word folders under one workspace folder were such
+   * output.
+   */
+  insideProject?: boolean;
+  /**
+   * A walk has already classified every directory above the path with its siblings in hand, so
+   * the context-dependent names (`build`, `tmp`, …) were decided there. Without the sibling list
+   * they could only get the strict answer here, so they are left alone; every other rule still
+   * applies, to every ancestor.
+   */
+  contextDependentNamesDecided?: boolean;
 }
 
 export interface FileSearchItemLike {
@@ -230,10 +246,56 @@ function isInsideICloudDrive(
   );
 }
 
-function isProjectMarker(entryName: string): boolean {
+/** A home directory or a filesystem root: where the search for an enclosing project stops. */
+function isProjectSearchBoundary(value: string): boolean {
+  const normalized = normalizePath(value);
+  const segments = pathSegments(normalized);
+  if (segments.length === 0) return true;
+  if (segments.length === 1 && /^[a-z]:$/i.test(segments[0] ?? "")) return true;
+  return homeRelativeSegments(normalized, segments)?.length === 0;
+}
+
+/**
+ * Whether a folder with these entries is a project root for the enclosing-project search. A home
+ * directory or a filesystem root never is: a dotfiles `.git` or a stray `package.json` in `~`
+ * would otherwise put every ordinary-word folder in the user's documents inside a project.
+ */
+export function holdsProjectMarker(
+  directoryPath: string,
+  entryNames: readonly string[],
+): boolean {
+  return (
+    !isProjectSearchBoundary(directoryPath) && entryNames.some(isProjectMarker)
+  );
+}
+
+function parentDirectory(value: string): string {
+  const trimmed = value.replace(/[\\/]+$/, "");
+  const separator = Math.max(
+    trimmed.lastIndexOf("/"),
+    trimmed.lastIndexOf("\\"),
+  );
+  if (separator < 0) return value;
+  return separator === 0 ? trimmed.slice(0, 1) : trimmed.slice(0, separator);
+}
+
+export function isProjectMarker(entryName: string): boolean {
   const lower = entryName.toLowerCase();
   if (PROJECT_MARKER_ENTRIES.has(lower)) return true;
   return PROJECT_MARKER_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
+
+/**
+ * Whether the contents of a folder's `.git` file make that folder a linked worktree: another
+ * checkout of a repository that is indexed where its main checkout lives. A linked worktree's
+ * `.git` is a file reading `gitdir: <repository>/worktrees/<name>`; a submodule's points into
+ * `modules/` instead and is not a duplicate. The file index skips linked worktrees below a scan
+ * root (2026-10-21: worktree-like paths were 15% of one machine's indexed files).
+ */
+export function isLinkedWorktreeGitFile(contents: string): boolean {
+  const match = /^gitdir:\s*(.+?)\s*$/m.exec(contents);
+  if (!match) return false;
+  return /[\\/]worktrees[\\/][^\\/]+[\\/]?$/.test(match[1]);
 }
 
 /**
@@ -249,6 +311,8 @@ function leafNameFilterApplies(
   context: TraversalContext | undefined,
 ): boolean {
   if (!LOWERCASE_CONTEXT_DEPENDENT_DIRS.has(lowerDirectoryName)) return true;
+  if (context?.contextDependentNamesDecided) return false;
+  if (context?.insideProject) return true;
   const siblings = context?.siblingNames;
   if (!siblings) return true;
   return siblings.some(isProjectMarker);
@@ -300,6 +364,34 @@ function hasBundleSegment(segments: readonly string[]): boolean {
     }
     return false;
   });
+}
+
+/** A name with no glob syntax or separator in it, which a glob can therefore spell literally. */
+function isPlainGlobName(name: string): boolean {
+  return !/[*?[\]{}\\!#/]/.test(name);
+}
+
+/** The lists are compared lowercased; one class per letter lets fd match the same way. */
+function caseInsensitiveGlob(name: string): string {
+  let glob = "";
+  for (const char of name) {
+    const lower = char.toLowerCase();
+    const upper = char.toUpperCase();
+    glob += lower === upper ? char : `[${lower}${upper}]`;
+  }
+  return glob;
+}
+
+/**
+ * Blanks the context-dependent segments, so the path patterns can still match every other
+ * segment (`node_modules`, `.git`) but none of those.
+ */
+function maskContextDependentSegments(path: string): string {
+  return path.replace(/[^/\\]+/g, (segment) =>
+    LOWERCASE_CONTEXT_DEPENDENT_DIRS.has(segment.toLowerCase())
+      ? "\0"
+      : segment,
+  );
 }
 
 function matchesPattern(path: string, patterns: readonly RegExp[]): boolean {
@@ -399,13 +491,16 @@ export class FileFilterService {
      * per-level name rule does not, `/usr/bin` being exactly the case once `bin` is relaxed.
      */
     const walksEveryLevel = context?.siblingNames !== undefined;
+    const patternPath = context?.contextDependentNamesDecided
+      ? maskContextDependentSegments(path)
+      : path;
     if (
       !walksEveryLevel &&
       optionEnabled(
         options.enableDevPathFilter,
         DEFAULT_SCAN_OPTIONS.enableDevPathFilter,
       ) &&
-      matchesPattern(path, PATH_PATTERNS.DEV_PATHS)
+      matchesPattern(patternPath, PATH_PATTERNS.DEV_PATHS)
     ) {
       return "development-path";
     }
@@ -415,12 +510,83 @@ export class FileFilterService {
         options.enableCachePathFilter,
         DEFAULT_SCAN_OPTIONS.enableCachePathFilter,
       ) &&
-      matchesPattern(path, PATH_PATTERNS.CACHE_PATHS)
+      matchesPattern(patternPath, PATH_PATTERNS.CACHE_PATHS)
     ) {
       return "cache-path";
     }
 
     return null;
+  }
+
+  /**
+   * The directories below `rootPath` that {@link getTraversalExclusionReason} rejects in every
+   * context, as globs for the bundled fd's `--exclude` (gitignore syntax: a leading `/` anchors to
+   * the scan root, a trailing `/` matches directories only). Hidden names are pruned as files too,
+   * because admission rejects a hidden file name as well.
+   *
+   * Pruning is the optimization boundary only. On 2026-10-20, fd listed 1,892,378 paths under one
+   * workspace folder for the scanner to reject 96% of them one by one; with these globs it listed
+   * 110,257, and the same 70,464 files were admitted. Every rule here is unconditional, so a pruned
+   * directory is one the walk would have rejected anyway, and the scanner still applies the whole
+   * policy to whatever fd returns. Names that depend on a project marker (`build`, `dist`),
+   * option-gated patterns and custom exclusions are left to the scanner.
+   */
+  /**
+   * Whether `directoryPath` or a directory above it holds a project marker, read through the
+   * caller's `readdir` because this module has no filesystem. The search stops at a home
+   * directory or a filesystem root without reading it (see {@link holdsProjectMarker}). A folder
+   * that cannot be read counts as holding no marker.
+   */
+  async isInsideProject(
+    directoryPath: string,
+    readdir: (directoryPath: string) => Promise<readonly string[]>,
+  ): Promise<boolean> {
+    let current = directoryPath;
+    while (!isProjectSearchBoundary(current)) {
+      let names: readonly string[] = [];
+      try {
+        names = await readdir(current);
+      } catch {
+        // unreadable: no marker
+      }
+      if (holdsProjectMarker(current, names)) return true;
+      const parent = parentDirectory(current);
+      if (parent === current) return false;
+      current = parent;
+    }
+    return false;
+  }
+
+  getTraversalPruneGlobs(rootPath: string): string[] {
+    const globs = new Set([".*"]);
+    for (const name of [...LOWERCASE_DEV_DIRS, ...LOWERCASE_TEMP_DIRS]) {
+      if (
+        name.startsWith(".") ||
+        LOWERCASE_CONTEXT_DEPENDENT_DIRS.has(name) ||
+        !isPlainGlobName(name)
+      ) {
+        continue;
+      }
+      globs.add(`${caseInsensitiveGlob(name)}/`);
+    }
+    for (const suffix of LOWERCASE_BUNDLE_SUFFIXES) {
+      if (isPlainGlobName(suffix))
+        globs.add(`*${caseInsensitiveGlob(suffix)}/`);
+    }
+
+    const normalizedRoot = normalizePath(rootPath);
+    if (
+      homeRelativeSegments(normalizedRoot, pathSegments(normalizedRoot))
+        ?.length === 0
+    ) {
+      for (const name of HOME_ANCHORED_SYSTEM_DIRS) {
+        globs.add(`/${caseInsensitiveGlob(name)}/`);
+      }
+      for (const rule of HOME_ANCHORED_TOOLCHAIN_PATHS) {
+        globs.add(`/${rule.map(caseInsensitiveGlob).join("/")}/`);
+      }
+    }
+    return [...globs];
   }
 
   getIndexExclusionReason(
@@ -556,6 +722,14 @@ export class FileFilterService {
     return accepted ?? items;
   }
 
+  /**
+   * The folder half of file admission. Every file that reaches admission came from a walk that
+   * had already classified its folders with their siblings in hand: the fd backend, the legacy
+   * walker, the watcher's incremental path. Classifying them again without those siblings could
+   * only give the strict answer, and did: `~/Documents/build/notes.txt` was rejected after the
+   * walk had admitted its folder, so #1727 never reached the index. The context-dependent names
+   * stay with the walk; every other rule still applies here.
+   */
   private getContainingPathExclusionReason(
     filePath: string,
     options: FileScanOptions,
@@ -569,6 +743,7 @@ export class FileFilterService {
     return this.getTraversalExclusionReason(
       filePath.slice(0, separator),
       options,
+      { contextDependentNamesDecided: true },
     );
   }
 

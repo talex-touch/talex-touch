@@ -21,6 +21,8 @@ import {
 import { formatDuration } from '../../../../../utils/logger'
 import { getRecentPerfEventLoopLag } from '../../../../../utils/perf-context'
 import type { SearchIndexService } from '../../../search-engine/search-index-service'
+import { SEARCH_INDEX_INCREMENTAL_MIN_FREE_BYTES } from '../../../search-engine/search-index-compaction'
+import type { VacuumResult } from '../../../search-engine/workers/search-index-worker-types'
 import type { IndexedWriteDeleteExecutorResult } from '../../../search-engine/indexing-write-delete-executor-service'
 import type {
   ExpectedFileRecord,
@@ -44,7 +46,11 @@ import type {
   FileIndexedSourceRuntimeMutationDelegate,
   FileIndexRunOptions
 } from '../file-provider-index-contracts'
-import { getFileTraversalExclusionReason } from '../file-traversal-policy'
+import {
+  findLinkedWorktreeRootBelow,
+  getFileTraversalExclusionReason,
+  isLinkedWorktreeRoot
+} from '../file-traversal-policy'
 import {
   FileProviderCleanupDeleteService,
   type FileProviderCleanupDeleteResult
@@ -67,6 +73,9 @@ export const FILE_MAINTENANCE_DELAY_MS = 1_000
 export const FILE_MAINTENANCE_LAG_BACKOFF_DELAY_MS = 5_000
 export const FILE_MAINTENANCE_LAG_BACKOFF_THRESHOLD_MS = 1_000
 export const FILE_MAINTENANCE_LAG_BACKOFF_WINDOW_MS = 10_000
+/** Incremental compaction steps per request (64 MiB each) and the pause that lets writes in between. */
+export const SEARCH_INDEX_COMPACTION_MAX_STEPS = 64
+export const SEARCH_INDEX_COMPACTION_STEP_DELAY_MS = 250
 
 export interface RecentEventLoopLag {
   lagMs: number
@@ -120,6 +129,8 @@ export interface FileProviderMaintenanceDeps {
   mapRecord: (record: IndexedFileSourceRecordRow) => IndexedSourceRecord
   onBaseCommitReady: () => void
   emitCleanupProgress: (current: number, total: number) => void
+  /** Whether a folder is a linked worktree; defaults to reading its `.git`. Tests inject one. */
+  isLinkedWorktreeRoot?: (directoryPath: string) => Promise<boolean>
   /** Latest main-process event-loop lag; defaults to the perf-context record. Tests inject one. */
   getRecentEventLoopLag?: () => RecentEventLoopLag | null
   logInfo: (message: string, metadata?: Record<string, unknown>) => void
@@ -147,6 +158,7 @@ export class FileProviderMaintenanceService {
   private watchConfigurationGeneration = 0
   private readonly cleanupFilterEvidence = new Map<string, string[]>()
   private readonly cleanupDirectoryReads = new Map<string, Promise<string[]>>()
+  private readonly cleanupWorktreeChecks = new Map<string, Promise<boolean>>()
   private watchPaths: string[] = []
   private extraPaths: string[] = []
   private readonly cleanupDeleteService: FileProviderCleanupDeleteService<
@@ -173,6 +185,7 @@ export class FileProviderMaintenanceService {
         if (!this.dbUtils) return []
         this.cleanupFilterEvidence.clear()
         this.cleanupDirectoryReads.clear()
+        this.cleanupWorktreeChecks.clear()
         // Cleanup deletes are keyed by these ids — read the home the delete
         // will target (worker-owned search file under the split).
         return await this.dbUtils
@@ -240,6 +253,7 @@ export class FileProviderMaintenanceService {
     this.watchConfigurationGeneration += 1
     this.cleanupFilterEvidence.clear()
     this.cleanupDirectoryReads.clear()
+    this.cleanupWorktreeChecks.clear()
     this.maintenanceCleanupPending = true
     this.scheduleFileMaintenance()
   }
@@ -412,6 +426,24 @@ export class FileProviderMaintenanceService {
     options?.signal?.throwIfAborted()
     if (this.isStaleExcludedIndexPath(filePath)) return true
     if (this.isUserMonitoredPath(filePath)) return false
+    // A linked worktree below a scan root duplicates a checkout indexed elsewhere; its `.git`
+    // file is the evidence the deletion checks again.
+    const worktreeRoot = await findLinkedWorktreeRootBelow(
+      filePath,
+      this.watchPaths,
+      (directory) => {
+        let check = this.cleanupWorktreeChecks.get(directory)
+        if (!check) {
+          check = (this.deps.isLinkedWorktreeRoot ?? isLinkedWorktreeRoot)(directory)
+          this.cleanupWorktreeChecks.set(directory, check)
+        }
+        return check
+      }
+    )
+    if (worktreeRoot) {
+      this.cleanupFilterEvidence.set(filePath, [path.join(worktreeRoot, '.git')])
+      return true
+    }
     const markers = new Set<string>()
     let unavailable = false
     const reason = await getFileTraversalExclusionReason(filePath, async (directoryPath) => {
@@ -459,6 +491,7 @@ export class FileProviderMaintenanceService {
     if (!this.deps.isWithinWatchRoots(scope)) return
     this.cleanupFilterEvidence.clear()
     this.cleanupDirectoryReads.clear()
+    this.cleanupWorktreeChecks.clear()
     this.watchConfigurationGeneration += 1
     await this.enqueueFileMaintenanceWork([{ reason: 'filter-root', filePath: scope }])
     await this.setFileMaintenanceCursor(this.fileMaintenanceTaskId('filter-root', scope, null), 0)
@@ -907,6 +940,7 @@ export class FileProviderMaintenanceService {
       )
       this.cleanupFilterEvidence.clear()
       this.cleanupDirectoryReads.clear()
+      this.cleanupWorktreeChecks.clear()
       if (records.length === 0) {
         await this.removeFileMaintenanceWork([task])
         return { deletedCount, done: true }
@@ -1111,9 +1145,10 @@ export class FileProviderMaintenanceService {
   }
 
   /**
-   * Reclaims the pages a content cleanup freed. Only under the split, where the index worker
-   * owns the file and runs the `VACUUM` off the main thread; the worker also decides whether
-   * the freelist and the free disk make it worth the minutes (`search-index-compaction.ts`).
+   * Reclaims free pages in the search index file. Only under the split, where the index worker
+   * owns the file and runs it off the main thread; the worker decides whether the freelist and
+   * the free disk make it worth it, and how (`search-index-compaction.ts`). An incremental step
+   * hands back a bounded number of pages, so it repeats while pages remain and the writer is free.
    */
   public async compactSearchIndex(reason: string): Promise<void> {
     if (this.shuttingDown) return
@@ -1122,21 +1157,35 @@ export class FileProviderMaintenanceService {
       return
     }
     try {
-      const outcome = await searchIndexWriter.compact(reason)
-      if (!outcome) {
+      let first: VacuumResult | null = null
+      let last: VacuumResult | null = null
+      let durationMs = 0
+      for (let step = 0; step < SEARCH_INDEX_COMPACTION_MAX_STEPS; step += 1) {
+        if (this.shuttingDown) break
+        const outcome = await searchIndexWriter.compact(reason)
+        if (!outcome) break
+        first ??= outcome
+        last = outcome
+        durationMs += outcome.durationMs
+        if (!outcome.ran || outcome.mode !== 'incremental') break
+        if ((outcome.freelistBytesAfter ?? 0) < SEARCH_INDEX_INCREMENTAL_MIN_FREE_BYTES) break
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, SEARCH_INDEX_COMPACTION_STEP_DELAY_MS)
+        )
+      }
+      if (!first || !last) {
         this.deps.logDebug('Search index compaction skipped: writer busy', { reason })
         return
       }
-      this.deps.logInfo(
-        outcome.ran ? 'Search index compacted' : 'Search index compaction skipped',
-        {
-          reason: outcome.reason,
-          fileBytesBefore: outcome.fileBytesBefore,
-          fileBytesAfter: outcome.fileBytesAfter,
-          freelistBytesBefore: outcome.freelistBytesBefore,
-          durationMs: outcome.durationMs
-        }
-      )
+      this.deps.logInfo(last.ran ? 'Search index compacted' : 'Search index compaction skipped', {
+        reason: last.reason,
+        mode: last.mode,
+        fileBytesBefore: first.fileBytesBefore,
+        fileBytesAfter: last.fileBytesAfter,
+        freelistBytesBefore: first.freelistBytesBefore,
+        freelistBytesAfter: last.freelistBytesAfter,
+        durationMs
+      })
     } catch (error) {
       this.deps.logWarn('Search index compaction failed', error, { reason })
     }

@@ -267,6 +267,10 @@ import {
 import { FileProviderContentCapacityService } from './services/file-provider-content-capacity-service'
 import { FileProviderContentIndexPolicyService } from './services/file-provider-content-index-policy-service'
 import { FileProviderIndexRuntimeService } from './services/file-provider-index-runtime-service'
+import {
+  FileProviderBootPassService,
+  type FileProviderBootPassServiceDeps
+} from './services/file-provider-boot-pass-service'
 import type { FileProviderIndexRuntimeServiceDeps } from './services/file-provider-index-runtime-service'
 
 const capacityFixture = fileProvider as unknown as {
@@ -347,11 +351,7 @@ interface MutableFileProvider {
   } | null
   setFilePersistencePort: (port: FilePersistencePort | null) => void
   setIndexedSourceRuntimeMutationDelegate: (delegate: unknown | null) => void
-  pathNormalizationScheduled: boolean
-  pathNormalizationAttempted: boolean
-  pathNormalizationTimer: NodeJS.Timeout | null
-  keywordBackfillScheduled: boolean
-  keywordBackfillTimer: NodeJS.Timeout | null
+  bootPassService: FileProviderBootPassService
 }
 
 interface FileProviderShutdownTestApi extends MutableFileProvider {
@@ -720,17 +720,12 @@ function resetProviderState(provider: MutableFileProvider): void {
   provider.isInitializing = null
   provider.shuttingDown = false
   provider.openersChannelRegistered = false
-  // The NFC migration is once-per-boot, and the provider is a module singleton:
-  // without this every later startup test would inherit the first one's timer.
-  if (provider.pathNormalizationTimer) clearTimeout(provider.pathNormalizationTimer)
-  provider.pathNormalizationTimer = null
-  provider.pathNormalizationScheduled = false
-  // Also the reconciliation-deferral half of the same once-per-boot state.
-  provider.pathNormalizationAttempted = false
-  // The keyword backfill is once-per-boot for the same reason.
-  if (provider.keywordBackfillTimer) clearTimeout(provider.keywordBackfillTimer)
-  provider.keywordBackfillTimer = null
-  provider.keywordBackfillScheduled = false
+  // The boot passes are once-per-boot, and the provider is a module singleton: without a fresh
+  // service every later startup test would inherit the first one's timers and flags.
+  provider.bootPassService.cancel()
+  provider.bootPassService = new FileProviderBootPassService(
+    (provider.bootPassService as unknown as { deps: FileProviderBootPassServiceDeps }).deps
+  )
 }
 
 beforeEach(async () => {
@@ -1144,6 +1139,63 @@ describe('file-provider startup readiness', () => {
         expect.objectContaining({ initializationFailed: false, errorCode: null })
       )
     } finally {
+      reportSpy.mockRestore()
+    }
+  })
+
+  it('keeps a source whose scan filled the index serving watch deltas, and stops rescanning it', async () => {
+    const provider = fileProvider as unknown as FileProviderShutdownTestApi & {
+      startIndexing: (source: 'auto' | 'manual') => Promise<{ errors: number }>
+      runAutoIndexing: () => Promise<boolean>
+      dbUtils: unknown
+      initializationFailed: boolean
+      initializationFailure: unknown
+      watchService: { shouldRunAutoIndexing: () => Promise<{ allowed: boolean }> }
+    }
+    const originalDbUtils = provider.dbUtils
+    const originalShouldRunAutoIndexing = provider.watchService.shouldRunAutoIndexing
+    const reportSpy = vi.spyOn(operationalErrorService, 'report')
+    let failure: Error = new Error('Failed query: INSERT INTO files')
+    const full = Object.assign(new Error('SQLITE_FULL: database or disk is full'), {
+      code: 'SQLITE_FULL'
+    })
+
+    resetProviderState(provider)
+    provider.dbUtils = {
+      getFileIndexReadDb: () => {
+        throw failure
+      }
+    }
+    provider.watchService.shouldRunAutoIndexing = vi.fn(async () => ({ allowed: true }))
+
+    try {
+      // Any other failure still stops the source.
+      await provider.startIndexing('auto')
+      expect(provider.getIndexingStatus()).toEqual(
+        expect.objectContaining({ initializationFailed: true, errorCode: 'FILE_INDEX_SCAN_FAILED' })
+      )
+
+      // `initializationFailed` turns the source's health to `error`, and the runtime then skips its
+      // watch events; a full index has to keep applying deletions, which free its pages.
+      failure = full
+      await provider.startIndexing('auto')
+      expect(provider.getIndexingStatus()).toEqual(
+        expect.objectContaining({
+          initializationFailed: false,
+          errorCode: 'FILE_INDEX_STORAGE_FULL'
+        })
+      )
+      expect(reportSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ code: 'FILE_INDEX_STORAGE_FULL', retryable: false })
+      )
+
+      await expect(provider.runAutoIndexing()).resolves.toBe(false)
+      expect(runtimeScanSource).not.toHaveBeenCalled()
+    } finally {
+      provider.dbUtils = originalDbUtils
+      provider.watchService.shouldRunAutoIndexing = originalShouldRunAutoIndexing
+      provider.initializationFailed = false
+      provider.initializationFailure = null
       reportSpy.mockRestore()
     }
   })

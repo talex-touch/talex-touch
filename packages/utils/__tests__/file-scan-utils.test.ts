@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ScannedFileInfo } from "../common/file-scan-utils";
@@ -316,5 +317,48 @@ describe("media-library bundle exclusion", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("#1727 ordinary-word folders inside and outside a project", () => {
+  let base: string;
+
+  beforeAll(async () => {
+    // Under the system temp dir, not the package cwd: the package is itself a project, and these
+    // cases need a folder that is not inside one.
+    base = await realpath(await mkdtemp(path.join(os.tmpdir(), "scan-utils-project-")));
+    // base/docs/build/notes.txt            no project anywhere above: a document folder
+    // base/app/package.json                a project root
+    // base/app/packages/lib/src/index.txt
+    // base/app/packages/lib/dist/out.txt   its marker is two folders up: build output
+    await mkdir(path.join(base, "docs", "build"), { recursive: true });
+    await writeFile(path.join(base, "docs", "build", "notes.txt"), "n");
+    await mkdir(path.join(base, "app", "packages", "lib", "src"), { recursive: true });
+    await mkdir(path.join(base, "app", "packages", "lib", "dist"), { recursive: true });
+    await writeFile(path.join(base, "app", "package.json"), "{}");
+    await writeFile(path.join(base, "app", "packages", "lib", "src", "index.txt"), "i");
+    await writeFile(path.join(base, "app", "packages", "lib", "dist", "out.txt"), "o");
+  });
+
+  afterAll(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  const relativeNames = (files: ScannedFileInfo[], from: string): string[] =>
+    files.map((file) => path.relative(from, file.path)).sort();
+
+  it("indexes a document folder named build and skips a package's dist below the project marker", async () => {
+    const files = await scanDirectory(base, scanOpts);
+    expect(relativeNames(files, base)).toEqual([
+      path.join("app", "package.json"),
+      path.join("app", "packages", "lib", "src", "index.txt"),
+      path.join("docs", "build", "notes.txt"),
+    ]);
+  });
+
+  it("reads the folders above the scan root for a marker", async () => {
+    const lib = path.join(base, "app", "packages", "lib");
+    const files = await scanDirectory(lib, scanOpts);
+    expect(relativeNames(files, lib)).toEqual([path.join("src", "index.txt")]);
   });
 });

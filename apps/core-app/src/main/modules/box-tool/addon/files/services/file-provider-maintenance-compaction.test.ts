@@ -59,6 +59,45 @@ describe('FileProviderMaintenanceService.compactSearchIndex', () => {
     )
   })
 
+  it('repeats incremental steps until the freelist is small, and logs the whole reclaim once', async () => {
+    vi.useFakeTimers()
+    const step = (freelistBytesBefore: number, freelistBytesAfter: number) => ({
+      ran: true,
+      reason: 'boot-check',
+      mode: 'incremental' as const,
+      fileBytesBefore: 1_000_000_000 + freelistBytesBefore,
+      fileBytesAfter: 1_000_000_000 + freelistBytesAfter,
+      freelistBytesBefore,
+      freelistBytesAfter,
+      durationMs: 40
+    })
+    const MiB = 1024 * 1024
+    writerMock.compact
+      .mockResolvedValueOnce(step(150 * MiB, 86 * MiB))
+      .mockResolvedValueOnce(step(86 * MiB, 22 * MiB))
+    const { service, logs } = createService(true)
+
+    const done = service.compactSearchIndex('boot-check')
+    await vi.runAllTimersAsync()
+    await done
+    vi.useRealTimers()
+
+    // 22 MiB is under the incremental floor, so the second step is the last.
+    expect(writerMock.compact).toHaveBeenCalledTimes(2)
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: 'info',
+        message: 'Search index compacted',
+        meta: expect.objectContaining({
+          mode: 'incremental',
+          freelistBytesBefore: 150 * MiB,
+          freelistBytesAfter: 22 * MiB,
+          durationMs: 80
+        })
+      })
+    )
+  })
+
   it('never compacts on the shared-file topology', async () => {
     const { service, logs } = createService(false)
 

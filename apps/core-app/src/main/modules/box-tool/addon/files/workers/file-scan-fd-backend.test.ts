@@ -12,6 +12,7 @@ import path from 'node:path'
 import type * as NodeModule from 'node:module'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { FileScanOptions } from '@talex-touch/utils/common/file-scan-constants'
+import { fileFilterService } from '@talex-touch/utils/common/file-filter-service'
 import {
   scanDirectoryBatches,
   type ScannedFileInfo,
@@ -52,7 +53,9 @@ vi.mock('node:module', async (importOriginal) => {
  *  - `--print0` selects the NUL separator (without it the backend's NUL parser sees one blob),
  *  - `--absolute-path` selects absolute output (relative output resolves against the repo cwd
  *    and then fails the root-containment check, so the naive walker silently loses every file),
- *  - `--hidden` includes dot entries.
+ *  - `--hidden` includes dot entries,
+ *  - `--exclude GLOB` prunes matching entries, for the gitignore subset the policy's prune globs
+ *    use: `*`, `[..]` classes, a leading `/` anchoring to the root, a trailing `/` for directories.
  * Symlinked files are reported as files: dropping them is the backend's own job, not fd's.
  */
 const FIXTURE_PRELUDE = `#!/usr/bin/env node
@@ -64,11 +67,41 @@ let hidden = false
 let printNull = false
 let absolute = false
 const roots = []
+const excludes = []
+let currentRoot = ''
+function compileExclude(glob) {
+  const directoryOnly = glob.endsWith('/')
+  const anchored = glob.startsWith('/')
+  const body = glob.slice(anchored ? 1 : 0, directoryOnly ? -1 : glob.length)
+  let source = ''
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index]
+    if (char === '*') {
+      source += '[^/]*'
+    } else if (char === '[') {
+      const end = body.indexOf(']', index)
+      source += body.slice(index, end + 1)
+      index = end
+    } else {
+      source += char === '.' ? '\\\\.' : char
+    }
+  }
+  return { directoryOnly, pattern: new RegExp((anchored ? '^' : '(^|/)') + source + '$') }
+}
+function isExcluded(full, isDirectory) {
+  const relative = path.relative(currentRoot, full)
+  return excludes.some((rule) => (isDirectory || !rule.directoryOnly) && rule.pattern.test(relative))
+}
 const argv = process.argv.slice(2)
 for (let index = 0; index < argv.length; index += 1) {
   const arg = argv[index]
   if (arg === '--max-depth') {
     maxDepth = Number(argv[index + 1])
+    index += 1
+    continue
+  }
+  if (arg === '--exclude') {
+    excludes.push(compileExclude(argv[index + 1]))
     index += 1
     continue
   }
@@ -105,6 +138,7 @@ function walk(directory, depth) {
   for (const entry of entries) {
     if (!hidden && entry.name.startsWith('.')) continue
     const full = path.join(directory, entry.name)
+    if (isExcluded(full, entry.isDirectory())) continue
     if (entry.isSymbolicLink()) {
       let target
       try {
@@ -124,7 +158,10 @@ function walk(directory, depth) {
     if (depth + 1 <= maxDepth) found.push(full)
   }
 }
-for (const root of roots) walk(root, 0)
+for (const root of roots) {
+  currentRoot = root
+  walk(root, 0)
+}
 
 const separator = printNull ? '\\0' : '\\n'
 function render(file) {
@@ -167,7 +204,10 @@ function writeFile(relativePath: string, contents = 'x'): string {
   return fullPath
 }
 
-/** Directory names the shared filter rejects are used on purpose: fd enumerates them, Tuff must not admit them. */
+/**
+ * Directory names the shared filter rejects are used on purpose: Tuff must not admit them, and fd
+ * prunes the ones the policy rejects in every context (`node_modules`, `.hidden-dir`, `Tool.app`).
+ */
 function buildFixtureTree(): void {
   // realpath: fd canonicalises the root it is handed, and /var is a symlink of /private/var on
   // macOS. Scanning the non-canonical spelling would make every child fail root containment.
@@ -183,9 +223,19 @@ function buildFixtureTree(): void {
   writeFile(path.join('nested', 'nested.txt'))
   writeFile(path.join('nested', 'deeper', 'deeper.txt'))
   writeFile(path.join('node_modules', 'package.json'))
+  writeFile(path.join('Tool.app', 'Contents', 'notes.txt'))
+  writeFile(path.join('docs', 'build', 'notes.txt'))
+  writeFile(path.join('project', 'package.json'))
+  writeFile(path.join('project', 'build', 'bundle.txt'))
+  writeFile(path.join('project', 'packages', 'lib', 'dist', 'out.txt'))
   writeFile(path.join('.hidden-dir', 'inner.txt'))
   writeFile(path.join('excluded-dir', 'skipped.txt'))
   writeFile(path.join('excluded-dir-sibling', 'kept.txt'))
+  // A linked worktree of a repository elsewhere is a duplicate checkout; a submodule is not.
+  writeFile(path.join('wt', '.git'), 'gitdir: /elsewhere/repo/.git/worktrees/wt\n')
+  writeFile(path.join('wt', 'copy.txt'))
+  writeFile(path.join('lib-sub', '.git'), 'gitdir: ../.git/modules/lib-sub\n')
+  writeFile(path.join('lib-sub', 'sub.txt'))
   symlinkSync(fixturePath(path.join('nested', 'nested.txt')), fixturePath('link-to-nested.txt'))
 }
 
@@ -351,7 +401,11 @@ describePosix('file-scan-fd-backend', () => {
       path.join('nested', 'nested.txt'),
       path.join('nested', 'deeper', 'deeper.txt'),
       path.join('excluded-dir', 'skipped.txt'),
-      path.join('excluded-dir-sibling', 'kept.txt')
+      path.join('excluded-dir-sibling', 'kept.txt'),
+      path.join('lib-sub', 'sub.txt'),
+      // #1727: `build` with no project marker beside it is a document folder.
+      path.join('docs', 'build', 'notes.txt'),
+      path.join('project', 'package.json')
     ]
       .map((relativePath) => fixturePath(relativePath).normalize('NFC'))
       .sort()
@@ -375,7 +429,10 @@ describePosix('file-scan-fd-backend', () => {
       fixturePath('.hidden-file.txt'),
       fixturePath('desktop.ini'),
       fixturePath('LICENSE'),
-      fixturePath('link-to-nested.txt')
+      fixturePath('link-to-nested.txt'),
+      fixturePath(path.join('project', 'build', 'bundle.txt')),
+      // The project marker is two folders above `dist`, not beside it.
+      fixturePath(path.join('project', 'packages', 'lib', 'dist', 'out.txt'))
     ].map((filePath) => filePath.normalize('NFC'))
 
     for (const excludedPath of excluded) {
@@ -444,6 +501,14 @@ describePosix('file-scan-fd-backend', () => {
     for (const flag of ['--hidden', '--no-ignore', '--absolute-path', '--print0']) {
       expect(argv).toContain(flag)
     }
+    // Pruning comes from the shared policy, never from a list of the backend's own.
+    const pruned = argv.filter((_, index) => argv[index - 1] === '--exclude')
+    expect(pruned).toEqual(fileFilterService.getTraversalPruneGlobs(root))
+    expect(pruned).toEqual(
+      expect.arrayContaining(['.*', '[nN][oO][dD][eE]_[mM][oO][dD][uU][lL][eE][sS]/'])
+    )
+    // `build` is excluded only beside a project marker, which fd cannot see.
+    expect(pruned).not.toContain('[bB][uU][iI][lL][dD]/')
   })
 
   it('excludes a path by segment, never by string prefix', async () => {

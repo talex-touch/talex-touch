@@ -13,7 +13,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { FILE_SCAN_MAX_DEPTH } from '@talex-touch/utils/common/file-scan-constants'
 import { isIndexableFile, normalizeFsPath } from '@talex-touch/utils/common/file-scan-utils'
 import { fileFilterService } from '@talex-touch/utils/common/file-filter-service'
-import { getDirectoryLevelExclusionReason } from '../file-traversal-policy'
+import { getDirectoryLevelExclusionReason, isLinkedWorktreeRoot } from '../file-traversal-policy'
 import { normalizeAsarUnpackedPath } from '../native-binary-path'
 
 const FD_THREADS = 1
@@ -80,6 +80,11 @@ export async function scanDirectoryBatchesWithFd(
     String(FD_THREADS),
     '--max-depth',
     String(maxDepth + 1),
+    // Directories the shared policy rejects in any context are never enumerated. Everything fd
+    // still returns goes through the same policy below.
+    ...fileFilterService
+      .getTraversalPruneGlobs(path.resolve(rootPath))
+      .flatMap((glob) => ['--exclude', glob]),
     '.',
     rootPath
   ]
@@ -234,7 +239,7 @@ async function isTraversalExcluded(
               siblingNames: undefined
             }) !== null
           : getDirectoryLevelExclusionReason(directoryPath, undefined, options).then(
-              (reason) => reason !== null
+              async (reason) => reason !== null || (await isLinkedWorktreeRoot(directoryPath))
             )
       )
       if (cache.size >= FD_TRAVERSAL_CACHE_LIMIT) {

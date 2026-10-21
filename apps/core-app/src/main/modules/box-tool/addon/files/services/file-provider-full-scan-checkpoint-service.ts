@@ -35,11 +35,15 @@ export const FULL_SCAN_CHECKPOINT_REASON = 'scan-progress.checkpoint'
 export const FULL_SCAN_CHECKPOINT_CLEAR_REASON = 'scan-progress.checkpoint-clear'
 
 export interface FileProviderFullScanCheckpointHooks {
-  /** The traversal filter, so a child the walker would refuse is never treated as a checkpoint. */
+  /**
+   * The traversal filter, so a child the walker would refuse is never treated as a checkpoint.
+   * A child is walked from itself, so this also has to cover what a walk does not check at its
+   * start (`getScanChildExclusionReason`).
+   */
   getTraversalExclusionReason: (
     directoryPath: string,
     context: { siblingNames: readonly string[] }
-  ) => FileFilterReason | null
+  ) => FileFilterReason | null | Promise<FileFilterReason | null>
 }
 
 export class FileProviderFullScanCheckpointService {
@@ -139,7 +143,8 @@ export async function listScanChildDirectories(
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue
     const fullPath = input.join(rootPath, entry.name)
     if (input.excludePathsSet?.has(fullPath)) continue
-    if (input.hooks.getTraversalExclusionReason(fullPath, { siblingNames }) !== null) continue
+    if ((await input.hooks.getTraversalExclusionReason(fullPath, { siblingNames })) !== null)
+      continue
     children.push(fullPath)
   }
   return children.sort((left, right) => left.localeCompare(right))

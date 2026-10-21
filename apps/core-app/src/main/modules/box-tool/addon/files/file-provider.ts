@@ -43,7 +43,6 @@ import {
   type FileIndexSettings,
   type ScannedFileInfo
 } from './types'
-import type { FileScanOptions } from '@talex-touch/utils/common/file-scan-constants'
 import type { IndexWorkerFileResult } from './workers/file-index-worker-client'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -51,7 +50,6 @@ import { performance } from 'node:perf_hooks'
 import process from 'node:process'
 import { StorageList, TuffInputType } from '@talex-touch/utils'
 import { fileFilterService } from '@talex-touch/utils/common/file-filter-service'
-import { getLogger } from '@talex-touch/utils/common/logger'
 import { runAdaptiveTaskQueue } from '@talex-touch/utils/common/utils'
 import { OpenerEvents } from '@talex-touch/utils/transport/events'
 
@@ -64,7 +62,7 @@ import {
   mapIndexedWriteFullScanUpsertRecords,
   resolveIndexedWatchRootSet
 } from '@talex-touch/utils/search'
-import { and, eq, gt, inArray, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray } from 'drizzle-orm'
 import { app } from 'electron'
 import { notificationModule } from '../../../notification'
 import { operationalErrorService } from '../../../observability'
@@ -72,21 +70,11 @@ import { t } from '../../../../utils/i18n-helper'
 import emptyOpenerSvg from '../../../../../renderer/src/assets/svg/EmptyAppPlaceholder.svg?raw'
 import { dbWriteScheduler } from '../../../../db/db-write-scheduler'
 import { scheduleDbWrite } from '../../../../db/db-write'
-import {
-  config as configSchema,
-  fileIndexProgress,
-  files as filesSchema,
-  fileTypeIs
-} from '../../../../db/schema'
+import { fileIndexProgress, files as filesSchema, fileTypeIs } from '../../../../db/schema'
 import { isSqliteBusyError } from '../../../../db/sqlite-retry'
 import { createDbUtils } from '../../../../db/utils'
 import { appTaskGate } from '../../../../service/app-task-gate'
 import { deviceIdleService } from '../../../../service/device-idle-service'
-import {
-  normalizeRenderableSource,
-  normalizeTuffItemLocalAssets,
-  type LocalAssetFallbackKind
-} from '../../../../utils/local-renderable-assets'
 import { formatDuration } from '../../../../utils/logger'
 import { enterPerfContext } from '../../../../utils/perf-context'
 import { getMainConfig, saveMainConfig } from '../../../storage'
@@ -97,14 +85,10 @@ import {
   WHITELISTED_EXTENSIONS
 } from './constants'
 import { normalizeFsPath } from '@talex-touch/utils/common/file-scan-utils'
-import {
-  getFileTraversalExclusionReason,
-  mapFileToTuffItem,
-  scanDirectoryBatches as scanDirectoryBatchesDirect
-} from './utils'
+import { getFileTraversalExclusionReason, getScanChildExclusionReason } from './utils'
 import { FileIndexWorkerClient } from './workers/file-index-worker-client'
 import { FileReconcileWorkerClient } from './workers/file-reconcile-worker-client'
-import { FileScanWorkerClient, type FileScanRunStats } from './workers/file-scan-worker-client'
+import { FileScanWorkerClient } from './workers/file-scan-worker-client'
 import { EmbeddingService } from './embedding-service'
 import { iconService } from '../../../../service/icon-service'
 import { ThumbnailWorkerClient } from './workers/thumbnail-worker-client'
@@ -168,18 +152,16 @@ import { FileProviderScanProgressService } from './services/file-provider-scan-p
 import { FileProviderEnrichmentResumeService } from './services/file-provider-enrichment-resume-service'
 import { FileProviderContentIndexPolicyService } from './services/file-provider-content-index-policy-service'
 import { FileProviderContentCapacityService } from './services/file-provider-content-capacity-service'
-import { shouldBootstrapFileReindex } from './services/file-provider-bootstrap-reindex'
+import { classifyRunFailure, isIndexFullFailure } from './services/file-provider-run-failure'
+import { FileProviderBootPassService } from './services/file-provider-boot-pass-service'
+import { FileProviderIndexRowStore } from './services/file-provider-index-row-store'
 import {
-  FileProviderPathNormalizationService,
-  shouldDeferReconciliationForPathNormalization,
-  shouldRunPathNormalizationOnPlatform,
-  type FilePathNormalizationRewrite,
-  type FilePathNormalizationRow
-} from './services/file-provider-path-normalization-service'
-import {
-  FILE_KEYWORD_BACKFILL_VERSION,
-  FileProviderKeywordBackfillService
-} from './services/file-provider-keyword-backfill-service'
+  fileProviderLog,
+  logFileProviderDebug,
+  logFileProviderError,
+  logFileProviderInfo,
+  logFileProviderWarn
+} from './file-provider-log'
 import { getStartupDegradeWindowRemainingMs } from '../../../../db/runtime-flags'
 import { FileProviderWriteSideEffectService } from './services/file-provider-write-side-effect-service'
 import { FileProviderExtensionService } from './services/file-provider-extension-service'
@@ -215,6 +197,12 @@ import { FileProviderReconciliationUpdateService } from './services/file-provide
 import { FileProviderScanStrategyService } from './services/file-provider-scan-strategy-service'
 import { FileProviderAssetService } from './services/file-provider-asset-service'
 import { FileProviderSearchResultService } from './services/file-provider-search-result-service'
+import { FileProviderSearchItemService } from './services/file-provider-search-item-service'
+import {
+  FileProviderScanStreamService,
+  streamDirectoryBatchesDirect,
+  type DirectoryBatchStream
+} from './services/file-provider-scan-stream-service'
 import FileSystemWatcher from '../../file-system-watcher'
 import {
   createFileIndexSyncStats,
@@ -229,7 +217,6 @@ import {
 } from './file-provider-index-contracts'
 import { resolveFileProviderBaseWatchPaths } from './file-provider-watch-paths'
 
-const fileProviderLog = getLogger('file-provider')
 const FILE_ICON_WRITE_MAX_QUEUE = 24
 /**
  * How long one `getIndexStats()` snapshot serves every caller.
@@ -241,10 +228,6 @@ const FILE_ICON_WRITE_MAX_QUEUE = 24
  */
 const FILE_INDEX_STATS_CACHE_MS = 1_000
 /** Extra breathing room after the DB startup degrade window (contracts §7). */
-const FILE_PATH_NORMALIZATION_INITIAL_DELAY_MS = 30_000
-const FILE_PATH_NORMALIZATION_CONFIG_KEY = 'file_provider_path_normalization_version'
-const FILE_KEYWORD_BACKFILL_INITIAL_DELAY_MS = 30_000
-const FILE_KEYWORD_BACKFILL_CONFIG_KEY = 'file_provider_keyword_schema_version'
 
 const FILE_PROVIDER_BASE_WATCH_PATHS_ENV = 'TUFF_FILE_PROVIDER_BASE_WATCH_PATHS'
 
@@ -353,8 +336,21 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   private readonly fileScanWorker = new FileScanWorkerClient()
   private readonly reconcileWorker = new FileReconcileWorkerClient()
   private readonly fileIndexWorker: FileIndexWorkerClient
-  private fileScanBackendLogged = false
-  private fileScanFallbackLogged = false
+  private readonly scanStreamService = new FileProviderScanStreamService({
+    scanBatches: (...args) => this.fileScanWorker.scanBatches(...args),
+    waitForIdle: () => appTaskGate.waitForIdle(),
+    scanDirect: (...args) => this.scanDirectoryBatchesDirectStream(...args),
+    logInfo: (message, meta) => this.logInfo(message, meta),
+    logWarn: (message, error, meta) => this.logWarn(message, error, meta)
+  })
+  private readonly indexRowStore = new FileProviderIndexRowStore({
+    sourceId: this.id,
+    getDbUtils: () => this.dbUtils,
+    isSearchSplitEnabled: () => this.isSearchSplitEnabledNow(),
+    ensurePortReady: (reason) => this.ensureSearchIndexWorkerReady(reason),
+    getPort: () => this.requireFilePersistencePort(),
+    logDebug: (message, meta) => this.logDebug(message, meta)
+  })
   private readonly thumbnailWorker = new ThumbnailWorkerClient()
   private disposeAssetBridge: (() => void) | null = null
 
@@ -363,16 +359,6 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   private backgroundStartupPromise: Promise<void> | null = null
   private backgroundStartupReady = false
   private backgroundStartupError: Error | null = null
-  /** Once-per-boot guard for the split-topology bootstrap reindex net. */
-  private bootstrapReindexChecked = false
-  /** Once-per-boot guard for the NFC path repair pass. */
-  private pathNormalizationScheduled = false
-  /** Set after the repair's first attempt, successful or not. */
-  private pathNormalizationAttempted = false
-  private pathNormalizationTimer: NodeJS.Timeout | null = null
-  /** Once-per-boot guard for the keyword schema backfill pass. */
-  private keywordBackfillScheduled = false
-  private keywordBackfillTimer: NodeJS.Timeout | null = null
   /** Stable public projection of the last background startup failure. */
   private backgroundStartupFailure: { code: string; retryable: boolean; reportId: string } | null =
     null
@@ -468,6 +454,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   })
   public readonly assetService: FileProviderAssetService
   private readonly searchResultService: FileProviderSearchResultService
+  private readonly searchItemService: FileProviderSearchItemService
   private readonly maintenanceService = new FileProviderMaintenanceService({
     sourceId: this.id,
     getDbUtils: () => this.dbUtils,
@@ -490,62 +477,20 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     logDebug: (message, metadata) => this.logDebug(message, metadata),
     logWarn: (message, error, metadata) => this.logWarn(message, error, metadata)
   })
-  private readonly pathNormalizationService = new FileProviderPathNormalizationService({
-    getAppliedVersion: () => this.getPathNormalizationAppliedVersion(),
-    setAppliedVersion: (version) => this.setPathNormalizationAppliedVersion(version),
-    loadRowsPage: (afterId, limit) => this.loadPathNormalizationRowsPage(afterId, limit),
-    loadRowsByPaths: (paths) => this.loadPathNormalizationRowsByPaths(paths),
-    rewritePath: (rewrite) => this.rewriteFilePathToNormalizedForm(rewrite),
-    removeIndexedFile: async (deletion) => {
-      const rows = await this.maintenanceService.findIncrementalDeleteRecords([deletion.path])
-      if (rows.length === 0) return false
-      if (rows[0].id !== deletion.id) throw new Error('FILE_PATH_NORMALIZATION_VERSION_CHANGED')
-      const result = await this.maintenanceService.deleteFileRecords(rows, {
-        keptFileId: deletion.keptId
-      })
-      if (result.deferred || !result.deletedIds.includes(deletion.id)) {
-        throw new Error('FILE_PATH_NORMALIZATION_VERSION_CHANGED')
-      }
-      return true
-    },
-    removeIndexEntry: (filePath) =>
-      this.maintenanceService.enqueueOrphanSearchCandidates([filePath], 'path-rekey'),
-    reindexRows: async (ids) => {
-      if (!this.dbUtils || ids.length === 0) return
-      const rows = await this.dbUtils
-        .getFileIndexReadDb()
-        .select()
-        .from(filesSchema)
-        .where(inArray(filesSchema.id, ids))
-      for (const chunk of chunkArray(rows, 10)) {
-        await this.maintenanceService.withFileMutationSlice(undefined, (mutationLeaseId) =>
-          this.requireRuntimeMutationDelegate().applyBatch({
-            sourceId: this.id,
-            mutationLeaseId,
-            records: chunk.map((record) => this.mapFileToIndexedSourceRecord(record))
-          })
-        )
-      }
-    },
-    yieldBetweenPages: async () => {
-      await new Promise<void>((resolve) => setImmediate(resolve))
-    },
+  private readonly bootPassService = new FileProviderBootPassService({
+    sourceId: this.id,
+    getDbUtils: () => this.dbUtils,
+    isShuttingDown: () => this.shuttingDown,
+    isSearchSplitEnabled: () => this.isSearchSplitEnabledNow(),
+    isRuntimeReady: () => Boolean(this.dbUtils && this.indexedSourceRuntimeMutationDelegate),
+    getRuntimeMutationDelegate: () => this.requireRuntimeMutationDelegate(),
+    getMaintenance: () => this.maintenanceService,
+    getWatchRootCount: () => this.watchPaths.length,
+    countIndexedRows: (reason) => this.countSearchIndexByProvider(this.id, reason),
+    mapRecord: (row) => this.mapFileToIndexedSourceRecord(row),
+    emitRecordBatch: (batch) => this.emitIndexedSourceRecordBatchFromBatch(batch),
     logInfo: (message, meta) => this.logInfo(message, meta),
-    logWarn: (message, error, meta) => this.logWarn(message, error, meta)
-  })
-  private readonly keywordBackfillService = new FileProviderKeywordBackfillService<
-    typeof filesSchema.$inferSelect
-  >({
-    getAppliedVersion: () => this.getKeywordBackfillAppliedVersion(),
-    setAppliedVersion: (version) => this.setKeywordBackfillAppliedVersion(version),
-    isReady: () => Boolean(this.dbUtils && this.indexedSourceRuntimeMutationDelegate),
-    loadRowsPage: (afterId, limit) => this.loadKeywordBackfillRowsPage(afterId, limit),
-    emitRows: (rows) => this.emitKeywordBackfillRows(rows),
-    waitForWriteCapacity: async () => {
-      await appTaskGate.waitForIdle()
-      await dbWriteScheduler.waitForCapacity(4)
-    },
-    logInfo: (message, meta) => this.logInfo(message, meta),
+    logDebug: (message, meta) => this.logDebug(message, meta),
     logWarn: (message, error, meta) => this.logWarn(message, error, meta)
   })
 
@@ -773,8 +718,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       waitBeforeChunk: async () => {
         if (!this.isSearchSplitEnabledNow()) await dbWriteScheduler.waitForCapacity(4)
       },
-      updateChunk: (records) => this.updateFileMetadataChunk(records),
-      refreshUpdated: (records) => this.refreshFileUpdateRecords(records),
+      updateChunk: (records) => this.indexRowStore.updateFileMetadataChunk(records),
+      refreshUpdated: (records) => this.indexRowStore.refreshFileUpdateRecords(records),
       dispatchUpdated: (records) => {
         return this.writeSideEffectService.dispatch(records, {
           extensionContext: 'file-update',
@@ -788,7 +733,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       label: 'FileProvider::processFileUpdates'
     })
     this.incrementalInsertExecutor = new IndexedWriteInsertExecutorService({
-      persist: (records) => this.persistIncrementalRecords(records),
+      persist: (records) => this.indexRowStore.persistIncrementalRecords(records),
       dispatchInserted: (records) => {
         return this.writeSideEffectService.dispatch(records, {
           extensionContext: 'incremental',
@@ -803,10 +748,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         listScanChildDirectories(rootPath, {
           readdir: (directoryPath) => fs.readdir(directoryPath, { withFileTypes: true }),
           join: (root, name) => path.join(root, name),
-          hooks: {
-            getTraversalExclusionReason: (directoryPath, context) =>
-              fileFilterService.getTraversalExclusionReason(directoryPath, undefined, context)
-          },
+          hooks: { getTraversalExclusionReason: getScanChildExclusionReason },
           excludePathsSet
         }),
       getCompletedPaths: (paths) => this.scanProgressService.getCompletedPaths(paths),
@@ -908,7 +850,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         if (!this.dbUtils) throw new Error('FILE_PROVIDER_PERSISTENCE_UNAVAILABLE')
         return (await getReconciliationFileRecordsPage(this.dbUtils, rootPath, 0, 1)).length > 0
       },
-      getDeferralReason: () => this.resolveReconciliationDeferralReason(),
+      getDeferralReason: () => this.bootPassService.getReconciliationDeferralReason(),
       scanDirectory: (rootPath, currentExcludePathsSet, runOptions, onStats) =>
         this.scanDirectoryBatchesWithWorker(
           rootPath,
@@ -1091,15 +1033,27 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         }
       }
     )
+    this.searchItemService = new FileProviderSearchItemService({
+      providerId: this.id,
+      providerName: this.name,
+      getAssetService: () => this.assetService,
+      cleanupStaleFileResult: (file, reason) =>
+        this.maintenanceService.cleanupStaleFileResult(file, reason),
+      ensurePersistenceReady: (reason) => this.ensureSearchIndexWorkerReady(reason),
+      removeFileExtensions: (fileId, keys) =>
+        this.requireFilePersistencePort().removeFileExtensions(fileId, keys),
+      logDebug: (message, meta) => this.logDebug(message, meta),
+      logWarn: (message, error, meta) => this.logWarn(message, error, meta)
+    })
     this.searchResultService = new FileProviderSearchResultService({
       providerId: this.id,
       getDbUtils: () => this.dbUtils,
       getSearchIndex: () => this.searchIndex,
       isContentIndexingEnabled: () => this.contentIndexPolicyService.isEnabled(),
       isPathAdmitted: (filePath) => this.isSearchPathAdmitted(filePath),
-      buildItem: (file, extensions) => this.createFileSearchItem(file, extensions),
+      buildItem: (file, extensions) => this.searchItemService.createItem(file, extensions),
       normalizeItem: (item, file, extensions, reason) =>
-        this.normalizeFileSearchItem(item, file, extensions, { reason }),
+        this.searchItemService.normalizeItem(item, file, extensions, { reason }),
       sanitizeExtensions: sanitizeIndexedFileExtensions,
       cleanupStaleCandidates: (paths) =>
         this.maintenanceService.cleanupStaleSearchCandidates(paths),
@@ -1115,51 +1069,19 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   }
 
   private logInfo(message: string, meta?: Record<string, unknown>): void {
-    if (meta) {
-      fileProviderLog.info(message, meta)
-    } else {
-      fileProviderLog.info(message)
-    }
+    logFileProviderInfo(message, meta)
   }
 
   private logWarn(message: string, error?: unknown, meta?: Record<string, unknown>): void {
-    if (error && meta) {
-      fileProviderLog.warn(message, { ...meta, error })
-      return
-    }
-    if (meta) {
-      fileProviderLog.warn(message, meta)
-      return
-    }
-    if (error) {
-      fileProviderLog.warn(message, error)
-      return
-    }
-    fileProviderLog.warn(message)
+    logFileProviderWarn(message, error, meta)
   }
 
   private logDebug(message: string, meta?: Record<string, unknown>): void {
-    if (meta) {
-      fileProviderLog.debug(message, meta)
-    } else {
-      fileProviderLog.debug(message)
-    }
+    logFileProviderDebug(message, meta)
   }
 
   private logError(message: string, error?: unknown, meta?: Record<string, unknown>): void {
-    if (error && meta) {
-      fileProviderLog.error(message, { ...meta, error })
-      return
-    }
-    if (meta) {
-      fileProviderLog.error(message, meta)
-      return
-    }
-    if (error) {
-      fileProviderLog.error(message, error)
-      return
-    }
-    fileProviderLog.error(message)
+    logFileProviderError(message, error, meta)
   }
 
   public setFilePersistencePort(port: FilePersistencePort | null): void {
@@ -1204,17 +1126,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     this.watchService.dispose()
     const assetDrain = this.assetService.close()
     const openerDrain = this.openerService.close()
-    if (this.pathNormalizationTimer) {
-      clearTimeout(this.pathNormalizationTimer)
-      this.pathNormalizationTimer = null
-      // The pass will not run this boot, so reconciliation must not stay
-      // parked waiting for it.
-      this.pathNormalizationAttempted = true
-    }
-    if (this.keywordBackfillTimer) {
-      clearTimeout(this.keywordBackfillTimer)
-      this.keywordBackfillTimer = null
-    }
+    this.bootPassService.cancel()
     try {
       const producerDrains: Promise<void>[] = [
         this.awaitShutdownProducer(assetDrain, 'file-assets'),
@@ -1359,109 +1271,6 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     return ready
   }
 
-  private cleanupStaleFileAsset(
-    file: typeof filesSchema.$inferSelect,
-    keys: string[],
-    reason: string
-  ): void {
-    if (typeof file.id !== 'number' || keys.length === 0) return
-    void this.ensureSearchIndexWorkerReady(`file-index.${reason}.cleanup-asset`)
-      .then(async (ready) => {
-        if (!ready) {
-          this.logDebug('Stale file asset cleanup skipped: persistence port not ready', {
-            path: file.path,
-            keys,
-            reason
-          })
-          return
-        }
-        await this.requireFilePersistencePort().removeFileExtensions(file.id, keys)
-      })
-      .catch((error) => {
-        if (isSqliteBusyError(error)) {
-          this.logDebug('Stale file asset cache cleanup deferred (db busy)', {
-            path: file.path,
-            keys,
-            reason
-          })
-        } else {
-          this.logWarn('Failed to cleanup stale file asset cache', error, {
-            path: file.path,
-            keys,
-            reason
-          })
-        }
-      })
-  }
-
-  private inferAssetCacheKeys(
-    extensions: Record<string, string>,
-    missingPaths: string[]
-  ): string[] {
-    const keys = new Set<string>()
-    const referencesMissingPath = (value: string | undefined): boolean => {
-      if (!value) return false
-      const normalized = normalizeRenderableSource(value)
-      return (
-        'missing' in normalized &&
-        typeof normalized.localPath === 'string' &&
-        missingPaths.includes(normalized.localPath)
-      )
-    }
-    for (const missingPath of missingPaths) {
-      if (extensions.thumbnail && extensions.thumbnail.includes(missingPath)) {
-        keys.add('thumbnail')
-      }
-      if (extensions.icon && extensions.icon.includes(missingPath)) {
-        keys.add('icon')
-      }
-    }
-    if (referencesMissingPath(extensions.thumbnail)) {
-      keys.add('thumbnail')
-    }
-    if (referencesMissingPath(extensions.icon)) {
-      keys.add('icon')
-    }
-    return Array.from(keys)
-  }
-
-  private normalizeFileSearchItem(
-    item: TuffItem,
-    file: typeof filesSchema.$inferSelect,
-    extensions: Record<string, string>,
-    options: {
-      reason: string
-      fallbackKind?: LocalAssetFallbackKind
-    }
-  ): TuffItem | null {
-    const normalized = normalizeTuffItemLocalAssets(item, {
-      dropMissingFile: true,
-      fallbackKind: options.fallbackKind ?? (file.isDir ? 'folder' : 'file')
-    })
-
-    if (!normalized.item) {
-      this.maintenanceService.cleanupStaleFileResult(file, options.reason)
-      return null
-    }
-
-    if (normalized.missingPaths.length > 0) {
-      const staleKeys = this.inferAssetCacheKeys(extensions, normalized.missingPaths)
-      this.cleanupStaleFileAsset(file, staleKeys, options.reason)
-      if (staleKeys.includes('thumbnail') && typeof file.id === 'number') {
-        void this.assetService.ensureThumbnail(file.id, file.path, file).catch((error) => {
-          this.logWarn('Failed to regenerate stale thumbnail', error, { path: file.path })
-        })
-      }
-      if (staleKeys.includes('icon') && typeof file.id === 'number') {
-        void this.assetService.ensureIcon(file.id, file.path, file).catch((error) => {
-          this.logWarn('Failed to regenerate stale icon', error, { path: file.path })
-        })
-      }
-    }
-
-    return normalized.item
-  }
-
   public setIndexedSourceRuntimeResetDelegate(
     delegate: FileIndexedSourceRuntimeResetDelegate | null
   ): void {
@@ -1506,317 +1315,6 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     mutationLeaseId?: string
   ): Promise<number> {
     return await this.requireRuntimeMutationDelegate().countSource(providerId, mutationLeaseId)
-  }
-
-  /**
-   * Layer-2 bootstrap/self-heal reindex for the split topology (V1
-   * ship-blocker #3). The primary trigger for a fresh search-index.db is
-   * scan-progress emptiness (empty file → full scan); this net additionally
-   * covers "index rows lost but scan_progress survived", where the eligibility
-   * gate would otherwise stay closed forever. At most once per boot; the runtime
-   * applies the same source eligibility in development and production. It is
-   * deliberately NOT deferred by the startup degrade window because an empty
-   * index is missing user-visible search capability, not background maintenance.
-   */
-  private async maybeRunBootstrapReindex(): Promise<void> {
-    if (this.shuttingDown || this.bootstrapReindexChecked) return
-    this.bootstrapReindexChecked = true
-
-    try {
-      const splitEnabled = Boolean(
-        this.initializationContext?.databaseManager.isSearchSplitEnabled()
-      )
-      let indexedCount: number | null = null
-      if (splitEnabled) {
-        indexedCount = await this.countSearchIndexByProvider(this.id, 'bootstrap.emptiness-check')
-      }
-      const decision = shouldBootstrapFileReindex({
-        splitEnabled,
-        indexedCount,
-        watchRootCount: this.watchPaths.length,
-        alreadyChecked: false
-      })
-      if (!decision.run) {
-        this.logDebug('Search index bootstrap reindex not needed', {
-          reason: decision.reason,
-          indexedCount,
-          watchRoots: this.watchPaths.length
-        })
-        return
-      }
-
-      this.logInfo(
-        `Search index bootstrap reindex scheduled: search_index empty for '${this.id}' with ${this.watchPaths.length} watch root(s)`
-      )
-      await this.requireRuntimeMutationDelegate().scanSource(IndexedSourceScanReasons.Startup)
-      this.logInfo('Search index bootstrap reindex completed', {
-        indexedCount: await this.countSearchIndexByProvider(this.id, 'bootstrap.completion-check')
-      })
-    } catch (error) {
-      // Contained: the runtime serializes concurrent scans, so "already in
-      // progress" style failures here mean the normal path took over.
-      this.logWarn('Search index bootstrap reindex failed', error)
-    }
-  }
-
-  /**
-   * Boot-time maintenance writer (database-write-contracts §7): the one-time
-   * NFC path repair only starts after the DB startup degrade window, so its
-   * writes never join the startup write storm. The pass itself is idempotent
-   * and self-gated on a config version, so a re-schedule is harmless.
-   */
-  private schedulePathNormalizationMigration(): void {
-    if (this.shuttingDown || this.pathNormalizationScheduled) return
-    if (!shouldRunPathNormalizationOnPlatform(process.platform)) {
-      // Byte-exact filesystem: the two unicode forms are two different files,
-      // so there is nothing to merge and no id to rewrite.
-      this.logDebug('File path normalization migration not applicable on this platform', {
-        platform: process.platform
-      })
-      this.scheduleKeywordSchemaBackfill()
-      return
-    }
-    this.pathNormalizationScheduled = true
-    const delayMs = Math.max(
-      FILE_PATH_NORMALIZATION_INITIAL_DELAY_MS,
-      getStartupDegradeWindowRemainingMs()
-    )
-    this.logInfo('Scheduling file path normalization migration', {
-      deferredMs: Math.round(delayMs)
-    })
-    this.pathNormalizationTimer = setTimeout(() => {
-      this.pathNormalizationTimer = null
-      if (this.shuttingDown) {
-        // Nothing will attempt the pass this boot; release reconciliation.
-        this.pathNormalizationAttempted = true
-        return
-      }
-      void this.pathNormalizationService
-        .run()
-        .then((result) => {
-          if (result.status === 'skipped') {
-            this.logDebug('File path normalization migration skipped', { reason: result.reason })
-          }
-        })
-        .catch((error) => {
-          this.logWarn('File path normalization migration failed', error)
-        })
-        .finally(() => {
-          // Attempted, not necessarily successful: reconciliation resumes
-          // either way (see shouldDeferReconciliationForPathNormalization).
-          this.pathNormalizationAttempted = true
-          // Queued behind the repair rather than run alongside it: both walk
-          // the whole files table, and the repair rewrites the very ids the
-          // backfill would re-emit under.
-          this.scheduleKeywordSchemaBackfill()
-        })
-    }, delayMs)
-  }
-
-  /**
-   * Boot-time maintenance writer (database-write-contracts §7): the one-time
-   * keyword rewrite for rows indexed under the previous charset rules. Reads
-   * no files — the keywords come from the indexed row — and is self-gated on a
-   * config version, so a re-schedule is harmless.
-   */
-  private scheduleKeywordSchemaBackfill(): void {
-    if (this.shuttingDown || this.keywordBackfillScheduled) return
-    this.keywordBackfillScheduled = true
-    const delayMs = Math.max(
-      FILE_KEYWORD_BACKFILL_INITIAL_DELAY_MS,
-      getStartupDegradeWindowRemainingMs()
-    )
-    this.logInfo('Scheduling file keyword schema backfill', {
-      version: FILE_KEYWORD_BACKFILL_VERSION,
-      deferredMs: Math.round(delayMs)
-    })
-    this.keywordBackfillTimer = setTimeout(() => {
-      this.keywordBackfillTimer = null
-      if (this.shuttingDown) return
-      void this.keywordBackfillService
-        .run()
-        .then((result) => {
-          if (result.status === 'skipped') {
-            this.logDebug('File keyword schema backfill skipped', { reason: result.reason })
-          }
-        })
-        .catch((error) => {
-          this.logWarn('File keyword schema backfill failed', error)
-        })
-    }, delayMs)
-  }
-
-  private async loadKeywordBackfillRowsPage(
-    afterId: number,
-    limit: number
-  ): Promise<Array<typeof filesSchema.$inferSelect>> {
-    if (!this.dbUtils) return []
-    // Split-aware home: the re-emit writes into the index the worker owns, so
-    // the rows must come from that same home (contracts §6).
-    return await this.dbUtils
-      .getFileIndexReadDb()
-      .select()
-      .from(filesSchema)
-      .where(and(eq(filesSchema.type, 'file'), gt(filesSchema.id, afterId)))
-      .orderBy(filesSchema.id)
-      .limit(limit)
-  }
-
-  /**
-   * Re-emit indexed rows through the normal indexed-source write path. The
-   * writer compares each item's keyword hash before touching keyword_mappings,
-   * so rows already carrying current keywords cost a hash comparison and
-   * nothing else.
-   */
-  private async emitKeywordBackfillRows(
-    rows: Array<typeof filesSchema.$inferSelect>
-  ): Promise<void> {
-    if (rows.length === 0) return
-    await this.emitIndexedSourceRecordBatchFromBatch({
-      sourceId: this.id,
-      records: rows.map((row) => this.mapFileToIndexedSourceRecord(row))
-    })
-  }
-
-  private async getKeywordBackfillAppliedVersion(): Promise<number | null> {
-    if (!this.dbUtils) return null
-    const rows = await this.dbUtils
-      .getDb()
-      .select({ value: configSchema.value })
-      .from(configSchema)
-      .where(eq(configSchema.key, FILE_KEYWORD_BACKFILL_CONFIG_KEY))
-    const raw = rows[0]?.value
-    if (!raw) return null
-    const parsed = Number.parseInt(raw, 10)
-    return Number.isNaN(parsed) ? null : parsed
-  }
-
-  private async setKeywordBackfillAppliedVersion(version: number): Promise<void> {
-    if (!this.dbUtils) return
-    const db = this.dbUtils.getDb()
-    await scheduleDbWrite('file-index.keyword-backfill.version', async () => {
-      await db
-        .insert(configSchema)
-        .values({ key: FILE_KEYWORD_BACKFILL_CONFIG_KEY, value: String(version) })
-        .onConflictDoUpdate({
-          target: configSchema.key,
-          set: { value: String(version) }
-        })
-    })
-  }
-
-  private resolveReconciliationDeferralReason(): string | null {
-    return shouldDeferReconciliationForPathNormalization({
-      scheduled: this.pathNormalizationScheduled,
-      attempted: this.pathNormalizationAttempted
-    })
-      ? 'path-normalization-pending'
-      : null
-  }
-
-  private async loadPathNormalizationRowsPage(
-    afterId: number,
-    limit: number
-  ): Promise<FilePathNormalizationRow[]> {
-    if (!this.dbUtils) return []
-    // Split-aware home: the rewrite/delete this feeds targets the file the
-    // worker owns, so the ids must come from that same home (2d.3).
-    return await this.dbUtils
-      .getFileIndexReadDb()
-      .select({
-        id: filesSchema.id,
-        path: filesSchema.path,
-        lastIndexedAt: filesSchema.lastIndexedAt
-      })
-      .from(filesSchema)
-      .where(and(eq(filesSchema.type, 'file'), gt(filesSchema.id, afterId)))
-      .orderBy(filesSchema.id)
-      .limit(limit)
-  }
-
-  private async loadPathNormalizationRowsByPaths(
-    paths: string[]
-  ): Promise<FilePathNormalizationRow[]> {
-    if (!this.dbUtils || paths.length === 0) return []
-    return await this.dbUtils
-      .getFileIndexReadDb()
-      .select({
-        id: filesSchema.id,
-        path: filesSchema.path,
-        lastIndexedAt: filesSchema.lastIndexedAt
-      })
-      .from(filesSchema)
-      .where(and(fileTypeIs('file'), inArray(filesSchema.path, paths)))
-  }
-
-  /**
-   * `UPDATE files SET path` on whichever home owns the table: forwarded to the
-   * search-index worker under the split (sole writer of that file), otherwise
-   * queued on the primary lane. Never both.
-   */
-  private async rewriteFilePathToNormalizedForm(
-    rewrite: FilePathNormalizationRewrite
-  ): Promise<void> {
-    if (!this.dbUtils) throw new Error('FILE_PROVIDER_PERSISTENCE_UNAVAILABLE')
-    // Persist both sides of the rekey before metadata moves. A failed base
-    // publication can then recover from the canonical row without a disk scan.
-    await this.maintenanceService.enqueueOrphanSearchCandidates([rewrite.fromPath], 'path-rekey')
-    const statement = this.dbUtils
-      .getFileIndexReadDb()
-      .update(filesSchema)
-      .set({ path: rewrite.toPath })
-      .where(
-        and(
-          eq(filesSchema.id, rewrite.id),
-          eq(filesSchema.path, rewrite.fromPath),
-          eq(filesSchema.type, 'file')
-        )
-      )
-      .toSQL()
-    if (this.isSearchSplitEnabledNow()) {
-      await searchIndexWriter.execWrite([{ sql: statement.sql, args: statement.params }], 'single')
-      return
-    }
-    const db = this.dbUtils.getDb()
-    await scheduleDbWrite('file-index.path-normalization.rewrite', async () => {
-      await db
-        .update(filesSchema)
-        .set({ path: rewrite.toPath })
-        .where(
-          and(
-            eq(filesSchema.id, rewrite.id),
-            eq(filesSchema.path, rewrite.fromPath),
-            eq(filesSchema.type, 'file')
-          )
-        )
-    })
-  }
-
-  private async getPathNormalizationAppliedVersion(): Promise<number | null> {
-    if (!this.dbUtils) return null
-    const rows = await this.dbUtils
-      .getDb()
-      .select({ value: configSchema.value })
-      .from(configSchema)
-      .where(eq(configSchema.key, FILE_PATH_NORMALIZATION_CONFIG_KEY))
-    const raw = rows[0]?.value
-    if (!raw) return null
-    const parsed = Number.parseInt(raw, 10)
-    return Number.isNaN(parsed) ? null : parsed
-  }
-
-  private async setPathNormalizationAppliedVersion(version: number): Promise<void> {
-    if (!this.dbUtils) return
-    const db = this.dbUtils.getDb()
-    await scheduleDbWrite('file-index.path-normalization.version', async () => {
-      await db
-        .insert(configSchema)
-        .values({ key: FILE_PATH_NORMALIZATION_CONFIG_KEY, value: String(version) })
-        .onConflictDoUpdate({
-          target: configSchema.key,
-          set: { value: String(version) }
-        })
-    })
   }
 
   private filterSearchIndexUpsertRecords(records: UpsertFileRecord[]): UpsertFileRecord[] {
@@ -2230,8 +1728,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
           // one Startup scan through the normal eligibility gate. Development
           // and production use the same path; a contained failure must never
           // reject the startup chain.
-          void this.maybeRunBootstrapReindex()
-          this.schedulePathNormalizationMigration()
+          void this.bootPassService.maybeRunBootstrapReindex()
+          this.bootPassService.schedulePathNormalizationMigration()
           this.assetService.scheduleLegacyIconMigration(
             Math.max(30_000, getStartupDegradeWindowRemainingMs())
           )
@@ -2301,7 +1799,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   }
 
   private async runAutoIndexing(): Promise<boolean> {
-    if (this.shuttingDown) return false
+    if (this.shuttingDown || isIndexFullFailure(this.initializationFailure)) return false
     const decision = await this.shouldRunAutoIndexing()
     if (!decision.allowed) {
       this.logDebug('Auto index scan skipped', {
@@ -2379,14 +1877,14 @@ class FileProvider implements ISearchProvider<ProviderContext> {
           return createFileIndexSyncStats()
         }
 
-        this.initializationFailed = true
-        const busy = isSqliteBusyError(error)
+        const failure = classifyRunFailure(error)
+        this.initializationFailed = failure.halts
         const report = operationalErrorService.report({
           domain: 'file-index',
           operation: `indexing.${source}`,
           error,
-          code: busy ? 'FILE_INDEX_DATABASE_BUSY' : 'FILE_INDEX_SCAN_FAILED',
-          retryable: busy,
+          code: failure.code,
+          retryable: failure.retryable,
           userImpact: 'degraded'
         })
         this.initializationFailure = {
@@ -2806,43 +2304,10 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       this.indexSchedulerService.cancelPending()
       await this.indexSchedulerService.drain(this.indexSchedulerService.getDrainTimeoutMs(false))
       await this.indexRuntimeService.waitForInFlight()
-      const affectedItems = await this.clearContentIndexingData()
+      const affectedItems = await this.indexRowStore.clearContentIndexingData()
       await delegate.publishContentCleared(affectedItems)
     })
     this.indexStatsCache = null
-  }
-
-  private async clearContentIndexingData(): Promise<number> {
-    if (!this.dbUtils) return 0
-    const statements = [
-      {
-        sql: "UPDATE files SET content = NULL, embedding_status = 'none' WHERE type = 'file'",
-        args: []
-      },
-      { sql: "DELETE FROM embeddings WHERE source_type = 'file'", args: [] },
-      { sql: 'DELETE FROM file_index_progress', args: [] },
-      { sql: "UPDATE search_index SET content = '' WHERE provider = ?", args: [this.id] },
-      { sql: "DELETE FROM file_extensions WHERE key = 'content_chunks'", args: [] }
-    ]
-
-    if (this.isSearchSplitEnabledNow()) {
-      const results = await searchIndexWriter.execWrite(statements, 'transaction')
-      return Number(results[3]?.rowsAffected ?? results[0]?.rowsAffected ?? 0)
-    }
-
-    const db = this.dbUtils.getFileIndexReadDb()
-    return await scheduleDbWrite('file-index.content.clear', async () => {
-      return await db.transaction(async (tx) => {
-        await tx.run(sql.raw(statements[0]!.sql))
-        await tx.run(sql.raw(statements[1]!.sql))
-        await tx.run(sql.raw(statements[2]!.sql))
-        const result = await tx.run(
-          sql`UPDATE search_index SET content = '' WHERE provider = ${this.id}`
-        )
-        await tx.run(sql.raw(statements[4]!.sql))
-        return Number(result.rowsAffected ?? 0)
-      })
-    })
   }
 
   /**
@@ -3191,132 +2656,16 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     this.progressStream.register(context)
   }
 
-  private async *scanDirectoryBatchesWithWorker(
-    dirPath: string,
-    excludePathsSet?: Set<string>,
-    signal?: AbortSignal,
-    onStats?: (stats: FileScanRunStats) => void,
-    options?: FileScanOptions
+  private scanDirectoryBatchesWithWorker(
+    ...args: Parameters<DirectoryBatchStream>
   ): AsyncIterable<ScannedFileInfo[]> {
-    await appTaskGate.waitForIdle()
-    let yielded = false
-    try {
-      for await (const batch of this.fileScanWorker.scanBatches(
-        [dirPath],
-        excludePathsSet,
-        500,
-        signal,
-        (stats) => {
-          const meta = { backend: stats.backend ?? 'legacy' }
-          if (stats.fdFallback && !this.fileScanFallbackLogged) {
-            this.fileScanFallbackLogged = true
-            this.logWarn(
-              'Bundled fd scan unavailable or failed; legacy walker completed',
-              undefined,
-              meta
-            )
-          }
-          if (!this.fileScanBackendLogged) {
-            this.fileScanBackendLogged = true
-            if (!stats.fdFallback) this.logInfo('File scan backend completed', meta)
-          }
-          onStats?.(stats)
-        },
-        options
-      )) {
-        yielded = true
-        yield batch
-      }
-    } catch (error) {
-      if (signal?.aborted) throw signal.reason ?? error
-      if (yielded) throw error
-      this.logWarn('File scan worker failed before its first batch; using direct scan', error, {
-        path: dirPath
-      })
-      yield* this.scanDirectoryBatchesDirectStream(
-        dirPath,
-        excludePathsSet,
-        signal,
-        onStats,
-        options
-      )
-    }
+    return this.scanStreamService.scanWithWorker(...args)
   }
 
-  private async *scanDirectoryBatchesDirectStream(
-    dirPath: string,
-    excludePathsSet?: Set<string>,
-    signal?: AbortSignal,
-    onStats?: (stats: FileScanRunStats) => void,
-    options?: FileScanOptions
+  private scanDirectoryBatchesDirectStream(
+    ...args: Parameters<DirectoryBatchStream>
   ): AsyncIterable<ScannedFileInfo[]> {
-    const controller = new AbortController()
-    const abort = (): void => controller.abort(signal?.reason)
-    if (signal?.aborted) abort()
-    else signal?.addEventListener('abort', abort, { once: true })
-    const queued: ScannedFileInfo[][] = []
-    const producerWaiters = new Set<() => void>()
-    let consumerWake: (() => void) | null = null
-    let producerDone = false
-    let producerError: unknown = null
-    let producerStats: FileScanRunStats | null = null
-    const wakeAll = () => {
-      for (const wake of producerWaiters) wake()
-      producerWaiters.clear()
-      consumerWake?.()
-    }
-    const producer = scanDirectoryBatchesDirect(
-      dirPath,
-      async (batch) => {
-        while (queued.length >= 2) {
-          controller.signal.throwIfAborted()
-          await new Promise<void>((resolve) => producerWaiters.add(resolve))
-        }
-        controller.signal.throwIfAborted()
-        queued.push(batch)
-        consumerWake?.()
-      },
-      excludePathsSet,
-      options,
-      controller.signal,
-      500
-    )
-      .then((stats) => {
-        producerStats = stats
-      })
-      .catch((error) => {
-        producerError = error
-      })
-      .finally(() => {
-        producerDone = true
-        wakeAll()
-      })
-
-    try {
-      while (true) {
-        const batch = queued.shift()
-        if (batch) {
-          for (const wake of producerWaiters) wake()
-          producerWaiters.clear()
-          yield batch
-          continue
-        }
-        if (producerDone) {
-          if (producerError) throw producerError
-          if (producerStats) onStats?.(producerStats)
-          return
-        }
-        await new Promise<void>((resolve) => {
-          consumerWake = resolve
-        })
-        consumerWake = null
-      }
-    } finally {
-      controller.abort(new Error('FILE_SCAN_STREAM_CONSUMER_CLOSED'))
-      wakeAll()
-      signal?.removeEventListener('abort', abort)
-      await producer
-    }
+    return streamDirectoryBatchesDirect(...args)
   }
 
   private async getReconciliationDbFilesByPaths(
@@ -3566,91 +2915,6 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     return await this.incrementalInsertExecutor.execute(records, { dispatchSideEffects: false })
   }
 
-  private async persistIncrementalRecords(
-    records: Array<typeof filesSchema.$inferInsert>
-  ): Promise<Array<typeof filesSchema.$inferSelect>> {
-    if (!this.dbUtils || records.length === 0) return []
-
-    const acceptedRecords = records.filter(
-      (record) =>
-        fileFilterService.getManualIndexExclusionReason({
-          path: record.path,
-          name: record.name,
-          extension: record.extension
-        }) === null
-    )
-    if (acceptedRecords.length !== records.length) {
-      this.logDebug('Filtered incremental index records at commit boundary', {
-        requested: records.length,
-        accepted: acceptedRecords.length,
-        filtered: records.length - acceptedRecords.length
-      })
-    }
-    if (acceptedRecords.length === 0) return []
-
-    if (this.isSearchSplitEnabledNow()) {
-      // Watch-event inserts target the worker-owned home. The persistence
-      // port's upsertFiles returns the SEARCH-home rows (including their ids),
-      // so downstream extension/indexing side effects are keyed by the ids of
-      // the file the worker actually wrote — never primary ids (2d.3).
-      // Deviation from the parked design's "forward exact SQL": the port's
-      // conflict set additionally refreshes isDir/type, which is immaterial
-      // here — the planner only routes paths without an existing row to
-      // insert, and a same-path race writes an identical isDir/type shape.
-      // displayName is untouched by both conflict sets.
-      if (!(await this.ensureSearchIndexWorkerReady('file-index.incremental.insert'))) {
-        throw new Error('FILE_PERSISTENCE_PORT_UNAVAILABLE')
-      }
-      const persisted = (await this.requireFilePersistencePort().upsertFiles(
-        acceptedRecords.map((record) => ({
-          path: record.path,
-          name: record.name,
-          extension: record.extension ?? null,
-          size: typeof record.size === 'number' ? record.size : null,
-          mtime: record.mtime,
-          ctime: record.ctime,
-          // Optional-with-default columns: mirror the flag-off insert defaults.
-          lastIndexedAt: record.lastIndexedAt ?? new Date(0),
-          isDir: record.isDir === true,
-          type: record.type ?? 'file'
-        }))
-      )) as unknown as Array<typeof filesSchema.$inferSelect>
-      return persisted
-    }
-
-    const db = this.dbUtils.getDb()
-    return await scheduleDbWrite('file-index.incremental.insert', () =>
-      db.transaction(
-        async (tx) => {
-          const rows = await tx
-            .insert(filesSchema)
-            .values(acceptedRecords)
-            .onConflictDoUpdate({
-              target: filesSchema.path,
-              set: {
-                name: sql`excluded.name`,
-                extension: sql`excluded.extension`,
-                size: sql`excluded.size`,
-                mtime: sql`excluded.mtime`,
-                ctime: sql`excluded.ctime`,
-                lastIndexedAt: sql`excluded.last_indexed_at`
-              }
-            })
-            .returning()
-          const fileIds = rows.filter((row) => row.type === 'file').map((row) => row.id)
-          if (fileIds.length > 0) {
-            await tx
-              .update(fileIndexProgress)
-              .set({ status: 'pending', progress: 0, lastError: null, updatedAt: new Date() })
-              .where(inArray(fileIndexProgress.fileId, fileIds))
-          }
-          return rows
-        },
-        { behavior: 'immediate' }
-      )
-    )
-  }
-
   private async buildFileRecord(
     rawPath: string,
     options?: { manualForce?: boolean }
@@ -3668,7 +2932,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
         : !WHITELISTED_EXTENSIONS.has(extension)
           ? 'unsupported-extension'
           : (fileFilterService.getManualIndexExclusionReason(target) ??
-            (await getFileTraversalExclusionReason(rawPath)))
+            (await getFileTraversalExclusionReason(rawPath, undefined, this.watchPaths)))
 
       if (exclusionReason) {
         this.logDebug('Skipped incremental file by unified filter', {
@@ -3883,83 +3147,8 @@ class FileProvider implements ISearchProvider<ProviderContext> {
     })
   }
 
-  /**
-   * Route a bounded metadata-update chunk through the worker-owned
-   * FilePersistencePort. The worker is the single writer of the `files` table;
-   * the main process must never issue `UPDATE files` on its own connection
-   * (issue #476 SQLITE_BUSY root cause). Rows are located strictly by
-   * `files.id`; missing ids are skipped by the repository. Those ids MUST be
-   * home-stable: they come from split-aware reads (`getFileIndexReadDb()` in
-   * getExistingRows / the reconciliation readers), so under the split they are
-   * the SEARCH file's own row ids — a primary row id must never reach this
-   * port or a watch-modify could update the wrong search-home row (2d.3).
-   */
-  private async updateFileMetadataChunk(records: FileUpdateRecord[]): Promise<void> {
-    if (records.length === 0) return
-    if (!(await this.ensureSearchIndexWorkerReady('file-index.file-update.chunk'))) {
-      throw new Error('FILE_PERSISTENCE_PORT_UNAVAILABLE')
-    }
-    const lastIndexedAt = new Date()
-    await this.requireFilePersistencePort().updateFileMetadata(
-      records.map((file) => ({
-        id: file.id,
-        name: file.name,
-        extension: file.extension ?? null,
-        size: file.size ?? null,
-        ctime: file.ctime,
-        mtime: file.mtime,
-        lastIndexedAt,
-        isDir: file.isDir,
-        type: file.type
-      }))
-    )
-  }
-
-  private async refreshFileUpdateRecords(
-    files: FileUpdateRecord[]
-  ): Promise<Array<typeof filesSchema.$inferSelect>> {
-    if (!this.dbUtils || files.length === 0) return []
-    const ids = files.map((file) => file.id)
-    // Read back the rows the worker just updated — from the worker's home.
-    return await this.dbUtils
-      .getFileIndexReadDb()
-      .select()
-      .from(filesSchema)
-      .where(inArray(filesSchema.id, ids))
-  }
-
   private async processFileExtensions(files: (typeof filesSchema.$inferSelect)[]): Promise<void> {
     return this.extensionService.processFileExtensions(files)
-  }
-
-  private createFileSearchItem(
-    file: typeof filesSchema.$inferSelect,
-    extensions: Record<string, string>
-  ): TuffItem {
-    return mapFileToTuffItem(
-      file,
-      extensions,
-      this.id,
-      this.name,
-      (indexedFile) => {
-        if (typeof indexedFile.id === 'number') {
-          void this.assetService
-            .ensureIcon(indexedFile.id, indexedFile.path, indexedFile)
-            .catch((error) => {
-              this.logWarn('Failed to lazy load icon', error, { path: indexedFile.path })
-            })
-        }
-      },
-      (indexedFile) => {
-        if (typeof indexedFile.id === 'number') {
-          void this.assetService
-            .ensureThumbnail(indexedFile.id, indexedFile.path, indexedFile, extensions)
-            .catch((error) => {
-              this.logWarn('Failed to lazy load thumbnail', error, { path: indexedFile.path })
-            })
-        }
-      }
-    )
   }
 
   public async getIndexingProgress(paths?: string[]): Promise<FileProviderIndexingProgressResult> {
