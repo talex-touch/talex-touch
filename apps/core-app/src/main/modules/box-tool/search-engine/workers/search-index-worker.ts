@@ -57,8 +57,15 @@ import { parentPort } from 'node:worker_threads'
 import { type Client, createClient, type InValue } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import * as schema from '../../../../db/schema'
+import {
+  applySearchIndexSizeCap,
+  readSearchIndexMaxBytes
+} from '../../../../db/search-index-size-cap'
 import { createLogger } from '../../../../utils/logger'
-import { resolveSearchIndexCompactionDecision } from '../search-index-compaction'
+import {
+  resolveIncrementalVacuumPages,
+  resolveSearchIndexCompactionDecision
+} from '../search-index-compaction'
 import {
   FILE_INDEX_PERSISTENCE_RETRY_LABELS,
   listPendingFileDeletionCommitsInHome,
@@ -567,9 +574,12 @@ async function readPragmaNumber(target: Client, pragma: string, column: string):
 }
 
 /**
- * `VACUUM` outside any transaction, on this worker thread only. The main process never runs
- * it: a VACUUM of a multi-GB file takes minutes and the main-thread libsql binding is
- * synchronous. Readers keep their WAL snapshot meanwhile; index writes wait in the queue.
+ * Reclaims free pages, on this worker thread only. The main process never runs it: a VACUUM of a
+ * multi-GB file takes minutes and the main-thread libsql binding is synchronous. Readers keep
+ * their WAL snapshot meanwhile; index writes wait in the queue.
+ *
+ * A file in incremental auto-vacuum gets one bounded `incremental_vacuum` step; the caller repeats
+ * it while pages remain. An older file gets a full VACUUM, which also switches it to incremental.
  */
 async function handleVacuum(message: VacuumMessage): Promise<VacuumResult> {
   if (!client || !dbFilePath) throw new Error('Worker not initialized — send init first')
@@ -578,6 +588,7 @@ async function handleVacuum(message: VacuumMessage): Promise<VacuumResult> {
   const startedAt = performance.now()
   const pageSize = await readPragmaNumber(target, 'page_size', 'page_size')
   const freelistPages = await readPragmaNumber(target, 'freelist_count', 'freelist_count')
+  const autoVacuum = await readPragmaNumber(target, 'auto_vacuum', 'auto_vacuum')
   const freelistBytesBefore = freelistPages * pageSize
   const fileBytesBefore = (await stat(filePath)).size
   const freeDiskBytes = await statfs(path.dirname(filePath))
@@ -586,7 +597,8 @@ async function handleVacuum(message: VacuumMessage): Promise<VacuumResult> {
   const decision = resolveSearchIndexCompactionDecision({
     fileBytes: fileBytesBefore,
     freelistBytes: freelistBytesBefore,
-    freeDiskBytes
+    freeDiskBytes,
+    autoVacuum
   })
   if (!decision.run) {
     searchIndexWorkerLog.info('Search index compaction skipped', {
@@ -598,30 +610,47 @@ async function handleVacuum(message: VacuumMessage): Promise<VacuumResult> {
       fileBytesBefore,
       fileBytesAfter: fileBytesBefore,
       freelistBytesBefore,
+      freelistBytesAfter: freelistBytesBefore,
       durationMs: Math.round(performance.now() - startedAt)
     }
   }
-  await target.execute('VACUUM')
-  // Under WAL the rewritten database sits in the WAL until a checkpoint; truncate it now so
-  // the reclaimed space is actually returned instead of parked in `-wal`.
+  if (decision.mode === 'incremental') {
+    // `execute` steps the pragma like a query and libsql then fails it with SQLITE_LOCKED;
+    // `executeMultiple` runs it as a plain statement.
+    await target.executeMultiple(
+      `PRAGMA incremental_vacuum(${resolveIncrementalVacuumPages(freelistPages, pageSize)});`
+    )
+  } else {
+    // Only a VACUUM can switch an existing file to incremental, so this is the last full one.
+    await target.execute('PRAGMA auto_vacuum = INCREMENTAL')
+    await target.execute('VACUUM')
+  }
+  // Under WAL the moved pages sit in the WAL until a checkpoint; truncate it now so the reclaimed
+  // space is actually returned instead of parked in `-wal`.
   await target.execute('PRAGMA wal_checkpoint(TRUNCATE)').catch(() => undefined)
   const fileBytesAfter = (await stat(filePath)).size
+  const freelistBytesAfter =
+    (await readPragmaNumber(target, 'freelist_count', 'freelist_count')) * pageSize
   const durationMs = Math.round(performance.now() - startedAt)
   searchIndexWorkerLog.info('Search index compacted', {
     meta: {
       reason: message.reason,
+      mode: decision.mode,
       fileBytesBefore,
       fileBytesAfter,
       freelistBytesBefore,
+      freelistBytesAfter,
       durationMs
     }
   })
   return {
     ran: true,
     reason: message.reason,
+    mode: decision.mode,
     fileBytesBefore,
     fileBytesAfter,
     freelistBytesBefore,
+    freelistBytesAfter,
     durationMs
   }
 }
@@ -729,6 +758,8 @@ async function handleInit(message: InitMessage): Promise<void> {
   // memory-mapped write region mid-write is SQLite's classic corruption
   // amplifier. This write-heavy indexing path gains little from mmap.
   await workerClient.execute('PRAGMA mmap_size = 0')
+  // The sole writer of this file; SQLite keeps the cap per connection, so it is set here too.
+  await applySearchIndexSizeCap(workerClient, await readSearchIndexMaxBytes(path.dirname(dbPath)))
 
   const workerDb = drizzle(workerClient, { schema })
 

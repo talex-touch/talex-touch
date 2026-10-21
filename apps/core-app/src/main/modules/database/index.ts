@@ -1,6 +1,7 @@
 import type { Client } from '@libsql/client'
 import type { ModuleInitContext, ModuleKey, TimingLogLevel } from '@talex-touch/utils'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
+import type { FileIndexStorage } from '@talex-touch/utils/transport/events/types'
 import type { TalexEvents } from '../../core/eventbus/touch-event'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -23,8 +24,17 @@ import { DB_AUX_ENABLED, DB_SEARCH_SPLIT_ENABLED } from '../../db/runtime-flags'
 import {
   getSqliteBusyRetryCount,
   isSqliteCorruptionError,
+  isSqliteStorageFullError,
   setSqliteRetryExhaustedListener
 } from '../../db/sqlite-retry'
+import {
+  applySearchIndexSizeCap,
+  deleteSearchIndexFiles,
+  deleteSearchIndexOverCap,
+  measureSearchIndexFileBytes,
+  readSearchIndexMaxBytes,
+  SEARCH_INDEX_MAX_BYTES
+} from '../../db/search-index-size-cap'
 import { BaseModule } from '../abstract-base-module'
 import { operationalErrorService } from '../observability'
 import { searchIndexWriter } from '../box-tool/search-engine/search-index-writer'
@@ -89,6 +99,8 @@ export class DatabaseModule extends BaseModule {
   private searchDb: LibSQLDatabase<typeof schema> | null = null
   private searchInitialized = false
   private searchDbPath = ''
+  private searchIndexMaxBytes = SEARCH_INDEX_MAX_BYTES
+  private searchIndexResetFromBytes: number | null = null
   private dbRunningMarkerPath = ''
   private probeDbIntegrity = false
   private walMaintenanceRegistered = false
@@ -163,6 +175,15 @@ export class DatabaseModule extends BaseModule {
       return this.searchDbPath
     }
     return this.getDatabaseFilePath()
+  }
+
+  /** The search index against its cap; see `db/search-index-size-cap.ts`. */
+  public async getSearchIndexStorage(): Promise<FileIndexStorage> {
+    return {
+      fileBytes: this.searchDbPath ? await measureSearchIndexFileBytes(this.searchDbPath) : null,
+      maxBytes: this.searchIndexMaxBytes,
+      resetFromBytes: this.searchIndexResetFromBytes
+    }
   }
 
   private async showDatabaseErrorDialog(error: Error, details?: string): Promise<void> {
@@ -260,6 +281,9 @@ export class DatabaseModule extends BaseModule {
     client: Client,
     label: 'primary' | 'aux' | 'search'
   ): Promise<void> {
+    // Must precede WAL: once WAL writes the header, only a VACUUM can change it. Lets the index
+    // hand freed pages back to the disk in bounded steps (`search-index-compaction.ts`).
+    if (label === 'search') await client.execute('PRAGMA auto_vacuum = INCREMENTAL')
     const journalModeResult = await client.execute('PRAGMA journal_mode = WAL')
     const journalMode = String(
       (journalModeResult.rows?.[0] as Record<string, unknown> | undefined)?.journal_mode ?? ''
@@ -285,6 +309,7 @@ export class DatabaseModule extends BaseModule {
     await client.execute('PRAGMA synchronous = NORMAL')
     await client.execute('PRAGMA locking_mode = NORMAL')
     await client.execute('PRAGMA mmap_size = 268435456')
+    if (label === 'search') await applySearchIndexSizeCap(client, this.searchIndexMaxBytes)
     dbLog.info(
       `SQLite ${label} configured: WAL mode enabled, busy_timeout=${MAIN_DB_BUSY_TIMEOUT_MS}ms`
     )
@@ -330,6 +355,32 @@ export class DatabaseModule extends BaseModule {
       dbLog.warn('Database integrity probe failed (non-corruption)', { error })
       return false
     }
+  }
+
+  /**
+   * Runs before any connection opens the search file. `max_page_count` stops a file from growing
+   * but cannot shrink one already past the cap, and a VACUUM needs about twice the live size free,
+   * which an oversized index rarely leaves (47.2 GB with 3.8 GB to spare, 2026-10-20). The file
+   * holds only rebuildable data, so it is deleted rather than quarantined: renaming would keep
+   * every byte on the full disk. Providers re-index the empty file under the cap.
+   */
+  private async resetOversizedSearchDatabase(): Promise<void> {
+    const fileBytes = await deleteSearchIndexOverCap(this.searchDbPath, this.searchIndexMaxBytes)
+    if (fileBytes === null) return
+
+    this.searchIndexResetFromBytes = fileBytes
+    operationalErrorService.report({
+      domain: 'database',
+      operation: 'size-cap.search',
+      error: new Error('search index exceeded its size cap and was deleted for a rebuild'),
+      code: 'SEARCH_INDEX_SIZE_CAP_RESET',
+      severity: 'warning',
+      retryable: false,
+      userImpact: 'degraded'
+    })
+    dbLog.warn('Search index exceeded its size cap; deleted for a rebuild', {
+      meta: { fileBytes, maxBytes: this.searchIndexMaxBytes }
+    })
   }
 
   /**
@@ -1148,6 +1199,8 @@ export class DatabaseModule extends BaseModule {
     if (!DB_SEARCH_SPLIT_ENABLED) return
 
     this.searchDbPath = this.searchDbPath || path.join(databaseDirPath, 'search-index.db')
+    this.searchIndexMaxBytes = await readSearchIndexMaxBytes(databaseDirPath)
+    await this.resetOversizedSearchDatabase()
 
     const setupSearch = async (): Promise<void> => {
       this.searchClient = createClient({
@@ -1237,6 +1290,38 @@ export class DatabaseModule extends BaseModule {
         }
         this.searchClient = null
         await this.quarantineCorruptDatabaseFiles(this.searchDbPath)
+        try {
+          await setupSearch()
+          return
+        } catch (retryError) {
+          dbLog.warn('Search index database rebuild failed; falling back to primary DB', {
+            error: retryError
+          })
+        }
+      } else if (isSqliteStorageFullError(error)) {
+        // An index at its size cap has no page for a migration's new table or index. It holds
+        // only derived data, so it is rebuilt under the cap rather than handing search to the
+        // primary database, which has no cap.
+        operationalErrorService.report({
+          domain: 'database',
+          operation: 'size-cap.search',
+          error: error instanceof Error ? error : new Error(String(error)),
+          code: 'SEARCH_INDEX_SETUP_STORAGE_FULL',
+          severity: 'warning',
+          retryable: false,
+          userImpact: 'degraded'
+        })
+        dbLog.warn('Search index database was full during setup; deleted for a rebuild', {
+          error,
+          meta: { dbPath: this.searchDbPath }
+        })
+        try {
+          this.searchClient?.close()
+        } catch {
+          // ignore
+        }
+        this.searchClient = null
+        await deleteSearchIndexFiles(this.searchDbPath)
         try {
           await setupSearch()
           return

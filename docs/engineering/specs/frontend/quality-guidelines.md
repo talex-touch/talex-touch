@@ -800,7 +800,7 @@ publish(visibleItems.slice(0, 50))
 ### 1. Scope / Trigger
 
 - Trigger: changing AppProvider/FileProvider searchable mutations, `IndexingRuntime`, `SearchIndexStoreAdapter`, SearchIndex worker messages, shared-index DDL, migration preflight/evidence verification, source reset/rebuild, enrichment scheduling, or SearchCore teardown.
-- Producer databases are source-local state. Every mutation of shared `search_index`, `keyword_mappings`, and `search_index_meta` enters `IndexingRuntime` and the selected `SourceScopedIndexWriterRouter`; Providers never call the shared writer/client/service directly.
+- Producer databases are source-local state. Every mutation of shared `search_index`, `keyword_mappings`, `search_keyword_postings`, and `search_index_meta` enters `IndexingRuntime` and the selected `SourceScopedIndexWriterRouter`; Providers never call the shared writer/client/service directly.
 
 ### 2. Signatures
 
@@ -823,7 +823,7 @@ IndexedSourceDelta.mutationLeaseId?: string
 - `search_index_replacement_stage(replacement_id, provider_id, sequence, document)` stores bounded candidate batches; readers never query it.
 - `SearchIndexService.applyProviderItems(providerId, items, legacyItemIds)` atomically retires provider-scoped legacy IDs and inserts their replacements.
 
-- Persistent shared-index DDL, including `idx_keyword_mappings_keyword` and provider-scoped keyword indexes, runs only from writer-mode `SearchIndexService` initialization before provider scans begin.
+- Persistent shared-index DDL, including `idx_keyword_mappings_keyword` and provider-scoped keyword indexes, runs only from writer-mode `SearchIndexService` initialization before provider scans begin. The one exception is retiring an index: `DROP INDEX` reads every page it frees (8.9 s cold for the 419 MB `idx_keyword_mappings_provider_item`), so `SearchIndexWriter.retireRedundantIndexes` runs it a minute after the writer is ready, under background admission, and skips it while index maintenance is busy.
 - `IndexedSourceTaskHistoryEntry` scan records expose both `reason` (the semantic scan reason) and `trigger` (the initiating request/caller reason) when available.
 
 ### 3. Contracts

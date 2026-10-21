@@ -73,7 +73,8 @@ describe('search document locator migration', () => {
         keywordHash: 'hash-a',
         updatedAt: new Date(111_000),
         ftsRowId: 41,
-        documentHash: 'document-a'
+        documentHash: 'document-a',
+        docId: null
       },
       {
         providerId: 'provider-b',
@@ -81,7 +82,8 @@ describe('search document locator migration', () => {
         keywordHash: 'hash-b',
         updatedAt: new Date(222_000),
         ftsRowId: 42,
-        documentHash: 'document-b'
+        documentHash: 'document-b',
+        docId: null
       }
     ])
     await db.insert(searchIndexMaintenanceProgress).values({ task: 'locator-backfill', cursor: 42 })
@@ -191,7 +193,8 @@ describe('search document locator migration', () => {
         keywordHash: 'hash-b',
         updatedAt: new Date(222_000),
         ftsRowId: 32,
-        documentHash: 'document-b'
+        documentHash: 'document-b',
+        docId: null
       }
     ])
     expect(

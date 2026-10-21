@@ -3,7 +3,7 @@ import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 import type { SQL } from 'drizzle-orm'
 import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import {
   SEARCH_KEYWORD_SCHEMA_VERSION,
   foldSearchText,
@@ -26,6 +26,11 @@ import {
   type SearchIndexWriteTx
 } from './search-index-document-store'
 import {
+  deleteProviderKeywordPostings,
+  keywordRowsSource,
+  writeKeywordPostings
+} from './search-index-keyword-postings'
+import {
   SqliteFileIndexPersistenceRepository,
   type UpsertFileRecord
 } from './file-index-persistence-repository'
@@ -43,7 +48,6 @@ const NGRAM_MIN_WORD_LENGTH = 3
 const NGRAM_SOURCE_MIN_PRIORITY = 1.1
 const NGRAM_MAX_SOURCE_KEYWORDS = 96
 const NGRAM_MAX_ENTRIES_PER_ITEM = 256
-const PRIORITY_EPSILON = 0.0001
 const ZERO_RESULT_DIAGNOSTIC_THROTTLE_MS = 30_000
 const SUBSEQUENCE_SCAN_LIMIT_DEFAULT = 2000
 const SUBSEQUENCE_SCAN_LIMIT_MAX = 2000
@@ -115,6 +119,13 @@ export interface SearchIndexItem {
   keywords?: SearchIndexKeyword[]
   tags?: string[]
   content?: string | null
+  /**
+   * `false` keeps the description and path out of the keyword rows; the FTS `path` column still
+   * matches them. Files set it: there the description is the path, and the rows for ancestor
+   * directories and path fragments were 29% of all file keyword rows (2026-10-20), while flooding
+   * the unordered 200-row keyword lookup with whole folders.
+   */
+  indexPathKeywords?: boolean
 }
 
 export interface SearchIndexProviderReplacementSummary {
@@ -643,6 +654,7 @@ export class SearchIndexService {
         await tx
           .delete(schema.keywordMappings)
           .where(eq(schema.keywordMappings.providerId, providerId))
+        await deleteProviderKeywordPostings(tx, providerId)
         await tx
           .delete(schema.searchIndexMeta)
           .where(eq(schema.searchIndexMeta.providerId, providerId))
@@ -800,6 +812,15 @@ export class SearchIndexService {
           notifications: await this.documentStore.pendingMaintenanceNotifications()
         }
       }
+      const legacy = await this.documentStore.migrateLegacyKeywords(limit)
+      if (!legacy.done) {
+        return {
+          processed: legacy.processed,
+          done: false,
+          deferred: false,
+          notifications: await this.documentStore.pendingMaintenanceNotifications()
+        }
+      }
       const keywords = await this.documentStore.cleanupOrphanKeywords(sourceId, limit)
       return {
         processed: keywords.processed,
@@ -875,6 +896,7 @@ export class SearchIndexService {
         await tx
           .delete(schema.keywordMappings)
           .where(eq(schema.keywordMappings.providerId, providerId))
+        await deleteProviderKeywordPostings(tx, providerId)
         await tx
           .delete(schema.searchIndexMeta)
           .where(eq(schema.searchIndexMeta.providerId, providerId))
@@ -1120,7 +1142,7 @@ export class SearchIndexService {
   }
 
   /**
-   * Batch lookup keywords in keywordMappings table.
+   * Batch lookup of stored keywords, from the postings and the draining legacy table alike.
    * Returns a map of keyword -> matching itemIds with priorities.
    * Uses WHERE IN (...) for efficiency instead of multiple single queries.
    */
@@ -1137,7 +1159,7 @@ export class SearchIndexService {
 
     const rows = await this.readAll<{ keyword: string; itemId: string; priority: number }>(
       sql`SELECT keyword AS keyword, item_id AS itemId, priority AS priority
-          FROM keyword_mappings
+          FROM ${keywordRowsSource()} km
           WHERE keyword IN (${sql.join(
             keywords.map((keyword) => sql`${keyword}`),
             sql`, `
@@ -1191,7 +1213,7 @@ export class SearchIndexService {
     const likePattern = `${escapeLikeWildcards(normalizedPrefix)}%`
     const rows = await this.readAll<{ itemId: string; keyword: string; priority: number }>(
       sql`SELECT km.item_id AS itemId, km.keyword AS keyword, km.priority AS priority
-          FROM keyword_mappings km
+          FROM ${keywordRowsSource()} km
           WHERE km.keyword LIKE ${likePattern} ESCAPE ${SUBSEQUENCE_LIKE_ESCAPE_CHAR}
             AND km.provider_id = ${providerId}
             AND ${prefixRange}
@@ -1239,15 +1261,26 @@ export class SearchIndexService {
     if (!firstCharacter) return []
     const prefixUpperBound = `${firstCharacter}\uffff`
 
-    const rows = await this.readAll<{ item_id: string; keyword: string; priority: number }>(
-      sql`SELECT item_id, keyword, priority
-          FROM keyword_mappings
-          WHERE provider_id = ${providerId}
+    const candidates = sql`provider_id = ${providerId}
             AND keyword >= ${firstCharacter}
             AND keyword < ${prefixUpperBound}
             AND keyword NOT LIKE 'ng:%'
             AND length(keyword) >= ${lowerQuery.length}
             AND keyword LIKE ${likePattern} ESCAPE ${SUBSEQUENCE_LIKE_ESCAPE_CHAR}
+          ORDER BY length(keyword) ASC, priority DESC, keyword ASC
+          LIMIT ${effectiveScanLimit}`
+    // Each layout is cut to the scan limit before the union, and the postings before their join:
+    // only the rows that survive the cut pay for the item id lookup.
+    const rows = await this.readAll<{ item_id: string; keyword: string; priority: number }>(
+      sql`SELECT item_id, keyword, priority FROM (
+            SELECT m.item_id AS item_id, s.keyword AS keyword, s.priority AS priority
+            FROM (SELECT doc_id, keyword, priority FROM search_keyword_postings
+                  WHERE ${candidates}) s
+            JOIN search_index_meta m ON m.doc_id = s.doc_id AND m.provider_id = ${providerId}
+            UNION ALL
+            SELECT * FROM (SELECT item_id, keyword, priority FROM keyword_mappings
+                           WHERE ${candidates})
+          )
           ORDER BY length(keyword) ASC, priority DESC, keyword ASC
           LIMIT ${effectiveScanLimit}`,
       signal
@@ -1287,7 +1320,7 @@ export class SearchIndexService {
 
   /**
    * N-gram fuzzy recall: find candidate items by matching query n-grams
-   * against indexed n-grams in keywordMappings.
+   * against indexed n-grams in the keyword postings.
    * Returns itemIds ranked by n-gram overlap count.
    */
   async lookupByNgrams(
@@ -1307,8 +1340,16 @@ export class SearchIndexService {
 
     const overlapByItem = new Map<string, number>()
     for (const seed of seeds) {
+      // The legacy arm stays pinned: without statistics SQLite walked the provider's rows on the
+      // three-column index instead. Retiring that index has to wait for the table to drain.
       const rows = await this.readAll<{ itemId: string }>(
-        sql`SELECT item_id AS itemId
+        sql`SELECT m.item_id AS itemId
+            FROM search_keyword_postings p
+            JOIN search_index_meta m ON m.doc_id = p.doc_id AND m.provider_id = p.provider_id
+            WHERE p.provider_id = ${providerId}
+              AND p.keyword = ${seed}
+            UNION ALL
+            SELECT item_id AS itemId
             FROM keyword_mappings INDEXED BY idx_keyword_mappings_provider_keyword
             WHERE provider_id = ${providerId}
               AND keyword = ${seed}
@@ -1328,6 +1369,37 @@ export class SearchIndexService {
           right.overlapCount - left.overlapCount || left.itemId.localeCompare(right.itemId)
       )
       .slice(0, resultLimit)
+  }
+
+  /** The stored keywords of the given items, n-grams included, in no particular order. */
+  async listItemKeywords(
+    providerId: string,
+    itemIds: readonly string[],
+    limit = 800,
+    signal?: AbortSignal
+  ): Promise<Array<{ itemId: string; keyword: string; priority: number }>> {
+    signal?.throwIfAborted()
+    if (itemIds.length === 0) return []
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+    const ids = sql.join(
+      itemIds.map((itemId) => sql`${itemId}`),
+      sql`, `
+    )
+    // `+p.provider_id` keeps the provider out of the postings index choice: without statistics
+    // SQLite otherwise walks every posting of the provider and looks each one up in meta.
+    return await this.readAll<{ itemId: string; keyword: string; priority: number }>(
+      sql`SELECT m.item_id AS itemId, p.keyword AS keyword, p.priority AS priority
+          FROM search_index_meta m
+          JOIN search_keyword_postings p ON p.doc_id = m.doc_id AND +p.provider_id = m.provider_id
+          WHERE m.provider_id = ${providerId} AND m.item_id IN (${ids})
+          UNION ALL
+          SELECT item_id AS itemId, keyword AS keyword, priority AS priority
+          FROM keyword_mappings
+          WHERE provider_id = ${providerId} AND item_id IN (${ids})
+          LIMIT ${limit}`,
+      signal
+    )
   }
 
   /**
@@ -1547,13 +1619,12 @@ export class SearchIndexService {
     await this.db.run(
       sql`CREATE INDEX IF NOT EXISTS idx_keyword_mappings_provider_keyword ON keyword_mappings(provider_id, keyword)`
     )
-    await this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS idx_keyword_mappings_provider_item ON keyword_mappings(provider_id, item_id)`
-    )
+    // No `(provider_id, item_id)` index: it is a prefix of the next one, which already serves every
+    // lookup by item. Existing files lose theirs in `SearchIndexWriter.retireRedundantIndexes`.
     await this.db.run(
       sql`CREATE INDEX IF NOT EXISTS idx_keyword_mappings_provider_item_keyword ON keyword_mappings(provider_id, item_id, keyword)`
     )
-    // SQLite's index rowid suffix keeps provider-scoped cursor pages ordered without a full sort.
+    // Paged the old orphan sweep; nothing reads through it since keywords moved to postings.
     await this.db.run(
       sql`CREATE INDEX IF NOT EXISTS idx_keyword_mappings_provider_cursor ON keyword_mappings(provider_id)`
     )
@@ -1565,8 +1636,14 @@ export class SearchIndexService {
     state: SearchIndexDocumentState
   ): Promise<void> {
     const shouldUpdateKeywords = state.meta?.keywordHash !== doc.keywordHash
-    await this.documentStore.apply(tx, doc, state)
-    if (shouldUpdateKeywords) await this.applyKeywordMappingsDelta(tx, doc)
+    const docId = await this.documentStore.apply(tx, doc, state)
+    if (shouldUpdateKeywords) {
+      await writeKeywordPostings(
+        tx,
+        { providerId: doc.providerId, itemId: doc.itemId, docId },
+        this.toKeywordPriorityMap(doc.keywordEntries)
+      )
+    }
   }
 
   private async resolveProviderMetaCoverage(
@@ -1603,83 +1680,6 @@ export class SearchIndexService {
     return complete
   }
 
-  private async applyKeywordMappingsDelta(
-    tx: SearchIndexWriteTx,
-    doc: PreparedIndexDocument
-  ): Promise<void> {
-    const existingRows = await tx
-      .select({
-        keyword: schema.keywordMappings.keyword,
-        priority: schema.keywordMappings.priority
-      })
-      .from(schema.keywordMappings)
-      .where(
-        and(
-          eq(schema.keywordMappings.providerId, doc.providerId),
-          eq(schema.keywordMappings.itemId, doc.itemId)
-        )
-      )
-
-    const existingMap = new Map<string, number>()
-    for (const row of existingRows) {
-      const prev = existingMap.get(row.keyword)
-      if (prev === undefined || row.priority > prev) {
-        existingMap.set(row.keyword, row.priority)
-      }
-    }
-
-    const nextMap = this.toKeywordPriorityMap(doc.keywordEntries)
-    const deleteKeywords: string[] = []
-    const rewriteEntries: SearchIndexKeyword[] = []
-
-    for (const [keyword] of existingMap) {
-      if (!nextMap.has(keyword)) {
-        deleteKeywords.push(keyword)
-      }
-    }
-
-    for (const [keyword, priority] of nextMap) {
-      const existingPriority = existingMap.get(keyword)
-      if (existingPriority === undefined || !this.isPriorityEqual(existingPriority, priority)) {
-        rewriteEntries.push({ value: keyword, priority })
-      }
-    }
-
-    if (deleteKeywords.length > 0) {
-      await tx
-        .delete(schema.keywordMappings)
-        .where(
-          and(
-            eq(schema.keywordMappings.providerId, doc.providerId),
-            eq(schema.keywordMappings.itemId, doc.itemId),
-            inArray(schema.keywordMappings.keyword, deleteKeywords)
-          )
-        )
-    }
-
-    if (rewriteEntries.length > 0) {
-      const rewriteKeywords = rewriteEntries.map((entry) => entry.value)
-      await tx
-        .delete(schema.keywordMappings)
-        .where(
-          and(
-            eq(schema.keywordMappings.providerId, doc.providerId),
-            eq(schema.keywordMappings.itemId, doc.itemId),
-            inArray(schema.keywordMappings.keyword, rewriteKeywords)
-          )
-        )
-
-      await tx.insert(schema.keywordMappings).values(
-        rewriteEntries.map(({ value, priority }) => ({
-          keyword: value,
-          itemId: doc.itemId,
-          providerId: doc.providerId,
-          priority: priority ?? 1
-        }))
-      )
-    }
-  }
-
   private toKeywordPriorityMap(entries: SearchIndexKeyword[]): Map<string, number> {
     const map = new Map<string, number>()
     for (const entry of entries) {
@@ -1692,10 +1692,6 @@ export class SearchIndexService {
       }
     }
     return map
-  }
-
-  private isPriorityEqual(left: number, right: number): boolean {
-    return Math.abs(left - right) <= PRIORITY_EPSILON
   }
 
   private buildKeywordHash(entries: SearchIndexKeyword[]): string {
@@ -1800,7 +1796,8 @@ export class SearchIndexService {
       }
     }
 
-    if (item.description) {
+    const indexPathKeywords = item.indexPathKeywords !== false
+    if (item.description && indexPathKeywords) {
       const descLower = item.description.toLowerCase().trim()
       if (descLower) {
         for (const token of this.splitWords(descLower)) {
@@ -1809,7 +1806,7 @@ export class SearchIndexService {
       }
     }
 
-    if (item.path) {
+    if (item.path && indexPathKeywords) {
       const pathLower = item.path.toLowerCase()
       const pathTokens = this.splitPath(pathLower)
       for (const token of pathTokens) {
@@ -1824,7 +1821,7 @@ export class SearchIndexService {
       if (ext) {
         this.appendKeyword(keywordMap, ext, 1.05)
         // Also add the extension without the leading dot (e.g. "txt" for ".txt")
-        // so that plain searches like "txt" can match via keyword_mappings
+        // so that plain searches like "txt" can match a stored keyword
         const extNoDot = ext.replace(/^\./, '')
         if (extNoDot && extNoDot !== ext) {
           this.appendKeyword(keywordMap, extNoDot, 1.0)
@@ -1892,7 +1889,7 @@ export class SearchIndexService {
       priority: 0.5
     }))
 
-    // Combine regular keywords with n-gram entries for storage in keywordMappings
+    // Combine regular keywords with n-gram entries for storage in the keyword postings
     const allKeywordEntries = [...keywordEntries, ...ngramEntries]
 
     const tags = (item.tags || []).map((tag) => tag.toLowerCase()).join(' ')

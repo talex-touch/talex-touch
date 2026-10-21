@@ -32,6 +32,7 @@ import {
   recommendationCache,
   scanProgress,
   searchIndexMeta,
+  searchKeywordPostings,
   searchIndexMaintenanceProgress,
   searchIndexPendingCommits,
   searchIndexFileMaintenance,
@@ -190,6 +191,7 @@ export async function cleanupFileIndex(
       // ignore
     }
     await db.delete(keywordMappings)
+    await db.delete(searchKeywordPostings)
     // Meta rows describe documents in `search_index`; kept past its wipe they would claim
     // documents that are gone (the app health count reads them) and hold keyword hashes for
     // mappings deleted just above.

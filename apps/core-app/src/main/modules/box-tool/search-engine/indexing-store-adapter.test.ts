@@ -46,6 +46,35 @@ describe('SearchIndexStoreAdapter', () => {
     )
   })
 
+  it('keeps a file record to name keywords, moving its type words into tags', () => {
+    const filePath = '/Users/alice/Workspace/talex/apps/search-index-writer.ts'
+    const item = mapIndexedSourceRecordToSearchIndexItem({
+      sourceId: 'file-provider',
+      recordId: filePath,
+      stableKey: filePath,
+      kind: 'file',
+      title: 'search-index-writer.ts',
+      subtitle: filePath,
+      path: filePath,
+      keywords: ['typescript', 'code'],
+      tags: ['code', 'ts'],
+      search: {
+        keywords: [
+          { value: 'typescript', priority: 1.05 },
+          { value: 'code', priority: 1.05 }
+        ]
+      },
+      metadata: { extension: '.ts' }
+    })
+
+    expect(item).toEqual(
+      expect.objectContaining({ path: filePath, tags: ['code', 'ts', 'typescript'] })
+    )
+    expect(item?.indexPathKeywords).toBe(false)
+    expect(item?.keywords).toBeUndefined()
+    expect(item?.aliases).toBeUndefined()
+  })
+
   it('maps tool source aliases and source tags from indexed record metadata', () => {
     expect(
       mapIndexedSourceRecordToSearchIndexItem({

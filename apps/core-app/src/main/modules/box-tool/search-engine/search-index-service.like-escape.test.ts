@@ -54,12 +54,28 @@ async function withIndexService(
   }
 }
 
+/** One keyword row in the postings layout, under a meta row that owns its document id. */
+async function seedRow(
+  client: Client,
+  row: { keyword: string; itemId: string; providerId: string; priority: number }
+): Promise<void> {
+  const next = await client.execute(
+    'SELECT coalesce(max(doc_id), 0) + 1 AS docId FROM search_index_meta'
+  )
+  const docId = Number(next.rows[0]?.docId)
+  await client.execute({
+    sql: "INSERT INTO search_index_meta (provider_id, item_id, keyword_hash, doc_id) VALUES (?, ?, 'seed', ?)",
+    args: [row.providerId, row.itemId, docId]
+  })
+  await client.execute({
+    sql: 'INSERT INTO search_keyword_postings (provider_id, keyword, doc_id, priority) VALUES (?, ?, ?, ?)',
+    args: [row.providerId, row.keyword, docId, row.priority]
+  })
+}
+
 async function seed(client: Client, keywords: string[]): Promise<void> {
   for (const keyword of keywords) {
-    await client.execute({
-      sql: 'INSERT INTO keyword_mappings (keyword, item_id, provider_id, priority) VALUES (?, ?, ?, 1.0)',
-      args: [keyword, `item:${keyword}`, PROVIDER]
-    })
+    await seedRow(client, { keyword, itemId: `item:${keyword}`, providerId: PROVIDER, priority: 1 })
   }
 }
 
@@ -149,9 +165,11 @@ describe('lookupByKeywordPrefix LIKE escaping', () => {
     async ({ query, matches, neighbors }) => {
       await withIndexService(async (service, client) => {
         await seed(client, [...matches, ...neighbors])
-        await client.execute({
-          sql: 'INSERT INTO keyword_mappings (keyword, item_id, provider_id, priority) VALUES (?, ?, ?, 9.0)',
-          args: [matches[0]!, 'foreign-item', 'other-provider']
+        await seedRow(client, {
+          keyword: matches[0]!,
+          itemId: 'foreign-item',
+          providerId: 'other-provider',
+          priority: 9
         })
 
         const rows = await service.lookupByKeywordPrefix(PROVIDER, query)

@@ -248,10 +248,34 @@ export function mapIndexedSourceRecordToSearchIndexItem(
     ...(record.keywords ?? []),
     ...getStringArrayMetadata(record.metadata, 'aliases')
   ]
+  const tags = [...(record.tags ?? []), ...buildToolSourceTags(record.metadata)]
+
+  if (record.kind === 'file') {
+    // A file's keyword rows come from its name alone. Its type words (`typescript`, `code`) were
+    // rows on every file of the type and seeded n-grams; as FTS tags they still match type queries.
+    const typeWords = [
+      ...fallbackTerms,
+      ...(record.search?.keywords ?? []).map((term) => term.value)
+    ]
+    return {
+      itemId,
+      providerId: record.sourceId,
+      type: toProviderType(record.kind),
+      name: record.title,
+      displayName: record.title,
+      description: record.subtitle,
+      path: resolveItemPath(record),
+      extension: resolveExtension(record),
+      aliases: buildWeightedEntries(record.search?.aliases),
+      tags: [...new Set([...tags, ...typeWords.map((word) => word.trim()).filter(Boolean)])],
+      content: resolveContent(record),
+      indexPathKeywords: false
+    }
+  }
+
   const aliases = buildWeightedEntries(record.search?.aliases) ?? buildKeywordEntries(fallbackTerms)
   const keywords =
     buildWeightedEntries(record.search?.keywords) ?? buildKeywordEntries(fallbackTerms)
-  const tags = [...(record.tags ?? []), ...buildToolSourceTags(record.metadata)]
 
   return {
     itemId,

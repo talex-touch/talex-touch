@@ -107,6 +107,19 @@ export interface FileIndexStatus {
   contentIndexingEnabled?: boolean;
   contentIndexingState?: FileContentIndexingState;
   contentIndexStorage?: FileIndexContentStorage;
+  indexStorage?: FileIndexStorage;
+}
+
+/**
+ * Size of the search index against its cap: 8 GiB, or 2% of its volume when that is less.
+ * Past the cap SQLite refuses new pages, so new files stop being indexed.
+ */
+export interface FileIndexStorage {
+  /** The database file plus its WAL; `null` when it could not be read. */
+  fileBytes: number | null;
+  maxBytes: number;
+  /** Size the index had when this launch deleted it for exceeding the cap; `null` otherwise. */
+  resetFromBytes: number | null;
 }
 
 export interface FileIndexStats {

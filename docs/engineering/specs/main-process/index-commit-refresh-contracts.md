@@ -530,7 +530,8 @@ private getAppSearchIndexHealth(options?: { probeFilesystem?: boolean })
     `createSearchIndexTable()` created the FTS table: a lost or dropped table, or `repair()`, which
     drops it and initializes again. A restart over an existing table clears nothing.
   - `cleanupFileIndex({ clearSearchIndex: true })` deletes `searchIndexMeta` together with
-    `search_index`, `file_fts`, `keyword_mappings` and `query_completions`.
+    `search_index`, `file_fts`, `keyword_mappings`, `search_keyword_postings` and
+    `query_completions`.
 - Caller split in `getAppSearchIndexHealth`:
   - Unprobed (`getIndexedSourceHealth()`, i.e. the app source's `getHealth` for watch routing and
     diagnostics polls) → `countByProviderViaMeta`.
@@ -650,8 +651,10 @@ export async function getDirectoryLevelExclusionReason(
   `getDirectoryLevelExclusionReason(directory, readdir, levelOptionsOf(rootKey))` judges its own name:
   - a name in `CONTEXT_DEPENDENT_BLACKLISTED_DIRS` (`bin`, `build`, `cache`, `coverage`, `dist`,
     `logs`, `out`, `target`, `temp`, `temporary`, `tmp`) reads the parent's entries as project context
-    (#1727); an unreadable parent passes `siblingNames: undefined`, which keeps the stricter
-    historical exclusion;
+    (#1727) and, when they hold no marker, the folders above it up to but not including the home
+    directory (`fileFilterService.isInsideProject`, passed as `insideProject`), so a package's `dist`
+    under a monorepo root is a project folder too; an unreadable parent passes `siblingNames:
+    undefined`, which keeps the stricter historical exclusion;
   - every other name is judged with an empty sibling list, as the walker saw it.
 - **The search root is never judged**: the user asked to look there. Linux has no root key, so its
   walk runs to `/` and hides `/mnt/…` and `/media/…` results the way the index does.
@@ -743,6 +746,95 @@ const levelOptionsOf = (rootKey: string | null) =>
   rootKey !== null && rootKey === getMacICloudDriveRootKey() ? { enableSystemPathFilter: false } : undefined
 const inICloud = normalizeMacSpotlightPathKey(filePath).startsWith(`${rootKey}/`)
 ```
+
+## Scenario: Linked worktrees below a root stay out of the file index (2026-10-21)
+
+### 1. Scope / Trigger
+
+- Changing `isLinkedWorktreeGitFile` (`utils/common/file-filter-service.ts`), the legacy walker
+  (`scanDirectory`, `utils/common/file-scan-utils.ts`), `isLinkedWorktreeRoot`,
+  `findLinkedWorktreeRootBelow`, `findLinkedWorktreeHolding` or `getScanChildExclusionReason`
+  (`addon/files/file-traversal-policy.ts`), the fd backend's `isTraversalExcluded`,
+  `NativeSearchDirectoryFilter`, the full-scan child planner (`listScanChildDirectories`), the
+  watched-subtree reconcile, or the cleanup sweep's `classifyExcludedCleanupPath`.
+- Why: a linked worktree (`git worktree add`) is a second checkout of a repository the index
+  already holds. 24% of the dev profile's files were same-name, same-size copies, most of them
+  from worktrees and extra checkouts (roadmap `FILE-AND-APP-INDEX-ROADMAP.md` §2).
+
+### 2. Signatures
+
+```ts
+// utils/common/file-filter-service.ts
+export function isLinkedWorktreeGitFile(contents: string): boolean // gitdir: …/worktrees/<name>
+
+// addon/files/file-traversal-policy.ts
+export async function isLinkedWorktreeRoot(directoryPath, readFile?): Promise<boolean>
+export async function findLinkedWorktreeRootBelow(filePath, roots, isWorktreeRoot?): Promise<string | null>
+export async function findLinkedWorktreeHolding(directoryPath, roots, isWorktreeRoot?): Promise<string | null>
+export async function getScanChildExclusionReason(directoryPath, context, isWorktreeRoot?): Promise<FileFilterReason | null>
+export async function getFileTraversalExclusionReason(filePath, readdir?, roots?): Promise<FileFilterReason | null>
+```
+
+### 3. Contracts
+
+- **What a linked worktree is.** A folder whose `.git` is a file reading `gitdir: <path>` with
+  `<path>` ending in `worktrees/<name>`, for a normal or a bare repository and with either slash.
+  A `.git` folder, a submodule (`gitdir: …/modules/<name>`) and anything unreadable are not one.
+  The verdict is `development-path`.
+- **Below a root only.** A worktree the user picked as a watch root, or that is the deepest root
+  holding a path, stays in. Watch roots nested in a base root are collapsed into it
+  (`resolveIndexedWatchRootSet`), so on macOS, where the base root is the home folder, an extra
+  path inside a worktree is covered by the rule like any other excluded folder; only the cleanup
+  sweep exempts user-monitored paths (roadmap E4).
+- **Every walk checks below its start, and every caller covers the start.** The fd backend, the
+  legacy walker and the native search filter check each folder below the folder the walk starts
+  at. Walks that start below a watch root cover the gap themselves:
+  - the full scan walks each child of a root as its own unit; `listScanChildDirectories` awaits
+    `getScanChildExclusionReason`, so a worktree child is never a unit, and the root-only walk
+    then refuses it as a folder below its start;
+  - a watched-subtree reconcile skips a scope that `findLinkedWorktreeHolding` places inside a
+    worktree (the scope itself included) before reading or walking anything.
+- **Watch events.** `getFileTraversalExclusionReason(path, undefined, watchPaths)` adds the rule
+  for one path, below the deepest root holding it.
+- **Eviction.** The cleanup sweep classifies a file inside a worktree below a root as excluded and
+  records the worktree's `.git` as its evidence; the delete checks that evidence again
+  (`lstat`), as it does for project markers. Worktree checks are cached per folder and cleared
+  with the directory-read cache.
+
+### 4. Validation & Error Matrix
+
+| Case | Outcome |
+| --- | --- |
+| `<root>/repo-feature/.git` = `gitdir: <root>/repo/.git/worktrees/repo-feature` | Not indexed: scan, child unit, watch event, subtree scope; existing rows evicted |
+| `<root>/repo/vendor/.git` = `gitdir: ../.git/modules/vendor` (submodule) | Indexed |
+| Worktree picked as the watch root | Indexed |
+| `git worktree add` under a root while the app runs | Not indexed (watch admission) |
+| `.git` unreadable, or a folder | Not a worktree |
+
+Live check (2026-10-21, isolated instance, fixture of 7 + 7 files): fresh profile 7 repository
+rows and 0 worktree rows; a new file in the repository indexed, one in the worktree not; a
+worktree created while running gets 0 rows; a profile indexed by the old code dropped its 7
+worktree rows within 10 s of starting the new code. Before the child-planner fix the same fresh
+profile held all 14: the full scan walked `repo-feature` as a unit of its own.
+
+### 5. Good / Base / Bad Cases
+
+- Good: one checkout of a repository in the index, however many worktrees sit beside it.
+- Base: a submodule, a second clone (its own `.git` folder) and a worktree picked as a root are
+  indexed as before.
+- Bad: checking only the folders a walk passes through, which misses a walk that starts at the
+  worktree; reading `.git` for every file instead of once per folder.
+
+### 6. Tests Required
+
+- `packages/utils/__tests__/file-filter-linked-worktree.test.ts`: gitdir forms; the walker skips a
+  worktree below its root, keeps the repository and its submodule, keeps a worktree picked as root.
+- `addon/files/file-traversal-policy.test.ts` › "linked worktrees".
+- `addon/files/workers/file-scan-fd-backend.test.ts` fixture: `wt/copy.txt` excluded,
+  `lib-sub/sub.txt` (submodule) admitted.
+- `services/file-provider-full-scan-checkpoint-service.test.ts` › "waits for a rule that has to
+  read the child"; `services/file-provider-watch-subtree-reconcile-worktree.test.ts`;
+  `services/file-provider-maintenance-worktree.test.ts`.
 
 ## Scenario: Enrichment resume pacing and read-failure classes (M3 / M4)
 

@@ -167,6 +167,10 @@ describe('cleanupFileIndex actual storage ownership', () => {
       expect(await live.search.lookupByKeywords('file-provider', ['fileindextitle'])).toEqual(
         new Map()
       )
+      // Without their meta rows the postings no longer reach a lookup, but they still take space.
+      expect(
+        (await live.client.execute('SELECT doc_id FROM search_keyword_postings')).rows
+      ).toEqual([])
       expect(
         (
           await live.client.execute(

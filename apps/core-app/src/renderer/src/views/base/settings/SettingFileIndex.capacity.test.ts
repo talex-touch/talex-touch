@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import type { SettingsSdk } from '@talex-touch/utils/transport/sdk/domains/settings'
-import type { FileIndexContentSettings } from '@talex-touch/utils/transport/events/types'
+import type {
+  FileIndexContentSettings,
+  FileIndexStorage
+} from '@talex-touch/utils/transport/events/types'
 import { AppEvents } from '@talex-touch/utils/transport/events'
 import { createSettingsSdk } from '@talex-touch/utils/transport/sdk/domains/settings'
 import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
@@ -92,7 +95,8 @@ afterEach(() => {
 async function mountSettings(
   initial: FileIndexContentSettings,
   updated = initial,
-  updateError?: Error
+  updateError?: Error,
+  indexStorage?: FileIndexStorage
 ) {
   let snapshot = initial
   let progress: (() => void) | undefined
@@ -112,6 +116,7 @@ async function mountSettings(
           contentIndexingEnabled: snapshot.contentIndexingEnabled,
           contentIndexingState: snapshot.state,
           contentIndexStorage: snapshot.storage,
+          indexStorage,
           progress: { stage: 'idle', current: 0, total: 0 }
         }
       if (event === AppEvents.fileIndex.stats)
@@ -303,5 +308,44 @@ describe('SettingFileIndex capacity feedback', () => {
     mounted.splice(mounted.indexOf(wrapper), 1)
     expect(isCancelled()).toBe(true)
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('SettingFileIndex index size cap', () => {
+  const idle: FileIndexContentSettings = { contentIndexingEnabled: false, state: 'disabled' }
+  const mountWithIndex = async (indexStorage: FileIndexStorage) =>
+    (await mountSettings(idle, idle, undefined, indexStorage)).wrapper
+
+  it('warns once the index is within 5% of its cap, where new files may stop being indexed', async () => {
+    const wrapper = await mountWithIndex({
+      fileBytes: 7.75 * GIB,
+      maxBytes: 8 * GIB,
+      resetFromBytes: null
+    })
+    const alert = wrapper.find('[role="status"]')
+    expect(alert.attributes('data-tone')).toBe('warning')
+    expect(alert.text()).toContain(i18n.global.t('settings.settingFileIndex.indexStorageFull'))
+    expect(alert.text()).toContain('7.75')
+  })
+
+  it('explains an empty index that this launch rebuilt after it outgrew the cap', async () => {
+    const wrapper = await mountWithIndex({
+      fileBytes: 0.25 * GIB,
+      maxBytes: 8 * GIB,
+      resetFromBytes: Math.round(47.2 * GIB)
+    })
+    const alert = wrapper.find('[role="status"]')
+    expect(alert.attributes('data-tone')).toBe('info')
+    expect(alert.text()).toContain(i18n.global.t('settings.settingFileIndex.indexStorageReset'))
+    expect(alert.text()).toContain('47.2')
+  })
+
+  it('stays quiet below the cap', async () => {
+    const wrapper = await mountWithIndex({
+      fileBytes: 2 * GIB,
+      maxBytes: 8 * GIB,
+      resetFromBytes: null
+    })
+    expect(wrapper.find('[role="status"]').exists()).toBe(false)
   })
 })
