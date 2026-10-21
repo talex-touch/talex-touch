@@ -1,7 +1,9 @@
+import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { normalizeFsPath } from '@talex-touch/utils/common/file-scan-utils'
 import { execFileSafe } from '@talex-touch/utils/common/utils/safe-shell'
 import { iconService } from '../../../../service/icon-service'
 import { readFile as readPlist } from 'simple-plist'
@@ -14,9 +16,52 @@ import { getLocale } from '../../../../utils/i18n-helper'
 
 const darwinAppLog = createLogger('AppScanner').child('Darwin')
 
-export async function getApps(): Promise<ScannedAppInfo[]> {
-  // Switch to mdfind as the primary method for discovering applications for better coverage.
-  return getAppsViaMdfind()
+const SPOTLIGHT_APP_QUERY = 'kMDItemContentType == "com.apple.application-bundle"'
+
+/**
+ * How far below a search root the folder walk looks for bundles: `/Applications/<App>.app` is
+ * level 1, and `/Applications/Utilities/<App>.app` or a vendor folder is level 2. The app watcher
+ * on `/Applications` reports changes down to that same level, so the walk never lists a bundle the
+ * watcher could not report again.
+ */
+const APP_FOLDER_WALK_MAX_DEPTH = 2
+
+/** Folders that are packages themselves; nothing inside one is a separate launchable app. */
+const PACKAGE_FOLDER_PATTERN =
+  /\.(?:bundle|framework|plugin|appex|xpc|kext|prefpane|systemextension|component|qlgenerator|mdimporter|saver|wdgt)$/i
+
+/**
+ * Spotlight alone left installed apps out of the index whenever its index was off or still being
+ * rebuilt, as after an OS update; a failed query left the whole scan empty. The startup health
+ * probe saw those bundles on disk, but the backfill it triggered asked Spotlight again and got the
+ * same answer. The scan therefore takes the union of Spotlight and a bounded walk of the same roots:
+ * Spotlight still contributes bundles nested deeper than the walk, and the walk contributes what
+ * Spotlight has not indexed.
+ *
+ * @param searchRoots Tests point this at fixture folders; production always scans the system roots.
+ */
+export async function getApps(
+  searchRoots: readonly string[] = getDarwinAppSearchRoots()
+): Promise<ScannedAppInfo[]> {
+  const roots = await resolveExistingRoots(searchRoots)
+  const [spotlightPaths, folderPaths] = await Promise.all([
+    findAppPathsViaSpotlight(roots),
+    findAppPathsInFolders(roots)
+  ])
+  const spotlightAppPaths = mergeAppPaths(spotlightPaths ?? [])
+  const appPaths = mergeAppPaths(spotlightAppPaths, folderPaths)
+
+  if (spotlightPaths === null || appPaths.length > spotlightAppPaths.length) {
+    darwinAppLog.info('App folders hold bundles Spotlight did not list', {
+      meta: {
+        spotlight: spotlightPaths === null ? 'failed' : spotlightAppPaths.length,
+        folders: folderPaths.length,
+        added: appPaths.length - spotlightAppPaths.length
+      }
+    })
+  }
+
+  return resolveAppInfos(appPaths)
 }
 
 // Helper to parse plist content with regex
@@ -352,17 +397,18 @@ export async function getAppInfo(appPath: string): Promise<ScannedAppInfo | null
   }
 }
 
-export async function getAppsViaMdfind(): Promise<ScannedAppInfo[]> {
-  const query = 'kMDItemContentType == "com.apple.application-bundle"'
-  const searchRoots = [
+function getDarwinAppSearchRoots(): string[] {
+  return [
     '/Applications',
     '/System/Applications',
     '/System/Library/CoreServices',
     path.join(os.homedir(), 'Applications')
   ]
+}
 
+async function resolveExistingRoots(roots: readonly string[]): Promise<string[]> {
   const existingRoots: string[] = []
-  for (const root of searchRoots) {
+  for (const root of roots) {
     try {
       await fs.access(root)
       existingRoots.push(root)
@@ -370,20 +416,109 @@ export async function getAppsViaMdfind(): Promise<ScannedAppInfo[]> {
       // ignore missing roots
     }
   }
+  return existingRoots
+}
 
-  const args = existingRoots.flatMap((root) => ['-onlyin', root])
-  args.push(query)
+/** Resolves to `null` when Spotlight could not answer, which an empty index cannot be told from. */
+async function findAppPathsViaSpotlight(roots: readonly string[]): Promise<string[] | null> {
+  // Without `-onlyin` mdfind searches every volume.
+  if (roots.length === 0) return []
 
-  const { stdout } = await execFileSafe('mdfind', args, { maxBuffer: 1024 * 1024 * 10 })
-  const appPaths = Array.from(
-    new Set(
-      stdout
-        .split('\n')
-        .map((p) => p.trim())
-        .filter((p) => p.endsWith('.app'))
-    )
-  )
+  const args = roots.flatMap((root) => ['-onlyin', root])
+  args.push(SPOTLIGHT_APP_QUERY)
+  try {
+    const { stdout } = await execFileSafe('mdfind', args, { maxBuffer: 1024 * 1024 * 10 })
+    return stdout
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.endsWith('.app'))
+  } catch (error) {
+    darwinAppLog.warn('Spotlight app query failed, listing app folders only', { error })
+    return null
+  }
+}
 
+/**
+ * Lists the `.app` bundles in the search roots without Spotlight. Hidden folders (update staging
+ * such as `/Applications/.<app>-update`) are skipped, and so is a folder that cannot be read; that
+ * one is left to Spotlight.
+ *
+ * A symlinked bundle is listed under the link only when its target lies outside every root, which
+ * is what Spotlight does: `/Applications/Safari.app` links into the Safari cryptex and is listed
+ * at the link, while `/Applications/Utilities/Feedback Assistant.app` links to a bundle listed
+ * under its own path in `/System/Library/CoreServices`, and listing the link too would index that
+ * app twice. Symlinked folders are not followed.
+ */
+async function findAppPathsInFolders(roots: readonly string[]): Promise<string[]> {
+  const appPaths: string[] = []
+  const linkedAppPaths: string[] = []
+
+  const visit = async (folder: string, depth: number): Promise<void> => {
+    let entries: Dirent[]
+    try {
+      entries = await fs.readdir(folder, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const entryPath = path.join(folder, entry.name)
+      if (entry.isSymbolicLink()) {
+        if (entry.name.endsWith('.app')) linkedAppPaths.push(entryPath)
+      } else if (!entry.isDirectory()) {
+        continue
+      } else if (entry.name.endsWith('.app')) {
+        appPaths.push(entryPath)
+      } else if (depth < APP_FOLDER_WALK_MAX_DEPTH && !PACKAGE_FOLDER_PATTERN.test(entry.name)) {
+        await visit(entryPath, depth + 1)
+      }
+    }
+  }
+
+  for (const root of roots) {
+    await visit(root, 1)
+  }
+
+  const realRoots = await Promise.all(roots.map((root) => fs.realpath(root).catch(() => root)))
+  for (const linkPath of linkedAppPaths) {
+    const target = await resolveFolderLinkTarget(linkPath)
+    if (!target || realRoots.some((root) => target.startsWith(`${root}${path.sep}`))) continue
+    appPaths.push(linkPath)
+  }
+  return appPaths
+}
+
+async function resolveFolderLinkTarget(linkPath: string): Promise<string | null> {
+  try {
+    const target = await fs.realpath(linkPath)
+    return (await fs.stat(target)).isDirectory() ? target : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Keeps the first path seen for each bundle, so a bundle both sources list keeps Spotlight's
+ * path, the one its row has always been stored under. Both sources hand out names as the
+ * filesystem stores them, which can be decomposed, so paths are compared in composed form and
+ * kept as found.
+ */
+export function mergeAppPaths(...sources: ReadonlyArray<readonly string[]>): string[] {
+  const seen = new Set<string>()
+  const merged: string[] = []
+  for (const source of sources) {
+    for (const appPath of source) {
+      const key = normalizeFsPath(appPath, 'darwin')
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(appPath)
+    }
+  }
+  return merged
+}
+
+async function resolveAppInfos(appPaths: readonly string[]): Promise<ScannedAppInfo[]> {
   const appInfos = await mapWithConcurrency(appPaths, 4, async (appPath) => {
     try {
       return await getAppInfo(appPath)

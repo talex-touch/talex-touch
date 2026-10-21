@@ -36,21 +36,12 @@ describe('appProvider app search diagnostics recall', () => {
       }
     }
     const keywordRows = [
-      { value: 'chatapp', priority: 1.1 },
-      { value: 'chatapp', priority: 1.1 },
-      { value: '聊天应用', priority: 1.1 }
+      { itemId: 'path:d:\\chatapp\\chatapp.exe', keyword: 'chatapp', priority: 1.1 },
+      { itemId: 'path:d:\\chatapp\\chatapp.exe', keyword: 'chatapp', priority: 1.1 },
+      { itemId: 'path:d:\\chatapp\\chatapp.exe', keyword: '聊天应用', priority: 1.1 }
     ]
 
     privateProvider.dbUtils = {
-      getDb: () => ({
-        select: vi.fn(() => ({
-          from: vi.fn(() => ({
-            where: vi.fn(() => ({
-              limit: vi.fn(async () => keywordRows)
-            }))
-          }))
-        }))
-      }),
       getFilesByType: vi.fn(async () => [appRow])
     }
     privateProvider.fetchExtensionsForFiles = vi.fn(async () => [appRow])
@@ -85,7 +76,8 @@ describe('appProvider app search diagnostics recall', () => {
           keyword: 'chatapp',
           priority: 1.1
         }
-      ])
+      ]),
+      listItemKeywords: vi.fn(async () => keywordRows)
     }
 
     const result = await appProvider.diagnoseAppSearch({
@@ -138,24 +130,18 @@ describe('appProvider app search diagnostics recall', () => {
     ]
 
     privateProvider.dbUtils = {
-      getDb: () => ({
-        select: vi.fn(() => ({
-          from: vi.fn(() => ({
-            where: vi.fn(() => ({
-              limit: vi.fn(async () => keywordRows)
-            }))
-          }))
-        }))
-      }),
       getFilesByType: vi.fn(async () => [appRow])
     }
     privateProvider.fetchExtensionsForFiles = vi.fn(async () => [appRow])
     privateProvider.searchIndex = {
-      lookupByKeywords: vi.fn(async () => new Map()),
+      lookupByKeywords: vi.fn(async (_providerId: string, keywords: string[]) =>
+        keywords.includes('wx') ? new Map([['wx', keywordRows]]) : new Map()
+      ),
       lookupByKeywordPrefix: vi.fn(async () => []),
       search: vi.fn(async () => []),
       lookupByNgrams: vi.fn(async () => []),
-      lookupBySubsequence: vi.fn(async () => [])
+      lookupBySubsequence: vi.fn(async () => []),
+      listItemKeywords: vi.fn(async () => [])
     }
 
     const result = await appProvider.diagnoseAppSearch({
