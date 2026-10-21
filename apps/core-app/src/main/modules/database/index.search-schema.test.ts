@@ -92,6 +92,16 @@ vi.mock('../../db/runtime-flags', async (importOriginal) => ({
 import { DatabaseModule } from './index'
 import { operationalErrorService } from '../observability'
 import { SearchIndexService } from '../box-tool/search-engine/search-index-service'
+import {
+  acknowledgeFileDeletionCommitsInHome,
+  removeFileRecordsInTransaction,
+  type UpsertFileRecord
+} from '../box-tool/search-engine/file-index-persistence-repository'
+import {
+  resolveSearchIndexReservePages,
+  SEARCH_INDEX_RESERVE_REACHED
+} from '../../db/search-index-size-cap'
+import { isSqliteStorageFullError } from '../../db/sqlite-retry'
 
 const LEGACY_KEYWORD_MAPPINGS_DDL = `CREATE TABLE keyword_mappings (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -600,6 +610,129 @@ describe('initSearchDatabase size cap', () => {
     },
     60_000
   )
+
+  it('refuses new files before the pages deletions need, which scattered deletions then get', async () => {
+    // Deleting files whose rows lie far apart frees no whole page, so at the cap a deletion needs
+    // pages of its own; with none left, these batches fail and the files stay in the index.
+    capOverride.bytes = 2_000 * 4096
+    const module = moduleInternals(new DatabaseModule())
+    try {
+      await module.initSearchDatabase(dir)
+      const client = module.searchClient!
+      expect(await scalar(client, 'PRAGMA max_page_count')).toBe(2_000)
+      const writer = openWriter(client)
+      await writer.warmup()
+      const file = (index: number, mtimeSeconds: number) => {
+        const directory = `/Users/someone/Projects/app-${index % 17}/src/feature-${index % 53}`
+        const name = `component-${index}-${(index * 7919) % 10007}.ts`
+        const record: UpsertFileRecord = {
+          path: `${directory}/${name}`,
+          name,
+          extension: '.ts',
+          size: 1_000 + index,
+          mtime: new Date(mtimeSeconds * 1000),
+          ctime: new Date(mtimeSeconds * 1000),
+          lastIndexedAt: new Date(mtimeSeconds * 1000),
+          isDir: false,
+          type: 'file'
+        }
+        return {
+          record,
+          item: {
+            providerId: 'file-provider',
+            itemId: record.path,
+            type: 'file' as const,
+            name,
+            path: directory
+          }
+        }
+      }
+      const persist = async (indexes: number[], mtimeSeconds: number) => {
+        const files = indexes.map((index) => file(index, mtimeSeconds))
+        await writer.persistAndApplyProviderItems(
+          files.map(({ record }) => record),
+          'file-provider',
+          files.map(({ item }) => item)
+        )
+      }
+
+      let next = 0
+      let refusal: unknown = null
+      for (const batch of [10, 1]) {
+        refusal = null
+        while (refusal === null) {
+          const indexes = Array.from({ length: batch }, (_, offset) => next + offset)
+          try {
+            await persist(indexes, 1_700_000_000)
+            next += batch
+          } catch (error) {
+            refusal = error
+          }
+        }
+      }
+      expect(isSqliteStorageFullError(refusal)).toBe(true)
+      expect(String((refusal as Error).message)).toContain(SEARCH_INDEX_RESERVE_REACHED)
+      const live = await scalar(
+        client,
+        'SELECT (SELECT page_count FROM pragma_page_count()) - (SELECT freelist_count FROM pragma_freelist_count())'
+      )
+      expect(2_000 - live).toBeLessThanOrEqual(resolveSearchIndexReservePages(2_000))
+
+      // Indexed files still update.
+      await persist([0, 1, 2], 1_700_000_100)
+      expect(
+        await scalar(
+          client,
+          "SELECT count(*) FROM files WHERE mtime = 1700000100 AND type = 'file'"
+        )
+      ).toBe(3)
+
+      const rows = await client.execute(
+        "SELECT id, path, mtime, ctime, size, last_indexed_at AS lastIndexedAt FROM files WHERE type = 'file' ORDER BY id"
+      )
+      const victims = rows.rows
+        .filter((_, position) => position % 7 === 3)
+        .map((row) => ({
+          id: Number(row.id),
+          path: String(row.path),
+          itemId: String(row.path),
+          mtime: Number(row.mtime),
+          ctime: Number(row.ctime),
+          size: row.size === null ? null : Number(row.size),
+          lastIndexedAt: Number(row.lastIndexedAt)
+        }))
+      expect(victims.length).toBeGreaterThan(128)
+      const db = drizzle(client)
+      for (let start = 0; start < victims.length; start += 64) {
+        const result = await db.transaction(
+          async (tx) =>
+            await removeFileRecordsInTransaction(
+              tx as never,
+              writer,
+              'file-provider',
+              victims.slice(start, start + 64)
+            ),
+          { behavior: 'immediate' }
+        )
+        if (result.commitId)
+          await acknowledgeFileDeletionCommitsInHome(db as never, 'file-provider', [
+            result.commitId
+          ])
+      }
+      expect(await scalar(client, "SELECT count(*) FROM files WHERE type = 'file'")).toBe(
+        next - victims.length
+      )
+      expect(
+        await scalar(
+          client,
+          "SELECT count(*) FROM search_index_meta WHERE provider_id = 'file-provider'"
+        )
+      ).toBe(next - victims.length)
+    } finally {
+      capOverride.bytes = null
+      module.searchClient?.close()
+    }
+  }, 120_000)
 
   it('keeps an index within the cap', async () => {
     const first = new DatabaseModule()

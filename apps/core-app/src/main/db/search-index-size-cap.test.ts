@@ -1,4 +1,5 @@
 import { createClient, type Client } from '@libsql/client'
+import { drizzle } from 'drizzle-orm/libsql'
 import { existsSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,9 +8,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   applySearchIndexSizeCap,
   deleteSearchIndexOverCap,
+  hasSearchIndexRoomForNewData,
+  isSearchIndexReserveReachedError,
   measureSearchIndexFileBytes,
   resolveSearchIndexMaxBytes,
-  SEARCH_INDEX_MAX_BYTES
+  resolveSearchIndexReservePages,
+  SEARCH_INDEX_MAX_BYTES,
+  searchIndexReserveReachedError
 } from './search-index-size-cap'
 import { isSqliteStorageFullError } from './sqlite-retry'
 
@@ -111,5 +116,63 @@ describe('search index size cap', () => {
     await expect(
       client.execute({ sql: 'INSERT INTO rows (body) VALUES (?)', args: ['z'.repeat(8_000)] })
     ).rejects.toSatisfy(isSqliteStorageFullError)
+  })
+
+  it('keeps 2% of the cap for deletions, from 256 to 16,384 pages and at most a quarter of it', () => {
+    // 8 GiB, 1.28 GB (2% of a 64 GB volume) and 8 MB of 4 KiB pages.
+    expect(resolveSearchIndexReservePages(2_097_152)).toBe(16_384)
+    expect(resolveSearchIndexReservePages(312_500)).toBe(6_250)
+    expect(resolveSearchIndexReservePages(2_000)).toBe(256)
+    expect(resolveSearchIndexReservePages(100)).toBe(25)
+  })
+
+  it('has room for new data until the free pages under the cap shrink to the reserve', async () => {
+    client = createClient({ url: `file:${join(directory, 'reserve.db')}` })
+    await client.execute('CREATE TABLE rows (id INTEGER PRIMARY KEY, body TEXT)')
+    const db = drizzle(client)
+    // Without a cap, as the legacy layout's main database has.
+    expect(await hasSearchIndexRoomForNewData(db)).toBe(true)
+
+    const pageSize = await scalar(client, 'PRAGMA page_size')
+    await applySearchIndexSizeCap(client, 1_000 * pageSize)
+    const live = async () =>
+      (await scalar(client!, 'PRAGMA page_count')) -
+      (await scalar(client!, 'PRAGMA freelist_count'))
+    // The reserve of a 1,000-page cap is a quarter of it: 250 pages.
+    const answers: boolean[] = []
+    for (;;) {
+      const room = await hasSearchIndexRoomForNewData(db)
+      expect(room).toBe(1_000 - (await live()) > 250)
+      if (answers.at(-1) !== room) answers.push(room)
+      if (!room) break
+      await client.execute({ sql: 'INSERT INTO rows (body) VALUES (?)', args: ['r'.repeat(3_000)] })
+    }
+    expect(answers).toEqual([true, false])
+    expect(isSqliteStorageFullError(searchIndexReserveReachedError())).toBe(true)
+  })
+
+  it('tells the refusal from a full disk, through whatever wraps it', () => {
+    const refusal = searchIndexReserveReachedError()
+    // Across the writer worker only the message survives.
+    for (const wrapped of [
+      refusal,
+      new Error(refusal.message),
+      new Error('scan stopped', { cause: new Error('batch failed', { cause: refusal }) }),
+      new AggregateError([new Error('other'), refusal]),
+      { original: refusal },
+      { error: { message: refusal.message } },
+      refusal.message
+    ]) {
+      expect(isSearchIndexReserveReachedError(wrapped)).toBe(true)
+    }
+
+    const diskFull = Object.assign(new Error('SQLITE_FULL: database or disk is full'), {
+      code: 'SQLITE_FULL'
+    })
+    const loop: { message: string; cause?: unknown } = { message: 'SQLITE_BUSY' }
+    loop.cause = loop
+    for (const other of [diskFull, new Error('scan stopped', { cause: diskFull }), loop, null]) {
+      expect(isSearchIndexReserveReachedError(other)).toBe(false)
+    }
   })
 })

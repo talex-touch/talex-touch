@@ -7,6 +7,10 @@ import type { SearchIndexWriteTx } from './search-index-document-store'
 import { randomUUID } from 'node:crypto'
 import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import * as schema from '../../../db/schema'
+import {
+  hasSearchIndexRoomForNewData,
+  searchIndexReserveReachedError
+} from '../../../db/search-index-size-cap'
 import { withSqliteRetry } from '../../../db/sqlite-retry'
 import {
   normalizeScanProgressSourceId,
@@ -260,11 +264,23 @@ export class SqliteFileIndexPersistenceRepository implements FileIndexPersistenc
     )
   }
 
+  /**
+   * A full index refuses a batch that would add a file, before the pages deletions need; a batch
+   * that only updates indexed files may use them.
+   */
   async upsertFilesInTransaction(
-    tx: Pick<LibSQLDatabase<typeof schema>, 'insert' | 'update'>,
+    tx: Pick<LibSQLDatabase<typeof schema>, 'insert' | 'update' | 'select' | 'all'>,
     records: readonly UpsertFileRecord[]
   ): Promise<Array<Record<string, unknown>>> {
     if (records.length === 0) return []
+    if (!(await hasSearchIndexRoomForNewData(tx))) {
+      const paths = [...new Set(records.map((record) => record.path))]
+      const indexed = await tx
+        .select({ path: schema.files.path })
+        .from(schema.files)
+        .where(inArray(schema.files.path, paths))
+      if (indexed.length < paths.length) throw searchIndexReserveReachedError()
+    }
     const rows = await tx
       .insert(schema.files)
       .values(
@@ -480,7 +496,8 @@ export class SqliteFileIndexPersistenceRepository implements FileIndexPersistenc
               .select({
                 fileId: schema.files.id,
                 mtime: schema.files.mtime,
-                size: schema.files.size
+                size: schema.files.size,
+                hasContent: sql<number>`${schema.files.content} IS NOT NULL`
               })
               .from(schema.files)
               .where(
@@ -492,9 +509,10 @@ export class SqliteFileIndexPersistenceRepository implements FileIndexPersistenc
             const fingerprintByFileId = new Map(
               existingRows.map((row) => [
                 row.fileId,
-                { mtime: row.mtime.getTime(), size: row.size ?? null }
+                { mtime: row.mtime.getTime(), size: row.size ?? null, hasContent: !!row.hasContent }
               ])
             )
+            let roomForNewContent: boolean | null = null
             const summary: PersistChunkSummary = {
               persistedRows: 0,
               fileUpdates: 0,
@@ -527,6 +545,12 @@ export class SqliteFileIndexPersistenceRepository implements FileIndexPersistenc
               }
 
               if (fileUpdate) {
+                // Content for a file that has none adds data, so a full index refuses it before
+                // the pages deletions need; replacing content may use them.
+                if (fileUpdate.content !== null && !currentFingerprint.hasContent) {
+                  roomForNewContent ??= await hasSearchIndexRoomForNewData(tx)
+                  if (!roomForNewContent) throw searchIndexReserveReachedError()
+                }
                 await tx
                   .update(schema.files)
                   .set({
