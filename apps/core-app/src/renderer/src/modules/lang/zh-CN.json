@@ -5040,6 +5040,8 @@
       "indexStorageFullDetail": "索引已占用 {used}，上限为 {max}（8 GiB 或磁盘容量的 2%，取较小者）。到达上限后，新文件要等删除腾出空间才会被收录；已收录文件的修改与删除照常生效。",
       "indexStorageReset": "索引已自动重建",
       "indexStorageResetDetail": "索引曾增长到 {size}，超过上限 {max}，本次启动时已删除并在上限内重新建立。重建完成前，文件搜索结果可能不完整。",
+      "indexStorageEvicted": "索引已满，较旧的文件已移出",
+      "indexStorageEvictedDetail": "索引到达上限 {max} 后，为给新文件腾出空间，修改和创建时间都不晚于 {date} 的文件已移出索引，之后也不再收录；在 Tuff 里打开过或固定的文件会保留。重建索引后重新计算。",
       "contentIndexStorageCheckRecovery": "Tuff 会定期检查磁盘空间，检查成功且空间充足后自动恢复。开关仍保持开启，已有数据与文件名等基础搜索保留。",
       "contentIndexStorageConfirmPaused": "可以保存开启意图，但正文与向量索引会保持暂停，直到磁盘空间检查成功且满足容量要求；不会自动删除文件或索引数据。",
       "contentIndexStorageSaveBlocked": "磁盘可写空间不足，开关未保存，正文与向量索引未启动。",

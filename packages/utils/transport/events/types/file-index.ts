@@ -108,6 +108,11 @@ export interface FileIndexStatus {
   contentIndexingState?: FileContentIndexingState;
   contentIndexStorage?: FileIndexContentStorage;
   indexStorage?: FileIndexStorage;
+  /**
+   * Set once the index has been full (ms): files whose later of modification and creation time is
+   * at or before it are evicted and not admitted again, except those opened or pinned in Tuff.
+   */
+  capacityHorizon?: number;
 }
 
 /**

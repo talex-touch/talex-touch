@@ -96,7 +96,8 @@ async function mountSettings(
   initial: FileIndexContentSettings,
   updated = initial,
   updateError?: Error,
-  indexStorage?: FileIndexStorage
+  indexStorage?: FileIndexStorage,
+  capacityHorizon?: number
 ) {
   let snapshot = initial
   let progress: (() => void) | undefined
@@ -117,6 +118,7 @@ async function mountSettings(
           contentIndexingState: snapshot.state,
           contentIndexStorage: snapshot.storage,
           indexStorage,
+          capacityHorizon,
           progress: { stage: 'idle', current: 0, total: 0 }
         }
       if (event === AppEvents.fileIndex.stats)
@@ -338,6 +340,23 @@ describe('SettingFileIndex index size cap', () => {
     expect(alert.attributes('data-tone')).toBe('info')
     expect(alert.text()).toContain(i18n.global.t('settings.settingFileIndex.indexStorageReset'))
     expect(alert.text()).toContain('47.2')
+  })
+
+  it('says which files made way once the full index evicted, instead of how full it is', async () => {
+    const horizon = Date.UTC(2025, 2, 15, 12)
+    const { wrapper } = await mountSettings(
+      idle,
+      idle,
+      undefined,
+      { fileBytes: 7.9 * GIB, maxBytes: 8 * GIB, resetFromBytes: null },
+      horizon
+    )
+    const alert = wrapper.find('[role="status"]')
+    expect(alert.attributes('data-tone')).toBe('info')
+    expect(alert.text()).toContain(i18n.global.t('settings.settingFileIndex.indexStorageEvicted'))
+    expect(alert.text()).toContain(
+      new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(horizon)
+    )
   })
 
   it('stays quiet below the cap', async () => {

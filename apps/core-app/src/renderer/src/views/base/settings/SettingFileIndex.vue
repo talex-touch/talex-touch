@@ -154,12 +154,24 @@ const contentIndexStorageSummary = computed(() => {
 })
 /**
  * The index has a hard cap (8 GiB, or 2% of its volume when that is less). SQLite refuses new
- * pages at the cap, so from 95% on new files may already stop being indexed.
+ * pages at the cap, so from 95% on new files may already stop being indexed. Once it has been
+ * full, the oldest files make way for new ones, and that says more than the fill level.
  */
 const indexStorageAlert = computed(() => {
   const storage = indexStatus.value?.indexStorage
   if (!storage) return null
   const max = formatContentIndexSpace(storage.maxBytes)
+  const horizon = indexStatus.value?.capacityHorizon
+  if (horizon !== undefined) {
+    return {
+      type: 'info' as const,
+      title: t('settings.settingFileIndex.indexStorageEvicted'),
+      detail: t('settings.settingFileIndex.indexStorageEvictedDetail', {
+        max,
+        date: new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium' }).format(horizon)
+      })
+    }
+  }
   if (storage.fileBytes !== null && storage.fileBytes >= storage.maxBytes * 0.95) {
     return {
       type: 'warning' as const,

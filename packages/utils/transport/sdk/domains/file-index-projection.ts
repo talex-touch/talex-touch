@@ -157,6 +157,7 @@ export function projectFileIndexStatus(raw: unknown): FileIndexStatus {
   const overallProgress = asOptionalFiniteNumber(progress.progress)
   const contentIndexStorage = projectContentStorage(input.contentIndexStorage)
   const indexStorage = projectIndexStorage(input.indexStorage)
+  const capacityHorizon = asOptionalFiniteNumber(input.capacityHorizon)
   return {
     isInitializing: asBoolean(input.isInitializing),
     initializationFailed: asBoolean(input.initializationFailed),
@@ -183,6 +184,7 @@ export function projectFileIndexStatus(raw: unknown): FileIndexStatus {
     contentIndexingState: asContentIndexingState(input.contentIndexingState),
     ...(contentIndexStorage ? { contentIndexStorage } : {}),
     ...(indexStorage ? { indexStorage } : {}),
+    ...(capacityHorizon !== undefined && capacityHorizon > 0 ? { capacityHorizon } : {}),
   }
 }
 
