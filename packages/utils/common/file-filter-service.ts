@@ -293,9 +293,9 @@ export function isProjectMarker(entryName: string): boolean {
  * root (2026-10-21: worktree-like paths were 15% of one machine's indexed files).
  */
 export function isLinkedWorktreeGitFile(contents: string): boolean {
-  const match = /^gitdir:\s*(.+?)\s*$/m.exec(contents);
-  if (!match) return false;
-  return /[\\/]worktrees[\\/][^\\/]+[\\/]?$/.test(match[1]);
+  const gitDir = /^gitdir:\s*(.+?)\s*$/m.exec(contents)?.[1];
+  if (!gitDir) return false;
+  return /[\\/]worktrees[\\/][^\\/]+[\\/]?$/.test(gitDir);
 }
 
 /**
