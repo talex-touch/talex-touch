@@ -62,7 +62,9 @@ vi.mock('~/stores/projects', () => ({
   useProjectStore: () => ({ initialize: vi.fn(async () => undefined), activeProjectId: null })
 }))
 vi.mock('./MetaHintBadge.vue', () => ({ default: { template: '<span />' } }))
-vi.mock('./ShellBackRow.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('./ShellBackRow.vue', () => ({
+  default: { name: 'ShellBackRow', template: '<div class="ShellBackRow" />' }
+}))
 vi.mock('./ShellChromeBar.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./ShellConversationList.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./ShellNavGroup.vue', () => ({ default: { template: '<div><slot /></div>' } }))
@@ -116,5 +118,26 @@ describe('ShellSidebar browser workspace beta gate', () => {
     await nextTick()
 
     expect(wrapper.find('[data-to="/browser"]').exists()).toBe(true)
+  })
+})
+
+describe('ShellSidebar settings context', () => {
+  it('shows settings navigation and back row when route starts with /setting', async () => {
+    route.path = '/setting'
+    const wrapper = mount(ShellSidebar)
+    await nextTick()
+
+    expect(wrapper.find('.ShellSidebar-Context--settings').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'ShellBackRow' }).exists()).toBe(true)
+    route.path = '/home'
+  })
+
+  it('renders direct /setting link when browserWorkspace is off', async () => {
+    route.path = '/home'
+    appSettingMock.betaFeatures.browserWorkspace = false
+    const wrapper = mount(ShellSidebar)
+    await nextTick()
+
+    expect(wrapper.find('[data-to="/setting"]').exists()).toBe(true)
   })
 })
