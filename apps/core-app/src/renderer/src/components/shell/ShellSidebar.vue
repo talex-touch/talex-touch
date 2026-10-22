@@ -10,13 +10,17 @@ import {
 } from '@talex-touch/utils/transport/sdk/domains/browser'
 import { useConversationEntry } from '~/modules/conversation/useConversationEntry'
 import { useShellSidebar } from '~/modules/layout/useShellSidebar'
+import { groupedSettingNavigation } from '~/modules/settings/categories'
 import { useCoreBoxShortcut } from '~/modules/shortcuts/useCoreBoxShortcut'
 import { appSetting } from '~/modules/storage/app-storage'
 import { isBetaFeatureEnabled } from '../../../../shared/beta-features'
+import { useEnv } from '~/modules/hooks/env-hooks'
 import { useProjectStore } from '~/stores/projects'
 import MetaHintBadge from './MetaHintBadge.vue'
+import ShellBackRow from './ShellBackRow.vue'
 import ShellChromeBar from './ShellChromeBar.vue'
 import ShellConversationList from './ShellConversationList.vue'
+import ShellNavGroup from './ShellNavGroup.vue'
 import ShellNavItem from './ShellNavItem.vue'
 import ShellSearchEntry from './ShellSearchEntry.vue'
 import ShellUpdateNotice from './ShellUpdateNotice.vue'
@@ -28,9 +32,25 @@ const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const transport = useTuffTransport()
+const { packageJson } = useEnv()
 const { collapsed, isDragging, startDrag } = useShellSidebar()
 const { enterPickedProjectConversation } = useConversationEntry()
 const { effectiveLabel: coreBoxShortcutLabel } = useCoreBoxShortcut()
+
+/**
+ * The v2 design folds the settings category rail into the main sidebar, so the same column
+ * swaps its contents once you are inside settings.
+ */
+const isSettingsContext = computed(() => route.path.startsWith('/setting'))
+
+/**
+ * Settings reads as a level deeper than the conversation column, so its contents arrive from the
+ * right and the way back reverses. Bound reactively: with `mode="out-in"` the name resolves once
+ * per swap, so the leaving and entering halves always share a direction.
+ */
+const contextTransition = computed(() =>
+  isSettingsContext.value ? 'ShellSidebar-forward' : 'ShellSidebar-back'
+)
 
 const browserEnabled = computed(() => isBetaFeatureEnabled(appSetting, 'browserWorkspace'))
 const browserSdk = createBrowserSdk(transport)
@@ -66,6 +86,12 @@ onBeforeUnmount(() => {
  * OS refused or one that lost an in-app conflict does nothing. No key at all hides the hint.
  */
 const searchKbd = computed(() => coreBoxShortcutLabel.value ?? undefined)
+const settingGroups = computed(() =>
+  groupedSettingNavigation(Boolean(appSetting?.dev?.developerMode))
+)
+const appVersion = computed(() =>
+  packageJson.value?.version ? `v${packageJson.value.version}` : ''
+)
 
 const activeBrowserTab = computed(() =>
   browserState.value?.tabs.find((tab) => tab.id === browserState.value?.activeTabId)
@@ -108,6 +134,12 @@ async function openBrowserWorkspace(): Promise<void> {
 }
 
 async function openStoreTab(): Promise<void> {
+  if (!browserEnabled.value) {
+    if (route.path !== '/store') {
+      await router.push('/store')
+    }
+    return
+  }
   if (route.path !== '/browser') {
     await router.push('/browser')
   }
@@ -125,6 +157,12 @@ async function openStoreTab(): Promise<void> {
 }
 
 async function openSettingsTab(): Promise<void> {
+  if (!browserEnabled.value) {
+    if (route.path !== '/setting') {
+      await router.push('/setting')
+    }
+    return
+  }
   if (route.path !== '/browser') {
     await router.push('/browser')
   }
@@ -167,54 +205,99 @@ onMounted(() => {
   >
     <ShellChromeBar />
 
-    <div class="ShellSidebar-Context">
-      <ShellSearchEntry :placeholder="t('shell.search')" :kbd="searchKbd" @activate="openCoreBox" />
+    <!--
+      Only the column below the chrome swaps. Keeping the chrome bar outside the transition is
+      what makes the change read as one surface changing contents rather than two sidebars.
+    -->
+    <Transition :name="contextTransition" mode="out-in">
+      <div
+        v-if="isSettingsContext"
+        key="settings"
+        class="ShellSidebar-Context ShellSidebar-Context--settings"
+      >
+        <div class="ShellSidebar-SettingsHeader">
+          <ShellBackRow />
 
-      <nav class="ShellSidebar-Nav">
-        <ShellNavItem
-          v-if="browserEnabled"
-          icon="i-ri-global-line"
-          :label="t('shell.browser')"
-          to="/browser"
-          :active="isBrowserActive"
-          @select="openBrowserWorkspace"
+          <ShellSearchEntry :placeholder="t('settingsNav.search')" @activate="openCoreBox" />
+        </div>
+
+        <div class="ShellSidebar-SettingsNav">
+          <ShellNavGroup
+            v-for="group in settingGroups"
+            :key="group.group"
+            :label="t(`settingsNav.group.${group.group}`)"
+          >
+            <ShellNavItem
+              v-for="item in group.items"
+              :key="item.key"
+              :icon="item.icon"
+              :label="t(item.labelKey)"
+              :to="item.path"
+              :badge="item.beta ? t('settings.platformTags.beta') : undefined"
+              :active="item.activeExact ? route.path === item.path : undefined"
+            />
+          </ShellNavGroup>
+        </div>
+        <div v-if="appVersion" class="ShellSidebar-Footer">
+          {{ appVersion }}
+        </div>
+      </div>
+
+      <div v-else key="home" class="ShellSidebar-Context">
+        <ShellSearchEntry
+          :placeholder="t('shell.search')"
+          :kbd="searchKbd"
+          @activate="openCoreBox"
         />
-        <!--
+
+        <nav class="ShellSidebar-Nav">
+          <ShellNavItem
+            v-if="browserEnabled"
+            icon="i-ri-global-line"
+            :label="t('shell.browser')"
+            to="/browser"
+            :active="isBrowserActive"
+            @select="openBrowserWorkspace"
+          />
+          <!--
             Expanded, New Project is the + on the Projects section title. The rail hides that whole
             list, so without this row the action would have no button there at all.
           -->
+          <ShellNavItem
+            v-if="collapsed"
+            icon="i-ri-folder-add-line"
+            :label="t('shell.newProject')"
+            @select="enterPickedProjectConversation"
+          >
+            <template #hint><MetaHintBadge command="new-project" placement="trailing" /></template>
+          </ShellNavItem>
+          <!-- Intelligence configuration lives in the settings rail, not the home-mode nav. -->
+          <ShellNavItem
+            icon="i-ri-store-2-line"
+            :label="t('shell.store')"
+            :to="browserEnabled ? undefined : '/store'"
+            :active="isStoreActive"
+            @select="openStoreTab"
+          >
+            <template #hint><MetaHintBadge command="open-store" placement="trailing" /></template>
+          </ShellNavItem>
+        </nav>
+
+        <ShellConversationList />
+
+        <div class="ShellSidebar-Spacer" />
+
         <ShellNavItem
-          v-if="collapsed"
-          icon="i-ri-folder-add-line"
-          :label="t('shell.newProject')"
-          @select="enterPickedProjectConversation"
+          icon="i-ri-settings-3-line"
+          :label="t('shell.setting')"
+          :to="browserEnabled ? undefined : '/setting'"
+          :active="isSettingsActive"
+          @select="openSettingsTab"
         >
-          <template #hint><MetaHintBadge command="new-project" placement="trailing" /></template>
+          <template #hint><MetaHintBadge command="open-settings" placement="trailing" /></template>
         </ShellNavItem>
-        <!-- Intelligence configuration lives in the settings rail, not the home-mode nav. -->
-        <ShellNavItem
-          icon="i-ri-store-2-line"
-          :label="t('shell.store')"
-          :active="isStoreActive"
-          @select="openStoreTab"
-        >
-          <template #hint><MetaHintBadge command="open-store" placement="trailing" /></template>
-        </ShellNavItem>
-      </nav>
-
-      <ShellConversationList />
-
-      <div class="ShellSidebar-Spacer" />
-
-      <ShellNavItem
-        icon="i-ri-settings-3-line"
-        :label="t('shell.setting')"
-        :active="isSettingsActive"
-        @select="openSettingsTab"
-      >
-        <template #hint><MetaHintBadge command="open-settings" placement="trailing" /></template>
-      </ShellNavItem>
-    </div>
+      </div>
+    </Transition>
 
     <ShellUpdateNotice />
 
@@ -330,6 +413,87 @@ onMounted(() => {
   width: 100%;
   min-height: 0;
   -webkit-app-region: no-drag;
+}
+.ShellSidebar-Context--settings {
+  overflow: hidden;
+}
+
+.ShellSidebar-SettingsHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.ShellSidebar-SettingsNav {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 2px;
+    transition: background-color 0.2s ease;
+  }
+
+  &:hover {
+    scrollbar-color: var(--shell-border-strong) transparent;
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--shell-border-strong);
+    }
+  }
+
+  > * {
+    flex-shrink: 0;
+  }
+}
+
+.ShellSidebar.is-rail {
+  .ShellSidebar-SettingsHeader,
+  .ShellSidebar-SettingsNav {
+    gap: 4px;
+    align-items: center;
+  }
+}
+
+.ShellSidebar-forward-enter-active,
+.ShellSidebar-forward-leave-active,
+.ShellSidebar-back-enter-active,
+.ShellSidebar-back-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+
+// Short travel on purpose: the column is 260 wide and stays in place, so this reads as its
+// contents being replaced rather than as a panel flying in.
+.ShellSidebar-forward-enter-from,
+.ShellSidebar-back-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+
+.ShellSidebar-forward-leave-to,
+.ShellSidebar-back-enter-from {
+  opacity: 0;
+  transform: translateX(-10px);
 }
 
 .ShellSidebar.is-rail {
