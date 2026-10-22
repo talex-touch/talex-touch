@@ -1,5 +1,4 @@
 import path from 'node:path'
-import { and, eq, inArray } from 'drizzle-orm'
 import type {
   AppIndexAddPathResult,
   AppIndexDiagnoseRequest,
@@ -12,7 +11,7 @@ import type {
 } from '@talex-touch/utils/transport/events/types'
 import type { SearchIndexService } from '../../search-engine/search-index-service'
 import type { DbUtils } from '../../../../db/utils'
-import { files as filesSchema, keywordMappings } from '../../../../db/schema'
+import type { files as filesSchema } from '../../../../db/schema'
 import type { ScannedAppInfo } from './app-types'
 import { normalizeStringList } from './app-utils'
 import {
@@ -99,7 +98,7 @@ async function findDiagnosticAppByStoredKeyword(
   target: string,
   apps: DbAppWithExtensions[]
 ): Promise<DiagnosticAppMatch[]> {
-  if (!context.dbUtils) return []
+  if (!context.searchIndex) return []
 
   const raw = normalizeOptionalString(target)
   if (!raw) return []
@@ -107,20 +106,11 @@ async function findDiagnosticAppByStoredKeyword(
   const keywords = normalizeStringList([raw, raw.toLowerCase()])
   if (keywords.length === 0) return []
 
-  const db = context.dbUtils.getDb()
-  const rows = await db
-    .select({
-      itemId: keywordMappings.itemId,
-      priority: keywordMappings.priority
-    })
-    .from(keywordMappings)
-    .where(
-      and(eq(keywordMappings.providerId, context.id), inArray(keywordMappings.keyword, keywords))
-    )
-    .limit(100)
-
+  // Through the search index: in split mode the keyword rows live in search-index.db, which
+  // `dbUtils` (the primary database) does not reach.
+  const matches = await context.searchIndex.lookupByKeywords(context.id, keywords, 100)
   const candidateScores = new Map<string, number>()
-  for (const row of rows) {
+  for (const row of [...matches.values()].flat()) {
     candidateScores.set(
       row.itemId,
       Math.max(candidateScores.get(row.itemId) ?? 0, 76 + row.priority)
@@ -276,24 +266,13 @@ async function loadStoredKeywordEntries(
   context: AppProviderDiagnosticsContext,
   itemIds: string[]
 ): Promise<Array<{ value: string; priority: number }>> {
-  if (!context.dbUtils || itemIds.length === 0) return []
+  if (!context.searchIndex || itemIds.length === 0) return []
 
-  const db = context.dbUtils.getDb()
-  const rows = await db
-    .select({
-      value: keywordMappings.keyword,
-      priority: keywordMappings.priority
-    })
-    .from(keywordMappings)
-    .where(
-      and(eq(keywordMappings.providerId, context.id), inArray(keywordMappings.itemId, itemIds))
-    )
-    .limit(800)
-
+  const rows = await context.searchIndex.listItemKeywords(context.id, itemIds, 800)
   const seen = new Set<string>()
   const entries: Array<{ value: string; priority: number }> = []
   for (const row of rows) {
-    const value = row.value
+    const value = row.keyword
     if (!value || value.startsWith('ng:') || seen.has(value)) continue
     seen.add(value)
     entries.push({ value, priority: row.priority })

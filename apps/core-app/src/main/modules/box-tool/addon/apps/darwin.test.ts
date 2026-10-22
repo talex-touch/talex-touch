@@ -348,3 +348,127 @@ describe('darwin app info', () => {
     expect(execFileSafeMock).not.toHaveBeenCalled()
   })
 })
+
+describe('darwin app discovery', () => {
+  const tempRoots: string[] = []
+  const spotlightQuery = 'kMDItemContentType == "com.apple.application-bundle"'
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  afterEach(async () => {
+    await Promise.all(
+      tempRoots.splice(0).map(async (root) => await fs.rm(root, { recursive: true, force: true }))
+    )
+  })
+
+  async function createAppFolder(): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'darwin-app-discovery-'))
+    tempRoots.push(root)
+    return root
+  }
+
+  async function writeBundle(root: string, relativePath: string): Promise<string> {
+    const bundlePath = path.join(root, relativePath)
+    const name = path.basename(relativePath, '.app')
+    await fs.mkdir(path.join(bundlePath, 'Contents'), { recursive: true })
+    await fs.writeFile(
+      path.join(bundlePath, 'Contents', 'Info.plist'),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.example.${name.toLowerCase()}</string>
+  <key>CFBundleName</key>
+  <string>${name}</string>
+</dict>
+</plist>`
+    )
+    return bundlePath
+  }
+
+  function answerSpotlight(appPaths: string[]): void {
+    execFileSafeMock.mockImplementation(async (command: string) => ({
+      stdout: command === 'mdfind' ? `${appPaths.join('\n')}\n` : '',
+      stderr: ''
+    }))
+  }
+
+  it('adds the bundles Spotlight has not indexed, down to the level the app watcher reports', async () => {
+    const root = await createAppFolder()
+    const listed = await writeBundle(root, 'Listed.app')
+    const fresh = await writeBundle(root, 'Fresh.app')
+    const utility = await writeBundle(root, 'Utilities/Tool.app')
+    const nested = await writeBundle(root, 'Vendor/Suite/Nested.app')
+    answerSpotlight([listed, nested])
+
+    const { getApps } = await loadSubject()
+    const appPaths = (await getApps([root])).map((app) => app.path)
+
+    // Nested.app sits below the walk and is found only because Spotlight lists it.
+    expect(appPaths.sort()).toEqual([fresh, listed, nested, utility].sort())
+    expect(execFileSafeMock).toHaveBeenCalledWith(
+      'mdfind',
+      ['-onlyin', root, spotlightQuery],
+      expect.anything()
+    )
+  })
+
+  it('lists the app folders alone when Spotlight cannot answer', async () => {
+    const root = await createAppFolder()
+    const app = await writeBundle(root, 'Only.app')
+    await writeBundle(root, 'Vendor/Suite/TooDeep.app')
+    execFileSafeMock.mockRejectedValue(new Error('mdfind: indexing disabled'))
+
+    const { getApps } = await loadSubject()
+
+    expect((await getApps([root])).map((entry) => entry.path)).toEqual([app])
+  })
+
+  it('skips hidden folders and the insides of packages', async () => {
+    const root = await createAppFolder()
+    const real = await writeBundle(root, 'Real.app')
+    await writeBundle(root, 'Real.app/Contents/Helpers/Embedded.app')
+    await writeBundle(root, '.real-update/Staged.app')
+    await writeBundle(root, 'Helper.bundle/Inner.app')
+    answerSpotlight([])
+
+    const { getApps } = await loadSubject()
+
+    expect((await getApps([root])).map((entry) => entry.path)).toEqual([real])
+  })
+
+  it('lists a symlinked bundle at the link only when its target is outside every root', async () => {
+    const root = await createAppFolder()
+    const elsewhere = await createAppFolder()
+    const real = await writeBundle(root, 'Real.app')
+    // Like Feedback Assistant: the target is listed under its own path, so the link is not.
+    await fs.symlink(real, path.join(root, 'Alias.app'))
+    // Like Safari, which links into its cryptex: the link is the only path the app has here.
+    const outside = await writeBundle(elsewhere, 'Outside.app')
+    const linked = path.join(root, 'Linked.app')
+    await fs.symlink(outside, linked)
+    answerSpotlight([])
+
+    const { getApps } = await loadSubject()
+    const appPaths = (await getApps([root])).map((entry) => entry.path)
+
+    expect(appPaths.sort()).toEqual([linked, real].sort())
+  })
+
+  it('keeps one path per bundle when the sources spell its name in different Unicode forms', async () => {
+    const composed = '/Applications/Caf\u00e9.app'
+    const decomposed = '/Applications/Cafe\u0301.app'
+    expect(composed).not.toBe(decomposed)
+
+    const { mergeAppPaths } = await loadSubject()
+
+    expect(mergeAppPaths([composed, composed], [decomposed, '/Applications/Other.app'])).toEqual([
+      composed,
+      '/Applications/Other.app'
+    ])
+    expect(mergeAppPaths([decomposed], [composed])).toEqual([decomposed])
+  })
+})

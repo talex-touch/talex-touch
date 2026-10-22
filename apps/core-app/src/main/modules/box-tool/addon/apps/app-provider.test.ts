@@ -1529,23 +1529,9 @@ describe('appProvider rebuild maintenance', () => {
         launchTarget: '/Applications/NeteaseMusic 2.app'
       }
     }
-    const keywordRows = [
-      { value: 'neteasemusic', priority: 1.1 },
-      { value: '网易云音乐', priority: 1.1 },
-      { value: 'wangyiyunyinyue', priority: 1.1 },
-      { value: 'wyyy', priority: 1.1 },
-      { value: 'ng:wy', priority: 1.1 }
-    ]
-    const limitMock = vi.fn(async () => keywordRows)
-    const db = {
-      select: vi.fn(() => ({
-        from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: limitMock
-          }))
-        }))
-      }))
-    }
+    const keywordRows = ['neteasemusic', '网易云音乐', 'wangyiyunyinyue', 'wyyy', 'ng:wy'].map(
+      (keyword) => ({ itemId: '/Applications/NeteaseMusic 2.app', keyword, priority: 1.1 })
+    )
     const lookupByKeywordsMock = vi.fn(async () => {
       return new Map([
         [
@@ -1561,11 +1547,11 @@ describe('appProvider rebuild maintenance', () => {
     })
 
     privateProvider.dbUtils = {
-      getDb: () => db,
       getFilesByType: vi.fn(async () => [appRow])
     }
     privateProvider.fetchExtensionsForFiles = vi.fn(async () => [appRow])
     privateProvider.searchIndex = {
+      listItemKeywords: vi.fn(async () => keywordRows),
       lookupByKeywords: lookupByKeywordsMock,
       lookupByKeywordPrefix: vi.fn(async () => [
         {
@@ -1646,19 +1632,11 @@ describe('appProvider rebuild maintenance', () => {
     }
 
     privateProvider.dbUtils = {
-      getDb: () => ({
-        select: vi.fn(() => ({
-          from: vi.fn(() => ({
-            where: vi.fn(() => ({
-              limit: vi.fn(async () => [])
-            }))
-          }))
-        }))
-      }),
       getFilesByType: vi.fn(async () => [appRow])
     }
     privateProvider.fetchExtensionsForFiles = vi.fn(async () => [appRow])
     privateProvider.searchIndex = {
+      listItemKeywords: vi.fn(async () => []),
       lookupByKeywords: vi.fn(async () => new Map()),
       lookupByKeywordPrefix: vi.fn(async () => []),
       search: vi.fn(async () => []),

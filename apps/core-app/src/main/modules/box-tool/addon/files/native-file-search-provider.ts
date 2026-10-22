@@ -23,6 +23,7 @@ import type { FileIndexSettings } from './types'
 import { EverythingIconCache } from './everything-icon-cache'
 import { getFileAssetBridge, type IndexedFileAssets } from './file-asset-bridge'
 import { getDirectoryLevelExclusionReason, mapFileToTuffItem } from './utils'
+import { isLinkedWorktreeRoot } from './file-traversal-policy'
 
 export interface NativeFileSearchCapabilities {
   platform: NodeJS.Platform
@@ -174,11 +175,12 @@ class NativeSearchDirectoryFilter {
       const inherited = await this.getDirectoryReason(parent, rootKey)
       if (inherited) return inherited
     }
-    return await getDirectoryLevelExclusionReason(
+    const reason = await getDirectoryLevelExclusionReason(
       directoryPath,
       this.readdir,
       this.levelOptionsOf(rootKey)
     )
+    return reason ?? ((await isLinkedWorktreeRoot(directoryPath)) ? 'development-path' : null)
   }
 }
 

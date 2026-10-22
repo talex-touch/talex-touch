@@ -27,7 +27,8 @@ import {
 
 export {
   getDirectoryLevelExclusionReason,
-  getFileTraversalExclusionReason
+  getFileTraversalExclusionReason,
+  getScanChildExclusionReason
 } from './file-traversal-policy'
 
 const DIRECT_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'svg', 'gif', 'bmp', 'webp', 'ico'])

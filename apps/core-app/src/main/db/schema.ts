@@ -70,13 +70,37 @@ export const searchIndexMeta = sqliteTable(
     keywordHash: text('keyword_hash').notNull(),
     ftsRowId: integer('fts_rowid'),
     documentHash: text('document_hash'),
+    // 关键词倒排里指代本文档的 id
+    docId: integer('doc_id'),
     updatedAt: integer('updated_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(strftime('%s', 'now'))`)
   },
   (table) => ({
     pk: primaryKey({ columns: [table.providerId, table.itemId] }),
-    updatedIdx: index('idx_search_index_meta_updated_at').on(table.updatedAt)
+    updatedIdx: index('idx_search_index_meta_updated_at').on(table.updatedAt),
+    docIdUnique: uniqueIndex('idx_search_index_meta_doc_id')
+      .on(table.docId)
+      .where(sql`${table.docId} IS NOT NULL`)
+  })
+)
+
+/**
+ * 关键词倒排：每行一个 (provider, keyword, 文档)，文档用 search_index_meta.doc_id 指代，
+ * 不再像 keyword_mappings 那样每行重复存整条 item_id。
+ * 实际的表是 WITHOUT ROWID（见迁移 0055），Drizzle 这里只描述列。
+ */
+export const searchKeywordPostings = sqliteTable(
+  'search_keyword_postings',
+  {
+    providerId: text('provider_id').notNull(),
+    keyword: text('keyword').notNull(),
+    docId: integer('doc_id').notNull(),
+    priority: real('priority').notNull().default(1.0)
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.providerId, table.keyword, table.docId] }),
+    docIdx: index('idx_search_keyword_postings_doc').on(table.docId, table.priority)
   })
 )
 

@@ -183,13 +183,6 @@ describe('FileProviderKeywordBackfillService end-to-end', () => {
     }
   }
 
-  async function keywordRows(client: Client): Promise<Array<{ id: number; keyword: string }>> {
-    const result = await client.execute(
-      'SELECT id, keyword FROM keyword_mappings ORDER BY keyword, id'
-    )
-    return result.rows.map((row) => ({ id: Number(row.id), keyword: String(row.keyword) }))
-  }
-
   it('makes keywords the old charset dropped reachable, and rewrites nothing on a retry', async () => {
     await withSearchIndex(async (searchIndex, client) => {
       const filePath = '/home/me/café rapport.pdf'
@@ -264,11 +257,15 @@ describe('FileProviderKeywordBackfillService end-to-end', () => {
       }
 
       // A retry (version still unrecorded) must not rewrite a single row: the
-      // writer compares the keyword hash before touching keyword_mappings, and
-      // any rewrite would delete + reinsert, changing the autoincrement ids.
-      const before = await keywordRows(client)
+      // writer compares the keyword hash before touching the keyword postings.
+      await client.execute('CREATE TABLE posting_writes (n INTEGER NOT NULL)')
+      await client.execute('INSERT INTO posting_writes VALUES (0)')
+      for (const event of ['INSERT', 'UPDATE', 'DELETE']) {
+        await client.execute(`CREATE TRIGGER count_posting_${event.toLowerCase()}
+          AFTER ${event} ON search_keyword_postings BEGIN UPDATE posting_writes SET n = n + 1; END`)
+      }
       await expect(service.run()).resolves.toMatchObject({ emitted: 1, failed: 0 })
-      expect(await keywordRows(client)).toEqual(before)
+      expect((await client.execute('SELECT n FROM posting_writes')).rows[0]?.n).toBe(0)
     })
   })
 })

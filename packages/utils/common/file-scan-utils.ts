@@ -10,7 +10,11 @@
 import pathBrowserify from "path-browserify";
 import type { FileScanOptions } from "./file-scan-constants";
 import { hasWindow } from "../env";
-import { fileFilterService } from "./file-filter-service";
+import {
+  fileFilterService,
+  holdsProjectMarker,
+  isLinkedWorktreeGitFile,
+} from "./file-filter-service";
 import { DEFAULT_SCAN_OPTIONS, FILE_SCAN_MAX_DEPTH } from "./file-scan-constants";
 
 const path = (() => {
@@ -232,6 +236,9 @@ export async function scanDirectory(
     0,
     files,
     createScanDirectoryStats(),
+    undefined,
+    undefined,
+    await isScanRootInsideProject(dirPath),
   );
   return files;
 }
@@ -283,7 +290,17 @@ export async function scanDirectoryBatches(
     onBatch,
   };
   sink.signal?.throwIfAborted();
-  await scanDirectoryInto(dirPath, opts, excludePaths, 0, pending, stats, sink);
+  await scanDirectoryInto(
+    dirPath,
+    opts,
+    excludePaths,
+    0,
+    pending,
+    stats,
+    sink,
+    undefined,
+    await isScanRootInsideProject(dirPath),
+  );
   if (pending.length > 0) {
     const batch = pending.splice(0, pending.length);
     sink.flushChain = sink.flushChain.then(
@@ -360,6 +377,11 @@ async function scanDirectoryInto(
    * tell" and keeps the stricter answer rather than guessing.
    */
   siblingNames?: readonly string[],
+  /**
+   * The parent or a folder above it holds a project marker, carried down like `siblingNames`;
+   * for a scan root it is read once from the folders above it.
+   */
+  projectAbove = false,
 ): Promise<void> {
   sink?.signal?.throwIfAborted();
   if (depth > (opts.maxDepth ?? FILE_SCAN_MAX_DEPTH)) return;
@@ -367,6 +389,7 @@ async function scanDirectoryInto(
   if (
     fileFilterService.getTraversalExclusionReason(dirPath, opts, {
       siblingNames,
+      insideProject: projectAbove,
     })
   )
     return;
@@ -382,6 +405,14 @@ async function scanDirectoryInto(
   if (!entries) {
     stats.errorCount += 1;
     return;
+  }
+  // A linked worktree below the scan root duplicates a checkout indexed elsewhere; a root the
+  // user picked stays in.
+  if (depth > 0 && entries.some((entry) => entry.name === ".git" && entry.isFile())) {
+    const gitFile = await fs
+      .readFile(path.join(dirPath, ".git"), "utf8")
+      .catch(() => "");
+    if (isLinkedWorktreeGitFile(gitFile)) return;
   }
 
   const subDirs: string[] = [];
@@ -450,6 +481,8 @@ async function scanDirectoryInto(
   // Traverse serially to keep aggregate filesystem concurrency bounded.
   // `entries` is already in hand, so handing the child its sibling list costs one map, no syscall.
   const entryNames = entries.map((entry) => entry.name);
+  const childProjectAbove =
+    projectAbove || holdsProjectMarker(dirPath, entryNames);
   for (const subDir of subDirs) {
     await scanDirectoryInto(
       subDir,
@@ -460,8 +493,18 @@ async function scanDirectoryInto(
       stats,
       sink,
       entryNames,
+      childProjectAbove,
     );
   }
+}
+
+/** Whether a folder above the scan root holds a project marker, as the bottom-up check reads it. */
+async function isScanRootInsideProject(dirPath: string): Promise<boolean> {
+  const fs = await getFsPromises();
+  return await fileFilterService.isInsideProject(
+    path.dirname(dirPath),
+    async (directoryPath) => await fs.readdir(directoryPath),
+  );
 }
 
 /**

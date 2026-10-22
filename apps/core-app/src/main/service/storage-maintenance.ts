@@ -32,6 +32,7 @@ import {
   recommendationCache,
   scanProgress,
   searchIndexMeta,
+  searchKeywordPostings,
   searchIndexMaintenanceProgress,
   searchIndexPendingCommits,
   searchIndexFileMaintenance,
@@ -40,6 +41,7 @@ import {
   usageSummary,
   usageTrendDaily
 } from '../db/schema'
+import { FILE_CAPACITY_TASKS } from '../modules/box-tool/addon/files/services/file-provider-capacity-service'
 import { clipboardModule } from '../modules/clipboard'
 import { databaseModule } from '../modules/database'
 import { tempFileService } from './temp-file.service'
@@ -156,6 +158,17 @@ export async function cleanupFileIndex(
     await db.delete(table).where(where)
   }
 
+  // The capacity horizon kept old files out of a full index; an emptied one takes them again.
+  // Cleared first: a failure below leaves the files without a horizon, never an emptied index
+  // that still refuses them.
+  await db
+    .delete(searchIndexMaintenanceProgress)
+    .where(
+      inArray(searchIndexMaintenanceProgress.task, [
+        FILE_CAPACITY_TASKS.horizon,
+        FILE_CAPACITY_TASKS.sweep
+      ])
+    )
   await removeAll(fileIndexProgress)
   await removeScoped(
     fileExtensions,
@@ -190,6 +203,7 @@ export async function cleanupFileIndex(
       // ignore
     }
     await db.delete(keywordMappings)
+    await db.delete(searchKeywordPostings)
     // Meta rows describe documents in `search_index`; kept past its wipe they would claim
     // documents that are gone (the app health count reads them) and hold keyword hashes for
     // mappings deleted just above.

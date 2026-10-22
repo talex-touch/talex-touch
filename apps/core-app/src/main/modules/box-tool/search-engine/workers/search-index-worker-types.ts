@@ -262,9 +262,12 @@ export interface VacuumMessage {
 export interface VacuumResult {
   ran: boolean
   reason: string
+  /** How it reclaimed: one bounded incremental step, or a full VACUUM. */
+  mode?: 'incremental' | 'vacuum'
   fileBytesBefore: number
   fileBytesAfter: number
   freelistBytesBefore: number
+  freelistBytesAfter?: number
   durationMs: number
 }
 

@@ -3,6 +3,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import type * as schema from '../../../db/schema'
 import type { IndexMaintenanceNotification } from './index-maintenance-context'
+import {
+  allocateKeywordDocId,
+  deleteKeywordPostings,
+  LEGACY_MOVE_TASKS,
+  moveLegacyKeywords
+} from './search-index-keyword-postings'
 
 export type SearchIndexWriteTx = Pick<
   LibSQLDatabase<typeof schema>,
@@ -31,6 +37,8 @@ interface DocumentMeta {
   keywordHash: string
   ftsRowId: number | null
   documentHash: string | null
+  /** Keys the document's keyword postings; null until the document is written or migrated. */
+  docId: number | null
 }
 
 interface IndexedRow {
@@ -92,6 +100,21 @@ export class SearchIndexDocumentStore {
     if (!columns.some((column) => column.name === 'document_hash')) {
       await this.db.run(sql`ALTER TABLE search_index_meta ADD COLUMN document_hash TEXT`)
     }
+    if (!columns.some((column) => column.name === 'doc_id')) {
+      await this.db.run(sql`ALTER TABLE search_index_meta ADD COLUMN doc_id INTEGER`)
+    }
+    // Migration 0055 builds it, so on a migrated index this needs no page: a page found missing
+    // here would fail every write, the deletes that could free one included.
+    await this.db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_search_index_meta_doc_id
+      ON search_index_meta(doc_id) WHERE doc_id IS NOT NULL`)
+    await this.db.run(sql`CREATE TABLE IF NOT EXISTS search_keyword_postings (
+      provider_id TEXT NOT NULL, keyword TEXT NOT NULL, doc_id INTEGER NOT NULL,
+      priority REAL NOT NULL DEFAULT 1.0,
+      PRIMARY KEY(provider_id, keyword, doc_id)
+    ) WITHOUT ROWID`)
+    await this.db.run(
+      sql`CREATE INDEX IF NOT EXISTS idx_search_keyword_postings_doc ON search_keyword_postings(doc_id, priority)`
+    )
     await this.db.run(
       sql`CREATE INDEX IF NOT EXISTS idx_search_index_meta_updated_at ON search_index_meta(updated_at)`
     )
@@ -120,9 +143,11 @@ export class SearchIndexDocumentStore {
   async reset(): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx.run(sql`DELETE FROM search_index_meta`)
+      await tx.run(sql`DELETE FROM search_keyword_postings`)
       await tx.run(sql`DELETE FROM search_index_maintenance_progress
         WHERE task='document-locators' OR task='document-meta-validation'
-          OR (task >= 'orphan-keywords:' AND task < 'orphan-keywords:\uffff')`)
+          OR (task >= 'orphan-keywords:' AND task < 'orphan-keywords:\uffff')
+          OR task IN (${LEGACY_MOVE_TASKS.lastDocId}, ${LEGACY_MOVE_TASKS.lastRowId})`)
     })
     this.locatorsComplete = false
   }
@@ -167,7 +192,7 @@ export class SearchIndexDocumentStore {
     )
     const metas = await tx.all<DocumentMeta>(sql`
       SELECT item_id AS itemId, keyword_hash AS keywordHash,
-             fts_rowid AS ftsRowId, document_hash AS documentHash
+             fts_rowid AS ftsRowId, document_hash AS documentHash, doc_id AS docId
       FROM search_index_meta WHERE provider_id = ${providerId} AND item_id IN (${ids})
     `)
     if (this.locatorsComplete === null) {
@@ -221,11 +246,12 @@ export class SearchIndexDocumentStore {
     return states
   }
 
+  /** @returns the document's id for keyword postings, assigned on its first write. */
   async apply(
     tx: SearchIndexWriteTx,
     document: SearchIndexDocument,
     state: SearchIndexDocumentState
-  ): Promise<void> {
+  ): Promise<number> {
     const current = state.rows[0]
     const unchanged =
       state.rows.length === 1 &&
@@ -254,16 +280,23 @@ export class SearchIndexDocumentStore {
       if (!Number.isSafeInteger(rowid) || rowid <= 0)
         throw new Error('SEARCH_INDEX_FTS_ROWID_UNAVAILABLE')
     }
-    await tx.run(sql`INSERT INTO search_index_meta (
-      provider_id, item_id, keyword_hash, fts_rowid, document_hash, updated_at
-    ) VALUES (${document.providerId}, ${document.itemId}, ${document.keywordHash}, ${rowid}, ${document.documentHash}, strftime('%s','now'))
+    const assignedDocId = state.meta?.docId ?? (await allocateKeywordDocId(tx))
+    const stored = await tx.all<{ docId: number }>(sql`INSERT INTO search_index_meta (
+      provider_id, item_id, keyword_hash, fts_rowid, document_hash, doc_id, updated_at
+    ) VALUES (${document.providerId}, ${document.itemId}, ${document.keywordHash}, ${rowid}, ${document.documentHash}, ${assignedDocId}, strftime('%s','now'))
       ON CONFLICT(provider_id,item_id) DO UPDATE SET keyword_hash=excluded.keyword_hash,
-        fts_rowid=excluded.fts_rowid, document_hash=excluded.document_hash, updated_at=excluded.updated_at`)
+        fts_rowid=excluded.fts_rowid, document_hash=excluded.document_hash,
+        doc_id=coalesce(search_index_meta.doc_id, excluded.doc_id), updated_at=excluded.updated_at
+      RETURNING doc_id AS docId`)
+    const docId = Number(stored[0]?.docId)
+    if (!Number.isSafeInteger(docId) || docId <= 0)
+      throw new Error('SEARCH_KEYWORD_DOC_ID_UNAVAILABLE')
     state.meta = {
       itemId: document.itemId,
       keywordHash: document.keywordHash,
       ftsRowId: rowid!,
-      documentHash: document.documentHash
+      documentHash: document.documentHash,
+      docId
     }
     state.rows = [
       {
@@ -279,6 +312,7 @@ export class SearchIndexDocumentStore {
         content: document.content
       }
     ]
+    return docId
   }
 
   async remove(
@@ -302,6 +336,14 @@ export class SearchIndexDocumentStore {
       const ids = sql.join(
         itemIds.map((id) => sql`${id}`),
         sql`, `
+      )
+      await deleteKeywordPostings(
+        tx,
+        [...states.values()].flatMap((state) =>
+          state.meta?.docId === null || state.meta?.docId === undefined
+            ? []
+            : [Number(state.meta.docId)]
+        )
       )
       await tx.run(
         sql`DELETE FROM keyword_mappings WHERE provider_id = ${providerId} AND item_id IN (${ids})`
@@ -331,7 +373,7 @@ export class SearchIndexDocumentStore {
         if (after === -1) return { processed: 0, done: true }
         const metas = await tx.all<DocumentMeta & { rowid: number; providerId: string }>(sql`
           SELECT rowid,provider_id AS providerId,item_id AS itemId,keyword_hash AS keywordHash,
-                 fts_rowid AS ftsRowId,document_hash AS documentHash
+                 fts_rowid AS ftsRowId,document_hash AS documentHash,doc_id AS docId
           FROM search_index_meta WHERE rowid > ${after} ORDER BY rowid
           LIMIT ${Math.min(8, boundedLimit)}
         `)
@@ -346,6 +388,7 @@ export class SearchIndexDocumentStore {
           `)
                 )[0]
           if (!indexed || indexed.provider !== meta.providerId || indexed.item_id !== meta.itemId) {
+            if (meta.docId !== null) await deleteKeywordPostings(tx, [Number(meta.docId)])
             await tx.run(sql`DELETE FROM search_index_meta WHERE rowid=${meta.rowid}`)
             changed.set(meta.providerId, (changed.get(meta.providerId) ?? 0) + 1)
             continue
@@ -384,7 +427,7 @@ export class SearchIndexDocumentStore {
       for (const row of rows) {
         const existing = await tx.all<DocumentMeta>(sql`
           SELECT item_id AS itemId, keyword_hash AS keywordHash,
-                 fts_rowid AS ftsRowId, document_hash AS documentHash
+                 fts_rowid AS ftsRowId, document_hash AS documentHash, doc_id AS docId
           FROM search_index_meta WHERE provider_id=${row.provider} AND item_id=${row.item_id}
         `)
         const meta = existing[0]
@@ -427,6 +470,13 @@ export class SearchIndexDocumentStore {
     return result
   }
 
+  /**
+   * Drops postings of `sourceId` whose document is gone: no meta row owns the id, or the meta row's
+   * FTS document is missing. Ids are global, so the cursor pages through the doc_id index and
+   * `+provider_id` keeps the walk on it, stepping over other sources' postings. The meta lookup
+   * and the delete use `+provider_id` the same way: they reach rows by id, not by walking the
+   * source.
+   */
   async cleanupOrphanKeywords(
     sourceId: string,
     limit = 64
@@ -438,34 +488,64 @@ export class SearchIndexDocumentStore {
         sql`SELECT cursor FROM search_index_maintenance_progress WHERE task=${task}`
       )
       const cursor = Number(progress[0]?.cursor ?? 0)
-      const rows = await tx.all<{ rowid: number; itemId: string }>(sql`
-        SELECT rowid AS rowid,item_id AS itemId FROM keyword_mappings
-        WHERE provider_id=${sourceId} AND rowid > ${cursor} ORDER BY rowid LIMIT ${boundedLimit}
-      `)
+      const docIds = (
+        await tx.all<{ docId: number }>(sql`
+          SELECT doc_id AS docId FROM search_keyword_postings
+          WHERE doc_id > ${cursor} AND +provider_id = ${sourceId}
+          GROUP BY doc_id ORDER BY doc_id LIMIT ${boundedLimit}
+        `)
+      ).map((row) => Number(row.docId))
+      const metas =
+        docIds.length === 0
+          ? []
+          : await tx.all<{ docId: number; itemId: string }>(sql`
+              SELECT doc_id AS docId, item_id AS itemId FROM search_index_meta
+              WHERE doc_id IN (${sql.join(
+                docIds.map((id) => sql`${id}`),
+                sql`, `
+              )}) AND +provider_id = ${sourceId}
+            `)
       const states = await this.loadProvider(
         tx,
         sourceId,
-        rows.map((row) => row.itemId),
+        metas.map((meta) => meta.itemId),
         false,
         false
       )
-      const orphaned = rows
-        .filter((row) => states.get(row.itemId)!.rows.length === 0)
-        .map((row) => row.rowid)
-      let removed = 0
+      const live = new Set(
+        metas
+          .filter((meta) => states.get(meta.itemId)!.rows.length > 0)
+          .map((meta) => Number(meta.docId))
+      )
+      const orphaned = docIds.filter((docId) => !live.has(docId))
       if (orphaned.length > 0) {
-        const result = await tx.run(sql`DELETE FROM keyword_mappings WHERE provider_id=${sourceId}
-          AND rowid IN (${sql.join(
+        await tx.run(sql`DELETE FROM search_keyword_postings
+          WHERE +provider_id = ${sourceId} AND doc_id IN (${sql.join(
             orphaned.map((id) => sql`${id}`),
             sql`, `
           )})`)
-        removed = Number(result.rowsAffected)
       }
+      // Counted in documents, like the move out of the legacy table: a document has many rows.
+      const removed = orphaned.length
       if (removed > 0) await this.queueMaintenanceNotifications(tx, new Map([[sourceId, removed]]))
-      const next = rows.length === boundedLimit ? Number(rows[rows.length - 1].rowid) : 0
+      const next = docIds.length === boundedLimit ? docIds[docIds.length - 1] : 0
       await tx.run(sql`INSERT INTO search_index_maintenance_progress(task,cursor) VALUES(${task},${next})
         ON CONFLICT(task) DO UPDATE SET cursor=excluded.cursor`)
-      return { removed, processed: rows.length, done: next === 0 }
+      return { removed, processed: docIds.length, done: next === 0 }
+    })
+  }
+
+  /**
+   * One slice of the move out of `keyword_mappings`, 16 rows per unit of `limit`, counted in rows;
+   * `done` once the table is empty. Only for after the locator backfill: a legacy row without a
+   * meta row is then an orphan.
+   */
+  async migrateLegacyKeywords(limit = 64): Promise<{ processed: number; done: boolean }> {
+    const boundedLimit = Math.max(1, Math.min(64, Math.floor(limit)))
+    return await this.db.transaction(async (tx) => {
+      const { rows, orphansByProvider } = await moveLegacyKeywords(tx, boundedLimit * 16)
+      await this.queueMaintenanceNotifications(tx, orphansByProvider)
+      return { processed: rows, done: rows === 0 }
     })
   }
 

@@ -16,6 +16,7 @@ import type {
   FileIndexEstimateBasis,
   FileIndexContentSettings,
   FileIndexContentStorage,
+  FileIndexStorage,
   FileIndexEstimateStatus,
   FileIndexFailedFile,
   FileIndexFailedFilesResult,
@@ -121,6 +122,20 @@ function projectContentStorage(raw: unknown): FileIndexContentStorage | undefine
   return { status, availableBytes, requiredBytes, checkedAt }
 }
 
+function projectIndexStorage(raw: unknown): FileIndexStorage | undefined {
+  const input = asRecord(raw)
+  if (!input) return undefined
+  const maxBytes = input.maxBytes
+  if (typeof maxBytes !== 'number' || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) return undefined
+  const byteCount = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+  return {
+    fileBytes: byteCount(input.fileBytes),
+    maxBytes,
+    resetFromBytes: byteCount(input.resetFromBytes),
+  }
+}
+
 export function projectFileIndexContentSettings(raw: unknown): FileIndexContentSettings {
   const input = asRecord(raw) ?? {}
   const contentIndexingEnabled = asBoolean(
@@ -141,6 +156,8 @@ export function projectFileIndexStatus(raw: unknown): FileIndexStatus {
   const progress = asRecord(input.progress) ?? {}
   const overallProgress = asOptionalFiniteNumber(progress.progress)
   const contentIndexStorage = projectContentStorage(input.contentIndexStorage)
+  const indexStorage = projectIndexStorage(input.indexStorage)
+  const capacityHorizon = asOptionalFiniteNumber(input.capacityHorizon)
   return {
     isInitializing: asBoolean(input.isInitializing),
     initializationFailed: asBoolean(input.initializationFailed),
@@ -166,6 +183,8 @@ export function projectFileIndexStatus(raw: unknown): FileIndexStatus {
     contentIndexingEnabled: asOptionalBoolean(input.contentIndexingEnabled),
     contentIndexingState: asContentIndexingState(input.contentIndexingState),
     ...(contentIndexStorage ? { contentIndexStorage } : {}),
+    ...(indexStorage ? { indexStorage } : {}),
+    ...(capacityHorizon !== undefined && capacityHorizon > 0 ? { capacityHorizon } : {}),
   }
 }
 

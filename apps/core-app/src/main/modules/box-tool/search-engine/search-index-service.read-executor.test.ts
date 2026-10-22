@@ -135,6 +135,13 @@ async function withIsolatedIndex(
         ''
       ]
     })
+    const docIds: Record<string, number> = { 'item:cafe': 1, 'item:network': 2 }
+    for (const [itemId, docId] of Object.entries(docIds)) {
+      await writerClient.execute({
+        sql: "INSERT INTO search_index_meta (provider_id, item_id, keyword_hash, doc_id) VALUES (?, ?, 'seed', ?)",
+        args: [PROVIDER, itemId, docId]
+      })
+    }
     for (const [keyword, itemId, priority] of [
       ['café', 'item:cafe', 1.4],
       ['測試', 'item:cafe', 1.2],
@@ -146,21 +153,23 @@ async function withIsolatedIndex(
       ['ng:ro', 'item:network', 1.1],
       ['ng:om', 'item:network', 1.1],
       ['ng:me', 'item:network', 1.1]
-    ]) {
+    ] as const) {
       await writerClient.execute({
-        sql: 'INSERT INTO keyword_mappings (keyword, item_id, provider_id, priority) VALUES (?, ?, ?, ?)',
-        args: [keyword, itemId, PROVIDER, priority]
+        sql: 'INSERT INTO search_keyword_postings (provider_id, keyword, doc_id, priority) VALUES (?, ?, ?, ?)',
+        args: [PROVIDER, keyword, docIds[itemId], priority]
       })
     }
     // A crowded neighbour sharing two of the same ngram keywords: only the provider predicate
     // keeps these out of a lookup, and the index has to stay selective over them.
     await writerClient.execute(`
-      INSERT INTO keyword_mappings (keyword, item_id, provider_id, priority)
+      INSERT INTO search_index_meta (provider_id, item_id, keyword_hash, doc_id)
       WITH RECURSIVE noise(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM noise WHERE n < 200)
-      SELECT CASE n % 2 WHEN 0 THEN 'ng:ch' ELSE 'ng:me' END,
-             'noise:item:' || n,
-             'noise-provider',
-             1.0
+      SELECT 'noise-provider', 'noise:item:' || n, 'seed', 1000 + n FROM noise
+    `)
+    await writerClient.execute(`
+      INSERT INTO search_keyword_postings (provider_id, keyword, doc_id, priority)
+      WITH RECURSIVE noise(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM noise WHERE n < 200)
+      SELECT 'noise-provider', CASE n % 2 WHEN 0 THEN 'ng:ch' ELSE 'ng:me' END, 1000 + n, 1.0
       FROM noise
     `)
 
@@ -287,17 +296,21 @@ describe('SearchIndexService read executor parity', () => {
         expect(read.params).toContain(50)
       }
 
-      // The statement actually executed searches through that index. A plan that walked the
-      // provider is the regression this pin exists to prevent — and the 200 neighbouring rows
-      // sharing these same keywords are what makes dropping the provider scope visible above.
+      // The statement actually executed searches through those indexes in both layouts: the
+      // postings key, the meta doc id index for the item id, and the pinned legacy index. A plan
+      // that walked the provider is the regression the pin exists to prevent — and the 200
+      // neighbouring rows sharing these same keywords are what makes dropping the provider scope
+      // visible above.
       const probe = reads[0]!
       const plan = await readerClient.execute({
         sql: `EXPLAIN QUERY PLAN ${probe.sql}`,
         args: probe.params
       })
       const details = plan.rows.map((row) => ('detail' in row ? String(row.detail) : '')).join(' ')
+      expect(details).toContain('SEARCH p USING PRIMARY KEY (provider_id=? AND keyword=?)')
+      expect(details).toContain('SEARCH m USING INDEX idx_search_index_meta_doc_id (doc_id=?)')
       expect(details).toContain('USING INDEX idx_keyword_mappings_provider_keyword')
-      expect(details).not.toContain('SCAN keyword_mappings')
+      expect(details).not.toMatch(/\bSCAN\b/)
     })
   })
 

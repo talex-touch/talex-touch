@@ -152,6 +152,48 @@ const contentIndexStorageSummary = computed(() => {
     required: formatContentIndexSpace(storage.requiredBytes)
   })
 })
+/**
+ * The index has a hard cap (8 GiB, or 2% of its volume when that is less). SQLite refuses new
+ * pages at the cap, so from 95% on new files may already stop being indexed. Once it has been
+ * full, the oldest files make way for new ones, and that says more than the fill level.
+ */
+const indexStorageAlert = computed(() => {
+  const storage = indexStatus.value?.indexStorage
+  if (!storage) return null
+  const max = formatContentIndexSpace(storage.maxBytes)
+  const horizon = indexStatus.value?.capacityHorizon
+  if (horizon !== undefined) {
+    return {
+      type: 'info' as const,
+      title: t('settings.settingFileIndex.indexStorageEvicted'),
+      detail: t('settings.settingFileIndex.indexStorageEvictedDetail', {
+        max,
+        date: new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium' }).format(horizon)
+      })
+    }
+  }
+  if (storage.fileBytes !== null && storage.fileBytes >= storage.maxBytes * 0.95) {
+    return {
+      type: 'warning' as const,
+      title: t('settings.settingFileIndex.indexStorageFull'),
+      detail: t('settings.settingFileIndex.indexStorageFullDetail', {
+        used: formatContentIndexSpace(storage.fileBytes),
+        max
+      })
+    }
+  }
+  if (storage.resetFromBytes !== null) {
+    return {
+      type: 'info' as const,
+      title: t('settings.settingFileIndex.indexStorageReset'),
+      detail: t('settings.settingFileIndex.indexStorageResetDetail', {
+        size: formatContentIndexSpace(storage.resetFromBytes),
+        max
+      })
+    }
+  }
+  return null
+})
 const contentIndexStorageRecovery = computed(() =>
   t(
     contentIndexStorage.value?.status === 'low-space'
@@ -1424,6 +1466,17 @@ async function triggerRebuild() {
       <span class="text-[var(--tx-text-color-primary)]">
         {{ contentIndexStorageSummary }} {{ contentIndexStorageRecovery }}
       </span>
+    </TxAlert>
+
+    <TxAlert
+      v-if="indexStorageAlert"
+      :type="indexStorageAlert.type"
+      :title="indexStorageAlert.title"
+      :closable="false"
+      :show-icon="true"
+      role="status"
+    >
+      <span class="text-[var(--tx-text-color-primary)]">{{ indexStorageAlert.detail }}</span>
     </TxAlert>
 
     <TuffBlockSlot

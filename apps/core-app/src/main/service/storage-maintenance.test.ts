@@ -167,6 +167,10 @@ describe('cleanupFileIndex actual storage ownership', () => {
       expect(await live.search.lookupByKeywords('file-provider', ['fileindextitle'])).toEqual(
         new Map()
       )
+      // Without their meta rows the postings no longer reach a lookup, but they still take space.
+      expect(
+        (await live.client.execute('SELECT doc_id FROM search_keyword_postings')).rows
+      ).toEqual([])
       expect(
         (
           await live.client.execute(
@@ -198,6 +202,8 @@ describe('cleanupFileIndex actual storage ownership', () => {
       const live = topology === 'split' ? await openHome('search-index.sqlite') : primary
       primaryDb = primary.db
       fileHomeDb = live.db
+      await live.client.execute(`INSERT INTO search_index_maintenance_progress (task, cursor)
+        VALUES ('file-capacity:horizon', 1700000000), ('file-capacity:sweep', 0), ('unrelated', 5)`)
       const result = await cleanupFileIndex({
         includeEmbeddings: true,
         clearSearchIndex: false,
@@ -226,6 +232,14 @@ describe('cleanupFileIndex actual storage ownership', () => {
           )
         ).rows
       ).toEqual([{ task_id: 'other-work', source_id: 'other-provider', cursor: 7 }])
+      // The emptied index takes old files again.
+      expect(
+        (
+          await live.client.execute(
+            "SELECT task, cursor FROM search_index_maintenance_progress WHERE task IN ('file-capacity:horizon', 'file-capacity:sweep', 'unrelated')"
+          )
+        ).rows
+      ).toEqual([{ task: 'unrelated', cursor: 5 }])
     }
   )
 })

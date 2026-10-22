@@ -21,6 +21,7 @@ import type { FileIndexRunOptions } from '../file-provider-index-contracts'
 import type { FileProviderReconciliationDbRecord } from './file-provider-reconciliation-run-service'
 import type { FileProviderIncrementalChangeEntry } from './file-provider-incremental-write-service'
 import { FileWatchSubtreeService } from './file-watch-subtree-service'
+import { findLinkedWorktreeHolding } from '../file-traversal-policy'
 import { files as filesSchema, fileTypeIs } from '../../../../../db/schema'
 import type { IndexedWriteDeleteExecutorResult } from '../../../search-engine/indexing-write-delete-executor-service'
 
@@ -70,6 +71,8 @@ export interface FileProviderWatchSubtreeReconcileDeps {
   saveMissingCursor: (scope: string, cursor: number) => Promise<void>
   finishMissingScope: (scope: string) => Promise<void>
   resumeMaintenance: () => void
+  /** Replaces the `.git` file read; for tests. */
+  isLinkedWorktreeRoot?: (directoryPath: string) => Promise<boolean>
 }
 
 export class FileProviderWatchSubtreeReconcileService {
@@ -88,7 +91,13 @@ export class FileProviderWatchSubtreeReconcileService {
       if (
         root.sourceId !== this.deps.sourceId ||
         !this.deps.isWithinWatchRoots(root.path) ||
-        this.deps.isStaleIndexPath(root.path)
+        this.deps.isStaleIndexPath(root.path) ||
+        // The walk starts at the scope, and a walk checks neither its start nor what is above it.
+        (await findLinkedWorktreeHolding(
+          root.path,
+          this.deps.getWatchPaths(),
+          this.deps.isLinkedWorktreeRoot
+        ))
       ) {
         skipped += 1
         continue

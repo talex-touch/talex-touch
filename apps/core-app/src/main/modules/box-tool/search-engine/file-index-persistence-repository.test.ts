@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { IndexedWorkerPersistEntryMapperService } from '@talex-touch/utils/search'
 import * as schema from '../../../db/schema'
+import { isSqliteStorageFullError } from '../../../db/sqlite-retry'
 import {
   SqliteFileIndexPersistenceRepository,
   type FileMetadataUpdateRecord,
@@ -612,6 +613,36 @@ describe('SqliteFileIndexPersistenceRepository fileVersion fencing', () => {
 
     const files = await db.select().from(schema.files).where(eq(schema.files.id, 1))
     expect(files[0]?.content).toBe('stale-content')
+  })
+
+  it('refuses content for a file without any once the index reaches its reserve, and still replaces content', async () => {
+    const { db, repository } = await seedFile(2, null)
+    await client!.execute(`
+      INSERT INTO files (id, path, name, mtime, ctime, last_indexed_at, is_dir, type, content)
+      VALUES (2, '/synthetic/read.txt', 'read.txt', 2, 2, 0, 0, 'file', 'read before')
+    `)
+    const pages = Number((await client!.execute('PRAGMA page_count')).rows[0]?.page_count)
+    // One free page under the cap, which is within its reserve.
+    await client!.execute(`PRAGMA max_page_count = ${pages + 1}`)
+
+    await expect(repository.persistEntries([entry(1, 2_000)])).rejects.toSatisfy(
+      isSqliteStorageFullError
+    )
+    await expect(repository.persistEntries([entry(2, 2_000)])).resolves.toMatchObject({
+      fileUpdates: 1
+    })
+    const contentById = async () =>
+      new Map((await db.select().from(schema.files)).map((row) => [row.id, row.content ?? null]))
+    expect(await contentById()).toEqual(
+      new Map([
+        [1, null],
+        [2, 'stale-content']
+      ])
+    )
+
+    await client!.execute('PRAGMA max_page_count = 1000000')
+    await repository.persistEntries([entry(1, 2_000)])
+    expect((await contentById()).get(1)).toBe('stale-content')
   })
 
   it('reports a deleted parent as stale rather than superseded', async () => {

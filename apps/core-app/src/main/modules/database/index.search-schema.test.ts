@@ -16,19 +16,20 @@ import type { Client } from '@libsql/client'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { migrate } from 'drizzle-orm/libsql/migrator'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { copyFile, cp, mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { dbLogMock } = vi.hoisted(() => ({
+const { dbLogMock, capOverride } = vi.hoisted(() => ({
   dbLogMock: {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn()
-  }
+  },
+  capOverride: { bytes: null as number | null }
 }))
 
 vi.mock('@talex-touch/utils/common/logger', () => ({
@@ -71,6 +72,16 @@ vi.mock('../box-tool/search-engine/search-index-writer', () => ({
   }
 }))
 
+// A test can set the cap to the size of its own fixture; null keeps the real volume-based cap.
+vi.mock('../../db/search-index-size-cap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../db/search-index-size-cap')>()
+  return {
+    ...actual,
+    readSearchIndexMaxBytes: async (directory: string) =>
+      capOverride.bytes ?? (await actual.readSearchIndexMaxBytes(directory))
+  }
+})
+
 // Force the split ON for initSearchDatabase (default is still off until the
 // validated flip); keep every other runtime flag real.
 vi.mock('../../db/runtime-flags', async (importOriginal) => ({
@@ -79,6 +90,18 @@ vi.mock('../../db/runtime-flags', async (importOriginal) => ({
 }))
 
 import { DatabaseModule } from './index'
+import { operationalErrorService } from '../observability'
+import { SearchIndexService } from '../box-tool/search-engine/search-index-service'
+import {
+  acknowledgeFileDeletionCommitsInHome,
+  removeFileRecordsInTransaction,
+  type UpsertFileRecord
+} from '../box-tool/search-engine/file-index-persistence-repository'
+import {
+  resolveSearchIndexReservePages,
+  SEARCH_INDEX_RESERVE_REACHED
+} from '../../db/search-index-size-cap'
+import { isSqliteStorageFullError } from '../../db/sqlite-retry'
 
 const LEGACY_KEYWORD_MAPPINGS_DDL = `CREATE TABLE keyword_mappings (
   id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -326,4 +349,409 @@ describe('initSearchDatabase schema parity with the primary fixups', () => {
       expect.objectContaining({ error: expect.anything() })
     )
   }, 60_000)
+})
+
+describe('initSearchDatabase size cap', () => {
+  let dir = ''
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    dir = await mkdtemp(join(tmpdir(), 'tuff-search-size-cap-'))
+  })
+
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('deletes an oversized index before opening it and caps the connection to the fresh one', async () => {
+    const dbPath = join(dir, 'search-index.db')
+    // Sparse: stat reports 9 GiB without a single block written.
+    const handle = await open(dbPath, 'w')
+    await handle.truncate(9 * 1024 ** 3)
+    await handle.close()
+    await writeFile(`${dbPath}-wal`, 'stale')
+    const report = vi.spyOn(operationalErrorService, 'report')
+
+    const module = new DatabaseModule()
+    const internals = moduleInternals(module)
+    await internals.initSearchDatabase(dir)
+    try {
+      const storage = await module.getSearchIndexStorage()
+      expect(storage.resetFromBytes).toBe(9 * 1024 ** 3)
+      expect(storage.fileBytes).toBeLessThan(storage.maxBytes)
+      expect(report).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'SEARCH_INDEX_SIZE_CAP_RESET' })
+      )
+
+      const client = internals.searchClient!
+      const pageSize = Number(
+        (await client.execute('PRAGMA page_size')).rows[0]?.page_size as number
+      )
+      const maxPages = Number(
+        (await client.execute('PRAGMA max_page_count')).rows[0]?.max_page_count as number
+      )
+      expect(maxPages * pageSize).toBeLessThanOrEqual(storage.maxBytes)
+      expect(await hasProviderIdColumn(client)).toBe(true)
+    } finally {
+      internals.searchClient?.close()
+    }
+  })
+
+  it('creates a fresh index in incremental auto-vacuum, so freed pages can go back to the disk', async () => {
+    const module = new DatabaseModule()
+    const internals = moduleInternals(module)
+    await internals.initSearchDatabase(dir)
+    try {
+      const client = internals.searchClient!
+      // Set after WAL, the pragma would silently stay 0 (none) until a VACUUM.
+      expect(Number((await client.execute('PRAGMA auto_vacuum')).rows[0]?.auto_vacuum)).toBe(2)
+    } finally {
+      internals.searchClient?.close()
+    }
+  })
+
+  it('rebuilds an index too full for a pending migration instead of falling back to the primary', async () => {
+    // An index at its cap on the schema before keyword postings: upgrading needs pages for the
+    // new table and index, and there are none.
+    const dbPath = join(dir, 'search-index.db')
+    const testDir = dirname(fileURLToPath(import.meta.url))
+    const previous = join(dir, 'migrations-previous')
+    await cp(resolve(testDir, '../../../../resources/db/migrations'), previous, { recursive: true })
+    const journalPath = join(previous, 'meta', '_journal.json')
+    const journal = JSON.parse(await readFile(journalPath, 'utf8')) as {
+      entries: Array<{ tag: string }>
+    }
+    journal.entries = journal.entries.filter(
+      (entry) => entry.tag !== '0055_search_keyword_postings'
+    )
+    await writeFile(journalPath, JSON.stringify(journal))
+    const seed = createClient({ url: `file:${dbPath}` })
+    await migrate(drizzle(seed), { migrationsFolder: previous })
+    await seed.execute(`INSERT INTO search_index_meta (provider_id, item_id, keyword_hash)
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 4000)
+      SELECT 'filler', printf('filler-item-%080d', i), 'h' FROM n`)
+    const pageSize = Number((await seed.execute('PRAGMA page_size')).rows[0]?.page_size)
+    const pageCount = Number((await seed.execute('PRAGMA page_count')).rows[0]?.page_count)
+    seed.close()
+    capOverride.bytes = pageCount * pageSize
+    const report = vi.spyOn(operationalErrorService, 'report')
+
+    const module = new DatabaseModule()
+    const internals = moduleInternals(module)
+    try {
+      await internals.initSearchDatabase(dir)
+      expect(internals.searchInitialized).toBe(true)
+      expect(report).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'SEARCH_INDEX_SETUP_STORAGE_FULL' })
+      )
+      const client = internals.searchClient!
+      expect(
+        (await client.execute("SELECT 1 FROM search_index_meta WHERE provider_id = 'filler'")).rows
+      ).toEqual([])
+      expect(
+        (
+          await client.execute(
+            "SELECT 1 FROM pragma_table_info('search_index_meta') WHERE name = 'doc_id'"
+          )
+        ).rows
+      ).toHaveLength(1)
+      expect(
+        (
+          await client.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_keyword_postings'"
+          )
+        ).rows
+      ).toHaveLength(1)
+      const maxPages = Number(
+        (await client.execute('PRAGMA max_page_count')).rows[0]?.max_page_count
+      )
+      expect(maxPages).toBe(pageCount)
+      expect(dbLogMock.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('falling back to primary DB'),
+        expect.anything()
+      )
+    } finally {
+      capOverride.bytes = null
+      internals.searchClient?.close()
+    }
+  }, 60_000)
+
+  async function scalar(client: Client, query: string): Promise<number> {
+    return Number((await client.execute(query)).rows[0]?.[0])
+  }
+
+  function openWriter(client: Client): SearchIndexService {
+    return new SearchIndexService(drizzle(client) as never, {
+      directMode: true,
+      initializationMode: 'writer'
+    })
+  }
+
+  const POSTED_KEYWORDS = `SELECT m.provider_id, m.item_id, p.keyword, p.priority
+    FROM search_keyword_postings p JOIN search_index_meta m ON m.doc_id = p.doc_id
+    ORDER BY m.provider_id, m.item_id, p.keyword`
+
+  /**
+   * An index as a build before keyword postings leaves it, compacted to no free page: file
+   * documents whose keyword rows sit in `keyword_mappings`, stored in `order`. Made by this build,
+   * then migration 0055 undone by hand — a later migration of these tables needs undoing here too.
+   * Returns the keyword rows the postings held.
+   */
+  async function seedBeforeKeywordPostings(seedDir: string, order: string) {
+    const module = moduleInternals(new DatabaseModule())
+    await module.initSearchDatabase(seedDir)
+    const client = module.searchClient!
+    try {
+      const writer = openWriter(client)
+      await writer.warmup()
+      for (let start = 0; start < 300; start += 100) {
+        await writer.indexItems(
+          Array.from({ length: 100 }, (_, offset) => {
+            const index = start + offset
+            const path = `/Users/someone/Projects/app-${index % 17}/src/feature-${index % 53}`
+            const name = `component-${index}-${(index * 7919) % 10007}.ts`
+            return {
+              providerId: 'file-provider',
+              itemId: `${path}/${name}`,
+              type: 'file',
+              name,
+              path
+            }
+          })
+        )
+      }
+      const keywords = (await client.execute(POSTED_KEYWORDS)).rows
+      await client.execute(`INSERT INTO keyword_mappings (provider_id, keyword, item_id, priority)
+        SELECT p.provider_id, p.keyword, m.item_id, p.priority
+        FROM search_keyword_postings p JOIN search_index_meta m ON m.doc_id = p.doc_id
+        ORDER BY ${order}`)
+      await client.execute('DROP TABLE search_keyword_postings')
+      await client.execute('DROP INDEX idx_search_index_meta_doc_id')
+      await client.execute('ALTER TABLE search_index_meta DROP COLUMN doc_id')
+      const testDir = dirname(fileURLToPath(import.meta.url))
+      const journal = JSON.parse(
+        await readFile(
+          resolve(testDir, '../../../../resources/db/migrations/meta/_journal.json'),
+          'utf8'
+        )
+      ) as { entries: Array<{ tag: string; when: number }> }
+      const migration = journal.entries.find(
+        (entry) => entry.tag === '0055_search_keyword_postings'
+      )
+      const undone = await client.execute({
+        sql: 'DELETE FROM __drizzle_migrations WHERE created_at = ?',
+        args: [migration!.when]
+      })
+      expect(undone.rowsAffected).toBe(1)
+      await client.execute('VACUUM')
+      await client.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+      return {
+        keywords,
+        pageSize: await scalar(client, 'PRAGMA page_size'),
+        pageCount: await scalar(client, 'PRAGMA page_count')
+      }
+    } finally {
+      client.close()
+    }
+  }
+
+  it.each([
+    ['grouped by document', 'm.item_id, p.keyword'],
+    ['grouped by keyword', 'p.keyword, m.item_id'],
+    ['grouped by neither', 'substr(p.keyword, -2), m.item_id']
+  ])(
+    'upgrades an index at its cap and moves its legacy keyword rows, %s',
+    async (_layout, order) => {
+      const seedDir = join(dir, 'seed')
+      await mkdir(seedDir)
+      const seed = await seedBeforeKeywordPostings(seedDir, order)
+      const report = vi.spyOn(operationalErrorService, 'report')
+      // The tightest cap the upgrade passes leaves no free page. There the writer must still
+      // start: one that cannot fails every write, the deletes that could free a page included,
+      // and as setup let the index through, nothing would rebuild it.
+      for (let headroom = 0; headroom <= 8; headroom += 1) {
+        const caseDir = join(dir, `headroom-${headroom}`)
+        await mkdir(caseDir)
+        await copyFile(join(seedDir, 'search-index.db'), join(caseDir, 'search-index.db'))
+        capOverride.bytes = (seed.pageCount + headroom) * seed.pageSize
+        report.mockClear()
+        const module = moduleInternals(new DatabaseModule())
+        try {
+          await module.initSearchDatabase(caseDir)
+          const rebuilt = report.mock.calls.some(
+            ([event]) => event.code === 'SEARCH_INDEX_SETUP_STORAGE_FULL'
+          )
+          if (rebuilt) continue
+          const client = module.searchClient!
+          expect(await scalar(client, 'PRAGMA freelist_count')).toBe(0)
+          expect(await scalar(client, 'PRAGMA page_count')).toBe(
+            await scalar(client, 'PRAGMA max_page_count')
+          )
+          const writer = openWriter(client)
+          await writer.warmup()
+          let done = false
+          for (let slice = 0; slice < 400 && !done; slice += 1) {
+            const result = await writer.runIndexMaintenanceSlice('file-provider', 64)
+            for (const notification of result.notifications)
+              await writer.acknowledgeIndexMaintenanceCommit(notification)
+            done = result.done && result.notifications.length === 0
+          }
+          expect(done).toBe(true)
+          expect(await scalar(client, 'SELECT count(*) FROM keyword_mappings')).toBe(0)
+          expect((await client.execute(POSTED_KEYWORDS)).rows).toEqual(seed.keywords)
+          return
+        } finally {
+          capOverride.bytes = null
+          module.searchClient?.close()
+        }
+      }
+      throw new Error('no cap up to eight pages over the index let the upgrade through')
+    },
+    60_000
+  )
+
+  it('refuses new files before the pages deletions need, which scattered deletions then get', async () => {
+    // Deleting files whose rows lie far apart frees no whole page, so at the cap a deletion needs
+    // pages of its own; with none left, these batches fail and the files stay in the index.
+    capOverride.bytes = 2_000 * 4096
+    const module = moduleInternals(new DatabaseModule())
+    try {
+      await module.initSearchDatabase(dir)
+      const client = module.searchClient!
+      expect(await scalar(client, 'PRAGMA max_page_count')).toBe(2_000)
+      const writer = openWriter(client)
+      await writer.warmup()
+      const file = (index: number, mtimeSeconds: number) => {
+        const directory = `/Users/someone/Projects/app-${index % 17}/src/feature-${index % 53}`
+        const name = `component-${index}-${(index * 7919) % 10007}.ts`
+        const record: UpsertFileRecord = {
+          path: `${directory}/${name}`,
+          name,
+          extension: '.ts',
+          size: 1_000 + index,
+          mtime: new Date(mtimeSeconds * 1000),
+          ctime: new Date(mtimeSeconds * 1000),
+          lastIndexedAt: new Date(mtimeSeconds * 1000),
+          isDir: false,
+          type: 'file'
+        }
+        return {
+          record,
+          item: {
+            providerId: 'file-provider',
+            itemId: record.path,
+            type: 'file' as const,
+            name,
+            path: directory
+          }
+        }
+      }
+      const persist = async (indexes: number[], mtimeSeconds: number) => {
+        const files = indexes.map((index) => file(index, mtimeSeconds))
+        await writer.persistAndApplyProviderItems(
+          files.map(({ record }) => record),
+          'file-provider',
+          files.map(({ item }) => item)
+        )
+      }
+
+      let next = 0
+      let refusal: unknown = null
+      for (const batch of [10, 1]) {
+        refusal = null
+        while (refusal === null) {
+          const indexes = Array.from({ length: batch }, (_, offset) => next + offset)
+          try {
+            await persist(indexes, 1_700_000_000)
+            next += batch
+          } catch (error) {
+            refusal = error
+          }
+        }
+      }
+      expect(isSqliteStorageFullError(refusal)).toBe(true)
+      expect(String((refusal as Error).message)).toContain(SEARCH_INDEX_RESERVE_REACHED)
+      const live = await scalar(
+        client,
+        'SELECT (SELECT page_count FROM pragma_page_count()) - (SELECT freelist_count FROM pragma_freelist_count())'
+      )
+      expect(2_000 - live).toBeLessThanOrEqual(resolveSearchIndexReservePages(2_000))
+
+      // Indexed files still update.
+      await persist([0, 1, 2], 1_700_000_100)
+      expect(
+        await scalar(
+          client,
+          "SELECT count(*) FROM files WHERE mtime = 1700000100 AND type = 'file'"
+        )
+      ).toBe(3)
+
+      const rows = await client.execute(
+        "SELECT id, path, mtime, ctime, size, last_indexed_at AS lastIndexedAt FROM files WHERE type = 'file' ORDER BY id"
+      )
+      const victims = rows.rows
+        .filter((_, position) => position % 7 === 3)
+        .map((row) => ({
+          id: Number(row.id),
+          path: String(row.path),
+          itemId: String(row.path),
+          mtime: Number(row.mtime),
+          ctime: Number(row.ctime),
+          size: row.size === null ? null : Number(row.size),
+          lastIndexedAt: Number(row.lastIndexedAt)
+        }))
+      expect(victims.length).toBeGreaterThan(128)
+      const db = drizzle(client)
+      for (let start = 0; start < victims.length; start += 64) {
+        const result = await db.transaction(
+          async (tx) =>
+            await removeFileRecordsInTransaction(
+              tx as never,
+              writer,
+              'file-provider',
+              victims.slice(start, start + 64)
+            ),
+          { behavior: 'immediate' }
+        )
+        if (result.commitId)
+          await acknowledgeFileDeletionCommitsInHome(db as never, 'file-provider', [
+            result.commitId
+          ])
+      }
+      expect(await scalar(client, "SELECT count(*) FROM files WHERE type = 'file'")).toBe(
+        next - victims.length
+      )
+      expect(
+        await scalar(
+          client,
+          "SELECT count(*) FROM search_index_meta WHERE provider_id = 'file-provider'"
+        )
+      ).toBe(next - victims.length)
+    } finally {
+      capOverride.bytes = null
+      module.searchClient?.close()
+    }
+  }, 120_000)
+
+  it('keeps an index within the cap', async () => {
+    const first = new DatabaseModule()
+    await moduleInternals(first).initSearchDatabase(dir)
+    await moduleInternals(first).searchClient!.execute(
+      "INSERT INTO search_index_meta (provider_id, item_id, keyword_hash) VALUES ('p', 'kept', 'h')"
+    )
+    moduleInternals(first).searchClient!.close()
+
+    const second = new DatabaseModule()
+    await moduleInternals(second).initSearchDatabase(dir)
+    try {
+      expect((await second.getSearchIndexStorage()).resetFromBytes).toBeNull()
+      const kept = await moduleInternals(second).searchClient!.execute(
+        "SELECT item_id FROM search_index_meta WHERE item_id = 'kept'"
+      )
+      expect(kept.rows).toHaveLength(1)
+    } finally {
+      moduleInternals(second).searchClient?.close()
+    }
+  })
 })

@@ -114,4 +114,16 @@ describe('listScanChildDirectories', () => {
       siblingNames: ['zeta', 'node_modules', 'notes.txt', 'link', 'alpha']
     })
   })
+
+  it('waits for a rule that has to read the child, such as the linked-worktree one', async () => {
+    const children = await listScanChildDirectories('/h', {
+      readdir: async () => [entry('app'), entry('app-feature')],
+      join: (root, name) => `${root}/${name}`,
+      hooks: {
+        getTraversalExclusionReason: async (path) =>
+          path === '/h/app-feature' ? ('development-path' as const) : null
+      }
+    })
+    expect(children).toEqual(['/h/app'])
+  })
 })

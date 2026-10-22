@@ -27,7 +27,9 @@ Electron main-process (apps/core-app/src/main) coding contracts.
   busy-retry semantics (never sleep holding the queue), live home resolution,
   search-split parity rules, boot-time maintenance write gating; hand-written
   migration authoring (snapshot chain dead at 0014, journal `when` must be max,
-  leaf-table rebuild pattern, renderer-assigned ids need parent-scoped PKs).
+  leaf-table rebuild pattern, renderer-assigned ids need parent-scoped PKs);
+  `search-index.db` size cap (per-connection `max_page_count`, oversized reset at
+  launch, a full index keeps applying deletions).
 - [channel-transport-contracts.md](channel-transport-contracts.md) — main→renderer
   delivery modes, notification-vs-request semantics, renderer quiesce before handler teardown,
   destroyed-transport send rejection, perf-report recursion prevention, delivery-target identity,
@@ -83,8 +85,9 @@ Electron main-process (apps/core-app/src/main) coding contracts.
   holding one pending refresh, same-query reconcile against pre-cap delivered
   ids; app watch events gated by root before health; meta-backed provider health
   count; native file results under the file-index directory rule (pool 150 → 50,
-  iCloud Drive exception); enrichment-resume cooldown/cursor and read-failure
-  skip classes.
+  iCloud Drive exception); linked worktrees below a root kept out of scan, watch,
+  subtree reconcile and native results, and evicted by the cleanup sweep;
+  enrichment-resume cooldown/cursor and read-failure skip classes.
 - [background-task-timeout-contracts.md](background-task-timeout-contracts.md) —
   main-thread liveness: streaming requests default to a fetch-through-EOF
   deadline, caller-owned idle streams opt in explicitly, caller cancellation is

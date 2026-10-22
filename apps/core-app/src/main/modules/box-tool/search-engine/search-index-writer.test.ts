@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SearchIndexItem, SearchIndexProviderReplacementSummary } from './search-index-service'
 import { SearchIndexCommitHub } from './search-index-commit-hub'
 import {
+  beginForegroundSearchActivity,
+  endForegroundSearchActivity,
+  markSearchActivity
+} from './search-activity'
+import {
   SearchIndexWriter,
   SourceScopedIndexWriterRouter,
   type SearchIndexPersistAndApplyResult,
@@ -764,5 +769,64 @@ describe('SearchIndexWriter bounded admission capacity', () => {
     await expect(inFlight).resolves.toBe(1)
     await expect(shutdown).resolves.toBeUndefined()
     expect(writer.getStatus().readiness).toBe('closed')
+  })
+})
+
+describe('SearchIndexWriter redundant index retirement', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function createRetirementClient() {
+    return {
+      init: vi.fn(async () => undefined),
+      execWrite: vi.fn(async () => []),
+      shutdown: vi.fn(async () => undefined),
+      drain: vi.fn(async () => undefined),
+      getPendingCount: vi.fn(() => 0)
+    }
+  }
+
+  it('drops the redundant keyword index in the background a minute after the worker is ready', async () => {
+    vi.useFakeTimers()
+    const client = createRetirementClient()
+    const writer = new SearchIndexWriter({ client: client as unknown as SearchIndexWorkerClient })
+    await writer.initialize('/tmp/search-index-writer-test.db')
+
+    // Never on the readiness path: the drop reads every page it frees.
+    expect(client.execWrite).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(client.execWrite).toHaveBeenCalledWith(
+      [{ sql: 'DROP INDEX IF EXISTS idx_keyword_mappings_provider_item', args: [] }],
+      'single'
+    )
+  })
+
+  it('leaves the index for the next session while index maintenance is busy', async () => {
+    const client = createRetirementClient()
+    const writer = new SearchIndexWriter({ client: client as unknown as SearchIndexWorkerClient })
+    await writer.initialize('/tmp/search-index-writer-test.db')
+
+    beginForegroundSearchActivity('index-retirement-test')
+    try {
+      await expect(writer.retireRedundantIndexes()).resolves.toBe(false)
+    } finally {
+      endForegroundSearchActivity('index-retirement-test')
+      markSearchActivity(0)
+    }
+    expect(client.execWrite).not.toHaveBeenCalled()
+  })
+
+  it('does not drop once shutdown has begun', async () => {
+    vi.useFakeTimers()
+    const client = createRetirementClient()
+    const writer = new SearchIndexWriter({ client: client as unknown as SearchIndexWorkerClient })
+    await writer.initialize('/tmp/search-index-writer-test.db')
+
+    await writer.beginShutdown()
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(client.execWrite).not.toHaveBeenCalled()
   })
 })

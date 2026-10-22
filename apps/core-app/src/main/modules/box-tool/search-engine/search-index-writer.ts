@@ -70,6 +70,16 @@ const searchIndexWriterLog = createLogger('SearchIndex').child('Writer')
 const pausedAdmissionScope = new AsyncLocalStorage<true>()
 const VISIBILITY_RETRY_DELAYS_MS = [100, 500, 2_000] as const
 
+/**
+ * Indexes earlier versions created that nothing reads any more. `(provider_id, item_id)` is a
+ * prefix of `(provider_id, item_id, keyword)`, which the planner already picks for every lookup by
+ * item, so the shorter one only cost a write per keyword row: 419 MB and 2.8 M entries on a 7.6 GB
+ * dev index, 2026-10-20.
+ */
+const RETIRED_SEARCH_INDEX_INDEXES = ['idx_keyword_mappings_provider_item'] as const
+/** Lets startup traffic go first; the drop reads every page it frees (8.9 s cold for that one). */
+const INDEX_RETIREMENT_DELAY_MS = 60_000
+
 export type SearchIndexAdmissionPriority = 'normal' | 'background'
 
 interface QueuedAdmission {
@@ -429,6 +439,7 @@ export class SearchIndexWriter implements SearchIndexPhysicalWriter, SearchIndex
   private capacityPulse: Promise<void> | null = null
   private resolveCapacityPulse: (() => void) | null = null
   private readonly admissionIdleWaiters = new Set<AdmissionIdleWaiter>()
+  private indexRetirementTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly filePersistencePort: FilePersistencePort
   constructor(options: SearchIndexWriterOptions = {}) {
@@ -478,6 +489,7 @@ export class SearchIndexWriter implements SearchIndexPhysicalWriter, SearchIndex
       .init(dbPath)
       .then(() => {
         this.readiness = { state: 'ready' }
+        this.scheduleIndexRetirement()
       })
       .catch((error) => {
         const normalized = error instanceof Error ? error : new Error(String(error))
@@ -730,6 +742,37 @@ export class SearchIndexWriter implements SearchIndexPhysicalWriter, SearchIndex
     }, 'background')
   }
 
+  /**
+   * Drops the indexes in `RETIRED_SEARCH_INDEX_INDEXES`. Background admission, like `compact`:
+   * index writes queue behind the drop and searches keep reading their WAL snapshot. Busy index
+   * maintenance skips it; `DROP INDEX IF EXISTS` is idempotent, so the next session tries again.
+   */
+  async retireRedundantIndexes(): Promise<boolean> {
+    return await this.withAdmission(async () => {
+      if (!isIndexMaintenanceIdle()) return false
+      await this.client.execWrite(
+        RETIRED_SEARCH_INDEX_INDEXES.map((name) => ({
+          sql: `DROP INDEX IF EXISTS ${name}`,
+          args: []
+        })),
+        'single'
+      )
+      return true
+    }, 'background')
+  }
+
+  private scheduleIndexRetirement(): void {
+    if (this.indexRetirementTimer || this.closed) return
+    this.indexRetirementTimer = setTimeout(() => {
+      this.indexRetirementTimer = null
+      if (this.closed) return
+      void this.retireRedundantIndexes().catch((error) => {
+        searchIndexWriterLog.warn('Retiring redundant search indexes failed', { error })
+      })
+    }, INDEX_RETIREMENT_DELAY_MS)
+    this.indexRetirementTimer.unref?.()
+  }
+
   async runIndexMaintenanceSlice(
     sourceId: string,
     limit = 64,
@@ -827,6 +870,8 @@ export class SearchIndexWriter implements SearchIndexPhysicalWriter, SearchIndex
     if (this.shutdownPromise) return this.shutdownPromise
 
     this.closed = true
+    if (this.indexRetirementTimer) clearTimeout(this.indexRetirementTimer)
+    this.indexRetirementTimer = null
     const resume = this.resumeAdmission
     this.admissionGate = null
     this.resumeAdmission = null

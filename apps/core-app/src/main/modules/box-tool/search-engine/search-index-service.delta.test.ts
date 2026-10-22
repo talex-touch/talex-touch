@@ -42,8 +42,8 @@ describe('SearchIndexService provider replacement transactions', () => {
 
       await client.execute(`
         CREATE TRIGGER reject_atomic_provider_apply
-        BEFORE INSERT ON keyword_mappings
-        WHEN NEW.item_id = 'file:atomic-new'
+        BEFORE INSERT ON search_keyword_postings
+        WHEN (SELECT item_id FROM search_index_meta WHERE doc_id = NEW.doc_id) = 'file:atomic-new'
         BEGIN
           SELECT RAISE(ABORT, 'atomic provider apply blocked');
         END
@@ -62,7 +62,7 @@ describe('SearchIndexService provider replacement transactions', () => {
             ],
             ['file:old']
           )
-        ).rejects.toThrow('Failed query: insert into "keyword_mappings"')
+        ).rejects.toThrow('Failed query: INSERT INTO search_keyword_postings')
         await expect(service.countByProvider('file-provider')).resolves.toBe(1)
         await expect(service.search('file-provider', 'old-visible')).resolves.toEqual([
           expect.objectContaining({ itemId: 'file:old' })
@@ -270,8 +270,8 @@ describe('SearchIndexService provider replacement transactions', () => {
       await service.warmup()
       await client.execute(`
         CREATE TRIGGER reject_late_no_legacy_document
-        BEFORE INSERT ON keyword_mappings
-        WHEN NEW.item_id = 'file:no-legacy-four'
+        BEFORE INSERT ON search_keyword_postings
+        WHEN (SELECT item_id FROM search_index_meta WHERE doc_id = NEW.doc_id) = 'file:no-legacy-four'
         BEGIN
           SELECT RAISE(ABORT, 'late no-legacy document blocked');
         END
@@ -309,7 +309,7 @@ describe('SearchIndexService provider replacement transactions', () => {
             ],
             []
           )
-        ).rejects.toThrow('Failed query: insert into "keyword_mappings"')
+        ).rejects.toThrow('Failed query: INSERT INTO search_keyword_postings')
 
         await expect(service.countByProvider('no-legacy-provider')).resolves.toBe(0)
         await expect(service.search('no-legacy-provider', 'committed candidate')).resolves.toEqual(
@@ -323,7 +323,7 @@ describe('SearchIndexService provider replacement transactions', () => {
         ).resolves.toMatchObject({ rows: [] })
         await expect(
           client.execute({
-            sql: 'SELECT item_id FROM keyword_mappings WHERE provider_id = ?',
+            sql: 'SELECT doc_id FROM search_keyword_postings WHERE provider_id = ?',
             args: ['no-legacy-provider']
           })
         ).resolves.toMatchObject({ rows: [] })

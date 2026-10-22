@@ -190,6 +190,48 @@ describe('SearchIndexService complete document contract', () => {
   })
 })
 
+describe('file keywords come from the name', () => {
+  const filePath = '/home/projects/alpha/notes.md'
+  const file: SearchIndexItem = {
+    providerId: 'file-provider',
+    itemId: filePath,
+    type: 'file',
+    name: 'notes.md',
+    description: filePath,
+    path: filePath,
+    extension: '.md',
+    tags: ['md', 'document', 'markdown'],
+    indexPathKeywords: false
+  }
+
+  async function keywordsOf(itemId: string): Promise<string[]> {
+    const rows = await service.listItemKeywords(file.providerId, [itemId], 10_000)
+    return rows.map((row) => row.keyword).sort()
+  }
+
+  it('finds a file by folder and by type through FTS without a keyword row for either', async () => {
+    await service.indexItems([file])
+
+    expect(await searchIds(file.providerId, 'alpha')).toEqual([filePath])
+    expect(await searchIds(file.providerId, 'markdown')).toEqual([filePath])
+    const keywords = await keywordsOf(filePath)
+    expect(keywords).toContain('notes')
+    expect(keywords).not.toContain('alpha')
+    expect(keywords).not.toContain('projects')
+    expect(keywords).not.toContain(filePath)
+    // Bigrams of the type word `markdown` that the name `notes.md` does not contain.
+    expect(keywords).not.toContain('ng:kd')
+    expect(keywords).not.toContain('ng:wn')
+    expect((await service.lookupByKeywords(file.providerId, ['alpha'])).size).toBe(0)
+  })
+
+  it('still writes path keywords for an item that keeps them', async () => {
+    await service.indexItems([{ ...file, indexPathKeywords: undefined }])
+
+    expect(await keywordsOf(filePath)).toEqual(expect.arrayContaining(['alpha', 'projects']))
+  })
+})
+
 describe('ordered deltas and commit publication on real SQL', () => {
   it.each([
     { name: 'delete then add', actions: ['delete', 'add'], expected: ['shared-document'] },
@@ -220,7 +262,7 @@ describe('ordered deltas and commit publication on real SQL', () => {
     const events: number[] = []
     const unsubscribe = hub.subscribe((event) => events.push(event.revision))
     const adapter = createAdapter(hub)
-    await client.execute(`CREATE TRIGGER reject_keyword_write BEFORE INSERT ON keyword_mappings
+    await client.execute(`CREATE TRIGGER reject_keyword_write BEFORE INSERT ON search_keyword_postings
       WHEN NEW.provider_id = 'document-provider' BEGIN
         SELECT RAISE(ABORT, 'injected keyword failure');
       END`)
@@ -415,6 +457,34 @@ describe('bounded document locator backfill', () => {
   })
 })
 
+/** A posting no meta row owns, as a document deleted by an older build leaves behind. */
+async function insertOrphanPosting(keyword: string, docId: number): Promise<void> {
+  await client.execute({
+    sql: 'INSERT INTO search_keyword_postings(provider_id,keyword,doc_id,priority) VALUES (?,?,?,3)',
+    args: [original.providerId, keyword, docId]
+  })
+}
+
+async function postingKeywords(docId: number): Promise<string[]> {
+  const result = await client.execute({
+    sql: 'SELECT keyword FROM search_keyword_postings WHERE doc_id = ? ORDER BY keyword',
+    args: [docId]
+  })
+  return result.rows.map((row) => String(row.keyword))
+}
+
+const POSTINGS_SNAPSHOT = 'SELECT * FROM search_keyword_postings ORDER BY doc_id, keyword'
+
+async function docIdOf(providerId: string, itemId: string): Promise<number | null> {
+  const rows = (
+    await client.execute({
+      sql: 'SELECT doc_id FROM search_index_meta WHERE provider_id = ? AND item_id = ?',
+      args: [providerId, itemId]
+    })
+  ).rows
+  return rows[0]?.doc_id === null || rows[0]?.doc_id === undefined ? null : Number(rows[0].doc_id)
+}
+
 describe('bounded orphan keyword maintenance', () => {
   async function cleanupUntilRemoval(target: SearchIndexService, limit: number): Promise<number> {
     for (let page = 0; page < 64; page += 1) {
@@ -438,10 +508,7 @@ describe('bounded orphan keyword maintenance', () => {
     ])
     const orphanWords = Array.from({ length: 6 }, (_, index) => `orphanword${index}`)
     for (let index = 0; index < orphanWords.length; index += 1) {
-      await client.execute({
-        sql: 'INSERT INTO keyword_mappings(keyword,item_id,provider_id,priority) VALUES (?,?,?,3)',
-        args: [orphanWords[index], `ghost-${index}`, original.providerId]
-      })
+      await insertOrphanPosting(orphanWords[index], 100 + index)
     }
     let removed = 0
     for (let page = 0; page < 64 && removed < orphanWords.length; page += 1) {
@@ -475,7 +542,9 @@ describe('bounded orphan keyword maintenance', () => {
       }
     }
     expect(removed).toBe(orphanWords.length)
-    expect(await service.lookupByKeywords(original.providerId, orphanWords)).toEqual(new Map())
+    for (let index = 0; index < orphanWords.length; index += 1) {
+      expect(await postingKeywords(100 + index)).toEqual([])
+    }
     expect(
       (await service.lookupByKeywords(original.providerId, ['stabletitle'])).get('stabletitle')
     ).toEqual([{ itemId: original.itemId, priority: 1.25 }])
@@ -486,9 +555,8 @@ describe('bounded orphan keyword maintenance', () => {
   })
 
   it('does not lose orphan work or advance its cursor when maintenance persistence fails', async () => {
-    await client.execute(`INSERT INTO keyword_mappings(keyword,item_id,provider_id,priority)
-      VALUES ('orphanword','ghost','document-provider',3)`)
-    const before = (await client.execute('SELECT * FROM keyword_mappings ORDER BY id')).rows
+    await insertOrphanPosting('orphanword', 100)
+    const before = (await client.execute(POSTINGS_SNAPSHOT)).rows
     const progress = (
       await client.execute('SELECT * FROM search_index_maintenance_progress ORDER BY task')
     ).rows
@@ -496,20 +564,17 @@ describe('bounded orphan keyword maintenance', () => {
       SELECT RAISE(ABORT, 'injected keyword progress failure');
     END`)
     await expect(service.cleanupOrphanKeywords(original.providerId, 2)).rejects.toThrow()
-    expect((await client.execute('SELECT * FROM keyword_mappings ORDER BY id')).rows).toEqual(
-      before
-    )
+    expect((await client.execute(POSTINGS_SNAPSHOT)).rows).toEqual(before)
     expect(
       (await client.execute('SELECT * FROM search_index_maintenance_progress ORDER BY task')).rows
     ).toEqual(progress)
     await client.execute('DROP TRIGGER reject_keyword_cursor')
     expect(await cleanupUntilRemoval(service, 2)).toBe(1)
-    expect(await service.lookupByKeywords(original.providerId, ['orphanword'])).toEqual(new Map())
+    expect(await postingKeywords(100)).toEqual([])
   })
 
   it('does not remove orphan keywords while the actual maintenance admission gate is closed', async () => {
-    await client.execute(`INSERT INTO keyword_mappings(keyword,item_id,provider_id,priority)
-      VALUES ('orphanword','ghost','document-provider',3)`)
+    await insertOrphanPosting('orphanword', 100)
     let idle = false
     const gated = new SearchIndexService(drizzle(client) as never, {
       directMode: true,
@@ -517,12 +582,10 @@ describe('bounded orphan keyword maintenance', () => {
       canRunMaintenance: () => idle
     })
     expect(await gated.cleanupOrphanKeywords(original.providerId, 2)).toBe(0)
-    expect(
-      (await service.lookupByKeywords(original.providerId, ['orphanword'])).get('orphanword')
-    ).toEqual([{ itemId: 'ghost', priority: 3 }])
+    expect(await postingKeywords(100)).toEqual(['orphanword'])
     idle = true
     expect(await cleanupUntilRemoval(gated, 2)).toBe(1)
-    expect(await service.lookupByKeywords(original.providerId, ['orphanword'])).toEqual(new Map())
+    expect(await postingKeywords(100)).toEqual([])
   })
 })
 
@@ -568,8 +631,7 @@ describe('atomic index-maintenance notifications', () => {
   ])('rolls back physical work, cursor and notification $name', async ({ kind, failureTask }) => {
     if (kind === 'keyword') {
       await finishLocatorMigration()
-      await client.execute(`INSERT INTO keyword_mappings(keyword,item_id,provider_id,priority)
-        VALUES ('maintenanceorphan','ghost','document-provider',3)`)
+      await insertOrphanPosting('maintenanceorphan', 100)
     } else if (kind === 'document') {
       await service.indexItems([original])
       await client.execute(`INSERT INTO search_index
@@ -599,8 +661,7 @@ describe('atomic index-maintenance notifications', () => {
           'SELECT task,cursor FROM search_index_maintenance_progress ORDER BY task'
         )
       ).rows
-      const beforeKeywords = (await client.execute('SELECT * FROM keyword_mappings ORDER BY id'))
-        .rows
+      const beforeKeywords = (await client.execute(POSTINGS_SNAPSHOT)).rows
       const beforeDocuments = (
         await client.execute('SELECT rowid,item_id,provider,title FROM search_index ORDER BY rowid')
       ).rows
@@ -623,9 +684,7 @@ describe('atomic index-maintenance notifications', () => {
           )
         ).rows
       ).toEqual(beforeProgress)
-      expect((await client.execute('SELECT * FROM keyword_mappings ORDER BY id')).rows).toEqual(
-        beforeKeywords
-      )
+      expect((await client.execute(POSTINGS_SNAPSHOT)).rows).toEqual(beforeKeywords)
       expect(
         (
           await client.execute(
@@ -644,9 +703,7 @@ describe('atomic index-maintenance notifications', () => {
       expect.objectContaining({ sourceId: original.providerId, affectedItems: 1 })
     ])
     if (kind === 'keyword') {
-      expect(await service.lookupByKeywords(original.providerId, ['maintenanceorphan'])).toEqual(
-        new Map()
-      )
+      expect(await postingKeywords(100)).toEqual([])
     } else if (kind === 'document') {
       expect(await searchIds(original.providerId, 'stabletitle')).toEqual([original.itemId])
     } else {
@@ -662,8 +719,7 @@ describe('atomic index-maintenance notifications', () => {
 
   it('recovers an unpublished notification after reopening and an old ACK cannot consume a later same-count commit', async () => {
     await finishLocatorMigration()
-    await client.execute(`INSERT INTO keyword_mappings(keyword,item_id,provider_id,priority)
-      VALUES ('firstorphan','ghost-first','document-provider',3)`)
+    await insertOrphanPosting('firstorphan', 100)
     const committed = await runUntilNotification()
     expect(committed.notifications).toEqual([
       expect.objectContaining({ sourceId: original.providerId, affectedItems: 1 })
@@ -671,17 +727,14 @@ describe('atomic index-maintenance notifications', () => {
     const observed = committed.notifications[0]
     // Commit succeeded but publication/ACK did not. A second orphan is deliberately present
     // when the writer reopens: pending replay must not physically process this next work yet.
-    await client.execute(`INSERT INTO keyword_mappings(keyword,item_id,provider_id,priority)
-      VALUES ('laterorphan','ghost-later','document-provider',3)`)
+    await insertOrphanPosting('laterorphan', 101)
     client.close()
     client = createClient({ url: `file:${join(directory, 'index.sqlite')}` })
     service = openService()
     const replay = await service.runIndexMaintenanceSlice(original.providerId, 64)
     expect(replay.processed).toBe(0)
     expect(replay.notifications).toEqual([observed])
-    expect(
-      (await service.lookupByKeywords(original.providerId, ['laterorphan'])).get('laterorphan')
-    ).toEqual([{ itemId: 'ghost-later', priority: 3 }])
+    expect(await postingKeywords(101)).toEqual(['laterorphan'])
 
     // The public direct API represents a later committed writer mutation before the earlier
     // publication is acknowledged. Both real changes have the same count, so count-only ACK
@@ -713,5 +766,307 @@ describe('atomic index-maintenance notifications', () => {
     expect((await service.runIndexMaintenanceSlice(original.providerId, 64)).notifications).toEqual(
       []
     )
+  })
+})
+
+describe('integer document ids', () => {
+  it('removes the postings of a removed document and of a removed provider, and nothing else', async () => {
+    await service.indexItems([
+      original,
+      { ...original, itemId: 'kept-document', name: 'kepttitle' },
+      { ...original, providerId: 'other-provider', name: 'othertitle' }
+    ])
+    const removedId = (await docIdOf(original.providerId, original.itemId))!
+    const keptId = (await docIdOf(original.providerId, 'kept-document'))!
+    const twinId = (await docIdOf('other-provider', original.itemId))!
+    expect(new Set([removedId, keptId, twinId]).size).toBe(3)
+    expect(await postingKeywords(removedId)).toContain('stabletitle')
+    const twinKeywords = await postingKeywords(twinId)
+
+    await service.removeProviderItems(original.providerId, [original.itemId])
+    expect(await postingKeywords(removedId)).toEqual([])
+    expect(await postingKeywords(keptId)).toContain('kepttitle')
+
+    await service.removeByProvider(original.providerId)
+    expect(
+      (
+        await client.execute(
+          "SELECT doc_id FROM search_keyword_postings WHERE provider_id = 'document-provider'"
+        )
+      ).rows
+    ).toEqual([])
+    expect(await postingKeywords(twinId)).toEqual(twinKeywords)
+  })
+
+  it('does not hand out an id that an orphan posting still holds', async () => {
+    await insertOrphanPosting('orphanword', 50)
+    await service.indexItems([original])
+    // Reusing 50 would give the new document the orphan's keyword.
+    expect(await docIdOf(original.providerId, original.itemId)).toBe(51)
+    expect(
+      (await service.lookupByKeywords(original.providerId, ['orphanword'])).get('orphanword')
+    ).toBeUndefined()
+  })
+
+  it('reaches postings and meta by document id instead of walking the provider', async () => {
+    // Nothing here runs ANALYZE, as in the app. Without statistics SQLite estimates a bare
+    // provider prefix at ten rows, so a statement naming more than ten documents prefers walking
+    // the provider — on a real index, every row of the source. Hence twenty of each.
+    const itemIds = Array.from({ length: 20 }, (_, index) => `document-${index}`)
+    await service.indexItems(itemIds.map((itemId) => ({ ...original, itemId })))
+    for (let index = 0; index < 20; index += 1)
+      await insertOrphanPosting('orphanword', 1000 + index)
+    const statements: Array<{ sql: string; params: unknown[] }> = []
+    const traced = new SearchIndexService(
+      drizzle(client, {
+        logger: { logQuery: (query, params) => statements.push({ sql: query, params }) }
+      }) as never,
+      { directMode: true, initializationMode: 'writer' }
+    )
+    await traced.warmup()
+    statements.length = 0
+
+    const listed = await traced.listItemKeywords(original.providerId, itemIds)
+    expect(new Set(listed.map((row) => row.itemId))).toEqual(new Set(itemIds))
+    let removed = 0
+    for (let page = 0; page < 8 && removed === 0; page += 1)
+      removed = await traced.cleanupOrphanKeywords(original.providerId, 64)
+    expect(removed).toBe(20)
+
+    const walks: string[] = []
+    for (const statement of statements) {
+      if (!/search_keyword_postings|search_index_meta/.test(statement.sql)) continue
+      const plan = await client.execute({
+        sql: `EXPLAIN QUERY PLAN ${statement.sql}`,
+        args: statement.params as never
+      })
+      for (const row of plan.rows) {
+        const detail = String(row.detail)
+        if (
+          /\(provider_id=\?\)$/.test(detail) ||
+          /\bSCAN (search_keyword_postings|search_index_meta)\b/.test(detail)
+        )
+          walks.push(`${detail} <- ${statement.sql}`)
+      }
+    }
+    expect(walks).toEqual([])
+  })
+})
+
+describe('moving keyword rows out of the legacy table', () => {
+  type Notification = Awaited<
+    ReturnType<SearchIndexService['runIndexMaintenanceSlice']>
+  >['notifications'][number]
+
+  const items: SearchIndexItem[] = [
+    {
+      ...original,
+      itemId: 'move-a',
+      name: 'alphatitle',
+      keywords: [{ value: 'sharedword', priority: 2 }]
+    },
+    {
+      ...original,
+      itemId: 'move-b',
+      name: 'betatitle',
+      keywords: [{ value: 'sharedword', priority: 3 }]
+    },
+    {
+      ...original,
+      itemId: 'move-c',
+      name: 'gammatitle',
+      keywords: [{ value: 'sharedword', priority: 4 }]
+    },
+    // The same item id under another provider: the move must not cross providers.
+    {
+      ...original,
+      providerId: 'other-provider',
+      itemId: 'move-a',
+      name: 'alphatitle',
+      keywords: [{ value: 'sharedword', priority: 5 }]
+    }
+  ]
+
+  /** The layout a build before integer ids leaves: keyword rows keyed by item id, no doc ids. */
+  async function toLegacyLayout(): Promise<void> {
+    await client.execute(`INSERT INTO keyword_mappings (keyword, item_id, provider_id, priority)
+      SELECT p.keyword, m.item_id, p.provider_id, p.priority
+      FROM search_keyword_postings p JOIN search_index_meta m ON m.doc_id = p.doc_id`)
+    await client.execute('DELETE FROM search_keyword_postings')
+    await client.execute('UPDATE search_index_meta SET doc_id = NULL')
+  }
+
+  /** `[provider, item]` -> sorted `keyword:priority` entries, for one layout. */
+  async function documents(layout: 'legacy' | 'postings'): Promise<Map<string, string[]>> {
+    const rows = (
+      await client.execute(
+        layout === 'legacy'
+          ? 'SELECT provider_id, item_id, keyword, priority FROM keyword_mappings'
+          : `SELECT m.provider_id, m.item_id, p.keyword, p.priority FROM search_keyword_postings p
+             JOIN search_index_meta m ON m.doc_id = p.doc_id`
+      )
+    ).rows
+    const byDocument = new Map<string, string[]>()
+    for (const row of rows) {
+      const key = JSON.stringify([row.provider_id, row.item_id])
+      byDocument.set(key, [...(byDocument.get(key) ?? []), `${row.keyword}:${row.priority}`])
+    }
+    for (const entries of byDocument.values()) entries.sort()
+    return byDocument
+  }
+
+  /** Everything a reader gets from keyword rows, in a stable order. */
+  async function recall(): Promise<Record<string, Record<string, unknown[]>>> {
+    const sorted = (rows: readonly unknown[]): unknown[] =>
+      rows.map((row) => JSON.stringify(row)).sort()
+    const snapshot: Record<string, Record<string, unknown[]>> = {}
+    for (const provider of [original.providerId, 'other-provider']) {
+      const exact = await service.lookupByKeywords(provider, ['sharedword', 'alphatitle'])
+      snapshot[provider] = {
+        exact: sorted([...exact].map(([keyword, rows]) => [keyword, sorted(rows)])),
+        prefix: sorted(await service.lookupByKeywordPrefix(provider, 'shared')),
+        subsequence: sorted(await service.lookupBySubsequence(provider, 'gmt')),
+        ngrams: sorted(await service.lookupByNgrams(provider, 'alphatilte')),
+        keywords: sorted(
+          await service.listItemKeywords(provider, ['move-a', 'move-b', 'move-c'], 10_000)
+        )
+      }
+    }
+    return snapshot
+  }
+
+  async function insertLegacyRows(
+    providerId: string,
+    itemId: string,
+    rows: ReadonlyArray<readonly [keyword: string, priority: number]>
+  ): Promise<void> {
+    for (const [keyword, priority] of rows) {
+      await client.execute({
+        sql: 'INSERT INTO keyword_mappings (keyword, item_id, provider_id, priority) VALUES (?, ?, ?, ?)',
+        args: [keyword, itemId, providerId, priority]
+      })
+    }
+  }
+
+  async function drain(limit = 64): Promise<Notification[]> {
+    const notifications: Notification[] = []
+    for (let page = 0; page < 64; page += 1) {
+      const slice = await service.runIndexMaintenanceSlice(original.providerId, limit)
+      // The move out of the legacy table counts rows, 16 per unit of the limit.
+      expect(slice.processed).toBeLessThanOrEqual(limit * 16)
+      for (const notification of slice.notifications) {
+        notifications.push(notification)
+        await service.acknowledgeIndexMaintenanceCommit(notification)
+      }
+      if (slice.done && slice.notifications.length === 0) return notifications
+    }
+    throw new Error('fixture maintenance did not finish')
+  }
+
+  it('moves the rows in bounded slices while readers see each one exactly once', async () => {
+    await service.indexItems(items)
+    const baseline = await recall()
+    expect(baseline['document-provider'].exact).toHaveLength(2)
+    expect(baseline['other-provider'].exact).toHaveLength(2)
+    for (const lookup of ['prefix', 'subsequence', 'ngrams', 'keywords']) {
+      expect(baseline['document-provider'][lookup], lookup).not.toEqual([])
+    }
+    const moved = await documents('postings')
+    await toLegacyLayout()
+    expect(await documents('legacy')).toEqual(moved)
+    expect(await recall()).toEqual(baseline)
+
+    const rowCount = (byDocument: Map<string, string[]>): number =>
+      [...byDocument.values()].reduce((sum, entries) => sum + entries.length, 0)
+    let remaining = rowCount(moved)
+    let split = 0
+    for (let page = 0; page < 64 && remaining > 0; page += 1) {
+      const slice = await service.runIndexMaintenanceSlice(original.providerId, 1)
+      expect(slice.processed).toBeLessThanOrEqual(16)
+      expect(slice.notifications).toEqual([])
+      const legacy = await documents('legacy')
+      const postings = await documents('postings')
+      for (const [document, entries] of moved) {
+        // Each row in exactly one layout.
+        const held = [...(legacy.get(document) ?? []), ...(postings.get(document) ?? [])]
+        expect(held.sort()).toEqual(entries)
+        if (legacy.has(document) && postings.has(document)) split += 1
+      }
+      remaining = rowCount(legacy)
+      expect(await recall()).toEqual(baseline)
+    }
+    expect(remaining).toBe(0)
+    // Every document here has more rows than a slice moves.
+    expect(split).toBeGreaterThan(0)
+    const ids = (await client.execute('SELECT doc_id FROM search_index_meta')).rows.map(
+      (row) => row.doc_id
+    )
+    expect(ids).toHaveLength(moved.size)
+    expect(ids.every((id) => typeof id === 'number')).toBe(true)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('lets legacy rows replace the postings of the same document, across slices and passes', async () => {
+    await service.indexItems([{ ...original, keywords: [{ value: 'currentword', priority: 2 }] }])
+    const indexedId = (await docIdOf(original.providerId, original.itemId))!
+    expect(await postingKeywords(indexedId)).toContain('currentword')
+    // Only an older build writes here: after a downgrade and upgrade these rows are the newer copy.
+    // Forty rows take three slices; the keyword held twice is in the first and the last.
+    const fill = Array.from({ length: 38 }, (_, index) => [`downgradefill${index}`, 1] as const)
+    await insertLegacyRows(original.providerId, original.itemId, [
+      ['downgradeword', 5],
+      ...fill,
+      ['downgradeword', 4]
+    ])
+
+    expect(await drain(1)).toEqual([])
+    const movedId = (await docIdOf(original.providerId, original.itemId))!
+    expect(await postingKeywords(indexedId)).toEqual([])
+    expect(await postingKeywords(movedId)).toEqual(
+      ['downgradeword', ...fill.map(([keyword]) => keyword)].sort()
+    )
+    expect(
+      await service.lookupByKeywords(original.providerId, ['downgradeword', 'currentword'])
+    ).toEqual(new Map([['downgradeword', [{ itemId: original.itemId, priority: 5 }]]]))
+
+    // A downgrade in the middle of a pass: the older build rewrites a document whose first rows
+    // have moved, deleting its other legacy rows and writing its new keywords, which replace all.
+    const pass = Array.from({ length: 40 }, (_, index) => [`password${index}`, 1] as const)
+    await insertLegacyRows(original.providerId, original.itemId, pass)
+    await service.runIndexMaintenanceSlice(original.providerId, 1)
+    const partId = (await docIdOf(original.providerId, original.itemId))!
+    expect(await postingKeywords(partId)).toHaveLength(16)
+    await client.execute({
+      sql: 'DELETE FROM keyword_mappings WHERE provider_id = ? AND item_id = ?',
+      args: [original.providerId, original.itemId]
+    })
+    await insertLegacyRows(original.providerId, original.itemId, [['rewrittenword', 1]])
+
+    expect(await drain(1)).toEqual([])
+    const rewrittenId = (await docIdOf(original.providerId, original.itemId))!
+    expect(await postingKeywords(rewrittenId)).toEqual(['rewrittenword'])
+    expect(
+      (await client.execute('SELECT count(*) AS n FROM search_keyword_postings')).rows
+    ).toEqual([expect.objectContaining({ n: 1 })])
+  })
+
+  it('drops legacy rows no document owns and notifies their source once per document', async () => {
+    await service.indexItems([original])
+    const postings = (await client.execute(POSTINGS_SNAPSHOT)).rows
+    // Twenty rows of one document take two slices: it still counts once.
+    await insertLegacyRows(original.providerId, 'ghost-1', [
+      ['ghostword', 1],
+      ...Array.from({ length: 19 }, (_, index) => [`ghostother${index}`, 1] as const)
+    ])
+    await insertLegacyRows(original.providerId, 'ghost-2', [['ghostword', 1]])
+    // Rows from before provider ids existed belong to no source.
+    await insertLegacyRows('', 'ancient-item', [['ancientword', 1]])
+
+    expect(await drain(1)).toEqual([
+      expect.objectContaining({ sourceId: original.providerId, affectedItems: 2 })
+    ])
+    expect((await client.execute('SELECT id FROM keyword_mappings')).rows).toEqual([])
+    expect((await client.execute(POSTINGS_SNAPSHOT)).rows).toEqual(postings)
+    expect((await service.lookupByKeywords(original.providerId, ['ghostword'])).size).toBe(0)
   })
 })

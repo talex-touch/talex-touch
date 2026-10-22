@@ -1744,9 +1744,14 @@ export class CommonChannelModule extends BaseModule {
     fileProvider.registerOpenersChannel?.(transport)
 
     this.transportDisposers.push(
-      transport.on(AppEvents.fileIndex.status, () => {
+      transport.on(AppEvents.fileIndex.status, async () => {
         try {
-          return fileProvider.getIndexingStatus()
+          const capacityHorizon = await fileProvider.getCapacityHorizonMs()
+          return {
+            ...fileProvider.getIndexingStatus(),
+            indexStorage: await databaseModule.getSearchIndexStorage(),
+            ...(capacityHorizon !== null ? { capacityHorizon } : {})
+          }
         } catch (error) {
           const report = reportFileIndexTransportFailure('STATUS', error)
           return {

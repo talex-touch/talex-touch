@@ -140,6 +140,7 @@ const TABLE_CATALOG: Array<{ name: string; label: string; category: string }> = 
   { name: 'file_fts', label: '文件索引-FTS', category: 'file-index' },
   { name: 'search_index', label: '搜索索引-FTS', category: 'search-index' },
   { name: 'keyword_mappings', label: '搜索-关键字映射', category: 'search-index' },
+  { name: 'search_keyword_postings', label: '搜索-关键词倒排', category: 'search-index' },
   { name: 'search_index_meta', label: '搜索-文档定位', category: 'search-index' },
   { name: 'search_index_maintenance_progress', label: '搜索-维护进度', category: 'search-index' },
   { name: 'search_index_pending_commits', label: '搜索-待发布提交', category: 'search-index' },

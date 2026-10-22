@@ -348,6 +348,14 @@ describe('file index capacity public projection', () => {
     }).storage).toEqual({ ...storage, availableBytes: null })
   })
 
+  it('keeps a capacity horizon only as a positive number of milliseconds', () => {
+    const horizon = Date.UTC(2025, 2, 15)
+    expect(projectFileIndexStatus({ ...rawStatusPayload(), capacityHorizon: horizon }).capacityHorizon).toBe(horizon)
+    for (const value of [0, -1, NaN, Infinity, String(horizon), POSIX_PATH_CANARY, null]) {
+      expect(projectFileIndexStatus({ ...rawStatusPayload(), capacityHorizon: value })).not.toHaveProperty('capacityHorizon')
+    }
+  })
+
   it('drops unknown capacity reasons and preserves legacy settings without invented storage evidence', () => {
     const legacy = { contentIndexingEnabled: true, state: 'indexing' }
     expect(projectFileIndexContentSettings(legacy)).toEqual(legacy)
