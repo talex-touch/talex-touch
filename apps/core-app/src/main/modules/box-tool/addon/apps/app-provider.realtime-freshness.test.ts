@@ -379,7 +379,7 @@ describe('app realtime index freshness', () => {
         ...createDbUtils().dbUtils,
         getFilesByType: vi.fn(async () => [{ path: '/Applications/Known.app' }])
       }
-      provider.maintenanceSearchIndex = { countByProvider: vi.fn(async () => 1) }
+      provider.maintenanceSearchIndex = { countByProviderViaLocators: vi.fn(async () => 1) }
       vi.spyOn(fs, 'readdir').mockResolvedValue(['Known.app', 'Probe.app'] as never)
       // Probe.app is a real bundle: it carries a manifest, so it is something that should have a
       // row rather than a stray directory that happens to end in .app.
@@ -443,7 +443,7 @@ describe('app realtime index freshness', () => {
         ...createDbUtils().dbUtils,
         getFilesByType: vi.fn(async () => [{ path: '/Applications/Known.app' }])
       }
-      provider.maintenanceSearchIndex = { countByProvider: vi.fn(async () => 1) }
+      provider.maintenanceSearchIndex = { countByProviderViaLocators: vi.fn(async () => 1) }
       vi.spyOn(fs, 'readdir').mockResolvedValue(['Known.app', 'Leftover.app'] as never)
       // Nothing can ever give Leftover.app a row, so counting it would leave the source unhealthy
       // forever and buy a full backfill on every launch.
@@ -464,7 +464,7 @@ describe('app realtime index freshness', () => {
         ...createDbUtils().dbUtils,
         getFilesByType: vi.fn(async () => [{ path: '/Applications/Café.app'.normalize('NFC') }])
       }
-      provider.maintenanceSearchIndex = { countByProvider: vi.fn(async () => 1) }
+      provider.maintenanceSearchIndex = { countByProviderViaLocators: vi.fn(async () => 1) }
       vi.spyOn(fs, 'readdir').mockResolvedValue(['Café.app'.normalize('NFD')] as never)
       const accessSpy = vi.spyOn(fs, 'access').mockResolvedValue(undefined as never)
 
@@ -483,7 +483,7 @@ describe('app realtime index freshness', () => {
         ...createDbUtils().dbUtils,
         getFilesByType: vi.fn(async () => [{ path: '/Applications/Known.app' }])
       }
-      provider.maintenanceSearchIndex = { countByProvider: vi.fn(async () => 1) }
+      provider.maintenanceSearchIndex = { countByProviderViaLocators: vi.fn(async () => 1) }
       vi.spyOn(fs, 'readdir').mockResolvedValue(['Known.app', 'Probe.app'] as never)
       vi.spyOn(fs, 'access').mockResolvedValue(undefined as never)
       provider.waitForAppIndexPipelineIdle = vi.fn(async () => undefined)

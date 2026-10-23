@@ -1664,11 +1664,12 @@ class AppProvider implements ISearchProvider<ProviderContext> {
       return { appCount: 0, indexedItemCount: null, healthy: null }
     }
 
-    // Routing/diagnostics stay meta-backed on the interactive reader. Startup decisions keep
-    // the exact FTS count on the existing maintenance reader, away from the fast search queue.
+    // Routing/diagnostics stay meta-backed on the interactive reader. Startup decisions count
+    // only FTS rows a meta locator verifies (never more than the exact count, so never a missed
+    // backfill) on the existing maintenance reader, away from the fast search queue.
     const countIndexedItems = (
       options?.probeFilesystem === true
-        ? searchIndex.countByProvider(this.id, this.startupProducerAbort.signal)
+        ? searchIndex.countByProviderViaLocators(this.id, this.startupProducerAbort.signal)
         : searchIndex.countByProviderViaMeta(this.id)
     ).catch((error) => {
       logApp('Failed to count app search index rows', LogStyle.warning, {

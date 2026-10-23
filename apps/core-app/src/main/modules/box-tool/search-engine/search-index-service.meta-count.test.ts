@@ -157,6 +157,40 @@ describe('SearchIndexService.countByProviderViaMeta', () => {
     })
   })
 
+  it('answers from meta alone once the locator backfill has given every FTS row a meta row', async () => {
+    await withIsolatedIndex(async ({ writerClient, writer, reader, reads }) => {
+      for (const name of ['legacy-a', 'legacy-b', 'legacy-c']) {
+        await writerClient.execute({
+          sql: `INSERT INTO search_index (
+            item_id, provider, type, title, title_compact, keywords, tags, path, content
+          ) VALUES (?, ?, 'app', ?, ?, '', '', '', '')`,
+          args: [`/legacy/${name}`, APP_PROVIDER, name, name]
+        })
+      }
+      // Before the backfill, a provider with no meta rows may still own FTS rows.
+      await expect(reader.countByProviderViaMeta(FILE_PROVIDER)).resolves.toBe(0)
+      expect(reads.some((read) => read.includes(FTS_PROVIDER_SCAN))).toBe(true)
+
+      let done = false
+      for (let pass = 0; pass < 10 && !done; pass += 1) {
+        done = (await writer.backfillDocumentLocators()).done
+      }
+      expect(done).toBe(true)
+      const marker = await writerClient.execute(
+        "SELECT cursor FROM search_index_maintenance_progress WHERE task = 'document-locators'"
+      )
+      expect(Number(marker.rows[0]?.cursor)).toBe(-1)
+
+      reads.length = 0
+      await expect(reader.countByProviderViaMeta(FILE_PROVIDER)).resolves.toBe(0)
+      expect(reads).toHaveLength(1)
+      expect(reads[0]).not.toContain(FTS_PROVIDER_SCAN)
+      // The legacy rows were given meta rows, so meta alone still counts them.
+      await expect(reader.countByProviderViaMeta(APP_PROVIDER)).resolves.toBe(3)
+      await expect(reader.countByProvider(APP_PROVIDER)).resolves.toBe(3)
+    })
+  })
+
   it('drops meta rows orphaned by a rebuilt FTS table before other providers refill it', async () => {
     await withIsolatedIndex(async ({ writerClient, writer, reader, openWriter }) => {
       await writer.applyProviderItems(APP_PROVIDER, buildItems(APP_PROVIDER, ['alpha', 'beta']))

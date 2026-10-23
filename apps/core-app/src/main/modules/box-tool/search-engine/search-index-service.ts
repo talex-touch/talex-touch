@@ -869,23 +869,62 @@ export class SearchIndexService {
    * meta rows can outlive FTS rows when the FTS table itself is wiped or rebuilt, and rows written
    * before meta existed have none. The FTS decides wherever meta cannot be trusted:
    * - an empty FTS table makes every meta row an orphan, so the answer is 0;
-   * - a provider with no meta rows gets the exact FTS count.
+   * - a provider with no meta rows gets the exact FTS count, until the locator backfill has given
+   *   every FTS row a meta row (`document-locators` done, the same mark the writer trusts). From
+   *   then on no meta rows means no documents, and the exact count would only walk the whole
+   *   content table to say 0: 31s cold on a 7.6GB index, ten times the fast lane's deadline.
    */
   async countByProviderViaMeta(providerId: string, signal?: AbortSignal): Promise<number> {
     signal?.throwIfAborted()
     await this.ensureInitialized()
     signal?.throwIfAborted()
-    const rows = await this.readAll<{ metaRows: number; ftsHasRows: number }>(
+    const rows = await this.readAll<{
+      metaRows: number
+      ftsHasRows: number
+      locatorsComplete: number
+    }>(
       sql`SELECT
             (SELECT count(*) FROM search_index_meta WHERE provider_id = ${providerId}) AS metaRows,
-            EXISTS (SELECT 1 FROM search_index LIMIT 1) AS ftsHasRows`,
+            EXISTS (SELECT 1 FROM search_index LIMIT 1) AS ftsHasRows,
+            EXISTS (SELECT 1 FROM search_index_maintenance_progress
+                     WHERE task = 'document-locators' AND cursor = -1) AS locatorsComplete`,
       signal
     )
     signal?.throwIfAborted()
     if (!Number(rows[0]?.ftsHasRows ?? 0)) return 0
     const metaRows = Number(rows[0]?.metaRows ?? 0)
-    if (metaRows > 0) return metaRows
+    if (metaRows > 0 || Number(rows[0]?.locatorsComplete ?? 0)) return metaRows
     return await this.countByProvider(providerId, signal)
+  }
+
+  /**
+   * The provider's FTS rows that a meta locator (`fts_rowid`) points at, for decisions that act on
+   * the answer.
+   *
+   * Every meta row is checked against the FTS row it locates, so meta that outlived its documents
+   * counts nothing and the answer can only fall short of {@link countByProvider}, never exceed it.
+   * It falls short only for FTS rows the locator backfill has not reached yet, and a low count reads
+   * as "unhealthy": at worst one backfill too many, never one missed. The exact count walks the whole
+   * content table — 31s cold on a 7.6GB index, past the read worker's 15s deadline — while this is a
+   * primary-key range plus one rowid probe per row (17ms there, same 202 rows).
+   */
+  async countByProviderViaLocators(providerId: string, signal?: AbortSignal): Promise<number> {
+    signal?.throwIfAborted()
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+    const rows = await this.readAll<{ cnt: number }>(
+      sql`SELECT count(*) AS cnt
+            FROM search_index_meta AS metadata
+            CROSS JOIN search_index AS document
+           WHERE metadata.provider_id = ${providerId}
+             AND metadata.fts_rowid IS NOT NULL
+             AND document.rowid = metadata.fts_rowid
+             AND document.provider = metadata.provider_id
+             AND document.item_id = metadata.item_id`,
+      signal
+    )
+    signal?.throwIfAborted()
+    return Number(rows[0]?.cnt ?? 0)
   }
 
   /**

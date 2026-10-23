@@ -489,8 +489,8 @@ const diagnostics = await this.diagnosticsService.getDiagnostics(sources, 'routi
 
 ### 1. Scope / Trigger
 
-- Changing `SearchIndexService.countByProvider` / `countByProviderViaMeta`
-  (`search-engine/search-index-service.ts`); anything that drops or empties `search_index` or
+- Changing `SearchIndexService.countByProvider` / `countByProviderViaMeta` /
+  `countByProviderViaLocators` (`search-engine/search-index-service.ts`); anything that drops or empties `search_index` or
   `search_index_meta` (`prepareSearchIndexSchema`, `repair()`, `cleanupFileIndex` in
   `main/service/storage-maintenance.ts`); or a caller of `AppProvider.getAppSearchIndexHealth`
   (`addon/apps/app-provider.ts`).
@@ -504,11 +504,20 @@ const diagnostics = await this.diagnosticsService.getDiagnostics(sources, 'routi
 ```ts
 countByProvider(providerId: string, signal?: AbortSignal): Promise<number> // exact FTS count
 countByProviderViaMeta(providerId: string, signal?: AbortSignal): Promise<number> // meta-backed
+countByProviderViaLocators(providerId: string, signal?: AbortSignal): Promise<number> // verified, ≤ exact
 
 // one round trip on the read executor:
 //   SELECT (SELECT count(*) FROM search_index_meta WHERE provider_id = ?) AS metaRows,
-//          EXISTS (SELECT 1 FROM search_index LIMIT 1) AS ftsHasRows
+//          EXISTS (SELECT 1 FROM search_index LIMIT 1) AS ftsHasRows,
+//          EXISTS (SELECT 1 FROM search_index_maintenance_progress
+//                   WHERE task = 'document-locators' AND cursor = -1) AS locatorsComplete
 // search_index_meta: PRIMARY KEY (provider_id, item_id)
+
+// countByProviderViaLocators, meta range outermost, one FTS rowid probe per row:
+//   SELECT count(*) FROM search_index_meta AS metadata CROSS JOIN search_index AS document
+//    WHERE metadata.provider_id = ? AND metadata.fts_rowid IS NOT NULL
+//      AND document.rowid = metadata.fts_rowid
+//      AND document.provider = metadata.provider_id AND document.item_id = metadata.item_id
 
 private createSearchIndexTable(): Promise<boolean> // true when this call created the (empty) FTS table
 private clearOrphanedSearchIndexMeta(): Promise<void> // DELETE FROM search_index_meta
@@ -522,7 +531,11 @@ private getAppSearchIndexHealth(options?: { probeFilesystem?: boolean })
 - The FTS decides wherever meta cannot be trusted:
   - `ftsHasRows = 0` → 0. An empty FTS table makes every meta row an orphan (a wipe of
     `search_index` that left meta behind).
-  - `metaRows = 0` → the exact `countByProvider`, for rows written before meta existed.
+  - `metaRows = 0` → the exact `countByProvider`, for rows written before meta existed, until the
+    locator backfill is done (`document-locators` cursor `-1`, the mark the writer trusts too). The
+    backfill gives every FTS row a meta row, so from then on `metaRows = 0` means no documents and the
+    answer is 0. The exact count would walk the whole content table to say so: 30.3s cold on the
+    7.6GB dev index, where the `'fast'` lane gives up at 3s; the meta read answers in 3.2ms.
   - Otherwise → `metaRows`.
 - Writers keep both tables in step (`applyDocument`, removals, replacement commits). A path that
   drops or empties `search_index` clears meta in the same place:
@@ -535,10 +548,23 @@ private getAppSearchIndexHealth(options?: { probeFilesystem?: boolean })
 - Caller split in `getAppSearchIndexHealth`:
   - Unprobed (`getIndexedSourceHealth()`, i.e. the app source's `getHealth` for watch routing and
     diagnostics polls) → `countByProviderViaMeta`.
-  - `probeFilesystem: true` (`_ensureStartupIndexHealth`, `_shouldRunStartupBackfill`) → the exact
-    `countByProvider`, because the answer decides whether a backfill runs.
+  - `probeFilesystem: true` (`_ensureStartupIndexHealth`, `_shouldRunStartupBackfill`) →
+    `countByProviderViaLocators`, because the answer decides whether a backfill runs. Every meta
+    row is checked against the FTS row its `fts_rowid` locates, so orphaned meta counts nothing and
+    the answer never exceeds the exact count: a missed backfill is impossible. It falls short only
+    for FTS rows the locator backfill has not reached, which reads as unhealthy and costs at most
+    one extra backfill.
+  - Why not the exact count there: on the maintenance reader it still runs on the read worker,
+    whose deadline is 15s. A 7.6GB dev index took 31.5s cold (`SELECT count(*) … WHERE provider`,
+    202 app rows), so the read failed, health came back `null` and the startup check was skipped
+    on every cold launch. The locator count returned the same 202 in 17ms.
   - The writer's and the search-index worker's own counts stay exact.
-- A failing count is logged (`Failed to count app search index rows`) and counts as 0: unhealthy.
+- A failing count is logged (`Failed to count app search index rows`) and becomes `null`, never 0:
+  health is unknown (`healthy: null`), not unhealthy. Unprobed, `getIndexedSourceHealth` reports
+  `warming` while the app index warms and `degraded` otherwise, with `searchIndexRows=unknown` in
+  the reason. Probed, `_ensureStartupIndexHealth` returns without a backfill, and
+  `_shouldRunStartupBackfill`'s development recent-backfill check answers
+  `index-health-unavailable`.
 - Benchmark (implement.md; `/tmp/refresh-churn-m7-bench/bench.mjs`: 150k file rows with ~600 bytes
   of content plus 160 app rows, on a fresh `query_only` connection): 50.6ms → 0.03ms. On the machine
   that reported the storm, the FTS count showed up as ~250–340ms of `IndexingDiagnostics.source`,
@@ -552,28 +578,39 @@ private getAppSearchIndexHealth(options?: { probeFilesystem?: boolean })
 | After `removeProviderItems`, then `removeByProvider`                   | Follows the FTS count (2, then 0)                                                                            |
 | FTS emptied, meta left behind                                          | 0                                                                                                            |
 | Legacy FTS rows without meta                                           | The exact FTS count (the fallback read is observed)                                                          |
+| No meta rows for the provider, locator backfill done                   | 0, without the fallback read                                                                                 |
 | FTS table dropped, writer initialized again, another provider refilled | 0 for the dropped provider; the refilled provider's own count                                                |
 | Writer initialized again over an existing table                        | Unchanged                                                                                                    |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: watch routing and diagnostics pay a sub-millisecond read; the backfill decision keeps the
-  exact count.
-- Base: an index written before meta existed reads the exact count until its rows are written again.
+- Good: watch routing and diagnostics pay a sub-millisecond read; the backfill decision reads the
+  locator-verified count, which never exceeds the exact one.
+- Base: an index written before meta existed reads the exact count until the locator backfill has
+  given its rows meta.
 - Bad: `EXISTS (… FROM search_index WHERE provider = ?)` (still a full walk when the provider has no
   rows); dropping the empty-FTS guard; wiping `search_index` without meta; moving the backfill guard
-  onto the meta count.
+  onto the unverified meta count (orphaned meta would claim a healthy index), or back onto the full
+  FTS count (times out on a large index and skips the decision).
 
 ### 6. Tests Required
 
 - `search-engine/search-index-service.meta-count.test.ts` (real temporary libSQL; a writer plus a
   reader-mode service whose read executor records SQL): one read without the FTS provider scan; in
-  step through removals; 0 over orphaned meta; the legacy fallback; orphans cleared when the FTS
-  table is recreated; meta kept on an ordinary restart.
-- `addon/apps/app-provider.realtime-freshness.test.ts`: "answers the routing health from the meta
-  count, never the full FTS count"; "keeps the exact FTS count for the probed startup decision".
-- `main/service/storage-maintenance.test.ts`: "clears search_index_meta together with the search
-  index it describes"; "leaves search_index_meta alone when the search index is kept".
+  step through removals; 0 over orphaned meta; the legacy fallback; no fallback once the real
+  locator backfill has run ("answers from meta alone once the locator backfill has given every FTS
+  row a meta row"); orphans cleared when the FTS table is recreated; meta kept on an ordinary
+  restart.
+- `addon/apps/app-provider.realtime-freshness.test.ts` › "F4 filesystem cardinality probe":
+  unprobed, "answers the routing health from the meta count with visible count and status" and
+  "stays healthy and never reads the filesystem when the probe is not requested"; probed, with only
+  `countByProviderViaLocators` on the maintenance reader, "marks the source unhealthy when a watch
+  root holds an app with no row" and "drives the startup health check into a backfill when the
+  probe finds a gap".
+- `main/service/storage-maintenance.test.ts` › "cleanupFileIndex actual storage ownership": "clears
+  file projections and derivatives but preserves app catalog on %s" (`search_index_meta` emptied
+  with the search index) and "keeps explicitly retained projections and other-source queues on %s"
+  (`clearSearchIndex: false`; keyword lookups still resolve through meta).
 
 ### 7. Wrong vs Correct
 
@@ -588,7 +625,7 @@ await db.run(sql`DELETE FROM search_index`) // meta now claims documents that ar
 
 ```ts
 const indexedItemCount = await (options?.probeFilesystem === true
-  ? searchIndex.countByProvider(this.id) // decisions that act on the answer
+  ? searchIndex.countByProviderViaLocators(this.id) // decisions that act on the answer
   : searchIndex.countByProviderViaMeta(this.id)) // routing and diagnostics
 await db.run(sql`DELETE FROM search_index`)
 await db.delete(searchIndexMeta)
