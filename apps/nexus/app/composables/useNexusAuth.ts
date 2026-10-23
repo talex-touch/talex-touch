@@ -136,6 +136,10 @@ async function fetchAuth<T>(path: string, options: NexusAuthFetchOptions = {}) {
 export function useNexusAuth() {
   const data = useState<NexusAuthSession | null | undefined>('auth:data', () => undefined)
   const loading = useState<boolean>('auth:loading', () => false)
+  // Reads overlap: on the sign-in page the app shell and the page each read on mount. The session
+  // stays loading until the last one answers, because that answer can still change it, and on a
+  // first visit it also replaces the CSRF cookie.
+  const readsInFlight = useState<number>('auth:readsInFlight', () => 0)
   const lastRefreshedAt = useState<Date | undefined>('auth:lastRefreshedAt', () => undefined)
 
   function settleSession(session: NexusAuthSession | null) {
@@ -162,6 +166,7 @@ export function useNexusAuth() {
   }
 
   async function getSession() {
+    readsInFlight.value += 1
     loading.value = true
     lastRefreshedAt.value = new Date()
 
@@ -179,7 +184,8 @@ export function useNexusAuth() {
       return null
     }
     finally {
-      loading.value = false
+      readsInFlight.value -= 1
+      loading.value = readsInFlight.value > 0
     }
   }
 

@@ -19,7 +19,8 @@ function goTo(path: string) {
     <div class="w-full px-6 text-xs text-white/40">
       <div class="auth-footer-row">
         <span>{{ t('auth.copyright', '© 2026 Tuff. All rights reserved.') }}</span>
-        <div class="flex items-center gap-2">
+        <!-- The agreement line below links the same two pages. -->
+        <div v-if="!props.showAgreement" class="flex items-center gap-2">
           <TxButton variant="ghost" size="sm" @click="goTo('/privacy')">
             {{ t('auth.privacyPolicy', 'Privacy Policy') }}
           </TxButton>

@@ -119,10 +119,10 @@ describe('device auth risk controls', () => {
     const event = createEvent()
 
     const stale = await store.evaluateDeviceAuthLongTermPolicy(event, 'user-2', 'device-3', {
-      sessionIssuedAt: Math.floor((Date.now() - 11 * 60 * 1000) / 1000),
+      sessionAuthenticatedAt: Math.floor((Date.now() - 11 * 60 * 1000) / 1000),
     })
     const fresh = await store.evaluateDeviceAuthLongTermPolicy(event, 'user-2', 'device-3', {
-      sessionIssuedAt: Math.floor(Date.now() / 1000),
+      sessionAuthenticatedAt: Math.floor(Date.now() / 1000),
     })
 
     expect(stale.allowLongTerm).toBe(false)
@@ -138,7 +138,7 @@ describe('device auth risk controls', () => {
     const event = createEvent()
 
     const policy = await store.evaluateDeviceAuthLongTermPolicy(event, 'user-3', 'device-4', {
-      sessionIssuedAt: Math.floor(Date.now() / 1000),
+      sessionAuthenticatedAt: Math.floor(Date.now() / 1000),
     })
 
     expect(policy.allowLongTerm).toBe(false)

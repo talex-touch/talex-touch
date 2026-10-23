@@ -78,7 +78,7 @@ async function runApproveRoute(payload: { storedGrantType: DeviceAuthGrantType, 
 describe('/api/app-auth/device/approve grant type selection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    authMocks.requireSessionAuth.mockResolvedValue({ userId: 'user-1', sessionIssuedAt: 1_788_700_000 })
+    authMocks.requireSessionAuth.mockResolvedValue({ userId: 'user-1', sessionAuthenticatedAt: 1_788_700_000 })
     authStoreMocks.evaluateDeviceAuthRateLimit.mockResolvedValue({ allowed: true })
     authStoreMocks.evaluateDeviceAuthLongTermPolicy.mockResolvedValue({
       allowLongTerm: true,
@@ -102,7 +102,7 @@ describe('/api/app-auth/device/approve grant type selection', () => {
       expect.anything(),
       'user-1',
       'official-app-device',
-      { sessionIssuedAt: 1_788_700_000 },
+      { sessionAuthenticatedAt: 1_788_700_000 },
     )
     expect(authStoreMocks.approveDeviceAuthRequest).toHaveBeenCalledWith(
       expect.anything(),
