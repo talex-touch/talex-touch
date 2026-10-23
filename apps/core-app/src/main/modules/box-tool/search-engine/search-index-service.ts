@@ -140,6 +140,12 @@ export interface LoadedFileCandidateRow {
   extensionValue: string | null
 }
 
+/** A `files` row as deferred enrichment recovery hands it to the indexing scheduler. */
+export type FileEnrichmentPageRow = Pick<
+  typeof schema.files.$inferSelect,
+  'id' | 'path' | 'name' | 'displayName' | 'extension' | 'size' | 'mtime' | 'ctime'
+>
+
 interface PreparedIndexDocument extends SearchIndexDocument {
   keywordEntries: SearchIndexKeyword[]
 }
@@ -1215,6 +1221,62 @@ export class SearchIndexService {
       },
       extensionKey: row.extensionKey ?? null,
       extensionValue: row.extensionValue ?? null
+    }))
+  }
+
+  /**
+   * One keyset page of deferred enrichment recovery, read by the read worker: `type = 'file'` rows
+   * after `afterId` that satisfy `predicate`, in id order. `predicate` takes what drizzle's
+   * `.where()` takes and may name columns of `files` and of the LEFT JOINed `file_index_progress`;
+   * drizzle qualifies them by table name, which is why neither table is aliased here.
+   *
+   * The page used to be read on the main-thread connection, where the local libSQL binding runs
+   * synchronously. A predicate on `files.extension` (every lane while image embedding is
+   * unavailable) cannot be answered from `idx_files_type`, so a page that finds nothing walks the
+   * table from `afterId` to its end: 5.1s of blocked event loop cold on the 7.6GB dev index and
+   * 32ms warm. Here the walk costs the main thread 4ms and holds this service's read lane instead.
+   */
+  async readFileEnrichmentPage(
+    predicate: SQL | undefined,
+    afterId: number,
+    limit: number,
+    signal?: AbortSignal
+  ): Promise<FileEnrichmentPageRow[]> {
+    signal?.throwIfAborted()
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+    const rows = await this.readAll<{
+      id: number
+      path: string
+      name: string
+      displayName: string | null
+      extension: string | null
+      size: number | null
+      mtime: number
+      ctime: number
+    }>(
+      sql`SELECT files.id AS id, files.path AS path, files.name AS name,
+            files.display_name AS displayName, files.extension AS extension, files.size AS size,
+            files.mtime AS mtime, files.ctime AS ctime
+          FROM files
+          LEFT JOIN file_index_progress ON file_index_progress.file_id = files.id
+          WHERE files.type = 'file' AND files.id > ${afterId}
+            ${predicate ? sql`AND (${predicate})` : sql.empty()}
+          ORDER BY files.id
+          LIMIT ${limit}`,
+      signal
+    )
+    signal?.throwIfAborted()
+    // Both columns are drizzle `mode: 'timestamp'`: whole seconds, which its select multiplied out.
+    return rows.map((row) => ({
+      id: row.id,
+      path: row.path,
+      name: row.name,
+      displayName: row.displayName ?? null,
+      extension: row.extension ?? null,
+      size: row.size ?? null,
+      mtime: new Date(row.mtime * 1000),
+      ctime: new Date(row.ctime * 1000)
     }))
   }
 

@@ -900,6 +900,15 @@ const RESUME_BATCH_SIZE = 200
 const MAX_CONSECUTIVE_NO_ADMIT_ROUNDS = 5
 type ResumeRoundOutcome = 'completed' | 'wrapped' | 'paused' | 'stopped'
 resume(reason: string): void
+// deps.getSearchIndex: () => Pick<SearchIndexService, 'readFileEnrichmentPage'> | null
+
+// search-engine/search-index-service.ts
+readFileEnrichmentPage(
+  predicate: SQL | undefined, // the lane's; may name files and file_index_progress columns
+  afterId: number,
+  limit: number,
+  signal?: AbortSignal
+): Promise<FileEnrichmentPageRow[]> // type = 'file', id > afterId, ORDER BY id
 
 // addon/files/workers/index-worker-read-failure.ts
 export const INDEX_WORKER_FILE_MISSING = 'file-missing' // ENOENT, ENOTDIR
@@ -949,6 +958,14 @@ Date.now())`, so a wall clock set back never holds recovery longer than one cool
   peers get a turn. At exhaustion the persistent cursor wraps to 0, but the current round keeps
   its last scanned position to check newly arrived higher ids. The next cooldown round recovers
   lower-id re-armed work. No new timers, schema markers or in-memory file queue.
+- **Pages are read by the read worker (2026-10-22).** The service builds the lane predicate and
+  `readFileEnrichmentPage` runs it through FileProvider's index service, whose executor is the
+  deferred read worker; no page is read on a main-thread connection. When nothing matches, a
+  predicate on `files.extension` (legacy, and fresh / retry while image embedding is unavailable)
+  walks `files` from the cursor to its end: 5.1s cold and 32ms warm on the 7.6GB dev index, which
+  used to block the event loop and now holds the read lane (main thread ≤ 4ms). Rows are unchanged,
+  `mtime` / `ctime` included: whole seconds × 1000, as drizzle's select mapped them. A rejected
+  read (timeout, full queue, cooldown) ends the round `paused` like any other error.
 - **Failures.** A chunk failure (`INDEXED_WORKER_SCHEDULER_DISPATCH_FAILED` from the page's drain)
   fails only that page: `drainPage` settles the flush and the round moves on, because per-file
   failures are terminal. Stuck-page guard: a partly admitted page whose dispatch failed and that comes

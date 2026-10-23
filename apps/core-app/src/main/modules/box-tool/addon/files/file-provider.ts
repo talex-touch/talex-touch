@@ -925,8 +925,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
       logWarn: (message, error, meta) => this.logWarn(message, error, meta)
     })
     this.enrichmentResumeService = new FileProviderEnrichmentResumeService({
-      getDbUtils: () => this.dbUtils,
-      isSearchIndexAvailable: () => Boolean(this.searchIndex),
+      getSearchIndex: () => this.searchIndex,
       isShuttingDown: () => this.shuttingDown,
       isEnabled: () => this.contentIndexPolicyService.isAdmissionEnabled(),
       isImageEmbeddingReady: () => this.embeddingService?.isImageReady() ?? false,

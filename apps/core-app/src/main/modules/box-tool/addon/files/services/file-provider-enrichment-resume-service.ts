@@ -1,7 +1,7 @@
 import type { IndexedWorkerScheduleResult } from '@talex-touch/utils/search'
-import { and, eq, gt, inArray, isNull, notInArray, or } from 'drizzle-orm'
-import type { DbUtils } from '../../../../../db/utils'
+import { and, eq, inArray, isNull, notInArray, or } from 'drizzle-orm'
 import { fileIndexProgress, files as filesSchema } from '../../../../../db/schema'
+import type { SearchIndexService } from '../../../search-engine/search-index-service'
 import { IMAGE_EMBEDDING_EXTENSIONS } from '../constants'
 import type { FileProviderIndexSchedulerFile } from './file-provider-index-scheduler-service'
 
@@ -29,8 +29,8 @@ const SCHEDULER_DISPATCH_FAILED = 'INDEXED_WORKER_SCHEDULER_DISPATCH_FAILED'
 type ResumeRoundOutcome = 'completed' | 'wrapped' | 'paused' | 'stopped'
 
 export interface FileProviderEnrichmentResumeServiceDeps {
-  getDbUtils: () => DbUtils | null
-  isSearchIndexAvailable: () => boolean
+  /** Pages recoverable rows through its read worker; null while the index is unavailable. */
+  getSearchIndex: () => Pick<SearchIndexService, 'readFileEnrichmentPage'> | null
   isShuttingDown: () => boolean
   isEnabled: () => boolean
   isImageEmbeddingReady?: () => boolean
@@ -153,8 +153,8 @@ export class FileProviderEnrichmentResumeService {
   }
 
   private async run(reason: string): Promise<ResumeRoundOutcome> {
-    const dbUtils = this.deps.getDbUtils()
-    if (!dbUtils || !this.deps.isSearchIndexAvailable() || !this.deps.isEnabled()) return 'stopped'
+    const searchIndex = this.deps.getSearchIndex()
+    if (!searchIndex || !this.deps.isEnabled()) return 'stopped'
 
     const label = `enrichment-resume.${reason}`
     const lanes = {
@@ -225,23 +225,11 @@ export class FileProviderEnrichmentResumeService {
           : imageReady
             ? unfinished
             : and(unfinished, nonImage)
-      const rows = await dbUtils
-        .getFileIndexReadDb()
-        .select({
-          id: filesSchema.id,
-          path: filesSchema.path,
-          name: filesSchema.name,
-          displayName: filesSchema.displayName,
-          extension: filesSchema.extension,
-          size: filesSchema.size,
-          mtime: filesSchema.mtime,
-          ctime: filesSchema.ctime
-        })
-        .from(filesSchema)
-        .leftJoin(fileIndexProgress, eq(fileIndexProgress.fileId, filesSchema.id))
-        .where(and(eq(filesSchema.type, 'file'), gt(filesSchema.id, state.cursor), recoverable))
-        .orderBy(filesSchema.id)
-        .limit(RESUME_BATCH_SIZE)
+      const rows = await searchIndex.readFileEnrichmentPage(
+        recoverable,
+        state.cursor,
+        RESUME_BATCH_SIZE
+      )
 
       if (rows.length === 0) {
         // Keep this round's scan position for probes of newly added higher ids.

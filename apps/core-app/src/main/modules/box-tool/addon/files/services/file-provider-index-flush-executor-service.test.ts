@@ -1,9 +1,10 @@
 import { createClient, type Client } from '@libsql/client'
+import type { SQL } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/libsql'
 import { IndexedWorkerPersistEntryMapperService } from '@talex-touch/utils/search'
-import type { DbUtils } from '../../../../../db/utils'
 import * as schema from '../../../../../db/schema'
 import { SqliteFileIndexPersistenceRepository } from '../../../search-engine/file-index-persistence-repository'
+import { SearchIndexService } from '../../../search-engine/search-index-service'
 import { FileProviderEnrichmentResumeService } from './file-provider-enrichment-resume-service'
 import type { IndexWorkerFileResult } from '../workers/file-index-worker-client'
 import type {
@@ -481,9 +482,17 @@ describe('file flush image completion ownership', () => {
         // longer consume admission, so the next normal flush can finish the missing suffix.
         const recoveredPages: number[][] = []
         const recovered = Promise.withResolvers<void>()
+        // The reader-mode service checks these columns before its first read.
+        await client.execute(
+          'CREATE VIRTUAL TABLE search_index USING fts5(item_id UNINDEXED, provider UNINDEXED, content)'
+        )
+        const reader = new SearchIndexService(db, {
+          initializationMode: 'reader',
+          readiness: { waitUntilReady: async () => undefined },
+          readExecutor: { all: async <T>(query: SQL): Promise<T[]> => await db.all<T>(query) }
+        })
         resume = new FileProviderEnrichmentResumeService({
-          getDbUtils: () => ({ getFileIndexReadDb: () => db }) as unknown as DbUtils,
-          isSearchIndexAvailable: () => true,
+          getSearchIndex: () => reader,
           isShuttingDown: () => shuttingDown,
           isEnabled: () => true,
           isImageEmbeddingReady: () => true,

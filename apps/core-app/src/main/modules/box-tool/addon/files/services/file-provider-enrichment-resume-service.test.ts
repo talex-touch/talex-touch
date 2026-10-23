@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '../../../../../db/schema'
+import { SearchIndexService } from '../../../search-engine/search-index-service'
 import {
   ENRICHMENT_RESUME_ROUND_COOLDOWN_MS,
   FileProviderEnrichmentResumeService,
@@ -37,8 +38,8 @@ function createImmediateLease(): <T>(operation: (leaseId: string) => Promise<T>)
   }
 }
 
-interface PagedReadDb {
-  getFileIndexReadDb: () => unknown
+interface PagedReader {
+  readFileEnrichmentPage: (predicate: SQL | undefined) => Promise<Array<Record<string, unknown>>>
   queryCount: () => number
 }
 
@@ -47,27 +48,16 @@ interface PagedReadDb {
  * the next fresh page. Lane selection is decoded from bound SQL values, never source text;
  * actual lane eligibility and keyset pagination are exercised against SQLite below.
  */
-function createPagedReadDb(pages: Array<Array<Record<string, unknown>>>): PagedReadDb {
+function createPagedReader(pages: Array<Array<Record<string, unknown>>>): PagedReader {
   let queryCount = 0
-  let freshQuery = true
   const dialect = new SQLiteSyncDialect()
-  const chain = {
-    select: () => chain,
-    from: () => chain,
-    leftJoin: () => chain,
-    where: (predicate: SQL) => {
-      const { params } = dialect.sqlToQuery(predicate)
-      freshQuery = !params.includes('pending') && !params.includes('skipped')
-      return chain
-    },
-    orderBy: () => chain,
-    limit: () => {
-      queryCount += 1
-      return Promise.resolve(freshQuery ? (pages.shift() ?? []) : [])
-    }
-  }
   return {
-    getFileIndexReadDb: () => chain,
+    readFileEnrichmentPage: async (predicate) => {
+      queryCount += 1
+      const params = predicate ? dialect.sqlToQuery(predicate).params : []
+      const freshQuery = !params.includes('pending') && !params.includes('skipped')
+      return freshQuery ? (pages.shift() ?? []) : []
+    },
     queryCount: () => queryCount
   }
 }
@@ -105,7 +95,7 @@ function createHarness(options: {
   waitForSearchIndexDrain?: (callIndex: number, leaseId: string) => Promise<void>
   withMutationLease?: <T>(operation: (leaseId: string) => Promise<T>) => Promise<T>
 }) {
-  const readDb = createPagedReadDb(options.pages)
+  const reader = createPagedReader(options.pages)
   let callIndex = 0
   const scheduleIndexing = vi.fn<
     (
@@ -126,8 +116,7 @@ function createHarness(options: {
   let drainIndex = 0
   const drainLeaseIds: string[] = []
   const deps = {
-    getDbUtils: () => ({ getFileIndexReadDb: readDb.getFileIndexReadDb }),
-    isSearchIndexAvailable: () => true,
+    getSearchIndex: () => reader,
     isShuttingDown: () => options.isShuttingDown ?? false,
     isEnabled: () => options.isEnabled ?? true,
     // This harness supplies only text rows; image lanes are exercised against SQLite below.
@@ -150,7 +139,7 @@ function createHarness(options: {
     drainLeaseIds,
     logInfo,
     logWarn,
-    queryCount: readDb.queryCount,
+    queryCount: reader.queryCount,
     service: new FileProviderEnrichmentResumeService(deps)
   }
 }
@@ -292,7 +281,8 @@ async function settleRounds(turns = 60): Promise<void> {
 interface ResumeDatabase {
   client: Client
   directory: string
-  db: ReturnType<typeof drizzle<typeof schema>>
+  /** The page reader production wires: reader mode, every read through its executor. */
+  reader: SearchIndexService
 }
 
 /** A split-home stand-in with `fileCount` enrichment-pending files (ids 1..fileCount). */
@@ -337,7 +327,17 @@ async function openResumeDatabase(fileCount: number): Promise<ResumeDatabase> {
     `,
     args: [fileCount]
   })
-  return { client, directory, db: drizzle(client, { schema }) }
+  // The reader-mode service checks these columns before its first read.
+  await client.execute(
+    'CREATE VIRTUAL TABLE search_index USING fts5(item_id UNINDEXED, provider UNINDEXED, content)'
+  )
+  const db = drizzle(client, { schema })
+  const reader = new SearchIndexService(db, {
+    initializationMode: 'reader',
+    readiness: { waitUntilReady: async () => undefined },
+    readExecutor: { all: async <T>(query: SQL): Promise<T[]> => await db.all<T>(query) }
+  })
+  return { client, directory, reader }
 }
 
 /**
@@ -374,8 +374,7 @@ function createDatabaseHarness(
   const logInfo = vi.fn()
   const logWarn = vi.fn()
   const deps = {
-    getDbUtils: () => ({ getFileIndexReadDb: () => database.db }),
-    isSearchIndexAvailable: () => true,
+    getSearchIndex: () => database.reader,
     isShuttingDown: () => false,
     isEnabled: () => true,
     isImageEmbeddingReady: () => false,
@@ -842,8 +841,7 @@ function createCompletingImageHarness(
     }
   )
   const deps = {
-    getDbUtils: () => ({ getFileIndexReadDb: () => database.db }),
-    isSearchIndexAvailable: () => true,
+    getSearchIndex: () => database.reader,
     isShuttingDown: () => false,
     isEnabled: options.isEnabled ?? (() => true),
     isImageEmbeddingReady: options.isImageEmbeddingReady ?? (() => true),
