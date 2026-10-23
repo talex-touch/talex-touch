@@ -168,6 +168,7 @@ overrides:
   devalue: 5.9.3
   diff@^4.0.0: 4.0.4
   diff@^8.0.0: 8.0.4
+  dompurify: 3.4.17
   esbuild: 0.28.1
   fast-uri: 3.1.7
   fast-xml-parser: 5.10.1
