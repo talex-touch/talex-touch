@@ -314,6 +314,9 @@ async function loadRequest(): Promise<void> {
   if (authParam.value)
     grantType.value = 'long'
   await Promise.all([loadInfo(), loadProfile()])
+  // The reads finish in either order, and the request can ask for a long grant this account is not offered.
+  if (!longTermAvailable.value)
+    grantType.value = 'short'
 }
 
 onMounted(async () => {
