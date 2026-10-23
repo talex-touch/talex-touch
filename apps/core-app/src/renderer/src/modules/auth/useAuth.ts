@@ -164,6 +164,11 @@ function resolveAuthUiMessage(key: string, fallback: string): string {
   return typeof translated === 'string' && translated !== key ? translated : fallback
 }
 
+// resolveAuthErrorMessage always passes its own message as the fallback.
+function translateAuthError(key: string, fallback?: string | Record<string, unknown>): string {
+  return resolveAuthUiMessage(key, typeof fallback === 'string' ? fallback : key)
+}
+
 function syncSentryUser(nextUser: AuthUser | null): void {
   void (async () => {
     try {
@@ -340,7 +345,7 @@ async function initializeAuth() {
   } catch (error) {
     updateAuthState(null)
     isInitialized = true
-    const errorMessage = resolveAuthErrorMessage(error, 'INITIALIZATION_FAILED')
+    const errorMessage = resolveAuthErrorMessage(error, 'INITIALIZATION_FAILED', translateAuthError)
     toast.error(errorMessage)
   }
 }
@@ -427,7 +432,7 @@ async function loginWithBrowser(mode: 'sign-in' | 'sign-up' = 'sign-in'): Promis
         clearBrowserLoginLoading()
         authLoadingState.loginStage = 'failed'
         authLoadingState.loginProgress = 0
-        toast.error(resolveAuthErrorMessage(err, 'BROWSER_OPEN_FAILED'))
+        toast.error(resolveAuthErrorMessage(err, 'BROWSER_OPEN_FAILED', translateAuthError))
         resolve({ success: false, error: err })
       })
   })
@@ -458,7 +463,7 @@ async function logout(): Promise<void> {
     }
     toast.success(resolveAuthUiMessage('settingUser.logoutSuccess', 'Signed out'))
   } catch (error) {
-    const errorMessage = resolveAuthErrorMessage(error, 'SIGN_OUT_FAILED')
+    const errorMessage = resolveAuthErrorMessage(error, 'SIGN_OUT_FAILED', translateAuthError)
     toast.error(errorMessage)
   }
 }
@@ -474,7 +479,7 @@ async function handleExternalAuthCallback(
   try {
     if (!resolvedToken) {
       const error = new Error('Missing token')
-      toast.error(resolveAuthErrorMessage(error, 'AUTH_ERROR'))
+      toast.error(resolveAuthErrorMessage(error, 'AUTH_ERROR', translateAuthError))
       if (pendingBrowserLogin.value) {
         resolvePendingBrowserLogin({ success: false, error })
       }
@@ -509,7 +514,7 @@ async function handleExternalAuthCallback(
     authLoadingState.loginProgress = 100
     toast.success(resolveAuthUiMessage('settingUser.loginSuccessToast', 'Signed in'))
   } catch (error) {
-    const errorMessage = resolveAuthErrorMessage(error, 'AUTH_ERROR')
+    const errorMessage = resolveAuthErrorMessage(error, 'AUTH_ERROR', translateAuthError)
     toast.error(errorMessage)
 
     if (pendingBrowserLogin.value) {
@@ -627,7 +632,7 @@ function createBrowserLoginTimeout(
       window.clearInterval(pendingBrowserLogin.value.countdownId)
       clearTimeout(pendingBrowserLogin.value.timeoutId)
       pendingBrowserLogin.value = null
-      toast.error(resolveAuthErrorMessage(error, 'LOGIN_TIMEOUT'))
+      toast.error(resolveAuthErrorMessage(error, 'LOGIN_TIMEOUT', translateAuthError))
       resolve({ success: false, error })
     }
   }, timeoutMs)
@@ -689,7 +694,7 @@ async function retryPendingBrowserLogin(): Promise<void> {
         : resolveAuthUiMessage('settingUser.loginPageReopenedToast', 'Sign-in page reopened.')
     )
   } catch (error) {
-    const errorMessage = resolveAuthErrorMessage(error, 'BROWSER_OPEN_FAILED')
+    const errorMessage = resolveAuthErrorMessage(error, 'BROWSER_OPEN_FAILED', translateAuthError)
     authLoadingState.loginStage = 'failed'
     authLoadingState.isLoggingIn = false
     authLoadingState.loginProgress = 0
