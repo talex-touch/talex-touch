@@ -1,11 +1,13 @@
 import { createClient, type Client, type Value } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import type { SQL } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { fileExtensions, files } from '../../../db/schema'
 import { SearchIndexService, type SearchIndexReadExecutor } from './search-index-service'
 
 const PROVIDER = 'read-worker-parity'
@@ -84,9 +86,12 @@ async function withIsolatedIndex(
         'Test Doc',
         '.txt',
         1234,
-        1700000000000,
-        1700000000000,
-        1700000000000,
+        // mtime, ctime, last_indexed_at: whole seconds, as drizzle's `mode: 'timestamp'` stores
+        // them. These were once milliseconds, which made a hydration that skipped the * 1000 look
+        // right here while it dated every real row January 1970.
+        1700000000,
+        1690000000,
+        1710000000,
         0,
         'file',
         'content',
@@ -315,7 +320,20 @@ describe('SearchIndexService read executor parity', () => {
   })
 
   it('hydrates file candidates through the isolated reader executor off the main thread', async () => {
-    await withIsolatedIndex(async ({ reader, reads }) => {
+    await withIsolatedIndex(async ({ reader, readerClient, reads }) => {
+      // What FileProvider falls back to when the worker read fails: drizzle's own select, which
+      // maps the timestamp columns itself. Scoring and the asset checks must get the same row.
+      const fallback = await drizzle(readerClient)
+        .select({
+          file: files,
+          extensionKey: fileExtensions.key,
+          extensionValue: fileExtensions.value
+        })
+        .from(files)
+        .leftJoin(fileExtensions, eq(files.id, fileExtensions.fileId))
+        .where(eq(files.id, 1))
+      expect(fallback[0]?.file.mtime.toISOString()).toBe('2023-11-14T22:13:20.000Z')
+
       reads.length = 0
       const loaded = await reader.loadFileCandidatesByPaths(['/tmp/test.txt'])
       expect(loaded).toHaveLength(1)
@@ -327,12 +345,14 @@ describe('SearchIndexService read executor parity', () => {
       expect(reads).toHaveLength(1)
       expect(reads[0]?.sql).toContain('FROM files f')
       expect(reads[0]?.sql).toContain('LEFT JOIN file_extensions fe')
+      expect(loaded).toEqual(fallback)
 
       reads.length = 0
       const byIds = await reader.loadFileCandidatesByIds([1])
       expect(byIds).toHaveLength(1)
       expect(byIds[0]?.file.id).toBe(1)
       expect(reads).toHaveLength(1)
+      expect(byIds).toEqual(fallback)
     })
   })
 })

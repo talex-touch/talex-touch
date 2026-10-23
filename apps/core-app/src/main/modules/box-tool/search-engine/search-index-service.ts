@@ -146,6 +146,17 @@ export type FileEnrichmentPageRow = Pick<
   'id' | 'path' | 'name' | 'displayName' | 'extension' | 'size' | 'mtime' | 'ctime'
 >
 
+/**
+ * A `files` timestamp from a raw read. `mtime`, `ctime` and `last_indexed_at` are drizzle
+ * `mode: 'timestamp'` columns, stored as whole seconds; drizzle's own select multiplies them out,
+ * so a raw read has to as well. Candidate hydration read them as milliseconds from 2026-10-13 to
+ * 2026-10-22: every row it loaded was dated January 1970, scored 0 for recency, and found the icon
+ * and thumbnail metadata written from the real dates stale.
+ */
+function fileTimestampFromSeconds(value: number | string | null | undefined): Date {
+  return new Date(Number(value || 0) * 1000)
+}
+
 interface PreparedIndexDocument extends SearchIndexDocument {
   keywordEntries: SearchIndexKeyword[]
 }
@@ -1133,9 +1144,9 @@ export class SearchIndexService {
         displayName: row.displayName ?? null,
         extension: row.extension ?? null,
         size: row.size ?? null,
-        mtime: new Date(row.mtime || 0),
-        ctime: new Date(row.ctime || 0),
-        lastIndexedAt: new Date(row.lastIndexedAt || 0),
+        mtime: fileTimestampFromSeconds(row.mtime),
+        ctime: fileTimestampFromSeconds(row.ctime),
+        lastIndexedAt: fileTimestampFromSeconds(row.lastIndexedAt),
         isDir: Boolean(row.isDir),
         type: row.type,
         content: row.content ?? null,
@@ -1211,9 +1222,9 @@ export class SearchIndexService {
         displayName: row.displayName ?? null,
         extension: row.extension ?? null,
         size: row.size ?? null,
-        mtime: new Date(row.mtime || 0),
-        ctime: new Date(row.ctime || 0),
-        lastIndexedAt: new Date(row.lastIndexedAt || 0),
+        mtime: fileTimestampFromSeconds(row.mtime),
+        ctime: fileTimestampFromSeconds(row.ctime),
+        lastIndexedAt: fileTimestampFromSeconds(row.lastIndexedAt),
         isDir: Boolean(row.isDir),
         type: row.type,
         content: row.content ?? null,
@@ -1267,7 +1278,6 @@ export class SearchIndexService {
       signal
     )
     signal?.throwIfAborted()
-    // Both columns are drizzle `mode: 'timestamp'`: whole seconds, which its select multiplied out.
     return rows.map((row) => ({
       id: row.id,
       path: row.path,
@@ -1275,8 +1285,8 @@ export class SearchIndexService {
       displayName: row.displayName ?? null,
       extension: row.extension ?? null,
       size: row.size ?? null,
-      mtime: new Date(row.mtime * 1000),
-      ctime: new Date(row.ctime * 1000)
+      mtime: fileTimestampFromSeconds(row.mtime),
+      ctime: fileTimestampFromSeconds(row.ctime)
     }))
   }
 

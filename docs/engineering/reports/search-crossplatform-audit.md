@@ -130,6 +130,16 @@
     - `keyword_mappings` 从 1,744,882 行增到 2,601,671 行（+49%），其中 `ng:` 行从 700,951 增到 1,440,924（+106%）；没有条目触及每条 256 的上限。
     - 现库这张表连同 5 个索引共 895.9 MB，约 536 B/行，所以增量约 +0.45 GB；`ng:` 行的关键词较短，实际会略低。
     - `SEARCH_KEYWORD_SCHEMA_VERSION` 升到 3 后，`FileProviderKeywordBackfillService` 会在升级后把全部文件条目的关键词重写一遍。
+
+- [x] **B10 — 读 worker 加载的文件候选行，时间戳全落在 1970 年** ✅ 已修（2026-10-22）
+  - 位置：`search-engine/search-index-service.ts` 的 `loadFileCandidatesByPaths` / `loadFileCandidatesByIds`。`101424b2e`（2026-10-13）把候选行读取交给读 worker 时引入。
+  - 根因：`files.mtime` / `ctime` / `last_indexed_at` 是 drizzle `mode: 'timestamp'` 列，库里存整秒；drizzle 自己的 select 会乘 1000，原始 SQL 读回的却是秒，被直接当毫秒交给了 `new Date()`。对应回归测试种的是毫秒值（`1700000000000`），所以缺陷在测试里看起来正常。
+  - 影响（dev 库 APFS 克隆，固定抽样 252 / 259 行）：
+    1. 文本搜索与语义召回经 worker 加载的每一行都和 drizzle 回退路径不同，而且只差这三个时间戳：worker 给 `1970-01-21`，回退给真实日期。
+    2. 文本搜索打分里 0.05 权重的 `lastModifiedScore` 恒为 0；结果的 `meta.file.modified_at` / `created_at` 也是错的。
+    3. 图标缓存按 `mtime` 判新鲜度。文本搜索（worker 读）与按扩展名列出的结果（drizzle 读）拿到的 `mtime` 不同，同一个文件会在两种形式之间来回判过期、重新提取。库里 5,413 条 `iconMeta` 中有 1,839 条写成了秒值形式，约三分之一。`thumbnailStatus` 未受影响：带 `mtime` 的 155 条都是毫秒。
+  - 修复：三列统一经 `fileTimestampFromSeconds()` 换算，enrichment-resume 分页也用它。写成秒值的 `iconMeta` 会在下次展示时再判一次过期，重新提取后就稳定了，不需要迁移。
+  - 验证：`search-index-service.read-executor.test.ts` 改用整秒种子，并断言两种候选读取与 drizzle 回退逐字段相等；换回旧换算，该例失败。真实克隆上，修后 252 / 259 行与回退路径完全一致。
 ### 🟠 高危工程风险
 
 - [ ] **R1 — 原生截图发布资源已接入，签名包截图运行验收仍开放**（2026-09-27 发布路径修复；2026-10-18 官方包资源复核）
