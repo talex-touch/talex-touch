@@ -60,15 +60,10 @@ useSeoMeta({
   description: computed(() => t('auth.signInDescription', 'Sign in to Tuff to manage devices, plugins, and updates.')),
 })
 
-const isCallbackBlocking = computed(() => step.value === 'oauth' && authLoading.value)
-
 </script>
 
 <template>
-  <AuthVisualShell
-    :loading="authLoading"
-    :block-text="isCallbackBlocking ? t('auth.sessionBlocking', '正在处理登录，请稍候...') : ''"
-  >
+  <AuthVisualShell :loading="authLoading">
     <template #header>
       <AuthTopbar
         :back-label="t('auth.backToPrevious', '返回上一页')"
@@ -178,6 +173,10 @@ const isCallbackBlocking = computed(() => step.value === 'oauth' && authLoading.
   gap: 18px;
   text-align: center;
   margin-bottom: 4rem;
+  /* Anchored where the email step sits when centred. A centred shell moved the logo and title
+     on every step change, as the step below grew or shrank. */
+  align-self: flex-start;
+  margin-top: max(0px, calc(50vh - 370px));
 }
 
 .auth-header {

@@ -213,14 +213,44 @@ function isSameOriginUrl(value: string) {
   return parsed.origin === window.location.origin
 }
 
-export async function requestOauthAuthorizationUrl(input: RequestOauthAuthorizationInput) {
+// A provider button makes two requests in a row: the CSRF token, then the sign-in POST. Each is a
+// full round trip, seconds from mainland China, so the sign-in page fetches the token before the
+// click and the click only waits for the POST. One prefetch serves one click; a retry fetches its own.
+let prefetchedCsrfToken: Promise<string> | null = null
+
+async function fetchCsrfToken() {
   const csrfData = await requestJson<{ csrfToken?: string }>('/api/auth/csrf', {
     credentials: 'include',
   })
   const csrfToken = csrfData?.csrfToken
   if (!csrfToken)
     throw new Error('oauth_csrf_unavailable')
+  return csrfToken
+}
 
+export function prefetchOauthCsrfToken() {
+  const request = fetchCsrfToken()
+  // A failed prefetch only costs the click its head start: the click fetches the token itself.
+  request.catch(() => {
+    if (prefetchedCsrfToken === request)
+      prefetchedCsrfToken = null
+  })
+  prefetchedCsrfToken = request
+}
+
+function takeCsrfToken() {
+  const prefetched = prefetchedCsrfToken
+  prefetchedCsrfToken = null
+  return prefetched ? prefetched.catch(() => fetchCsrfToken()) : fetchCsrfToken()
+}
+
+/** Auth.js answers a sign-in POST whose CSRF token it no longer accepts with this page. */
+function isCsrfRejectedUrl(value: string) {
+  const parsed = parseUrlLike(value)
+  return Boolean(parsed && parsed.pathname === '/api/auth/signin' && parsed.searchParams.get('csrf') === 'true')
+}
+
+async function postOauthSignIn(input: RequestOauthAuthorizationInput, csrfToken: string) {
   const body = new URLSearchParams({
     csrfToken,
     callbackUrl: input.callbackUrl,
@@ -236,7 +266,14 @@ export async function requestOauthAuthorizationUrl(input: RequestOauthAuthorizat
     body: body.toString(),
   })
 
-  const redirectUrl = typeof response?.url === 'string' ? response.url.trim() : ''
+  return typeof response?.url === 'string' ? response.url.trim() : ''
+}
+
+export async function requestOauthAuthorizationUrl(input: RequestOauthAuthorizationInput) {
+  let redirectUrl = await postOauthSignIn(input, await takeCsrfToken())
+  // A prefetched token can go stale before the click (its cookie was replaced); fetch a fresh one once.
+  if (isCsrfRejectedUrl(redirectUrl))
+    redirectUrl = await postOauthSignIn(input, await fetchCsrfToken())
   if (!redirectUrl)
     throw new Error('oauth_redirect_missing')
 

@@ -3,6 +3,7 @@ import { TxButton } from '@talex-touch/tuffex/button'
 import { TxSpinner } from '@talex-touch/tuffex/spinner'
 import { hasNavigator } from '@talex-touch/utils/env'
 import { fetchCurrentUserProfile } from '~/composables/useCurrentUserApi'
+import { clearOauthContext } from '~/composables/useOauthContext'
 import { requestJson } from '~/utils/request'
 
 definePageMeta({
@@ -14,7 +15,7 @@ defineI18nRoute(false)
 const { t } = useI18n()
 const route = useRoute()
 
-const pageTitle = computed(() => t('auth.deviceAuthTitle', 'Authorize device'))
+const pageTitle = computed(() => t('auth.deviceAuthTitle', '确认设备登录'))
 useSeoMeta({
   title: pageTitle,
   ogTitle: pageTitle,
@@ -55,9 +56,12 @@ const longTermReasonText = computed(() => {
 })
 const autoCloseRequested = ref(false)
 const reauthRedirecting = ref(false)
-const longTermOptionEnabled = computed(() => longTermAvailable.value && longTermAllowed.value)
-const reauthRequired = computed(() => grantType.value === 'long' && longTermOptionEnabled.value)
 const reauthReady = computed(() => route.query.reauth === '1')
+// The server allows a long-lived grant within 10 minutes of a sign-in. Past that it asks for one, offered once so
+// that a sign-in which still comes back stale falls back to the short grant instead of looping.
+const longTermNeedsReauth = computed(() => longTermReason.value === 'session_window' && !reauthReady.value)
+const longTermOptionEnabled = computed(() => longTermAvailable.value && (longTermAllowed.value || longTermNeedsReauth.value))
+const reauthRequired = computed(() => grantType.value === 'long' && longTermNeedsReauth.value)
 const authParam = computed(() => route.query.auth === 'long')
 let presenceHeartbeatTimer: ReturnType<typeof setInterval> | null = null
 
@@ -84,7 +88,7 @@ function buildRedirectUrl(target: 'long'): string {
 async function requestReauth(): Promise<void> {
   reauthRedirecting.value = true
   stopPresenceHeartbeat()
-  await reportPresence('heartbeat')
+  void reportPresence('heartbeat')
   await navigateTo({
     path: '/sign-in',
     query: {
@@ -142,9 +146,10 @@ async function reportPresence(state: 'opened' | 'heartbeat' | 'closed', keepaliv
   }
 }
 
-async function startPresenceHeartbeat(): Promise<void> {
-  await reportPresence('opened')
+// Presence only tells the app the page is open; nothing on this page waits for it.
+function startPresenceHeartbeat(): void {
   stopPresenceHeartbeat()
+  void reportPresence('opened')
   presenceHeartbeatTimer = setInterval(() => {
     void reportPresence('heartbeat')
   }, 5000)
@@ -251,7 +256,7 @@ async function loadInfo() {
       grantType.value = 'long'
     longTermAllowed.value = info?.longTermAllowed ?? true
     longTermReason.value = info?.longTermReason ?? null
-    if (!longTermAllowed.value) {
+    if (!longTermAllowed.value && !longTermNeedsReauth.value) {
       grantType.value = 'short'
     }
     state.value = 'ready'
@@ -265,7 +270,7 @@ async function loadInfo() {
 async function approve() {
   if (state.value !== 'ready')
     return
-  if (reauthRequired.value && !reauthReady.value) {
+  if (reauthRequired.value) {
     await requestReauth()
     return
   }
@@ -303,10 +308,12 @@ async function cancel() {
 }
 
 onMounted(async () => {
+  // A desktop OAuth sign-in returns here directly, past the sign-in page that would clear its context.
+  clearOauthContext()
   window.addEventListener('beforeunload', handleBeforeUnload)
   const ok = await ensureSession()
   if (ok) {
-    await startPresenceHeartbeat()
+    startPresenceHeartbeat()
     if (authParam.value)
       grantType.value = 'long'
     await Promise.all([loadInfo(), loadProfile()])
@@ -317,8 +324,13 @@ watch(
   () => status.value,
   async (value) => {
     if (value === 'authenticated') {
-      await startPresenceHeartbeat()
+      startPresenceHeartbeat()
       await Promise.all([loadInfo(), loadProfile()])
+    }
+    // The session was still loading on mount. Without one the page would keep its spinner; an OAuth
+    // sign-in now lands here directly, so this is also where a sign-in whose session did not stick ends up.
+    else if (value === 'unauthenticated') {
+      await ensureSession()
     }
   },
 )
@@ -348,7 +360,7 @@ onUnmounted(() => {
       <div v-else-if="state === 'expired'" class="flex flex-col items-center gap-4">
         <span class="i-carbon-warning-filled text-4xl text-yellow-400" />
         <p class="text-base text-white/90">
-          {{ t('auth.oauthCancelled', '授权已过期，请返回 CLI 重新发起。') }}
+          {{ t('auth.deviceAuthExpired', '授权请求已过期，请回到 Tuff 或 CLI 重新发起登录。') }}
         </p>
       </div>
 
@@ -369,7 +381,7 @@ onUnmounted(() => {
       <div v-else-if="state === 'ready'" class="flex flex-col items-center gap-4">
         <span class="i-carbon-login text-4xl text-cyan-300" />
         <p class="text-base text-white/90">
-          {{ t('auth.oauthTitle', '正在连接第三方账号') }}
+          {{ pageTitle }}
         </p>
         <p class="text-sm text-white/65">
           {{ deviceName || t('auth.deviceUnknown', '未知设备') }}
@@ -398,15 +410,15 @@ onUnmounted(() => {
             {{ t('auth.deviceAuthLong', '长期授权') }}
           </TxButton>
         </div>
-        <p v-if="longTermOptionEnabled" class="text-xs text-white/60">
-          {{ t('auth.deviceAuthLongHint', '长期授权需要 Passkey 或 OAuth 二次验证') }}
+        <p v-if="longTermNeedsReauth && longTermAvailable" class="text-xs text-white/60">
+          {{ longTermReasonText }}
         </p>
-        <p v-else-if="longTermAvailable" class="text-xs text-yellow-200/90">
+        <p v-else-if="longTermAvailable && !longTermAllowed" class="text-xs text-yellow-200/90">
           {{ longTermReasonText }}
         </p>
         <div class="flex w-full gap-3">
           <TxButton variant="primary" size="lg" block @click="approve">
-            {{ reauthRequired && !reauthReady ? t('auth.deviceAuthVerify', '继续验证') : t('common.confirm', '确认') }}
+            {{ reauthRequired ? t('auth.deviceAuthVerify', '继续验证') : t('common.confirm', '确认') }}
           </TxButton>
           <TxButton variant="ghost" size="lg" block @click="cancel">
             {{ t('common.cancel', '取消') }}
