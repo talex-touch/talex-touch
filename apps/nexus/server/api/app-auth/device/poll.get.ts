@@ -1,6 +1,7 @@
 import { createError, getQuery } from 'h3'
 import { createAppTokenPair } from '../../../utils/auth'
-import { deleteDeviceAuthRequest, getDeviceAuthByDeviceCode, isDeviceAuthExpired, logLoginAttempt } from '../../../utils/authStore'
+import { deleteDeviceAuthRequest, getDeviceAuthByDeviceCode, getUserById, isDeviceAuthExpired, logLoginAttempt } from '../../../utils/authStore'
+import { normalizeLocaleCode } from '../../../utils/locale'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -69,8 +70,8 @@ export default defineEventHandler(async (event) => {
       reactivateRevoked: true,
     },
   })
-  // Independent writes: one round trip of latency instead of two.
-  await Promise.all([
+  // Independent statements: one round trip of latency instead of three.
+  const [, , user] = await Promise.all([
     logLoginAttempt(event, {
       userId: request.userId,
       deviceId: request.deviceId,
@@ -79,11 +80,25 @@ export default defineEventHandler(async (event) => {
       clientType,
     }),
     deleteDeviceAuthRequest(event, deviceCode),
+    getUserById(event, request.userId),
   ])
   return {
     status: 'approved',
     ...tokens,
     grantType: request.grantType,
     refreshable: true,
+    // The same profile `/api/v1/auth/me` returns, so the app can sign in without another round trip.
+    // Null when the account is not active; the app then asks `/me`, which refuses it.
+    user: user?.status === 'active'
+      ? {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          role: user.role,
+          locale: normalizeLocaleCode(user.locale),
+          emailVerified: Boolean(user.emailVerified),
+        }
+      : null,
   }
 })
