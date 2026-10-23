@@ -65,6 +65,9 @@ export class FileParserRegistry {
       allParsers.push(...wildcard)
     }
 
+    // A skip lets the next parser try. When none does better, the first skip is the answer: it says
+    // why the file was passed over, where `null` would claim no parser applied to it at all.
+    let skipped: FileParserResult | null = null
     for (const parser of allParsers) {
       if (parser.canParse && !(await parser.canParse(context))) {
         continue
@@ -77,6 +80,7 @@ export class FileParserRegistry {
         if (result.status !== 'skipped') {
           return result
         }
+        skipped ??= result
       }
       catch (error) {
         console.error(`[FileParserRegistry] Parser ${parser.id} failed:`, error)
@@ -87,7 +91,7 @@ export class FileParserRegistry {
       }
     }
 
-    return null
+    return skipped
   }
 }
 
