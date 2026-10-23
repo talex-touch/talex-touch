@@ -147,7 +147,8 @@ describe('browser session token authentication', () => {
       userId: '  direct-user  ',
       sub: 'subject-user',
       email: 'email-user@example.test',
-      iat: 1700000123,
+      iat: 1700000999,
+      authTime: 1700000123,
     })
     const event = createEvent(
       { AUTH_SECRET: 'binding-session-secret-123456789' },
@@ -160,7 +161,7 @@ describe('browser session token authentication', () => {
       deviceId: 'device-1',
       authSource: 'session',
       tokenGrantType: null,
-      sessionIssuedAt: 1700000123,
+      sessionAuthenticatedAt: 1700000123,
       user: users.get('direct-user'),
     })
 
@@ -187,7 +188,7 @@ describe('browser session token authentication', () => {
     await expect(requireSessionAuth(createEvent({}, { 'x-forwarded-proto': 'https' }))).resolves.toMatchObject({
       userId: 'subject-user',
       authSource: 'session',
-      sessionIssuedAt: null,
+      sessionAuthenticatedAt: null,
     })
     expect(deviceRegistrations).toEqual([{ userId: 'subject-user', deviceId: 'device-1' }])
   })

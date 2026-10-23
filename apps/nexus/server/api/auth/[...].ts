@@ -675,6 +675,9 @@ export function getAuthOptions(authSecret: string): AuthOptions {
       async jwt({ token, user }: { token: JWT; user?: User | null }) {
         if (user) {
           token.userId = (user as { id?: string }).id
+          // `user` is only present at sign-in. `iat` cannot stand in for this: every session read re-signs the
+          // token and re-stamps it, so the long-term device grant would always see a "just signed in" session.
+          token.authTime = Math.floor(Date.now() / 1000)
         }
         if (!token.userId && typeof token.sub === 'string') {
           token.userId = token.sub

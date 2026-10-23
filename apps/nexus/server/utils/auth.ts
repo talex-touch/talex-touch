@@ -390,7 +390,8 @@ export interface AuthContext {
   deviceId?: string | null
   authSource: 'session' | 'app'
   tokenGrantType?: 'short' | 'long' | null
-  sessionIssuedAt?: number | null
+  /** When the browser session signed in (the `authTime` claim, seconds); null for tokens minted before it existed. */
+  sessionAuthenticatedAt?: number | null
   /**
    * The user row authentication already read, so a handler need not read it again. Optional only
    * because tests and older call sites build contexts by hand.
@@ -546,7 +547,7 @@ export async function requireSessionAuth(event: H3Event): Promise<AuthContext> {
 
 async function resolveSessionAuth(event: H3Event): Promise<AuthContext> {
   const token = await resolveBrowserSessionToken(event)
-  const sessionIssuedAt = typeof token?.iat === 'number' ? token.iat : null
+  const sessionAuthenticatedAt = typeof token?.authTime === 'number' ? token.authTime : null
   const directUserId = token
     ? readSessionTokenString(token, 'userId') || readSessionTokenString(token, 'sub')
     : ''
@@ -594,7 +595,7 @@ async function resolveSessionAuth(event: H3Event): Promise<AuthContext> {
     deviceId,
     authSource: 'session',
     tokenGrantType: null,
-    sessionIssuedAt,
+    sessionAuthenticatedAt,
     user,
   }
 }
