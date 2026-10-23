@@ -34,6 +34,7 @@ const GATES = {
   'build-allowlist': 'check-build-allowlist.mjs',
   'coreapp-ui-contract': 'check-coreapp-ui-contract.mjs',
   'doc-metadata': 'check-doc-metadata.mjs',
+  'drizzle-snapshot-drift': 'check-drizzle-snapshot-drift.mjs',
   'file-icon-guard': 'check-file-icon-guard.mjs',
   'module-size-ratchet': 'check-module-size-ratchet.mjs',
   'orphan-tests': 'check-orphan-tests.mjs',

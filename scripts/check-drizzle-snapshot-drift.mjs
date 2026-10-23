@@ -98,8 +98,16 @@ const META = path.join(REPO_ROOT, 'apps/core-app/resources/db/migrations/meta')
  * upgrade that adds nullable FTS rowid/document hashes and durable maintenance cursors to
  * both primary and search homes through their shared migration chain. This records only
  * that migration's known gap; it does not regenerate or repair historical snapshots.
+ *
+ * Raised 40 → 42 on 2026-10-22 for two hand-written migrations that reached master without
+ * raising it: `0054_app_foreground_activity` (2026-10-07), the table of each app's latest
+ * frontmost instant, and `0055_search_keyword_postings` (2026-10-21), the size-capped keyword
+ * postings and `search_index_meta.doc_id`. index.search-schema.test.ts takes a search home from
+ * the pre-0055 chain through 0055; 0054 is a plain CREATE IF NOT EXISTS with no dedicated chain
+ * test. This records those two known additions; it does not regenerate or repair historical
+ * snapshots.
  */
-export const KNOWN_MISSING_SNAPSHOTS = 40
+export const KNOWN_MISSING_SNAPSHOTS = 42
 
 export function snapshotGap(metaDir = META) {
   const journal = JSON.parse(readFileSync(path.join(metaDir, '_journal.json'), 'utf8'))

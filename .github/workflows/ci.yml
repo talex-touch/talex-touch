@@ -215,6 +215,14 @@ jobs:
       - name: Check module size ratchet
         run: pnpm check module-size-ratchet && pnpm check module-size-ratchet --self-test
 
+      # The drizzle snapshot ratchet (#1303) was a script only the maintenance audits ran, by
+      # hand. 0054 (2026-10-07) and 0055 (2026-10-21) each reached master without raising its pin,
+      # so it stood red there for two weeks and nothing noticed: a gate nobody runs never fails.
+      # It reads the migration journal and meta/ only. It has no --self-test form; the tests for
+      # its gap count run with the repo-root tooling tests below.
+      - name: Check drizzle snapshot ratchet
+        run: pnpm check drizzle-snapshot-drift
+
       # The renderer's legacy UI primitives are frozen: existing callers in LEGACY_ALLOWED stay,
       # new imports of them fail. The gate shipped unwired and importing `globby`, which no
       # manifest declares, so every invocation would have died on ERR_MODULE_NOT_FOUND -- it had
