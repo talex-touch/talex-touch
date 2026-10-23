@@ -78,7 +78,7 @@ describe('file parser consumer contracts', () => {
   it.each([
     { name: 'code', extension: '.ts', bytes: Buffer.from('const pets = true;'), parser: new CodeFileParser() },
     { name: 'PDF', extension: '.pdf', bytes: leasePdf(), parser: new PdfFileParser() },
-  ])('does not publish partial $name content after cancellation or output-budget failure', async ({ extension, bytes, parser }) => {
+  ])('does not publish partial $name content after cancellation and truncates at the output budget', async ({ extension, bytes, parser }) => {
     const filePath = await fixture(`cancelled${extension}`, bytes)
     const controller = new AbortController()
     const cancelled = await parser.parse({ filePath, extension, size: bytes.length, signal: controller.signal }, () => controller.abort())
@@ -86,9 +86,7 @@ describe('file parser consumer contracts', () => {
     expect(cancelled.content).toBeUndefined()
     expect(cancelled.chunks).toBeUndefined()
     const limited = await parser.parse({ filePath, extension, size: bytes.length, maxOutputBytes: 1 })
-    expect(limited.status).not.toBe('success')
-    expect(limited.content).toBeUndefined()
-    expect(limited.chunks).toBeUndefined()
+    expect(limited).toMatchObject({ status: 'success', truncated: true, content: '', chunks: [] })
   })
 
   it.each([

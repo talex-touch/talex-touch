@@ -76,15 +76,3 @@ export const TYPE_ALIAS_MAP: Record<string, FileTypeTag> = {
   文件夹: 'folder',
   目录: 'folder'
 }
-
-/**
- * File index status enumeration
- */
-export const FILE_INDEX_STATUS = {
-  PENDING: 'pending',
-  PROCESSING: 'processing',
-  COMPLETED: 'completed',
-  FAILED: 'failed'
-} as const
-
-export type FileIndexStatus = (typeof FILE_INDEX_STATUS)[keyof typeof FILE_INDEX_STATUS]

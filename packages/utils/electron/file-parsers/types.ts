@@ -5,9 +5,12 @@ export interface FileParserContext {
   extension: string
   size: number
   maxBytes?: number
-  /** Maximum combined UTF-8 bytes of returned content and chunk text (default: 8 MiB). */
+  /**
+   * Maximum combined UTF-8 bytes of returned content and chunk text (default: 8 MiB). Output past
+   * it is truncated, not failed: the result keeps the leading text that fits and sets `truncated`.
+   */
   maxOutputBytes?: number
-  /** Maximum number of returned chunks (default: 4096). */
+  /** Maximum number of returned chunks (default: 4096); reaching it truncates the same way. */
   maxChunks?: number
   metadata?: Record<string, any>
   signal?: AbortSignal
@@ -43,6 +46,12 @@ export interface FileParserResult {
   warnings?: string[]
   processedBytes?: number
   totalBytes?: number
+  /**
+   * Set on a `success` whose `content` and `chunks` cover only the start of the file because an
+   * output budget or a parser page limit was reached. They are an exact prefix of the untruncated
+   * output that never splits a surrogate pair; nothing after it is indexed.
+   */
+  truncated?: boolean
   reason?: string
   /**
    * Node errno code (`ENOENT`, `EACCES`, …) when a `failed` result came from a

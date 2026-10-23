@@ -847,7 +847,7 @@ per-page mutation lease is #1964's and appears here only as context.
 - `addon/files/services/file-provider-enrichment-resume-service.ts`;
   `addon/files/workers/file-index-worker.ts`, `index-worker-read-failure.ts` and
   `file-index-worker-client.ts`; `addon/files/services/file-provider-index-scheduler-service.ts`;
-  `FileProvider.publishCommittedWorkerRecords`; `FileParserResult.errorCode` in
+  `FileProvider.publishCommittedWorkerRecords`; `FileParserResult.errorCode` / `truncated` in
   `utils/electron/file-parsers`.
 - Why: each resume round published what it enriched (an index commit per flush), the lease-free
   publication's drain called `resume()` again, every round restarted at `files.id = 0`, and a failed
@@ -875,6 +875,7 @@ export const INDEX_WORKER_FAILURE_SAMPLE_LIMIT = 3 // each sample cut to 240 cha
 export function pushIndexWorkerFailureSample(samples: string[], lastError: string | null | undefined): void
 
 // FileParserResult.errorCode?: string; IndexWorkerBatchResult.failureSamples?: string[]
+// FileParserResult.truncated?: boolean; file_index_progress.status gains 'truncated'
 ```
 
 ### 3. Contracts
@@ -884,7 +885,7 @@ export function pushIndexWorkerFailureSample(samples: string[], lastError: strin
 - **Image completion belongs to the embedding transaction (2026-10-12).** The parser emits an image
   as `pending` until the local encoder commits its vector, file embedding state and completed
   progress together. Flush's final confirmation only persists original terminal worker outcomes
-  (`completed`, `skipped`, `failed`); it never replays an original `pending` / `processing` image
+  (`completed`, `truncated`, `skipped`, `failed`); it never replays an original `pending` / `processing` image
   after that transaction. Without this guard, completed images return to the recovery queue and
   repeatedly occupy the head of a partially admitted page. Failed or unavailable image encoding
   remains durably pending, not falsely completed.
@@ -933,6 +934,17 @@ enrichment recovery paused`), as do five consecutive iterations that admit nothi
   - Anything else → `failed`, counted. The batch's `done` message carries up to three samples, and
     `FileIndexWorkerBatchFailedError` adds them as `lastErrorSamples` to the `File index worker
 failed` warning.
+- **Output past the budget is truncated, not failed (2026-10-22).** The worker parses with
+  `maxOutputBytes: 200_000` (UTF-8 bytes of content and chunk text combined) and `maxChunks: 1024`.
+  Past either limit, or past the PDF page cap, the code and PDF parsers keep the leading text that
+  fits and set `FileParserResult.truncated`, as Elasticsearch's `indexed_chars` and Tika's write
+  limit do. The worker indexes that prefix and records `truncated` with `lastError: null`; content it
+  cuts at `MAX_CONTENT_LENGTH` is recorded the same way. `truncated` is terminal like `completed`:
+  flush confirms it, index stats count it as completed, and it is not counted in `failed` or
+  retried until a write marks the file pending again. The 1 MiB result budget stays as a backstop
+  (`result-too-large` → `failed`), which these limits keep out of reach. Code chunk overlap is at
+  most a quarter of the chunk and only covers lines the chunk was first to reach, so a line lands in
+  at most two chunks.
 - **Samples stay in the local log.** A sample is a raw errno message with an absolute path in it. It
   goes to `fileProviderLog.warn` only: never into transport payloads, dashboards,
   `operationalErrorService.report` context, Sentry or Nexus
@@ -950,6 +962,7 @@ failed` warning.
 | One page's chunk fails                 | The round continues; `failedPages` in the completion log                         |
 | ENOENT, ENOTDIR, EPERM, EACCES reads   | `skipped`; `failed: 0`; no `failureSamples`                                      |
 | Four EISDIR reads                      | `failed: 4`; exactly three samples                                               |
+| Code or PDF output past the budget     | `truncated`; `failed: 0`; the leading chunks and content are indexed             |
 | A flush of only missing files          | No `applyBatch`, no commit                                                       |
 
 ### 5. Good / Base / Bad Cases

@@ -894,6 +894,8 @@ export class SearchIndexService {
    * They used to be six queries on the main-thread connection, where the local libSQL binding runs
    * synchronously: 340ms of blocked event loop per diagnostics poll on a cold 7.6GB index. Every
    * subquery is a covering-index range, so the single round trip costs what the six did, off-thread.
+   * `completedFiles` includes `truncated`: those files are indexed as far as their output budget
+   * reached, which makes them done, not failed.
    */
   async readFileIndexStats(signal?: AbortSignal): Promise<FileIndexStats> {
     signal?.throwIfAborted()
@@ -905,7 +907,7 @@ export class SearchIndexService {
             (SELECT count(*) FROM file_index_progress WHERE status = 'failed') AS failedFiles,
             (SELECT count(*) FROM file_index_progress WHERE status = 'skipped') AS skippedFiles,
             (SELECT count(*) FROM file_index_progress
-              WHERE status = 'completed') AS completedFiles,
+              WHERE status IN ('completed', 'truncated')) AS completedFiles,
             (SELECT count(*) FROM files
               WHERE type = 'file' AND embedding_status = 'completed') AS embeddingCompletedFiles,
             (SELECT count(*) FROM embeddings WHERE source_type = 'file') AS embeddingRows`,

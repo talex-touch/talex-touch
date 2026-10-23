@@ -103,40 +103,56 @@ export class CodeFileParser implements FileParser {
         throw parserError('file-changed-during-read', 'FILE_CHANGED')
       }
       const content = buffer.toString('utf8', 0, processedBytes)
-      let outputBytes = Buffer.byteLength(content, 'utf8')
-      if (outputBytes > maxOutputBytes) throw parserError('output-too-large', 'FILE_OUTPUT_LIMIT')
-      // A newline-dense file must not allocate millions of line entries before
-      // the chunk cap can reject it. Even without overlap, this many lines
-      // cannot fit in the allowed number of 40-line chunks.
+      // A newline-dense file must not allocate millions of line entries: no more
+      // lines than this fit in the allowed number of 40-line chunks.
       const maxLines = CHUNK_LINE_SIZE * maxChunks
       const lines = content.split(/\r\n|\r|\n/, maxLines + 1)
-      if (lines.length > maxLines) throw parserError('output-too-large', 'FILE_OUTPUT_LIMIT')
+      const lineEnd = (offset: number): number =>
+        content.startsWith('\r\n', offset) ? offset + 2 : offset < content.length ? offset + 1 : offset
       const chunks: FileParserChunk[] = []
 
-      const addChunk = (text: string, startLine: number, endLine: number): void => {
-        outputBytes += Buffer.byteLength(text, 'utf8')
-        if (outputBytes > maxOutputBytes || chunks.length >= maxChunks) {
-          throw parserError('output-too-large', 'FILE_OUTPUT_LIMIT')
-        }
+      // Past either budget the file is truncated, not failed, as Elasticsearch's
+      // `indexed_chars` and Tika's write limit do: `content` ends where the last
+      // kept chunk does, and `outputBytes` counts it together with all chunk text.
+      let outputBytes = 0
+      let keptOffset = 0
+      let keptLines = 0
+      const keep = (text: string, startLine: number, endLine: number, grownBytes: number): boolean => {
+        const bytes = Buffer.byteLength(text, 'utf8') + grownBytes
+        if (chunks.length >= maxChunks || outputBytes + bytes > maxOutputBytes) return false
+        outputBytes += bytes
         chunks.push({ text, startLine, endLine })
+        return true
       }
 
       let currentLine = 0
+      let previousEnd = 0
       while (currentLine < lines.length) {
         signal?.throwIfAborted()
         // Long generated/minified lines remain bounded, but every piece retains its actual line.
         const line = lines[currentLine]!
         if (line.length > CHUNK_CHAR_SIZE) {
+          const lineStart = keptOffset
+          let stopped = false
           let offset = 0
           while (offset < line.length) {
             signal?.throwIfAborted()
             let end = Math.min(offset + CHUNK_CHAR_SIZE, line.length)
             if (end < line.length && /[\uD800-\uDBFF]/.test(line[end - 1]!)) end--
-            addChunk(line.slice(offset, end), currentLine + 1, currentLine + 1)
+            const piece = line.slice(offset, end)
+            const pieceEnd = end < line.length ? lineStart + end : lineEnd(lineStart + end)
+            const grownBytes = Buffer.byteLength(piece, 'utf8') + pieceEnd - (lineStart + end)
+            if (!keep(piece, currentLine + 1, currentLine + 1, grownBytes)) {
+              stopped = true
+              break
+            }
+            keptOffset = pieceEnd
             offset = end
             if (chunks.length % 64 === 0) await setImmediate()
           }
-          currentLine++
+          if (stopped) break
+          keptLines = ++currentLine
+          previousEnd = currentLine
           continue
         }
 
@@ -148,19 +164,46 @@ export class CodeFileParser implements FileParser {
           length += nextLength
           endLine++
         }
-        addChunk(lines.slice(currentLine, endLine).join('\n'), currentLine + 1, endLine)
+        // Only lines no earlier chunk reached grow the kept content.
+        let nextOffset = keptOffset
+        let grownBytes = 0
+        for (let index = keptLines; index < endLine; index++) {
+          const textEnd = nextOffset + lines[index]!.length
+          nextOffset = lineEnd(textEnd)
+          grownBytes += Buffer.byteLength(lines[index]!, 'utf8') + nextOffset - textEnd
+        }
+        if (!keep(lines.slice(currentLine, endLine).join('\n'), currentLine + 1, endLine, grownBytes)) break
+        keptOffset = nextOffset
+        keptLines = endLine
         if (endLine === lines.length) break
-        const count = endLine - currentLine
-        currentLine = endLine - Math.min(CHUNK_LINE_OVERLAP, Math.max(0, count - 1))
+        // The overlap repeats at most a quarter of this chunk, and only lines this
+        // chunk was first to reach, so no line lands in more than two chunks. It
+        // shrinks until the next line still fits, so every chunk adds a line.
+        const overlapLimit = Math.min(
+          CHUNK_LINE_OVERLAP,
+          Math.floor((endLine - currentLine) / 4),
+          endLine - previousEnd,
+        )
+        let overlap = 0
+        let nextLength = lines[endLine]!.length
+        while (overlap < overlapLimit) {
+          nextLength += lines[endLine - overlap - 1]!.length + 1
+          if (nextLength > CHUNK_CHAR_SIZE) break
+          overlap++
+        }
+        previousEnd = endLine
+        currentLine = endLine - overlap
         if (chunks.length % 64 === 0) await setImmediate()
       }
       signal?.throwIfAborted()
+      const truncated = keptOffset < content.length
       return {
         status: 'success',
-        content,
+        content: truncated ? content.slice(0, keptOffset) : content,
         chunks,
+        ...(truncated ? { truncated } : {}),
         metadata: {
-          lineCount: lines.length,
+          lineCount: truncated ? keptLines : lines.length,
           chunkCount: chunks.length,
           basename: path.basename(filePath),
         },

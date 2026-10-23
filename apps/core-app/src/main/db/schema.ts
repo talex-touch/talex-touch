@@ -232,7 +232,7 @@ export const fileIndexProgress = sqliteTable(
       .notNull()
       .references(() => files.id, { onDelete: 'cascade' }),
     status: text('status', {
-      enum: ['pending', 'processing', 'completed', 'skipped', 'failed']
+      enum: ['pending', 'processing', 'completed', 'truncated', 'skipped', 'failed']
     })
       .notNull()
       .default('pending'),

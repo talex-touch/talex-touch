@@ -77,7 +77,7 @@ interface IndexErrorMessage {
 }
 
 interface IndexProgressUpdate {
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped'
+  status: 'pending' | 'processing' | 'completed' | 'truncated' | 'failed' | 'skipped'
   progress: number
   processedBytes: number | null
   totalBytes: number | null
@@ -366,10 +366,15 @@ async function handleIndexTask(
 
     if (result.status === 'success') {
       const rawContent = result.content ?? ''
-      const trimmedContent =
-        rawContent.length > MAX_CONTENT_LENGTH
-          ? `${rawContent.slice(0, MAX_CONTENT_LENGTH)}\n...[truncated]`
-          : rawContent
+      // A plain prefix that never splits a surrogate pair. The `truncated` status below records the
+      // cut, so no marker text is written into the content that gets indexed and matched.
+      let keptLength = Math.min(rawContent.length, MAX_CONTENT_LENGTH)
+      if (keptLength < rawContent.length && /[\uD800-\uDBFF]/.test(rawContent[keptLength - 1]!))
+        keptLength--
+      const trimmedContent = rawContent.slice(0, keptLength)
+      // Content a parser cut at its output budget, or cut here, is indexed as far as it goes and
+      // recorded as `truncated`: terminal like `completed`, never counted or retried as a failure.
+      const truncated = result.truncated === true || trimmedContent !== rawContent
       const embeddingStatus =
         result.embeddings && result.embeddings.length > 0 ? 'completed' : 'pending'
       const contentHash = buildContentHash(rawContent)
@@ -380,7 +385,7 @@ async function handleIndexTask(
         fileVersion: version.mtime,
         fileSize: version.size,
         progress: {
-          status: 'completed',
+          status: truncated ? 'truncated' : 'completed',
           progress: 100,
           processedBytes,
           totalBytes,

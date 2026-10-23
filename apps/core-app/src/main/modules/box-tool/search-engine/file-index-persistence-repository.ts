@@ -610,6 +610,7 @@ export class SqliteFileIndexPersistenceRepository implements FileIndexPersistenc
                   | 'pending'
                   | 'processing'
                   | 'completed'
+                  | 'truncated'
                   | 'skipped'
                   | 'failed',
                 progress: progress.progress,

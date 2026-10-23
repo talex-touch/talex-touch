@@ -13,7 +13,7 @@ import { trackWorkerThread } from '../../../../../core/worker-thread-registry'
 import { FILE_WORKER_IDLE_SHUTDOWN_MS, IdleWorkerShutdownController } from './idle-worker-shutdown'
 
 export interface IndexWorkerProgressUpdate {
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped'
+  status: 'pending' | 'processing' | 'completed' | 'truncated' | 'failed' | 'skipped'
   progress: number
   processedBytes: number | null
   totalBytes: number | null

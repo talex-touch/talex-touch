@@ -200,6 +200,7 @@ export class FileProviderIndexFlushExecutorService {
               (entry) =>
                 !skippedFileIds.has(entry.fileId) &&
                 (entry.progress.status === 'completed' ||
+                  entry.progress.status === 'truncated' ||
                   entry.progress.status === 'skipped' ||
                   entry.progress.status === 'failed')
             )

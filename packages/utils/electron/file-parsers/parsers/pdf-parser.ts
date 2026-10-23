@@ -28,6 +28,7 @@ const path = require('node:path');
 function fail(reason, code) {
   throw Object.assign(new Error(reason), { code });
 }
+const OUTPUT_LIMIT = Symbol('output-limit');
 
 (async () => {
   let handle;
@@ -80,11 +81,14 @@ function fail(reason, code) {
       verbosity: 0,
     });
     const document = await loadingTask.promise;
-    if (document.numPages > workerData.maxPages) fail('pdf-page-limit', 'PDF_PAGE_LIMIT');
+    // Like the output budget below, the page cap truncates the document rather
+    // than failing it.
+    const pageCount = Math.min(document.numPages, workerData.maxPages);
     const chunks = [];
     const pages = [];
     let outputBytes = 0;
     let emptyPages = 0;
+    let stopped = false;
     let part = '';
     let pageParts = [];
     function append(text, pageNumber) {
@@ -97,10 +101,14 @@ function fail(reason, code) {
           continue;
         }
         const piece = text.slice(offset, end);
-        // Returned content and chunks both retain text. Reserve both copies,
-        // plus page separators, before retaining decompressed text.
-        outputBytes += 2 * Buffer.byteLength(piece, 'utf8');
-        if (outputBytes > workerData.maxOutputBytes) fail('output-too-large', 'FILE_OUTPUT_LIMIT');
+        // Returned content and chunks both retain text. Reserve both copies, plus
+        // the separator before a later page's first text, before retaining
+        // decompressed text; past the budget the document is truncated here.
+        const bytes = 2 * Buffer.byteLength(piece, 'utf8') + (pages.length && !part && !pageParts.length ? 2 : 0);
+        if (outputBytes + bytes > workerData.maxOutputBytes || (!part && chunks.length >= workerData.maxChunks)) {
+          throw OUTPUT_LIMIT;
+        }
+        outputBytes += bytes;
         part += piece;
         offset = end;
         if (part.length === 4000) flush(pageNumber);
@@ -108,13 +116,12 @@ function fail(reason, code) {
     }
     function flush(pageNumber) {
       if (!part) return;
-      if (chunks.length >= workerData.maxChunks) fail('output-too-large', 'FILE_OUTPUT_LIMIT');
       chunks.push({ text: part, pageNumber });
       pageParts.push(part);
       part = '';
     }
 
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+    for (let pageNumber = 1; pageNumber <= pageCount && !stopped; pageNumber++) {
       const page = await document.getPage(pageNumber);
       const reader = page.streamTextContent({ includeMarkedContent: false }).getReader();
       let hasText = false;
@@ -136,35 +143,34 @@ function fail(reason, code) {
             }
           }
         }
+      } catch (error) {
+        if (error !== OUTPUT_LIMIT) throw error;
+        stopped = true;
       } finally {
         await reader.cancel().catch(() => {});
         reader.releaseLock();
         page.cleanup();
       }
       flush(pageNumber);
-      if (hasText) {
-        if (pages.length) {
-          outputBytes += 2;
-          if (outputBytes > workerData.maxOutputBytes) fail('output-too-large', 'FILE_OUTPUT_LIMIT');
-        }
-        pages.push(pageParts.join(''));
-      } else {
-        emptyPages++;
-      }
+      // Judged on the text kept: the budget may cut a page off after whitespace.
+      const text = pageParts.join('');
+      if (/\S/u.test(text)) pages.push(text);
+      else if (!stopped) emptyPages++;
       pageParts = [];
       parentPort.postMessage({ type: 'progress', progress: {
-        processedBytes, totalBytes, percentage: pageNumber / document.numPages,
+        processedBytes, totalBytes, percentage: pageNumber / pageCount,
         message: 'pdf-page:' + pageNumber + '/' + document.numPages,
       } });
     }
-    parentPort.postMessage({ type: 'result', result: pages.length ? {
-      status: 'success', content: pages.join('\n\n'), chunks,
-      metadata: { source: 'pdfjs', pageCount: document.numPages, emptyPages },
-      processedBytes, totalBytes,
+    // A truncated document succeeds even with no text kept: what was cut off
+    // is unknown, so it is not reported as empty or scanned.
+    const truncated = stopped || pageCount < document.numPages;
+    const metadata = { source: 'pdfjs', pageCount: document.numPages, emptyPages };
+    parentPort.postMessage({ type: 'result', result: pages.length || truncated ? {
+      status: 'success', content: pages.join('\n\n'), chunks, metadata, processedBytes, totalBytes,
+      ...(truncated ? { truncated } : {}),
     } : {
-      status: 'skipped', reason: 'empty-or-scanned-pdf',
-      metadata: { source: 'pdfjs', pageCount: document.numPages, emptyPages },
-      processedBytes, totalBytes,
+      status: 'skipped', reason: 'empty-or-scanned-pdf', metadata, processedBytes, totalBytes,
     } });
   } catch (error) {
     parentPort.postMessage({ type: 'result', result: {
