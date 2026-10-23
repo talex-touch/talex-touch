@@ -436,6 +436,9 @@ importers:
       path-browserify:
         specifier: ^1.0.1
         version: 1.0.1
+      pdfjs-dist:
+        specifier: 6.4.299
+        version: 6.4.299
       pinia:
         specifier: catalog:frontend
         version: 3.0.4(typescript@5.9.3)(vue@3.5.39(typescript@5.9.3))
