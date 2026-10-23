@@ -62,17 +62,15 @@ vi.mock('./embedding-service', () => ({
 import { fileProvider } from './file-provider'
 
 /**
- * `computeIndexStats()` fans out to six `COUNT(*)` queries against the live index (~36 ms on a
- * 13.7k-row db). Every file-system watch event asks for diagnostics, so the interesting contract
- * is how MANY of those rounds a burst of callers costs.
+ * `computeIndexStats()` is one read-worker round trip that answers six `COUNT(*)`s. Every
+ * file-system watch event asks for diagnostics, so the interesting contract is how MANY of those
+ * rounds a burst of callers costs.
  */
-const INDEX_STATS_QUERIES_PER_ROUND = 6
-
 function countFor(round: number, index: number): number {
   return round * 100 + index + 1
 }
 
-/** The exact stats the six queries of `round` map onto, in `computeIndexStats` order. */
+/** The exact stats read number `round` is answered with. */
 function expectedStatsForRound(round: number): FileIndexStats {
   return {
     totalFiles: countFor(round, 0),
@@ -84,43 +82,27 @@ function expectedStatsForRound(round: number): FileIndexStats {
   }
 }
 
-interface IndexDbQueryRecorder {
-  db: unknown
-  queriesIssued: () => number
-  roundsCompleted: () => number
+interface IndexStatsReadRecorder {
+  searchIndex: unknown
+  readsIssued: () => number
 }
 
 /**
- * Stand-in for the file-index read connection. Every `select()` is one query; the six queries of a
- * round are answered with round-specific numbers so a served snapshot is traceable to its round.
+ * Stand-in for the search index's read worker. Every `readFileIndexStats()` is one round, answered
+ * with round-specific numbers so a served snapshot is traceable to its round.
  */
-function createIndexDbQueryRecorder(): IndexDbQueryRecorder {
-  let selectCount = 0
-
-  const db = {
-    select: (_fields?: unknown) => {
-      const indexInRound = selectCount % INDEX_STATS_QUERIES_PER_ROUND
-      const round = Math.floor(selectCount / INDEX_STATS_QUERIES_PER_ROUND)
-      selectCount += 1
-
-      return {
-        from: (_table: unknown) => ({
-          where: (_condition: unknown) =>
-            Promise.resolve([{ count: countFor(round, indexInRound) }])
-        })
-      }
-    }
-  }
-
+function createIndexStatsReadRecorder(): IndexStatsReadRecorder {
+  let reads = 0
   return {
-    db,
-    queriesIssued: () => selectCount,
-    roundsCompleted: () => Math.floor(selectCount / INDEX_STATS_QUERIES_PER_ROUND)
+    searchIndex: {
+      readFileIndexStats: async () => expectedStatsForRound(reads++)
+    },
+    readsIssued: () => reads
   }
 }
 
 interface FileProviderIndexStatsTestApi {
-  dbUtils: unknown
+  searchIndex: unknown
   indexStatsCache: { at: number; value: FileIndexStats } | null
   inflightIndexStats: Promise<FileIndexStats> | null
   getIndexStats: () => Promise<FileIndexStats>
@@ -129,19 +111,19 @@ interface FileProviderIndexStatsTestApi {
 const provider = fileProvider as unknown as FileProviderIndexStatsTestApi
 
 describe('file provider index stats snapshot cache', () => {
-  let recorder: IndexDbQueryRecorder
+  let recorder: IndexStatsReadRecorder
 
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-05-10T00:00:00.000Z'))
-    recorder = createIndexDbQueryRecorder()
-    provider.dbUtils = { getFileIndexReadDb: () => recorder.db }
+    recorder = createIndexStatsReadRecorder()
+    provider.searchIndex = recorder.searchIndex
     provider.indexStatsCache = null
     provider.inflightIndexStats = null
   })
 
   afterEach(() => {
-    provider.dbUtils = null
+    provider.searchIndex = null
     provider.indexStatsCache = null
     provider.inflightIndexStats = null
     vi.useRealTimers()
@@ -153,7 +135,7 @@ describe('file provider index stats snapshot cache', () => {
     const second = await provider.getIndexStats()
     const third = await provider.getIndexStats()
 
-    expect(recorder.queriesIssued()).toBe(INDEX_STATS_QUERIES_PER_ROUND)
+    expect(recorder.readsIssued()).toBe(1)
     expect([first, second, third]).toEqual([
       expectedStatsForRound(0),
       expectedStatsForRound(0),
@@ -169,13 +151,13 @@ describe('file provider index stats snapshot cache', () => {
     const reused = await provider.getIndexStats()
 
     expect(reused).toEqual(expectedStatsForRound(0))
-    expect(recorder.queriesIssued()).toBe(INDEX_STATS_QUERIES_PER_ROUND)
+    expect(recorder.readsIssued()).toBe(1)
 
     vi.advanceTimersByTime(2)
     const refreshed = await provider.getIndexStats()
 
     expect(refreshed).toEqual(expectedStatsForRound(1))
-    expect(recorder.roundsCompleted()).toBe(2)
+    expect(recorder.readsIssued()).toBe(2)
   })
 
   it('shares one query round between overlapping callers', async () => {
@@ -185,7 +167,7 @@ describe('file provider index stats snapshot cache', () => {
       provider.getIndexStats()
     ])
 
-    expect(recorder.queriesIssued()).toBe(INDEX_STATS_QUERIES_PER_ROUND)
+    expect(recorder.readsIssued()).toBe(1)
     expect([first, second, third]).toEqual([
       expectedStatsForRound(0),
       expectedStatsForRound(0),

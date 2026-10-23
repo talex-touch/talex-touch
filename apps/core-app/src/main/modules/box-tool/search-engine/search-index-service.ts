@@ -1,4 +1,5 @@
 import type { Client } from '@libsql/client'
+import type { FileIndexStats } from '@talex-touch/utils/transport/events/types'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 import type { SQL } from 'drizzle-orm'
 import { createHash } from 'node:crypto'
@@ -885,6 +886,41 @@ export class SearchIndexService {
     const metaRows = Number(rows[0]?.metaRows ?? 0)
     if (metaRows > 0) return metaRows
     return await this.countByProvider(providerId, signal)
+  }
+
+  /**
+   * The file index's health numbers, answered by the read worker in one statement.
+   *
+   * They used to be six queries on the main-thread connection, where the local libSQL binding runs
+   * synchronously: 340ms of blocked event loop per diagnostics poll on a cold 7.6GB index. Every
+   * subquery is a covering-index range, so the single round trip costs what the six did, off-thread.
+   */
+  async readFileIndexStats(signal?: AbortSignal): Promise<FileIndexStats> {
+    signal?.throwIfAborted()
+    await this.ensureInitialized()
+    signal?.throwIfAborted()
+    const rows = await this.readAll<Record<keyof FileIndexStats, number>>(
+      sql`SELECT
+            (SELECT count(*) FROM files WHERE type = 'file') AS totalFiles,
+            (SELECT count(*) FROM file_index_progress WHERE status = 'failed') AS failedFiles,
+            (SELECT count(*) FROM file_index_progress WHERE status = 'skipped') AS skippedFiles,
+            (SELECT count(*) FROM file_index_progress
+              WHERE status = 'completed') AS completedFiles,
+            (SELECT count(*) FROM files
+              WHERE type = 'file' AND embedding_status = 'completed') AS embeddingCompletedFiles,
+            (SELECT count(*) FROM embeddings WHERE source_type = 'file') AS embeddingRows`,
+      signal
+    )
+    signal?.throwIfAborted()
+    const row = rows[0]
+    return {
+      totalFiles: Number(row?.totalFiles ?? 0),
+      failedFiles: Number(row?.failedFiles ?? 0),
+      skippedFiles: Number(row?.skippedFiles ?? 0),
+      completedFiles: Number(row?.completedFiles ?? 0),
+      embeddingCompletedFiles: Number(row?.embeddingCompletedFiles ?? 0),
+      embeddingRows: Number(row?.embeddingRows ?? 0)
+    }
   }
 
   async removeByProvider(providerId: string): Promise<number> {

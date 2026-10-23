@@ -1548,8 +1548,10 @@ describe('file-provider startup readiness', () => {
   it('adds runtime write summaries to indexed source evidence', async () => {
     const provider = fileProvider as unknown as FileProviderIndexingLifecycleTestApi
     const originalDbUtils = provider.dbUtils
+    const originalSearchIndex = provider.searchIndex
 
     provider.dbUtils = null
+    provider.searchIndex = null
     recordRuntimeWriteSnapshot(provider.incrementalPersistSnapshotService, {
       entries: 3,
       reason: 'incremental.add-change',
@@ -1639,6 +1641,7 @@ describe('file-provider startup readiness', () => {
       )
     } finally {
       provider.dbUtils = originalDbUtils
+      provider.searchIndex = originalSearchIndex
     }
   })
 
@@ -1646,10 +1649,12 @@ describe('file-provider startup readiness', () => {
     const provider = fileProvider as unknown as FileProviderIndexingLifecycleTestApi
     const internals = fileProvider as unknown as { embeddingService: unknown }
     const originalDbUtils = provider.dbUtils
+    const originalSearchIndex = provider.searchIndex
     const originalEmbedding = internals.embeddingService
     const pausedUntil = Date.parse('2026-10-04T07:00:00.000Z')
 
     provider.dbUtils = null
+    provider.searchIndex = null
     try {
       internals.embeddingService = { getUsageLimitPause: () => null }
       const running = await provider.getIndexedSourceEvidence()
@@ -1674,6 +1679,7 @@ describe('file-provider startup readiness', () => {
       )
     } finally {
       provider.dbUtils = originalDbUtils
+      provider.searchIndex = originalSearchIndex
       internals.embeddingService = originalEmbedding
     }
   })

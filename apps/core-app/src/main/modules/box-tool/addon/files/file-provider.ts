@@ -2364,7 +2364,7 @@ class FileProvider implements ISearchProvider<ProviderContext> {
   }
 
   private async computeIndexStats(): Promise<FileIndexStats> {
-    return await computeFileIndexStats(this.dbUtils, this.id)
+    return await computeFileIndexStats(this.searchIndex, this.id)
   }
 
   public async getIndexedSourceEvidence(): Promise<IndexedSourceEvidence[]> {
