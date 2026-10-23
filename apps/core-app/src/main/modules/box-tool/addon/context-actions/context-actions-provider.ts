@@ -725,6 +725,16 @@ export class ContextActionsProvider implements ISearchProvider<ProviderContext> 
     return null
   }
 
+  /**
+   * None of these survive replay from usage history: every action runs on the selection or
+   * clipboard image it was opened with, and the empty-state grid has neither, so a rebuilt card
+   * would reach `onExecute` without input and do nothing. Same rule as SystemActionsProvider's
+   * `RECOMMENDABLE_ACTION_TYPES`; the usage rows stay and are simply not recommended.
+   */
+  async rebuildRecommendationItems(_itemIds: readonly string[]): Promise<TuffItem[]> {
+    return []
+  }
+
   private async buildPluginItems(
     query: TuffQuery,
     input: ContextActionInput,
@@ -853,6 +863,10 @@ export class ContextActionsProvider implements ISearchProvider<ProviderContext> 
           ]
         : [],
       meta: {
+        // The rendered id is scoped to its session, and a selected-text session id is minted per
+        // open, so the id never repeats. Uses are counted under the action itself instead.
+        _originalSourceId: this.id,
+        _originalItemId: `${this.id}:${match.actionId}`,
         priority: match.priority,
         keepCoreBoxOpen: true,
         extension: {
