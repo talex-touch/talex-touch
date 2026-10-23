@@ -307,31 +307,33 @@ async function cancel() {
   }
 }
 
+// Both paths below load through here. A sign-in returns to this page with a full page load, so the session
+// is often still loading on mount and the watcher is the one that has to keep the requested long grant.
+async function loadRequest(): Promise<void> {
+  startPresenceHeartbeat()
+  if (authParam.value)
+    grantType.value = 'long'
+  await Promise.all([loadInfo(), loadProfile()])
+}
+
 onMounted(async () => {
   // A desktop OAuth sign-in returns here directly, past the sign-in page that would clear its context.
   clearOauthContext()
   window.addEventListener('beforeunload', handleBeforeUnload)
   const ok = await ensureSession()
-  if (ok) {
-    startPresenceHeartbeat()
-    if (authParam.value)
-      grantType.value = 'long'
-    await Promise.all([loadInfo(), loadProfile()])
-  }
+  if (ok)
+    await loadRequest()
 })
 
 watch(
   () => status.value,
   async (value) => {
-    if (value === 'authenticated') {
-      startPresenceHeartbeat()
-      await Promise.all([loadInfo(), loadProfile()])
-    }
+    if (value === 'authenticated')
+      await loadRequest()
     // The session was still loading on mount. Without one the page would keep its spinner; an OAuth
     // sign-in now lands here directly, so this is also where a sign-in whose session did not stick ends up.
-    else if (value === 'unauthenticated') {
+    else if (value === 'unauthenticated')
       await ensureSession()
-    }
   },
 )
 
