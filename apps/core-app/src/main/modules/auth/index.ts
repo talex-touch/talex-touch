@@ -1568,6 +1568,11 @@ async function cancelActiveDeviceAuth(): Promise<void> {
   deviceAuthLoginAttempt += 1
   activeDeviceAuthCode = null
   if (deviceCode) {
+    // Still polling, so nothing this login does from here on is applied. A new login need not
+    // wait for it, and its loop stops now rather than after the interval. Past polling it is
+    // applying an approval, and a new login waits until that credential has been discarded.
+    activeDeviceAuthLogin = null
+    wakeDeviceAuthPoll?.()
     await abortDeviceAuth(deviceCode)
   }
 }
