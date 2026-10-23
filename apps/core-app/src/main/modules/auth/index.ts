@@ -2492,6 +2492,9 @@ export class AuthModule extends BaseModule<TalexEvents> {
         const loginStart = await openLoginPage(mode)
         return loginStart ? { initiated: true, ...loginStart } : { initiated: false }
       }),
+      ...registerAuthHandler(AuthEvents.session.checkPendingLogin, async () => ({
+        status: await settlePendingDeviceAuth()
+      })),
       ...registerAuthHandler(AuthEvents.session.logout, async () => {
         await cancelActiveDeviceAuth()
         await clearAuthToken()

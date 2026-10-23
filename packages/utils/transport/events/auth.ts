@@ -34,6 +34,10 @@ export interface AuthInitiatedResponse {
  */
 export type AuthPendingLoginStatus = "signed-in" | "waiting" | "idle";
 
+export interface AuthPendingLoginResponse {
+  status: AuthPendingLoginStatus;
+}
+
 export interface AuthSuccessResponse {
   success: boolean;
 }
@@ -102,6 +106,11 @@ export const AuthEvents = {
       .module("session")
       .event("login")
       .define<AuthLoginRequest, AuthInitiatedResponse>(),
+    /** Asks the server now, instead of at the next poll, whether the browser approved the login. */
+    checkPendingLogin: defineEvent("auth")
+      .module("session")
+      .event("check-pending-login")
+      .define<void, AuthPendingLoginResponse>(),
     logout: defineEvent("auth")
       .module("session")
       .event("logout")

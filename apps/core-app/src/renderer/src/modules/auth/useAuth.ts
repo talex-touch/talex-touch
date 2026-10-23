@@ -1,5 +1,9 @@
 import type { AuthState, AuthUser, LoginOptions, LoginResult } from '@talex-touch/utils/renderer'
-import type { AuthInitiatedResponse } from '@talex-touch/utils/transport/events/auth'
+import type {
+  AuthInitiatedResponse,
+  AuthPendingLoginResponse,
+  AuthPendingLoginStatus
+} from '@talex-touch/utils/transport/events/auth'
 import type { AppContext } from 'vue'
 import { useAuthState, useCurrentUser } from '@talex-touch/utils/renderer'
 import { useTuffTransport } from '@talex-touch/utils/transport'
@@ -12,7 +16,8 @@ import {
   onUnmounted,
   reactive,
   ref,
-  render
+  render,
+  watch
 } from 'vue'
 import { toast } from 'vue-sonner'
 import { isDevEnv } from '@talex-touch/utils/env'
@@ -584,6 +589,17 @@ async function openBrowserLoginPage(
   return (await transport.send(AuthEvents.session.login, { mode })) as AuthInitiatedResponse
 }
 
+async function checkPendingBrowserLogin(): Promise<AuthPendingLoginStatus> {
+  try {
+    const response = (await transport.send(
+      AuthEvents.session.checkPendingLogin
+    )) as AuthPendingLoginResponse | null
+    return response?.status ?? 'waiting'
+  } catch {
+    return 'waiting'
+  }
+}
+
 function updateBrowserLoginCountdown(openedAt: number, timeoutMs: number): void {
   const elapsedMs = Date.now() - openedAt
   const remainingMs = Math.max(0, timeoutMs - elapsedMs)
@@ -701,6 +717,20 @@ async function handleManualTokenLogin(rawToken: string): Promise<void> {
   await handleExternalAuthCallback(token)
 }
 
+/**
+ * Whether the browser login in flight still calls for the resume prompt. A prompt run sets
+ * `promptActive` itself, so the checks it makes afterwards pass false.
+ */
+function loginResumePromptAllowed(promptActive: boolean): boolean {
+  return canShowLoginResumePrompt({
+    beginnerInit: appSetting?.beginner?.init,
+    hasPendingBrowserLogin: Boolean(pendingBrowserLogin.value),
+    isSignedIn: authState.isSignedIn,
+    isHandlingExternalAuthCallback: isHandlingExternalAuthCallback.value,
+    promptActive
+  })
+}
+
 async function showLoginResumePrompt(): Promise<{
   action: 'manual' | 'retry' | 'cancel'
   token?: string
@@ -714,14 +744,23 @@ async function showLoginResumePrompt(): Promise<{
     const root = document.createElement('div')
     document.body.appendChild(root)
     let resolved = false
+    let stopWatchingLogin: (() => void) | null = null
 
-    const finish = (result: { action: 'manual' | 'retry' | 'cancel'; token?: string }) => {
+    const finish = (result: { action: 'manual' | 'retry' | 'cancel'; token?: string } | null) => {
       if (resolved) return
       resolved = true
+      stopWatchingLogin?.()
       render(null, root)
       root.remove()
       resolve(result)
     }
+    // Nothing is left to resume once the login lands, ends, or a callback starts applying it.
+    stopWatchingLogin = watch(
+      () => loginResumePromptAllowed(false),
+      (allowed) => {
+        if (!allowed) finish(null)
+      }
+    )
 
     const vnode = createVNode(AuthLoginResumePrompt, {
       onAction: (result: { action: 'manual' | 'retry' | 'cancel'; token?: string }) => {
@@ -748,15 +787,7 @@ function setupAuthFocusPrompt(): void {
     delayedPromptTimer = null
   }
 
-  const canPrompt = () => {
-    return canShowLoginResumePrompt({
-      beginnerInit: appSetting?.beginner?.init,
-      hasPendingBrowserLogin: Boolean(pendingBrowserLogin.value),
-      isSignedIn: authState.isSignedIn,
-      isHandlingExternalAuthCallback: isHandlingExternalAuthCallback.value,
-      promptActive
-    })
-  }
+  const canPrompt = () => loginResumePromptAllowed(promptActive)
 
   const runPrompt = () => {
     if (!canPrompt()) return
@@ -765,7 +796,11 @@ function setupAuthFocusPrompt(): void {
     void (async () => {
       try {
         await new Promise((resolve) => setTimeout(resolve, FOCUS_PROMPT_RECHECK_DELAY_MS))
-        if (!canPrompt()) return
+        if (!loginResumePromptAllowed(false)) return
+        // Main may not have polled since the browser approved. A login about to land must not get
+        // a prompt offering to restart it.
+        if ((await checkPendingBrowserLogin()) === 'signed-in') return
+        if (!loginResumePromptAllowed(false)) return
         const result = await showLoginResumePrompt()
         if (!result) return
         if (result.action === 'manual' && result.token) {
