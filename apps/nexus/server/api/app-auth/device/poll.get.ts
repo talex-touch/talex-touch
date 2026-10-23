@@ -80,7 +80,9 @@ export default defineEventHandler(async (event) => {
       clientType,
     }),
     deleteDeviceAuthRequest(event, deviceCode),
-    getUserById(event, request.userId),
+    // Optional: once the delete commits this poll is the only way the tokens reach the app, so a failed read
+    // must not fail it. A null profile sends the app to `/me`.
+    getUserById(event, request.userId).catch(() => null),
   ])
   return {
     status: 'approved',
