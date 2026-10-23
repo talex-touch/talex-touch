@@ -1599,14 +1599,17 @@ async function completeDeviceAuthLogin(
     return false
   }
 
+  // The code is spent by now, so only the attempt shows whether Cancel or logout came since.
+  const isCurrentLogin = () => deviceAuthLoginAttempt === attemptId
   const applied = await handleExternalAuthCallback(
     result.token,
     result.token,
     result.refreshToken,
     result.ttlSeconds,
-    result.user
+    result.user,
+    isCurrentLogin
   )
-  if (!applied) {
+  if (!applied && isCurrentLogin()) {
     authLog.warn('Device auth token was rejected')
     if (!authToken) {
       updateAuthState(null)
@@ -1719,7 +1722,8 @@ async function handleExternalAuthCallback(
   appToken?: string,
   refreshToken?: string,
   ttlSeconds?: number,
-  profile?: AuthUser
+  profile?: AuthUser,
+  isCurrentLogin: () => boolean = () => true
 ): Promise<boolean> {
   const resolvedToken = appToken || token
   authLog.info('Handling auth callback token', {
@@ -1734,7 +1738,17 @@ async function handleExternalAuthCallback(
   if (!resolvedToken) {
     return false
   }
+  // Cancel and logout can land while this awaits. They have already answered the user, so the
+  // credential set here must not outlive them.
+  const discardIfCancelled = async (): Promise<boolean> => {
+    if (isCurrentLogin()) return false
+    authLog.info('Login was cancelled while its credential was applied')
+    await clearAuthToken()
+    updateAuthState(null)
+    return true
+  }
   await setAuthToken(resolvedToken, { refreshToken, ttlSeconds })
+  if (await discardIfCancelled()) return false
   // A device-code approval carries the profile `/me` would return; asking for it again cost the
   // login another cross-border round trip.
   if (profile) {
@@ -1745,6 +1759,7 @@ async function handleExternalAuthCallback(
   authLog.info('Auth callback profile resolution completed', {
     meta: { result: remoteResult.kind }
   })
+  if (await discardIfCancelled()) return false
   if (remoteResult.kind === 'success') {
     updateAuthState(remoteResult.user, authState.sessionId)
     return true
