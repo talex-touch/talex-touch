@@ -980,6 +980,8 @@ interface DeviceAuthPollResponse {
   refreshable?: boolean
   reason?: string
   message?: string | null
+  /** Sent with an approval: the profile `/api/v1/auth/me` returns, or null when the server withholds it. */
+  user?: AuthUser | null
 }
 
 interface DeviceAuthPollResult {
@@ -988,10 +990,19 @@ interface DeviceAuthPollResult {
   refreshToken?: string
   ttlSeconds?: number
   message?: string | null
+  user?: AuthUser
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** The profile an approval carries, when `fetchRemoteUser` would have accepted it. */
+function readApprovedProfile(user: AuthUser | null | undefined): AuthUser | undefined {
+  if (!user || typeof user.id !== 'string' || typeof user.email !== 'string') {
+    return undefined
+  }
+  return toAuthUserProfile(user)
 }
 
 async function fetchRemoteUser(
@@ -1484,7 +1495,8 @@ async function pollDeviceAuth(
           status: 'approved',
           token: data.appToken,
           refreshToken: data.refreshToken,
-          ttlSeconds: normalizePositiveTtlSeconds(data.ttlSeconds) ?? undefined
+          ttlSeconds: normalizePositiveTtlSeconds(data.ttlSeconds) ?? undefined,
+          user: readApprovedProfile(data.user)
         }
       }
       if (data?.status === 'expired') return { status: 'expired' }
@@ -1560,7 +1572,8 @@ async function completeDeviceAuthLogin(
     result.token,
     result.token,
     result.refreshToken,
-    result.ttlSeconds
+    result.ttlSeconds,
+    result.user
   )
   if (!applied) {
     authLog.warn('Device auth token was rejected')
@@ -1636,7 +1649,8 @@ async function handleExternalAuthCallback(
   token: string,
   appToken?: string,
   refreshToken?: string,
-  ttlSeconds?: number
+  ttlSeconds?: number,
+  profile?: AuthUser
 ): Promise<boolean> {
   const resolvedToken = appToken || token
   authLog.info('Handling auth callback token', {
@@ -1644,6 +1658,7 @@ async function handleExternalAuthCallback(
       hasToken: Boolean(token),
       hasAppToken: Boolean(appToken),
       hasRefreshToken: Boolean(refreshToken),
+      hasProfile: Boolean(profile),
       resolvedTokenLength: resolvedToken.length
     }
   })
@@ -1651,6 +1666,12 @@ async function handleExternalAuthCallback(
     return false
   }
   await setAuthToken(resolvedToken, { refreshToken, ttlSeconds })
+  // A device-code approval carries the profile `/me` would return; asking for it again cost the
+  // login another cross-border round trip.
+  if (profile) {
+    updateAuthState(profile, authState.sessionId)
+    return true
+  }
   const remoteResult = await fetchRemoteUserWithTimeout(resolvedToken)
   authLog.info('Auth callback profile resolution completed', {
     meta: { result: remoteResult.kind }
