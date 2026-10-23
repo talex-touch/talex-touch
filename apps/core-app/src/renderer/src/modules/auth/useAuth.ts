@@ -1,5 +1,9 @@
 import type { AuthState, AuthUser, LoginOptions, LoginResult } from '@talex-touch/utils/renderer'
-import type { AuthInitiatedResponse } from '@talex-touch/utils/transport/events/auth'
+import type {
+  AuthInitiatedResponse,
+  AuthPendingLoginResponse,
+  AuthPendingLoginStatus
+} from '@talex-touch/utils/transport/events/auth'
 import type { AppContext } from 'vue'
 import { useAuthState, useCurrentUser } from '@talex-touch/utils/renderer'
 import { useTuffTransport } from '@talex-touch/utils/transport'
@@ -12,7 +16,8 @@ import {
   onUnmounted,
   reactive,
   ref,
-  render
+  render,
+  watch
 } from 'vue'
 import { toast } from 'vue-sonner'
 import { isDevEnv } from '@talex-touch/utils/env'
@@ -157,6 +162,11 @@ const isLoggedIn = computed(() => authState.isSignedIn)
 function resolveAuthUiMessage(key: string, fallback: string): string {
   const translated = getGlobalI18nInstance()?.global.t(key)
   return typeof translated === 'string' && translated !== key ? translated : fallback
+}
+
+// resolveAuthErrorMessage always passes its own message as the fallback.
+function translateAuthError(key: string, fallback?: string | Record<string, unknown>): string {
+  return resolveAuthUiMessage(key, typeof fallback === 'string' ? fallback : key)
 }
 
 function syncSentryUser(nextUser: AuthUser | null): void {
@@ -335,7 +345,7 @@ async function initializeAuth() {
   } catch (error) {
     updateAuthState(null)
     isInitialized = true
-    const errorMessage = resolveAuthErrorMessage(error, 'INITIALIZATION_FAILED')
+    const errorMessage = resolveAuthErrorMessage(error, 'INITIALIZATION_FAILED', translateAuthError)
     toast.error(errorMessage)
   }
 }
@@ -396,6 +406,9 @@ async function loginWithBrowser(mode: 'sign-in' | 'sign-up' = 'sign-in'): Promis
     pendingBrowserLogin.value = { resolve, reject: () => {}, timeoutId, countdownId, openedAt }
     openBrowserLoginPage(mode)
       .then((loginStart) => {
+        // The login already in flight was approved and applied instead; the state broadcast
+        // finishes this one.
+        if (!loginStart.initiated) return
         authLoadingState.loginAuthorizeUrl = loginStart.authorizeUrl || ''
         authLoadingState.loginUserCode = loginStart.userCode || ''
         authLoadingState.loginExpiresAt = loginStart.expiresAt || ''
@@ -419,7 +432,7 @@ async function loginWithBrowser(mode: 'sign-in' | 'sign-up' = 'sign-in'): Promis
         clearBrowserLoginLoading()
         authLoadingState.loginStage = 'failed'
         authLoadingState.loginProgress = 0
-        toast.error(resolveAuthErrorMessage(err, 'BROWSER_OPEN_FAILED'))
+        toast.error(resolveAuthErrorMessage(err, 'BROWSER_OPEN_FAILED', translateAuthError))
         resolve({ success: false, error: err })
       })
   })
@@ -450,7 +463,7 @@ async function logout(): Promise<void> {
     }
     toast.success(resolveAuthUiMessage('settingUser.logoutSuccess', 'Signed out'))
   } catch (error) {
-    const errorMessage = resolveAuthErrorMessage(error, 'SIGN_OUT_FAILED')
+    const errorMessage = resolveAuthErrorMessage(error, 'SIGN_OUT_FAILED', translateAuthError)
     toast.error(errorMessage)
   }
 }
@@ -466,7 +479,7 @@ async function handleExternalAuthCallback(
   try {
     if (!resolvedToken) {
       const error = new Error('Missing token')
-      toast.error(resolveAuthErrorMessage(error, 'AUTH_ERROR'))
+      toast.error(resolveAuthErrorMessage(error, 'AUTH_ERROR', translateAuthError))
       if (pendingBrowserLogin.value) {
         resolvePendingBrowserLogin({ success: false, error })
       }
@@ -501,7 +514,7 @@ async function handleExternalAuthCallback(
     authLoadingState.loginProgress = 100
     toast.success(resolveAuthUiMessage('settingUser.loginSuccessToast', 'Signed in'))
   } catch (error) {
-    const errorMessage = resolveAuthErrorMessage(error, 'AUTH_ERROR')
+    const errorMessage = resolveAuthErrorMessage(error, 'AUTH_ERROR', translateAuthError)
     toast.error(errorMessage)
 
     if (pendingBrowserLogin.value) {
@@ -581,6 +594,17 @@ async function openBrowserLoginPage(
   return (await transport.send(AuthEvents.session.login, { mode })) as AuthInitiatedResponse
 }
 
+async function checkPendingBrowserLogin(): Promise<AuthPendingLoginStatus> {
+  try {
+    const response = (await transport.send(
+      AuthEvents.session.checkPendingLogin
+    )) as AuthPendingLoginResponse | null
+    return response?.status ?? 'waiting'
+  } catch {
+    return 'waiting'
+  }
+}
+
 function updateBrowserLoginCountdown(openedAt: number, timeoutMs: number): void {
   const elapsedMs = Date.now() - openedAt
   const remainingMs = Math.max(0, timeoutMs - elapsedMs)
@@ -608,7 +632,7 @@ function createBrowserLoginTimeout(
       window.clearInterval(pendingBrowserLogin.value.countdownId)
       clearTimeout(pendingBrowserLogin.value.timeoutId)
       pendingBrowserLogin.value = null
-      toast.error(resolveAuthErrorMessage(error, 'LOGIN_TIMEOUT'))
+      toast.error(resolveAuthErrorMessage(error, 'LOGIN_TIMEOUT', translateAuthError))
       resolve({ success: false, error })
     }
   }, timeoutMs)
@@ -621,6 +645,8 @@ function isJwtToken(token: string): boolean {
 
 function cancelPendingBrowserLogin(reason = 'Login cancelled'): void {
   if (!pendingBrowserLogin.value) return
+  // Main polls on its own; left running, a later approval in the browser would still sign in.
+  void transport.send(AuthEvents.session.cancelLogin).catch(() => {})
   clearTimeout(pendingBrowserLogin.value.timeoutId)
   window.clearInterval(pendingBrowserLogin.value.countdownId)
   pendingBrowserLogin.value.resolve({ success: false, error: new Error(reason) })
@@ -652,6 +678,8 @@ async function retryPendingBrowserLogin(): Promise<void> {
   try {
     authLoadingState.loginStage = 'preparing'
     const loginStart = await openBrowserLoginPage()
+    // The browser had approved the login after all: main applied it rather than reopening.
+    if (!loginStart.initiated) return
     authLoadingState.loginAuthorizeUrl = loginStart.authorizeUrl || ''
     authLoadingState.loginUserCode = loginStart.userCode || ''
     authLoadingState.loginExpiresAt = loginStart.expiresAt || ''
@@ -666,7 +694,7 @@ async function retryPendingBrowserLogin(): Promise<void> {
         : resolveAuthUiMessage('settingUser.loginPageReopenedToast', 'Sign-in page reopened.')
     )
   } catch (error) {
-    const errorMessage = resolveAuthErrorMessage(error, 'BROWSER_OPEN_FAILED')
+    const errorMessage = resolveAuthErrorMessage(error, 'BROWSER_OPEN_FAILED', translateAuthError)
     authLoadingState.loginStage = 'failed'
     authLoadingState.isLoggingIn = false
     authLoadingState.loginProgress = 0
@@ -696,6 +724,20 @@ async function handleManualTokenLogin(rawToken: string): Promise<void> {
   await handleExternalAuthCallback(token)
 }
 
+/**
+ * Whether the browser login in flight still calls for the resume prompt. A prompt run sets
+ * `promptActive` itself, so the checks it makes afterwards pass false.
+ */
+function loginResumePromptAllowed(promptActive: boolean): boolean {
+  return canShowLoginResumePrompt({
+    beginnerInit: appSetting?.beginner?.init,
+    hasPendingBrowserLogin: Boolean(pendingBrowserLogin.value),
+    isSignedIn: authState.isSignedIn,
+    isHandlingExternalAuthCallback: isHandlingExternalAuthCallback.value,
+    promptActive
+  })
+}
+
 async function showLoginResumePrompt(): Promise<{
   action: 'manual' | 'retry' | 'cancel'
   token?: string
@@ -709,14 +751,23 @@ async function showLoginResumePrompt(): Promise<{
     const root = document.createElement('div')
     document.body.appendChild(root)
     let resolved = false
+    let stopWatchingLogin: (() => void) | null = null
 
-    const finish = (result: { action: 'manual' | 'retry' | 'cancel'; token?: string }) => {
+    const finish = (result: { action: 'manual' | 'retry' | 'cancel'; token?: string } | null) => {
       if (resolved) return
       resolved = true
+      stopWatchingLogin?.()
       render(null, root)
       root.remove()
       resolve(result)
     }
+    // Nothing is left to resume once the login lands, ends, or a callback starts applying it.
+    stopWatchingLogin = watch(
+      () => loginResumePromptAllowed(false),
+      (allowed) => {
+        if (!allowed) finish(null)
+      }
+    )
 
     const vnode = createVNode(AuthLoginResumePrompt, {
       onAction: (result: { action: 'manual' | 'retry' | 'cancel'; token?: string }) => {
@@ -743,15 +794,7 @@ function setupAuthFocusPrompt(): void {
     delayedPromptTimer = null
   }
 
-  const canPrompt = () => {
-    return canShowLoginResumePrompt({
-      beginnerInit: appSetting?.beginner?.init,
-      hasPendingBrowserLogin: Boolean(pendingBrowserLogin.value),
-      isSignedIn: authState.isSignedIn,
-      isHandlingExternalAuthCallback: isHandlingExternalAuthCallback.value,
-      promptActive
-    })
-  }
+  const canPrompt = () => loginResumePromptAllowed(promptActive)
 
   const runPrompt = () => {
     if (!canPrompt()) return
@@ -760,7 +803,11 @@ function setupAuthFocusPrompt(): void {
     void (async () => {
       try {
         await new Promise((resolve) => setTimeout(resolve, FOCUS_PROMPT_RECHECK_DELAY_MS))
-        if (!canPrompt()) return
+        if (!loginResumePromptAllowed(false)) return
+        // Main may not have polled since the browser approved. A login about to land must not get
+        // a prompt offering to restart it.
+        if ((await checkPendingBrowserLogin()) === 'signed-in') return
+        if (!loginResumePromptAllowed(false)) return
         const result = await showLoginResumePrompt()
         if (!result) return
         if (result.action === 'manual' && result.token) {

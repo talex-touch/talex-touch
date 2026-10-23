@@ -19,6 +19,12 @@ describe('useAuth error messages', () => {
       'DEVICE_NOT_AUTHORIZED'
     )
     expect(classifyAuthError(new Error('Too many requests 429'), 'AUTH_ERROR')).toBe('RATE_LIMITED')
+    expect(
+      classifyAuthError(
+        new Error('Device authorization is temporarily cooled down'),
+        'BROWSER_OPEN_FAILED'
+      )
+    ).toBe('RATE_LIMITED')
     expect(classifyAuthError(new Error('Forbidden 403'), 'AUTH_ERROR')).toBe('PERMISSION_DENIED')
     expect(classifyAuthError(new Error('Auth callback failed'), 'AUTH_ERROR')).toBe(
       'AUTH_CALLBACK_FAILED'
