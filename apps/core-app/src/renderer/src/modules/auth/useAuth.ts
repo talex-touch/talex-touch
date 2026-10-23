@@ -640,6 +640,8 @@ function isJwtToken(token: string): boolean {
 
 function cancelPendingBrowserLogin(reason = 'Login cancelled'): void {
   if (!pendingBrowserLogin.value) return
+  // Main polls on its own; left running, a later approval in the browser would still sign in.
+  void transport.send(AuthEvents.session.cancelLogin).catch(() => {})
   clearTimeout(pendingBrowserLogin.value.timeoutId)
   window.clearInterval(pendingBrowserLogin.value.countdownId)
   pendingBrowserLogin.value.resolve({ success: false, error: new Error(reason) })

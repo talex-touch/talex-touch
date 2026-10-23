@@ -2495,6 +2495,10 @@ export class AuthModule extends BaseModule<TalexEvents> {
       ...registerAuthHandler(AuthEvents.session.checkPendingLogin, async () => ({
         status: await settlePendingDeviceAuth()
       })),
+      ...registerAuthHandler(AuthEvents.session.cancelLogin, async () => {
+        await cancelActiveDeviceAuth()
+        return { success: true }
+      }),
       ...registerAuthHandler(AuthEvents.session.logout, async () => {
         await cancelActiveDeviceAuth()
         await clearAuthToken()

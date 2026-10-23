@@ -111,6 +111,11 @@ export const AuthEvents = {
       .module("session")
       .event("check-pending-login")
       .define<void, AuthPendingLoginResponse>(),
+    /** Abandons the browser login in flight: polling stops and its code is aborted on the server. */
+    cancelLogin: defineEvent("auth")
+      .module("session")
+      .event("cancel-login")
+      .define<void, AuthSuccessResponse>(),
     logout: defineEvent("auth")
       .module("session")
       .event("logout")
