@@ -131,7 +131,7 @@ export function classifyAuthError(error: unknown, defaultType: string): AuthErro
     return 'AUTH_CALLBACK_FAILED'
   }
 
-  if (/rate.?limit|too many requests|\b429\b/i.test(errorText)) {
+  if (/rate.?limit|too many requests|cooled down|\b429\b/i.test(errorText)) {
     return 'RATE_LIMITED'
   }
 
