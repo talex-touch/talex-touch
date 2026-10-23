@@ -16,12 +16,23 @@ export interface AuthLoginRequest {
 }
 
 export interface AuthInitiatedResponse {
+  /**
+   * False when no page was opened: the login already in flight turned out to be approved, and
+   * the app signed in with it instead.
+   */
   initiated: boolean;
   authorizeUrl?: string;
   userCode?: string;
   expiresAt?: string;
   browserOpenFailed?: boolean;
 }
+
+/**
+ * - `signed-in`: the browser approved the login and the app is now signed in.
+ * - `waiting`: the browser has not approved it yet, or the server could not be asked.
+ * - `idle`: no login is in flight, or it ended without signing in.
+ */
+export type AuthPendingLoginStatus = "signed-in" | "waiting" | "idle";
 
 export interface AuthSuccessResponse {
   success: boolean;

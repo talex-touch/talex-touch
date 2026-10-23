@@ -396,6 +396,9 @@ async function loginWithBrowser(mode: 'sign-in' | 'sign-up' = 'sign-in'): Promis
     pendingBrowserLogin.value = { resolve, reject: () => {}, timeoutId, countdownId, openedAt }
     openBrowserLoginPage(mode)
       .then((loginStart) => {
+        // The login already in flight was approved and applied instead; the state broadcast
+        // finishes this one.
+        if (!loginStart.initiated) return
         authLoadingState.loginAuthorizeUrl = loginStart.authorizeUrl || ''
         authLoadingState.loginUserCode = loginStart.userCode || ''
         authLoadingState.loginExpiresAt = loginStart.expiresAt || ''
@@ -652,6 +655,8 @@ async function retryPendingBrowserLogin(): Promise<void> {
   try {
     authLoadingState.loginStage = 'preparing'
     const loginStart = await openBrowserLoginPage()
+    // The browser had approved the login after all: main applied it rather than reopening.
+    if (!loginStart.initiated) return
     authLoadingState.loginAuthorizeUrl = loginStart.authorizeUrl || ''
     authLoadingState.loginUserCode = loginStart.userCode || ''
     authLoadingState.loginExpiresAt = loginStart.expiresAt || ''
