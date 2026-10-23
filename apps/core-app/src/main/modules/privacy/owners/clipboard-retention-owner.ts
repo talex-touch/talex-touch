@@ -338,10 +338,11 @@ export function createClipboardRetentionOwner(
         progress.deletedByteCount += Math.max(0, reconcile.deletedByteCount)
         progress.failedItemCount += Math.max(0, reconcile.failedCount)
         resourceFailed ||= reconcile.failedCount > 0
+        // `bounded` here only means the orphan sweep's 200-file page ended before the folder
+        // did; its cursor resumes there next run. That is not a retention backlog, and reporting
+        // it as LIMIT_REACHED turned every launch with >200 clipboard images into a partial cleanup.
         if (signal.aborted || reconcile.cancelled) {
           terminalCode = 'PRIVACY_OWNER_CANCELLED'
-        } else if (reconcile.bounded) {
-          terminalCode = 'PRIVACY_OWNER_LIMIT_REACHED'
         }
       } else if (
         terminalCode === 'PRIVACY_OWNER_COMPLETED' &&
