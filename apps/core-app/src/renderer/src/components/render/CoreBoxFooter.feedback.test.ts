@@ -38,6 +38,11 @@ vi.mock('~/modules/platform/renderer-platform', () => ({
   useRendererPlatform: () => ({ isMac: computed(() => true) })
 }))
 
+// The footer listens for the ⌘K panel opening, to learn when that hint can go first.
+vi.mock('@talex-touch/utils/transport', () => ({
+  useTuffTransport: () => ({ on: () => () => {} })
+}))
+
 vi.mock('@talex-touch/tuffex/icon', () => ({
   TxIcon: { template: '<span class="tx-icon-stub" />' }
 }))
@@ -249,12 +254,13 @@ describe('CoreBox footer feedback', () => {
     // a gesture the reader does not get. ⌘K still opens the action panel, so it stays.
     const wrapper = mountFooter({ previewVisible: true })
     await nextTick()
-    expect(wrapper.findAll('.FooterHint .HintKey').map((node) => node.text())).toEqual(['⌘K'])
+    // Read the row on screen: the hidden measuring row holds a copy of every candidate hint.
+    expect(wrapper.findAll('.FooterHints .HintKey').map((node) => node.text())).toEqual(['⌘K'])
     // What the preview covers is the hint row, not the item's own label.
     expect(wrapper.get('.FooterTitle').text()).toBe('Safari')
 
     await wrapper.setProps({ previewVisible: false })
-    expect(wrapper.findAll('.FooterHint .HintKey').map((node) => node.text())).toEqual([
+    expect(wrapper.findAll('.FooterHints .HintKey').map((node) => node.text())).toEqual([
       '↵',
       '⌘K',
       '⌘1-0'
