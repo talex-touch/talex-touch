@@ -27,9 +27,9 @@ import {
 // coasts on; at fit, a sideways drag turns the page and a vertical one pulls the picture away to
 // close. Two fingers pinch about their midpoint, and a trackpad pinch or ⌘/Ctrl + wheel zooms
 // about the pointer. A mouse wheel's notches zoom too, while a trackpad's two-finger scroll pans.
-// A click on the picture, or a double tap, zooms to the detail and back, and a touch held still on
-// it asks for the menu. The keys mirror all of it. The physics is the maps' roam: the same springs,
-// rubber band and glide.
+// A click or a double-click on the picture, or a double tap, zooms to the detail about the pointer
+// and back, and a touch held still on it asks for the menu. The keys mirror all of it. The physics
+// is the maps' roam: the same springs, rubber band and glide.
 
 export type PreviewGesture = 'idle' | 'pan' | 'pinch' | 'swipe' | 'dismiss'
 
@@ -136,6 +136,8 @@ export const SLIDE_GAP = 24
 /** Two taps this close in time (ms) and space (px) are a double tap. */
 const DOUBLE_TAP_MS = 300
 const DOUBLE_TAP_PX = 24
+/** A mouse press this soon (ms) after a click, and as close as a double tap's, is a double-click's second. */
+const DOUBLE_CLICK_MS = 500
 /** A zoom wheel event under this (px) is a trackpad pinch, which follows on the frame; bigger ones are notches and spring. */
 const CONTINUOUS_WHEEL_PX = 50
 /** A mouse wheel's notch zooms at least as far as this many pixels would, 1.25 times, whatever its wheel reports. */
@@ -654,6 +656,8 @@ export function usePreviewGestures(options: PreviewGestureOptions): PreviewGestu
   let suppressClick = false
   let pointerType = 'mouse'
   let lastTap: { time: number, x: number, y: number } | null = null
+  /** A mouse click that zoomed: a press on it soon after is the double-click's second. */
+  let zoomClick: { time: number, x: number, y: number } | null = null
   let tapTimer: ReturnType<typeof setTimeout> | undefined
   let holdTimer: ReturnType<typeof setTimeout> | undefined
   let lastPoint: PreviewPoint = { x: 0, y: 0 }
@@ -792,9 +796,14 @@ export function usePreviewGestures(options: PreviewGestureOptions): PreviewGestu
       press = null
       return
     }
-    // Grabbing a moving picture stops it where it is drawn, and that press only stops it.
-    suppressClick = viewMotion !== null
-    stopView()
+    // Grabbing a moving picture stops it where it is drawn, and that press only stops it. A
+    // double-click's second press is no grab: the zoom its first click began runs on.
+    const second = zoomClick !== null && event.pointerType === 'mouse' && event.timeStamp - zoomClick.time < DOUBLE_CLICK_MS
+      && Math.hypot(local.x - zoomClick.x, local.y - zoomClick.y) < DOUBLE_TAP_PX
+    zoomClick = null
+    suppressClick = second || viewMotion !== null
+    if (!second)
+      stopView()
     press = { id: event.pointerId, type: event.pointerType, x: local.x, y: local.y, origin: view.value, kind: 'press' }
     startHold(event, local)
   }
@@ -822,6 +831,13 @@ export function usePreviewGestures(options: PreviewGestureOptions): PreviewGestu
     if (press.kind === 'press') {
       if (Math.hypot(dx, dy) < DRAG_SLOP_PX)
         return
+      // A double-click's second press left its zoom running: dragged on, it stops the picture
+      // where it is drawn and follows from there.
+      if (viewMotion) {
+        stopView()
+        const now = view.value
+        press.origin = now && { k: now.k, tx: now.tx - dx, ty: now.ty - dy }
+      }
       press.kind = zoomed.value && press.origin ? 'pan' : Math.abs(dx) >= Math.abs(dy) ? 'swipe' : 'dismiss'
       gesture.value = press.kind
       suppressClick = true
@@ -962,10 +978,16 @@ export function usePreviewGestures(options: PreviewGestureOptions): PreviewGestu
     // A touch or a pen's taps are told apart in `tap`, which waits for a second one.
     if (pointerType !== 'mouse' || !options.active())
       return
-    if (options.isPicture(event.target))
-      toggleZoom(toLocal(event))
-    else
+    if (!options.isPicture(event.target)) {
       options.onBackdrop()
+      return
+    }
+    // A double-click zooms once, about the pointer: its second click would take the first back.
+    if (event.detail > 1)
+      return
+    const point = toLocal(event)
+    zoomClick = { time: event.timeStamp, x: point.x, y: point.y }
+    toggleZoom(point)
   }
 
   // -- Wheels ------------------------------------------------------------------------------
