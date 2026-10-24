@@ -112,7 +112,7 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 
 ## 技术实现
 
-- 预览即 [TxImagePreview](/docs/dev/components/image-preview)（teleport 到 `body`），手势、键盘与占位的细节见它的页面；`TxAttachmentTray` 打开的是同一个预览，行为一致。按需样式插件会一并加载预览的样式；手动引入样式时另引 `image-preview`、`base-surface`、`flow-light` 与 `glass-surface` 的 `style.css`。
+- 预览即 [TxImagePreview](/docs/dev/components/image-preview)（teleport 到 `body`），手势、键盘与占位的细节见它的页面；`TxAttachmentTray` 打开的是同一个预览，行为一致。预览在第一次要用时才加载：指针移到画廊上或焦点进入画廊时开始，加载完成前按下的缩略图在加载完成后打开。按需样式插件让预览的样式随它一起加载；手动引入样式时另引 `image-preview`、`base-surface`、`flow-light` 与 `glass-surface` 的 `style.css`。
 - 源码：`packages/tuffex/packages/components/src/image-gallery/`。
 
 <TuffDocSourceLink />

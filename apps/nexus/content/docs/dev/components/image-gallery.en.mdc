@@ -112,7 +112,7 @@ function onOpen({ index, item }: { index: number, item: { id: string } }) {
 
 ## Technologies
 
-- The preview is [TxImagePreview](/docs/dev/components/image-preview), teleported to `body`; its page has the gestures, keys, and placeholders in full. `TxAttachmentTray` opens the same preview, so the two behave alike. The on-demand style plugin loads the preview's styles along with it; when importing styles by hand, also import `style.css` from `image-preview`, `base-surface`, `flow-light`, and `glass-surface`.
+- The preview is [TxImagePreview](/docs/dev/components/image-preview), teleported to `body`; its page has the gestures, keys, and placeholders in full. `TxAttachmentTray` opens the same preview, so the two behave alike. The preview is loaded the first time it is about to be needed: pointing at the gallery or moving focus into it starts the load, and a thumbnail pressed before it arrives opens once it does. The on-demand style plugin brings the preview's styles with it; when importing styles by hand, also import `style.css` from `image-preview`, `base-surface`, `flow-light`, and `glass-surface`.
 - Source: `packages/tuffex/packages/components/src/image-gallery/`.
 
 <TuffDocSourceLink />

@@ -1,7 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import TxImageGallery from '../src/TxImageGallery.vue'
+
+// The gallery imports the preview the first time it is needed. Loaded here first, that import
+// settles within a flush instead of racing the assertions after the first press.
+beforeAll(async () => {
+  await import('../../image-preview')
+})
 
 const items = [
   { id: 'a', url: '/a.png', name: 'Alpha' },
@@ -42,7 +48,7 @@ describe('txImageGallery', () => {
     })
 
     await wrapper.findAll('.tx-image-gallery__thumb')[1].trigger('click')
-    await nextTick()
+    await flushPromises()
 
     expect(wrapper.emitted('open')?.[0]).toEqual([{ index: 1, item: items[1] }])
     expect(overlay()?.getAttribute('aria-label')).toBe('Preview: Beta')
@@ -59,7 +65,7 @@ describe('txImageGallery', () => {
     })
 
     await wrapper.findAll('.tx-image-gallery__thumb')[0].trigger('click')
-    await nextTick()
+    await flushPromises()
 
     expect(nav('Previous image').getAttribute('aria-disabled')).toBe('true')
     expect(nav('Next image').hasAttribute('aria-disabled')).toBe(false)
@@ -96,7 +102,7 @@ describe('txImageGallery', () => {
     const thumb = (i: number) => wrapper.findAll('.tx-image-gallery__thumb')[i]!
 
     await thumb(0).trigger('click')
-    await nextTick()
+    await flushPromises()
 
     // Walking to the last image makes Next unavailable under the pointer. It says so with
     // aria-disabled and stays focusable, so focus stays on the control the user was using
@@ -151,7 +157,7 @@ describe('txImageGallery', () => {
     })
 
     await wrapper.findAll('.tx-image-gallery__thumb')[0].trigger('click')
-    await nextTick()
+    await flushPromises()
     expect(counter()).toBe('1 / 3')
 
     await wrapper.setProps({ startIndex: 9 })

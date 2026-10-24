@@ -17,11 +17,15 @@
 - 新增 `TxStepsForm` 与 `TxFormStep`，把一个表单分成几步，步骤条由 `TxSteps` 绘制。「下一步」只校验当前一步的字段，通过后焦点移到下一步；最后一步提交整个表单，有字段出错时回到它所在的一步并聚焦它。当前步骤可经 `v-model:active` 控制，开启 `persist` 时草稿记下所在的步骤，恢复草稿时回到那一步。按钮文案由 `prevText`、`nextText` 与 `submitText` 设定。其余属性与 `TxForm` 相同，`autosave` 除外。
 - `TxForm` 新增 `autosave`（`true` 或 `{ delay }`）：编辑停顿 1 秒（或 `delay` 毫秒）后经 `onSubmit` 保存，表单内的提交改为立即保存。只校验改过的字段，出错或异步校验未完成的字段保留已保存的值、其余字段照存，保存结果由读屏播报（`messages.autosaved` / `autosaveFailed`）。新增 `readonly`：表单里读取表单状态的控件能聚焦、能复制、不能修改，字段不再标必填，提交照常可用；`TxCheckbox`、`TxRadio`、`TxSelect` 与 `TxSwitch` 只读时去掉悬停与按下反馈，自定义控件从 `useTxFormField()` 读取 `readonly`。新增事件 `submit-success`，在提交或自动保存成功后触发。离开字段时鼠标仍按着的（例如按在字段下方的提交按钮上），消息等松手、点击处理完再显示，免得消息把按钮推开、这次点击落空。草稿存储新增可选的 `keys(prefix)`；`clearTxFormDrafts()` 的 `namespace` 可传函数，清掉它接受的所有命名空间的草稿（例如启动时清掉当前账号以外的所有账号），存储没有 `keys` 时给出警告并跳过。新增类型导出 `FormAutosaveOptions`。
 - 新增 `TxImagePreview` 全窗口图片预览，一次看一张，左右相邻的图片候在两侧。滚轮以指针为中心缩放，触控板捏合与 ⌘/Ctrl + 滚轮跟手缩放，放大后拖动平移、松手滑行；未放大时横向拖动或一划翻页，上下拖走关闭。触屏双指捏合、双击放大或恢复、单击隐藏或显示控件，长按 480 ms 弹出操作菜单。传 `origin` 时图片按缩略图的裁切与圆角飞出、关闭时飞回，越过终点的程度由 `bounce` 控制（默认 `0.2`）。`actions` 逐项开关旋转、复制、分享与下载，右键或菜单键打开同一组操作的菜单（`contextMenu`），`action` 事件在执行前触发，`preventDefault()` 后由宿主处理。底部条用缩略图或圆点（`indicator`）。遮罩默认 `refraction` 材质、控件默认 `blur` 材质，各有颜色、不透明度与模糊半径可调。宽度不超过 640px 或高度不超过 480px 时改用手机版式。所有文字与可访问名称都是 props，另有 `counterFormatter`、`scaleFormatter`、`indicatorItemFormatter`、`labelFormatter` 与 `readoutLabelFormatter`。
-- `TxImageGallery` 与 `TxAttachmentTray` 改用 `TxImagePreview`：图片从点开的缩略图飞出、关闭时飞回。两者新增 `previewProps`，把预览的其余选项（操作、底部条、动效与材质）原样传入，新增 `action` 事件转发预览的操作；`TxAttachmentTray` 另新增 `openLabelFormatter`，由图片名生成缩略图的 `aria-label`（默认 `` (name) => `${previewTitle}: ${name}` ``）。原内部预览器 `ImageGalleryViewer` 移除，它不在包的导出中。预览的样式在 `image-preview` 的样式表里：按需样式插件会一并加载，手动引入样式时需另引 `@talex-touch/tuffex/image-preview/style.css`，以及它依赖的 `base-surface`、`flow-light` 与 `glass-surface` 的样式表。
+- `TxImageGallery` 与 `TxAttachmentTray` 改用 `TxImagePreview`：图片从点开的缩略图飞出、关闭时飞回。两者新增 `previewProps`，把预览的其余选项（操作、底部条、动效与材质）原样传入，新增 `action` 事件转发预览的操作；`TxAttachmentTray` 另新增 `openLabelFormatter`，由图片名生成缩略图的 `aria-label`（默认 `` (name) => `${previewTitle}: ${name}` ``）。原内部预览器 `ImageGalleryViewer` 移除，它不在包的导出中。预览在第一次要用时才加载：指针移到画廊或托盘上、焦点进入其中，或按下缩略图时开始，加载完成前按下的那张在加载完成后打开。预览的样式在 `image-preview` 的样式表里，按需样式插件让它们随预览一起加载（见「按需样式」）；手动引入样式时需另引 `@talex-touch/tuffex/image-preview/style.css`，以及它依赖的 `base-surface`、`flow-light` 与 `glass-surface` 的样式表。
 
 ### 🐛 组件修复
 
 - `TxBaseSurface` 在强制颜色模式（如 Windows 高对比度主题）下改为实色 `Canvas` 填充，并加一圈 `CanvasText` 描边，模糊、着色与描边各层不再绘制。此前系统调色板保留了材质的半透明与背景模糊，文字底下透出被模糊的页面，阴影去掉后浮层也没有边界。
+
+### 按需样式
+
+- 组件在第一次用到时才加载的同包组件（如 `TxImageGallery` 与 `TxAttachmentTray` 的预览），样式随这次加载进入页面，不再计入首屏：构建时插件把被加载组件的样式闭包并进包内的这次 `import()`；`vite serve` 下依赖预构建不经过插件，改为随发起加载的组件一起引入。新增 `dist/es/style-lazy-deps.json`（`dist/lib` 下同），记录每个组件用到时才加载的组件，`style-deps.json` 只记静态依赖；手动引入样式时，两份文件里的闭包都要引入。
 
 ## [0.9.1] - 2026-10-21
 

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
-import { build, normalizePath } from 'vite'
+import { build, normalizePath, parseAst } from 'vite'
 import { describe, expect, it } from 'vitest'
 import { expandStyleClosure, tuffexOnDemandStylePlugin } from '../on-demand-style-plugin'
 
@@ -40,6 +40,14 @@ interface Snapshot {
 interface BuiltObservation {
   snapshots: Snapshot[]
   emittedStyles: string[]
+}
+
+interface Fixture {
+  /** Appended to a component's built entry. */
+  entryExtras?: Partial<Record<string, string>>
+  /** More built files, by their path under `dist/es`. */
+  files?: Record<string, string>
+  lazyStyleDeps?: Record<string, string[]>
 }
 
 // Execute the emitted ES modules, not the transform's source text. The child
@@ -100,7 +108,7 @@ async function buildFixture(
   mode: Mode,
   source: string,
   actions: string[],
-  progressEntryExtra = '',
+  fixture: Fixture = {},
 ): Promise<BuiltObservation> {
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'tuffex-lazy-style-'))
   try {
@@ -131,9 +139,13 @@ async function buildFixture(
         `globalThis.__fixtureComponents.push('${name}');`,
         `export const ${exported} = '${name}';`,
         `export default ${exported};`,
-        name === 'progress-bar' ? progressEntryExtra : '',
+        fixture.entryExtras?.[name] ?? '',
       ].join('\n'))
       await writeFile(join(directory, 'style.css'), `.fixture-${name} { --fixture-${name}: 1; }`)
+    }
+    for (const [path, code] of Object.entries(fixture.files ?? {})) {
+      await mkdir(dirname(join(componentDistRoot, path)), { recursive: true })
+      await writeFile(join(componentDistRoot, path), code)
     }
     await writeFile(entry, source)
     const result = await build({
@@ -143,6 +155,7 @@ async function buildFixture(
       base: './',
       plugins: [tuffexOnDemandStylePlugin({
         styleDeps,
+        lazyStyleDeps: fixture.lazyStyleDeps,
         ...(mode === 'componentDistRoot' ? { componentDistRoot } : {}),
       })],
       build: {
@@ -286,7 +299,7 @@ describe.each<Mode>(['generic', 'componentDistRoot'])('Vite lazy stylesheet grap
       `import { TxProgressBar } from '@talex-touch/tuffex/progress-bar'`,
       `export const initial = TxProgressBar`,
       stylesheetImpostors,
-    ].join('\n'), [], stylesheetImpostors)
+    ].join('\n'), [], { entryExtras: { 'progress-bar': stylesheetImpostors } })
 
     expect(snapshots).toEqual([{
       components: progressStyles,
@@ -294,5 +307,76 @@ describe.each<Mode>(['generic', 'componentDistRoot'])('Vite lazy stylesheet grap
       value: 'progress-bar',
     }])
     expect(emittedStyles).toEqual(progressStyles)
+  })
+
+  it('brings the complete style closure of a sibling a built component loads on first use, and only then', async () => {
+    // The shape TxImageGallery ships: a file under the entry's src/ that reaches the sibling's
+    // built entry by relative path. The lazy table names the edge, as the published one does,
+    // and a build must not act on it up front.
+    const { snapshots, emittedStyles } = await buildFixture(mode, [
+      `import { TxDialog, loadProgress, loadRuntime } from '@talex-touch/tuffex/dialog'`,
+      `export const initial = TxDialog`,
+      `export const openRuntime = () => loadRuntime()`,
+      `export const openProgress = () => loadProgress()`,
+    ].join('\n'), ['openRuntime', 'openProgress'], {
+      entryExtras: { dialog: `export * from './src/TxDialog.vue.js';` },
+      files: {
+        'dialog/src/TxDialog.vue.js': [
+          `export const loadProgress = () => import('../../progress-bar/index.js');`,
+          // The component's own code, loaded later: no sibling's stylesheets come with it.
+          `export const loadRuntime = () => import('./runtime.js');`,
+        ].join('\n'),
+        'dialog/src/runtime.js': `export default 'runtime';`,
+      },
+      lazyStyleDeps: { dialog: ['progress-bar'] },
+    })
+
+    const dialogStyles = ['base-surface', 'dialog']
+    expect(snapshots[0]).toEqual({ components: dialogStyles, styles: dialogStyles, value: 'dialog' })
+    expect(snapshots[1]).toEqual({ components: dialogStyles, styles: dialogStyles, value: 'runtime' })
+    // Resolving to the sibling's module, not to whatever its stylesheets were loaded alongside.
+    expect(snapshots[2]).toEqual({ components: allStyles, styles: allStyles, value: 'progress-bar' })
+    // base-surface is already on the page; the sibling's closure must not bring a second copy.
+    expect(emittedStyles).toEqual(allStyles)
+  })
+})
+
+/** A hook as this plugin defines it: a plain function, never Vite's `{ handler }` form. */
+function hookOf<T>(hook: T | { handler: T } | undefined): T {
+  if (typeof hook !== 'function')
+    throw new Error('Expected the hook as a plain function')
+  return hook
+}
+
+describe('style imports on a dev server', () => {
+  // A dialog that loads progress-bar on first use, which loads ghost on first use in turn.
+  const lazyStyleDeps = { 'dialog': ['progress-bar'], 'progress-bar': ['ghost'] }
+  const source = `import { TxDialog } from '@talex-touch/tuffex/dialog'\nexport default TxDialog`
+
+  function injectedStyles(command: 'build' | 'serve'): string[] {
+    const plugin = tuffexOnDemandStylePlugin({ styleDeps, lazyStyleDeps })
+    hookOf(plugin.configResolved).call({} as never, { command } as never)
+    const result = hookOf(plugin.transform)
+      .call({ parse: parseAst } as never, source, '/app/src/main.ts') as { code: string } | null
+    return [...(result?.code ?? '').matchAll(/^import '@talex-touch\/tuffex\/([a-z0-9-]+)\/style\.css';$/gm)]
+      .map(match => match[1]!)
+  }
+
+  it('puts what a component loads on first use on the page with it, transitively, after its own closure', () => {
+    // Pre-bundled dependencies are out of reach of the hand-off a build makes to the sibling's
+    // import, so the sibling's stylesheets have to be there before the sibling is.
+    expect(injectedStyles('serve')).toEqual([
+      'base-surface',
+      'dialog',
+      'base-anchor',
+      'tooltip',
+      'spinner',
+      'progress-bar',
+      'ghost',
+    ])
+  })
+
+  it('leaves them to the sibling\'s own import in a build', () => {
+    expect(injectedStyles('build')).toEqual(['base-surface', 'dialog'])
   })
 })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import type TxImagePreviewComponent from '../../image-preview/src/TxImagePreview.vue'
 import type { ImageGalleryEmits, ImageGalleryItem, ImageGalleryProps } from './types'
-import { computed, ref, watch } from 'vue'
-import TxImagePreview from '../../image-preview/src/TxImagePreview.vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 
 defineOptions({
   name: 'TxImageGallery',
@@ -46,6 +46,30 @@ function thumbOf(i: number): Element | null {
   return gridRef.value?.children[i] ?? null
 }
 
+// The preview is loaded the first time it is about to be needed, so a page of thumbnails carries
+// neither it nor its stylesheet until then: pointing at or focusing the gallery starts the load,
+// and a press that lands first opens it as soon as it arrives.
+const preview = shallowRef<typeof TxImagePreviewComponent | null>(null)
+let previewLoad: Promise<void> | null = null
+
+function loadPreview(): void {
+  if (list.value.length <= 0)
+    return
+  previewLoad ??= import('../../image-preview').then(
+    (module) => {
+      preview.value = module.TxImagePreview
+    },
+    () => {
+      // The next press tries again; until then the gallery is not left open on nothing.
+      previewLoad = null
+      if (visible.value) {
+        visible.value = false
+        emit('close')
+      }
+    },
+  )
+}
+
 function getItemLabel(item: ImageGalleryItem, i: number): string {
   return item.name || props.itemLabelFormatter(i)
 }
@@ -54,6 +78,7 @@ function openAt(i: number, event: MouseEvent): void {
   if (list.value.length <= 0)
     return
 
+  loadPreview()
   index.value = clampIndex(i)
   // The preview returns focus to whatever had it when it opened; WebKit does not focus a
   // clicked button, so give it the thumbnail explicitly.
@@ -66,7 +91,7 @@ function openAt(i: number, event: MouseEvent): void {
 </script>
 
 <template>
-  <div class="tx-image-gallery">
+  <div class="tx-image-gallery" @pointerenter="loadPreview" @focusin="loadPreview">
     <div ref="gridRef" class="tx-image-gallery__grid">
       <button
         v-for="(item, i) in list"
@@ -80,7 +105,9 @@ function openAt(i: number, event: MouseEvent): void {
       </button>
     </div>
 
-    <TxImagePreview
+    <component
+      :is="preview"
+      v-if="preview"
       v-bind="previewProps"
       v-model:open="visible"
       v-model:index="index"

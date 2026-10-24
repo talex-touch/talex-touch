@@ -131,7 +131,7 @@ code: |
 ## 技术实现
 
 - 缩略图自行固定 `img` 的外边距与尺寸，放进带排版样式的文章里也不会偏移；预览挂在 `<body>` 上，不受文章样式影响。
-- 预览即 `TxImagePreview`，与 `TxImageGallery` 打开的是同一个组件。按需样式插件会一并加载它的样式；手动引入样式时另引 `image-preview`、`base-surface`、`flow-light` 与 `glass-surface` 的 `style.css`。
+- 预览即 `TxImagePreview`，与 `TxImageGallery` 打开的是同一个组件。它在第一次要用时才加载：指针移到托盘上或焦点进入托盘时开始，加载完成前按下的图片在加载完成后打开。按需样式插件让它的样式随它一起加载；手动引入样式时另引 `image-preview`、`base-surface`、`flow-light` 与 `glass-surface` 的 `style.css`。
 - 源码：`packages/tuffex/packages/components/src/attachment-tray/`。
 
 <TuffDocSourceLink />

@@ -125,4 +125,39 @@ describe('collectCssAssets', () => {
     expect(parts.get('progress-bar')?.deps).toEqual(['tooltip'])
     expect(parts.get('progress-bar')?.own).toEqual([])
   })
+
+  it('names a sibling loaded on first use apart from the ones it leans on, and takes none of its rules', () => {
+    // TxImageGallery imports its preview only once a thumbnail is used. Walking that import would
+    // put the preview's rules on every page with a gallery; naming it lets them arrive with it.
+    const parts = collectCssAssets(
+      output(
+        asset('gallery.css', '.tx-image-gallery{}'),
+        asset('preview.css', '.tx-image-preview{}'),
+        chunk('image-gallery.js', {
+          isEntry: true,
+          name: 'image-gallery',
+          modules: { '/x/src/image-gallery/index.ts': {} },
+          imports: ['assets/TxImageGallery.js'],
+        }),
+        chunk('assets/TxImageGallery.js', {
+          modules: { '/x/src/image-gallery/src/TxImageGallery.vue': {} },
+          viteMetadata: { importedCss: ['gallery.css'] },
+          dynamicImports: ['image-preview.js'],
+        }),
+        chunk('image-preview.js', {
+          isEntry: true,
+          name: 'image-preview',
+          modules: { '/x/src/image-preview/index.ts': {} },
+          imports: ['assets/TxImagePreview.js'],
+        }),
+        chunk('assets/TxImagePreview.js', {
+          modules: { '/x/src/image-preview/src/TxImagePreview.vue': {} },
+          viteMetadata: { importedCss: ['preview.css'] },
+        }),
+      ),
+      new Set(['image-gallery', 'image-preview']),
+    )
+
+    expect(parts.get('image-gallery')).toEqual({ own: ['.tx-image-gallery{}'], deps: [], lazy: ['image-preview'] })
+  })
 })

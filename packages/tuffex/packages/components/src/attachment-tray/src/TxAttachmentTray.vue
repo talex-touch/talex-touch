@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { AiAttachmentFile, AiAttachmentImage } from '../../ai-elements/src/types'
+import type TxImagePreviewComponent from '../../image-preview/src/TxImagePreview.vue'
 import type { AttachmentTrayEmits, AttachmentTrayProps } from './types'
-import { computed, ref } from 'vue'
-import TxImagePreview from '../../image-preview/src/TxImagePreview.vue'
+import { computed, ref, shallowRef } from 'vue'
 import AttachmentThumb from './AttachmentThumb.vue'
 import TxAttachmentChip from './TxAttachmentChip.vue'
 
@@ -43,7 +43,9 @@ function markFailed(url: string): void {
 }
 
 // -- Preview: TxImagePreview, which keeps the index on a real image as the list changes and
-// closes when no image is left.
+// closes when no image is left. It is loaded the first time it is about to be needed, so a tray
+// carries neither it nor its stylesheet until then: pointing at or focusing the tray starts the
+// load, and a press that lands first opens it as soon as it arrives.
 
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
@@ -65,14 +67,33 @@ function openLabel(image: ImageAttachment): string {
   return props.openLabelFormatter ? props.openLabelFormatter(name) : `${props.previewTitle}: ${name}`
 }
 
+const preview = shallowRef<typeof TxImagePreviewComponent | null>(null)
+let previewLoad: Promise<void> | null = null
+
+function loadPreview(): void {
+  if (images.value.length <= 0)
+    return
+  previewLoad ??= import('../../image-preview').then(
+    (module) => {
+      preview.value = module.TxImagePreview
+    },
+    () => {
+      // The next press tries again; until then the tray is not left open on nothing.
+      previewLoad = null
+      viewerOpen.value = false
+    },
+  )
+}
+
 function openViewer(index: number): void {
+  loadPreview()
   viewerIndex.value = index
   viewerOpen.value = true
 }
 </script>
 
 <template>
-  <div ref="rootRef" class="tx-attachment-tray">
+  <div ref="rootRef" class="tx-attachment-tray" @pointerenter="loadPreview" @focusin="loadPreview">
     <div v-if="images.length > 0" class="tx-attachment-tray__grid">
       <AttachmentThumb
         v-for="(image, index) in images"
@@ -105,7 +126,9 @@ function openViewer(index: number): void {
       />
     </div>
 
-    <TxImagePreview
+    <component
+      :is="preview"
+      v-if="preview"
       v-bind="previewProps"
       v-model:open="viewerOpen"
       v-model:index="viewerIndex"

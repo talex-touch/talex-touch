@@ -66,7 +66,9 @@ and a shared one is loaded once however many components ask for it. A page built
 from five components drops from 208 KiB of CSS to 90 KiB (14 KiB gzipped).
 
 Without the plugin, import the closure yourself. `dist/es/style-deps.json` maps
-each component to what it depends on.
+each component to what it depends on, and `dist/es/style-lazy-deps.json` to the
+components it loads only once it is used — the image gallery's preview, for one.
+Their closures need importing too.
 
 ### Legacy full import
 

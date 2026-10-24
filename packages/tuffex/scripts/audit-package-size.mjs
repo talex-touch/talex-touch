@@ -270,7 +270,8 @@ const LIMITS = {
   // `image-preview/style.css` is unscoped and carries only `.tx-image-preview*` rules, its
   // shimmer keyframes come from the shared `skeleton-keyframes` mixin, the tray and the gallery
   // reach it through style-deps (`attachment-tray, image-gallery -> image-preview`, which no
-  // longer pulls in modal), and no rule repeats across sheets. Measured 877,887 B (857.31 KiB).
+  // longer pulls in modal; later the same day that edge moved to `style-lazy-deps.json`, see the
+  // chat page budget), and no rule repeats across sheets. Measured 877,887 B (857.31 KiB).
   // Actuals plus minimal headroom, growth from here fails.
   // 858 -> 865 the same day for TxForm's layouts and the controls that join a form item: the
   // auto / side / stacked / inline layouts with their container query and subgrid label column,
@@ -367,7 +368,14 @@ const pageStyleBudgets = [
     // fill with a CanvasText edge and no layers, in a sheet every page here reaches through the
     // surface stack (`base-surface/style.css` +380 B). Measured 171,532 B against 171,520.
     // Actuals plus minimal headroom, growth from here fails.
-    limit: 168 * 1024,
+    // 168 -> 154.5 later still: the tray and the gallery import TxImagePreview once a picture is
+    // about to open (pointing at or focusing them starts it, as does pressing a thumbnail). The
+    // build records that edge in `style-lazy-deps.json` instead of `style-deps.json`, and the
+    // on-demand plugin hands the preview's closure to that import, so its sheet arrives with its
+    // chunk and leaves the page (-13,758 B, 27 -> 26 sheets; the rest of its closure is already
+    // here). Measured 157,774 B, gzip 24,073 B. Actuals plus minimal headroom, growth from here
+    // fails.
+    limit: 154.5 * 1024,
   },
 ]
 

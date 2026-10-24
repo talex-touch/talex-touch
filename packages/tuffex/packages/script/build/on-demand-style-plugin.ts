@@ -1,10 +1,12 @@
 import type { Plugin, ViteDevServer } from 'vite'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, resolve } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const SUPPORTED_CODE_ID_RE = /\.(?:[cm]?[jt]sx?|vue)(?:$|\?)/
+// An installed copy of the package, wherever the package manager put it.
+const INSTALLED_DIST_ROOT_RE = /^(.*\/node_modules\/@talex-touch\/tuffex\/dist\/es)\//
 
 export interface TuffexOnDemandStylePluginOptions {
   enabled?: boolean
@@ -13,6 +15,11 @@ export interface TuffexOnDemandStylePluginOptions {
    * `style-deps.json`. Injectable for tests.
    */
   styleDeps?: Record<string, string[]>
+  /**
+   * The siblings each component imports only once it is used, normally read from the package's
+   * published `style-lazy-deps.json`. Injectable for tests.
+   */
+  lazyStyleDeps?: Record<string, string[]>
   /**
    * Built component root used by consumers that register every component through
    * a generated lazy registry. Styles are injected into each component entry so
@@ -31,11 +38,10 @@ function isComponentSubpath(componentName: string) {
 
 
 function createStyleImports(
-  componentNames: string[],
-  styleDeps: Record<string, string[]>,
+  closure: string[],
   existingStyles: Set<string>,
 ): string {
-  return expandStyleClosure(componentNames, styleDeps)
+  return closure
     .filter(componentName => !existingStyles.has(componentName))
     .map(componentName => `import '@talex-touch/tuffex/${componentName}/style.css';`)
     .join('\n')
@@ -55,6 +61,81 @@ function componentNameFromDistEntry(id: string, root: string | undefined): strin
   return componentName && isComponentSubpath(componentName) ? componentName : undefined
 }
 
+/** The built component root `id` is under: this plugin's own package's, or an installed copy's. */
+function distRootOf(id: string, roots: string[]): string | undefined {
+  const file = id.split('?')[0]!.replace(/\\/g, '/')
+  return roots.find(root => file.startsWith(`${root}/`)) ?? INSTALLED_DIST_ROOT_RE.exec(file)?.[1]
+}
+
+/** `to` as an import specifier in a module that lives in `fromDir`. */
+function relativeSpecifier(fromDir: string, to: string): string {
+  const specifier = relative(fromDir, to).replace(/\\/g, '/')
+  return specifier.startsWith('.') ? specifier : `./${specifier}`
+}
+
+interface ImportSite {
+  start: number
+  end: number
+  name: string
+}
+
+/** Every `import()` whose specifier `nameOf` maps to a component, in source order. */
+function componentImportSites(ast: unknown, nameOf: (specifier: string) => string | undefined): ImportSite[] {
+  const sites: ImportSite[] = []
+  function visit(value: unknown) {
+    if (!value || typeof value !== 'object')
+      return
+    if (Array.isArray(value)) {
+      for (const item of value)
+        visit(item)
+      return
+    }
+    const node = value as Record<string, unknown>
+    if (node.type === 'ImportExpression') {
+      const source = node.source as { value?: unknown }
+      const name = typeof source.value === 'string' ? nameOf(source.value) : undefined
+      if (name)
+        sites.push({ start: Number(node.start), end: Number(node.end), name })
+    }
+    for (const key in node)
+      visit(node[key])
+  }
+  visit(ast)
+  return sites.sort((a, b) => a.start - b.start)
+}
+
+/**
+ * `code` with each site's `import()` also loading the stylesheets `specifiersOf` gives for its
+ * component, and still resolving to the module alone. A site with none to add is left as it was.
+ */
+function withStyleImports(code: string, sites: ImportSite[], specifiersOf: (name: string) => string[]): string {
+  const pieces: string[] = []
+  let cursor = 0
+  for (const site of sites) {
+    const specifiers = specifiersOf(site.name)
+    if (!specifiers.length)
+      continue
+    const imports = specifiers.map(specifier => `import('${specifier}')`)
+    pieces.push(code.slice(cursor, site.start), `Promise.all([${code.slice(site.start, site.end)}, ${imports.join(', ')}]).then(([module]) => module)`)
+    cursor = site.end
+  }
+  pieces.push(code.slice(cursor))
+  return pieces.join('')
+}
+
+/** The candidates that exist, as the real paths module IDs are made of. */
+function realRoots(candidates: string[]): string[] {
+  const roots = new Set<string>()
+  for (const candidate of candidates) {
+    try {
+      roots.add(realpathSync(candidate).replace(/\\/g, '/'))
+    }
+    catch {
+      // Not built there.
+    }
+  }
+  return [...roots]
+}
 
 /**
  * Baked in when this file is built for publishing, so the shipped plugin needs
@@ -63,18 +144,19 @@ function componentNameFromDistEntry(id: string, root: string | undefined): strin
  * how this repo's own apps load it.
  */
 declare const __TUFFEX_STYLE_DEPS__: Record<string, string[]> | undefined
+declare const __TUFFEX_LAZY_STYLE_DEPS__: Record<string, string[]> | undefined
 
 function hasBakedStyleDeps(): boolean {
   return typeof __TUFFEX_STYLE_DEPS__ !== 'undefined' && !!__TUFFEX_STYLE_DEPS__
 }
 
-/** Where the style build publishes the dependency graph when nothing is baked in. */
-function styleDepsCandidates(): string[] {
+/** Where the built components may be: the package as resolved from here, or beside this file. */
+function distEsCandidates(): string[] {
   const candidates: string[] = []
 
   try {
     const require = createRequire(import.meta.url)
-    candidates.push(resolve(dirname(require.resolve('@talex-touch/tuffex/package.json')), 'dist/es/style-deps.json'))
+    candidates.push(resolve(dirname(require.resolve('@talex-touch/tuffex/package.json')), 'dist/es'))
   }
   catch {
     // Not resolvable from here; the paths below still apply.
@@ -83,7 +165,7 @@ function styleDepsCandidates(): string[] {
   try {
     const here = dirname(fileURLToPath(import.meta.url))
     // From source: packages/script/build/ → dist/es/. From dist/vite/ → ../es/.
-    candidates.push(resolve(here, '../../../dist/es/style-deps.json'), resolve(here, '../es/style-deps.json'))
+    candidates.push(resolve(here, '../../../dist/es'), resolve(here, '../es'))
   }
   catch {
     // No module URL (a CJS host, for instance); the resolved path above stands.
@@ -92,15 +174,37 @@ function styleDepsCandidates(): string[] {
   return [...new Set(candidates)]
 }
 
-/** The first candidate that parses, or undefined when none does (not built, or mid-write). */
-function readStyleDeps(): Record<string, string[]> | undefined {
-  for (const candidate of styleDepsCandidates()) {
+/** Where the style build publishes the dependency graph when nothing is baked in. */
+function styleDepsCandidates(): string[] {
+  return distEsCandidates().flatMap(root => [resolve(root, 'style-deps.json'), resolve(root, 'style-lazy-deps.json')])
+}
+
+interface StyleGraph {
+  styleDeps: Record<string, string[]>
+  lazyStyleDeps: Record<string, string[]>
+}
+
+/**
+ * The first build whose graph parses, or undefined when none does (not built, or mid-write).
+ * Both tables come from the same build; one built before lazy edges existed has none.
+ */
+function readStyleGraph(): StyleGraph | undefined {
+  for (const root of distEsCandidates()) {
+    let styleDeps: Record<string, string[]>
     try {
-      return JSON.parse(readFileSync(candidate, 'utf-8'))
+      styleDeps = JSON.parse(readFileSync(resolve(root, 'style-deps.json'), 'utf-8'))
     }
     catch {
       continue
     }
+    let lazyStyleDeps: Record<string, string[]> = {}
+    try {
+      lazyStyleDeps = JSON.parse(readFileSync(resolve(root, 'style-lazy-deps.json'), 'utf-8'))
+    }
+    catch {
+      // Older than lazy edges, or mid-write: nothing is loaded lazily.
+    }
+    return { styleDeps, lazyStyleDeps }
   }
   return undefined
 }
@@ -108,13 +212,17 @@ function readStyleDeps(): Record<string, string[]> | undefined {
 /**
  * The dependency graph the style build publishes next to the stylesheets.
  *
- * Running from source there is nothing baked in, so the file is read from the
+ * Running from source there is nothing baked in, so the files are read from the
  * workspace instead.
  */
-function loadStyleDeps(): Record<string, string[]> {
-  if (hasBakedStyleDeps())
-    return __TUFFEX_STYLE_DEPS__!
-  return readStyleDeps() ?? {}
+function loadStyleGraph(): StyleGraph {
+  if (hasBakedStyleDeps()) {
+    return {
+      styleDeps: __TUFFEX_STYLE_DEPS__!,
+      lazyStyleDeps: typeof __TUFFEX_LAZY_STYLE_DEPS__ !== 'undefined' && __TUFFEX_LAZY_STYLE_DEPS__ ? __TUFFEX_LAZY_STYLE_DEPS__ : {},
+    }
+  }
+  return readStyleGraph() ?? { styleDeps: {}, lazyStyleDeps: {} }
 }
 
 /**
@@ -152,6 +260,31 @@ export function expandStyleClosure(
 }
 
 /**
+ * What a dev server injects up front: the closure, then everything its components load on first
+ * use. Dependencies there are usually pre-bundled, out of reach of the hand-off a build makes, so
+ * a sibling's stylesheets have to be on the page before the sibling is. They follow the closure,
+ * as they would follow the page in a build.
+ */
+function expandEagerClosure(
+  componentNames: string[],
+  styleDeps: Record<string, string[]>,
+  lazyStyleDeps: Record<string, string[]>,
+): string[] {
+  const ordered = expandStyleClosure(componentNames, styleDeps)
+  const seen = new Set(ordered)
+  // The list grows as it is read, so what a lazily loaded sibling loads lazily is reached too.
+  for (let i = 0; i < ordered.length; i++) {
+    for (const name of expandStyleClosure(lazyStyleDeps[ordered[i]!] ?? [], styleDeps)) {
+      if (seen.has(name))
+        continue
+      seen.add(name)
+      ordered.push(name)
+    }
+  }
+  return ordered
+}
+
+/**
  * Turns a component import into the stylesheets it needs.
  *
  * Each stylesheet holds only its own component's rules, so a component that
@@ -160,15 +293,30 @@ export function expandStyleClosure(
  * because a module graph loads one path exactly once — which is what stops the
  * base-surface rules from being inlined into all 26 packages that use them.
  *
+ * A component that loads a sibling only once it is used (TxImageGallery's
+ * preview) does so with an `import()` of the sibling's built entry. A build adds
+ * the sibling's stylesheets to that import, so they reach the page with it
+ * rather than with the component that asked.
+ *
  * A consumer that imports `<component>/style.css` by hand instead of running
  * this plugin gets that component's rules alone, and its dependencies' styling
  * will be missing.
  */
 export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOptions = {}): Plugin {
   let styleDeps: Record<string, string[]> = options.styleDeps ?? {}
-  // Every file whose transform consulted `styleDeps`, with the components it asked for.
+  let lazyStyleDeps: Record<string, string[]> = options.lazyStyleDeps ?? {}
+  let serving = false
+  let distRoots: string[] = []
+  // Every file whose transform consulted the graph, with the components it asked for.
   const dependents = new Map<string, string[]>()
   const servers: ViteDevServer[] = []
+
+  /** The stylesheets a module importing these components needs; on a dev server, all at once. */
+  function closureOf(componentNames: string[]): string[] {
+    return serving
+      ? expandEagerClosure(componentNames, styleDeps, lazyStyleDeps)
+      : expandStyleClosure(componentNames, styleDeps)
+  }
 
   /**
    * A dev server outlives the dist it reads: a rebuild that changes the graph
@@ -176,20 +324,27 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
    * Only the modules whose closure moved are transformed again.
    */
   function reloadStyleDeps() {
-    const next = readStyleDeps()
+    const next = readStyleGraph()
     if (!next)
       return
-    const previous = styleDeps
-    styleDeps = next
+    const previous: StyleGraph = { styleDeps, lazyStyleDeps }
+    styleDeps = next.styleDeps
+    lazyStyleDeps = options.lazyStyleDeps ?? next.lazyStyleDeps
+    const current: StyleGraph = { styleDeps, lazyStyleDeps }
+    const edgesOf = (graph: StyleGraph, name: string) =>
+      JSON.stringify([graph.styleDeps[name] ?? [], graph.lazyStyleDeps[name] ?? []])
     const changed = new Set(
-      [...new Set([...Object.keys(previous), ...Object.keys(next)])]
-        .filter(name => JSON.stringify(previous[name] ?? []) !== JSON.stringify(next[name] ?? [])),
+      [previous, current]
+        .flatMap(graph => [...Object.keys(graph.styleDeps), ...Object.keys(graph.lazyStyleDeps)])
+        .filter(name => edgesOf(previous, name) !== edgesOf(current, name)),
     )
     if (!changed.size)
       return
 
+    // Against everything a component may come to need, which is what a dev server injects.
     const stale = [...dependents.entries()]
-      .filter(([, names]) => [previous, next].some(table => expandStyleClosure(names, table).some(name => changed.has(name))))
+      .filter(([, names]) => [previous, current].some(graph =>
+        expandEagerClosure(names, graph.styleDeps, graph.lazyStyleDeps).some(name => changed.has(name))))
       .map(([file]) => file)
     for (const file of stale) {
       dependents.delete(file)
@@ -201,7 +356,7 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
     if (!stale.length)
       return
     servers[0]?.config.logger.info(
-      `[tuffex-on-demand-style] style-deps.json changed for ${changed.size} component(s); reloading ${stale.length} module(s)`,
+      `[tuffex-on-demand-style] the style graph changed for ${changed.size} component(s); reloading ${stale.length} module(s)`,
       { timestamp: true },
     )
     for (const server of servers)
@@ -211,11 +366,18 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
   return {
     name: 'tuffex-on-demand-style',
     enforce: 'post',
+    configResolved(config) {
+      serving = config.command === 'serve'
+    },
     buildStart() {
       if (options.enabled === false)
         return
-      if (!options.styleDeps)
-        styleDeps = loadStyleDeps()
+      distRoots = realRoots(distEsCandidates())
+      if (!options.styleDeps) {
+        const graph = loadStyleGraph()
+        styleDeps = graph.styleDeps
+        lazyStyleDeps = options.lazyStyleDeps ?? graph.lazyStyleDeps
+      }
     },
     configureServer(server) {
       if (options.enabled === false || options.styleDeps || hasBakedStyleDeps())
@@ -242,6 +404,26 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
       const distComponentName = componentNameFromDistEntry(id, options.componentDistRoot)
       if (options.componentDistRoot && !distComponentName)
         return null
+      const distRoot = options.componentDistRoot ? undefined : distRootOf(id, distRoots)
+      if (distRoot) {
+        // A built component that loads a sibling on first use gets the sibling's stylesheets with
+        // it. Built files reach each other by relative path, and so do these: the package's own
+        // name need not resolve from inside it (in this workspace it does not).
+        if (!code.includes('import('))
+          return null
+        const file = id.split('?')[0]!
+        const sites = componentImportSites(this.parse(code), specifier => specifier.startsWith('.')
+          ? componentNameFromDistEntry(resolve(dirname(file), specifier), distRoot)
+          : undefined)
+        if (!sites.length)
+          return null
+        dependents.set(file, sites.map(site => site.name))
+        return {
+          code: withStyleImports(code, sites, name => expandStyleClosure([name], styleDeps)
+            .map(style => relativeSpecifier(dirname(file), `${distRoot}/${style}/style.css`))),
+          map: null,
+        }
+      }
       if (!options.componentDistRoot && !code.includes('@talex-touch/tuffex/'))
         return null
       const ast = this.parse(code)
@@ -259,52 +441,25 @@ export function tuffexOnDemandStylePlugin(options: TuffexOnDemandStylePluginOpti
       }
       if (distComponentName) {
         dependents.set(id.split('?')[0]!, [distComponentName])
-        const styleImports = createStyleImports([distComponentName], styleDeps, existingStyles)
+        const styleImports = createStyleImports(expandStyleClosure([distComponentName], styleDeps), existingStyles)
         return styleImports ? { code: `${styleImports}\n${code}`, map: null } : null
       }
-      const styleImports = createStyleImports([...componentNames], styleDeps, existingStyles)
-      const staticStyles = expandStyleClosure([...componentNames], styleDeps)
-      for (const name of staticStyles)
+      const closure = closureOf([...componentNames])
+      const styleImports = createStyleImports(closure, existingStyles)
+      for (const name of closure)
         existingStyles.add(name)
-      const dynamicImports: Array<{ start: number, end: number, name: string }> = []
-      function visit(value: unknown) {
-        if (!value || typeof value !== 'object')
-          return
-        if (Array.isArray(value)) {
-          for (const item of value)
-            visit(item)
-          return
-        }
-        const node = value as Record<string, unknown>
-        if (node.type === 'ImportExpression') {
-          const source = node.source as { value?: unknown }
-          const name = typeof source.value === 'string'
-            ? /^@talex-touch\/tuffex\/([a-z0-9-]+)$/.exec(source.value)?.[1]
-            : undefined
-          if (name && isComponentSubpath(name))
-            dynamicImports.push({ start: Number(node.start), end: Number(node.end), name })
-        }
-        for (const key in node)
-          visit(node[key])
-      }
-      visit(ast)
+      const dynamicImports = componentImportSites(ast, (specifier) => {
+        const name = /^@talex-touch\/tuffex\/([a-z0-9-]+)$/.exec(specifier)?.[1]
+        return name && isComponentSubpath(name) ? name : undefined
+      })
       if (componentNames.size || dynamicImports.length)
-        dependents.set(id.split('?')[0]!, [...componentNames, ...dynamicImports.map(entry => entry.name)])
+        dependents.set(id.split('?')[0]!, [...componentNames, ...dynamicImports.map(site => site.name)])
       if (!styleImports && !dynamicImports.length)
         return null
-      const pieces: string[] = [styleImports, '\n']
-      let cursor = 0
-      for (const entry of dynamicImports.sort((a, b) => a.start - b.start)) {
-        const styles = expandStyleClosure([entry.name], styleDeps)
-          .filter(name => !existingStyles.has(name))
-        if (!styles.length)
-          continue
-        const imports = styles.map(name => `import('@talex-touch/tuffex/${name}/style.css')`)
-        pieces.push(code.slice(cursor, entry.start), `Promise.all([${code.slice(entry.start, entry.end)}, ${imports.join(', ')}]).then(([module]) => module)`)
-        cursor = entry.end
-      }
-      pieces.push(code.slice(cursor))
-      return { code: pieces.join(''), map: null }
+      const rewritten = withStyleImports(code, dynamicImports, name => closureOf([name])
+        .filter(style => !existingStyles.has(style))
+        .map(style => `@talex-touch/tuffex/${style}/style.css`))
+      return { code: `${styleImports}\n${rewritten}`, map: null }
     },
   }
 }

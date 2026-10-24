@@ -1,9 +1,15 @@
 import type { AiAttachment } from '../../ai-elements/src/types'
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { formatSize } from '../src/format-size'
 import TxAttachmentTray from '../src/TxAttachmentTray.vue'
+
+// The tray imports the preview the first time it is needed. Loaded here first, that import
+// settles within a flush instead of racing the assertions after the first press.
+beforeAll(async () => {
+  await import('../../image-preview')
+})
 
 const mixed: AiAttachment[] = [
   { kind: 'image', id: 'img1', url: '/one.png', name: 'One' },
@@ -77,7 +83,7 @@ describe('txAttachmentTray', () => {
     })
 
     await wrapper.findAll('.tx-attachment-tray__thumb')[1]!.trigger('click')
-    await nextTick()
+    await flushPromises()
     expect(viewerSrc()).toBe('/two.png')
 
     nav('Previous image').click()

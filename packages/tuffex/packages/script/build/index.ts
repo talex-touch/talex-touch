@@ -146,11 +146,12 @@ export const buildVitePlugin = async () => {
   // resolution rules, and when it comes up empty it injects one stylesheet
   // instead of the closure — a silently under-styled page, with no error.
   const styleDeps = await readFile(resolve(distPath(), 'es/style-deps.json'), 'utf-8')
+  const lazyStyleDeps = await readFile(resolve(distPath(), 'es/style-lazy-deps.json'), 'utf-8')
 
   await viteBuild({
     configFile: false,
     logLevel: 'warn',
-    define: { __TUFFEX_STYLE_DEPS__: styleDeps.trim() },
+    define: { __TUFFEX_STYLE_DEPS__: styleDeps.trim(), __TUFFEX_LAZY_STYLE_DEPS__: lazyStyleDeps.trim() },
     build: {
       outDir,
       emptyOutDir: true,
@@ -172,6 +173,7 @@ export const buildVitePlugin = async () => {
       `export interface TuffexOnDemandStylePluginOptions {`,
       `  enabled?: boolean`,
       `  styleDeps?: Record<string, string[]>`,
+      `  lazyStyleDeps?: Record<string, string[]>`,
       `  componentDistRoot?: string`,
       `}`,
       ``,

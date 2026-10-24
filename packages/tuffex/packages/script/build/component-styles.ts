@@ -13,6 +13,7 @@ type ComponentStyleOutput = {
   isEntry?: boolean
   name?: string
   imports?: string[]
+  dynamicImports?: string[]
   modules?: Record<string, unknown>
   viteMetadata?: {
     importedCss?: Iterable<unknown>
@@ -94,6 +95,8 @@ export interface ComponentStyleParts {
   own: string[]
   /** Sibling components whose stylesheets this one needs, as directory names. */
   deps: string[]
+  /** Sibling components this one imports only once it is used; their stylesheets come with them. */
+  lazy: string[]
 }
 
 /**
@@ -172,6 +175,7 @@ export function collectCssAssets(result: Awaited<ReturnType<typeof build>>, comp
     fileName: string,
     own: string[],
     deps: Set<string>,
+    lazy: Set<string>,
     visited: Set<string>,
     seenCss: Set<string>,
   ) {
@@ -193,7 +197,15 @@ export function collectCssAssets(result: Awaited<ReturnType<typeof build>>, comp
 
     own.push(...cssOf(chunk, seenCss))
     for (const importedFileName of chunk.imports ?? [])
-      walk(componentName, importedFileName, own, deps, visited, seenCss)
+      walk(componentName, importedFileName, own, deps, lazy, visited, seenCss)
+    // A sibling loaded on first use (TxImageGallery's preview): named, not walked, so its
+    // stylesheets stay off the page until it is, and then arrive with it.
+    for (const importedFileName of chunk.dynamicImports ?? []) {
+      const imported = chunks.get(importedFileName)
+      const importedOwner = imported ? chunkOwner(imported, componentNames) : null
+      if (importedOwner && importedOwner !== componentName)
+        lazy.add(importedOwner)
+    }
   }
 
   for (const output of outputs) {
@@ -204,8 +216,9 @@ export function collectCssAssets(result: Awaited<ReturnType<typeof build>>, comp
 
     const own: string[] = []
     const deps = new Set<string>()
-    walk(output.name, output.fileName, own, deps, new Set(), new Set())
-    entryCss.set(output.name, { own, deps: [...deps].sort() })
+    const lazy = new Set<string>()
+    walk(output.name, output.fileName, own, deps, lazy, new Set(), new Set())
+    entryCss.set(output.name, { own, deps: [...deps].sort(), lazy: [...lazy].filter(name => !deps.has(name)).sort() })
   }
 
   return entryCss
@@ -285,24 +298,33 @@ export async function buildComponentStyles() {
   const entryCss = collectCssAssets(result, componentNames)
 
   const styleDeps: Record<string, string[]> = {}
+  const lazyStyleDeps: Record<string, string[]> = {}
   for (const componentName of Object.keys(entries).sort()) {
-    const parts = entryCss.get(componentName) ?? { own: [], deps: [] }
+    const parts = entryCss.get(componentName) ?? { own: [], deps: [], lazy: [] }
     const borrowed = borrowedStyleDeps[componentName] ?? []
     const deps = emptyStateStyleAliases.has(componentName)
       ? ['empty-state']
       : [...new Set([...parts.deps, ...borrowed])].sort()
     if (deps.length > 0)
       styleDeps[componentName] = deps
+    const lazy = parts.lazy.filter(name => !deps.includes(name))
+    if (lazy.length > 0)
+      lazyStyleDeps[componentName] = lazy
   }
 
   await Promise.all([
     ...Object.entries(entries).map(([componentName]) =>
-      writeComponentStyle(componentName, entryCss.get(componentName) ?? { own: [], deps: [] }),
+      writeComponentStyle(componentName, entryCss.get(componentName) ?? { own: [], deps: [], lazy: [] }),
     ),
     // Published beside the stylesheets: the on-demand plugin walks this to turn
     // one component import into the full set of stylesheets it needs.
     ...['es', 'lib'].map(dir =>
       writeFile(resolve(distPath(), dir, 'style-deps.json'), `${JSON.stringify(styleDeps, null, 2)}\n`),
+    ),
+    // And the siblings each one loads on first use: the plugin hands their closure to the loaded
+    // entry, so it arrives with the code instead of with the page.
+    ...['es', 'lib'].map(dir =>
+      writeFile(resolve(distPath(), dir, 'style-lazy-deps.json'), `${JSON.stringify(lazyStyleDeps, null, 2)}\n`),
     ),
   ])
 
