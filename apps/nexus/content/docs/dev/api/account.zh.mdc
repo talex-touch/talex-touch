@@ -60,6 +60,22 @@ code: |
 ---
 :::
 
+插件要在 `manifest.json` 里声明 `account.read` 并得到用户授权，才能用这里的方法，打开登录页和账户页面也一样。没有授权时，`usePluginAccount()` 的调用以 `ACCOUNT_PERMISSION_DENIED` reject，`onDidChange` 不回调；`accountSDK` 的查询读成「没有」，打开页面的方法 reject。见 [Permission 权限系统](./permission.zh.mdc)。
+
+:::TuffCodeBlock{lang="json"}
+---
+code: |
+  {
+    "permissions": {
+      "required": ["account.read"]
+    },
+    "permissionReasons": {
+      "account.read": "显示你的套餐和剩余额度"
+    }
+  }
+---
+:::
+
 ::alert{type="warning"}
 **注意**：`accountSDK` 把调用失败当成「没有」：`getProfile()` 返回 `null`，`isLoggedIn()` 返回 `false`。要分清「已退出」和「调用失败」，或者要在登录状态变化时收到通知，用下面的 `usePluginAccount()`。
 ::
@@ -94,10 +110,12 @@ code: |
 | `getProfile()` | `UserProfile \| null` | 当前账户资料，未登录时为 `null` |
 | `getSubscription()` | `Subscription \| null` | 订阅 |
 | `getUsage()` | `UsageStats \| null` | 用量 |
-| `getFeatures()` | `FeatureFlag[]` | 功能开关 |
-| `getTeams()` | `Team[]` | 所在团队 |
-| `openUpgradePage(plan?)`、`openBillingPage()`、`openAccountSettings()`、`openProfileEditor()` | `void` | 在浏览器里打开账户网站的对应页面 |
-| `requestLogin()` | `boolean` | 打开登录页。返回 `true` 只表示登录已发起，用户还没登录 |
+| `getFeatures()` | `FeatureFlag[]` | 套餐功能：`aiRequests`、`aiTokens` 的 `value` 是额度（`-1` 为不限），`customModels`、`prioritySupport`、`apiAccess` 只有开关 |
+| `getTeams()` | `Team[]` | 所属组织，没有时为空；个人团队不列出 |
+| `openUpgradePage(plan?)` | `void` | 在浏览器里打开定价页，传了 `plan` 时框出该套餐 |
+| `openBillingPage()` | `void` | 打开团队页，套餐和激活码在这里管理 |
+| `openAccountSettings()`、`openProfileEditor()` | `void` | 打开账户页 |
+| `requestLogin()` | `boolean` | 已登录或登录正在进行时沿用这次登录，否则打开登录页。返回 `true` 时用户可能还没登录，登录页打不开时返回 `false` |
 | `onDidChange(callback)` | `() => void` | 先回调一次当前状态，之后每次变化回调一次；返回停止订阅的函数 |
 
 `onDidChange` 收到的状态（`AccountSessionState`）：
@@ -114,7 +132,7 @@ code: |
 
 **Auth Token & 设备信息**
 
-用于需要认证访问的 SDK（例如 Cloud Sync SDK）。只有 Tuff 自身拿得到，插件里调用返回 `null`。
+Tuff 自身访问账户服务时用。插件拿不到凭据和设备 ID，在插件里调用返回 `null`。
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -548,15 +566,14 @@ code: |
 
 **`getTeams()`**
 
-获取用户所属的所有团队。
+获取账户所属的组织，最多一个；每个账户都有的个人团队不列出。账户服务不提供 slug 和创建时间，`slug` 与 `id` 相同，`createdAt` 为 `0`。
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
   const teams = await accountSDK.getTeams()
   // [
-  //   { id: 'team_xxx', name: '研发团队', role: 'admin', memberCount: 5 },
-  //   { id: 'team_yyy', name: '设计组', role: 'member', memberCount: 3 }
+  //   { id: 'team_xxx', name: '研发团队', slug: 'team_xxx', role: 'admin', memberCount: 5, createdAt: 0 }
   // ]
 ---
 :::
@@ -640,19 +657,19 @@ code: |
 
 **`openUpgradePage(plan?)`**
 
-打开升级页面。
+在浏览器里打开定价页。传了 `plan` 时，定价页框出这个套餐的卡片。
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
-  await accountSDK.openUpgradePage() // 打开升级页
-  await accountSDK.openUpgradePage(SubscriptionPlan.PLUS) // 直接跳转到 Plus
+  await accountSDK.openUpgradePage() // 打开定价页
+  await accountSDK.openUpgradePage(SubscriptionPlan.PLUS) // 打开定价页，框出 Plus
 ---
 :::
 
 **`openBillingPage()`**
 
-打开账单管理页面。
+打开团队页，套餐和激活码在这里管理。
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -667,7 +684,7 @@ code: |
 
 **`requestLogin()`**
 
-打开登录页。返回 `true` 只表示登录已发起，不表示用户已登录；登录结果用 `usePluginAccount().onDidChange` 接收。
+请用户登录。已经登录、或者登录正在进行时，不会再打开登录页，而是沿用这次登录；否则在浏览器里打开登录页。这几种情况都返回 `true`，但用户这时可能还没登录；登录页打不开时返回 `false`。登录结果用 `usePluginAccount().onDidChange` 接收。
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -690,7 +707,7 @@ code: |
 
 **`openAccountSettings()`**
 
-打开账户设置页面。
+打开账户页，设置和资料都在这里。
 
 :::TuffCodeBlock{lang="ts"}
 ---

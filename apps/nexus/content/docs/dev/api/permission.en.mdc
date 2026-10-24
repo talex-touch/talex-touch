@@ -55,11 +55,14 @@ code: |
 |                  | `storage.sqlite`      | Medium     | Plugin local SQLite database access          |
 | **Window**       | `window.create`       | Low        | Create windows (auto-granted)                |
 |                  | `window.capture`      | High       | Screen capture                               |
+| **Account**      | `account.read`        | Medium     | Read the account's profile, plan and usage   |
 | **Search**       | `search.root-results` | High       | Push or update items in CoreBox root results |
 
 `search.root-results` is the root-result write permission for Search Providers. Any plugin that uses push features or `boxItems.push()` / `plugin.feature.pushItems()` to write content into CoreBox root results must declare and be granted this permission in `manifest.json`; deleting or clearing the plugin's own existing items does not require it, so permission problems do not leave stale results behind.
 
 `window.capture` gates every `context.utils.screenshot` / `context.utils.plugin.screenshot` support, display-list, and capture call. The Screenshot SDK still requires a verified plugin context; declaring the permission does not authorize raw `native:screenshot:*` channel construction. OCR composition additionally requires `intelligence.basic`.
+
+`account.read` gates every account call a plugin makes: reading the profile, subscription, usage, features and teams, following the sign-in, and opening the sign-in and account pages. The profile includes the email address, so the risk is medium. The credential, the device ID and signing out are not open to plugins, with or without this permission. See [Account SDK](./account.en.mdc).
 
 **3. Risk Level Explanation**
 
@@ -72,7 +75,6 @@ code: |
 These permissions are automatically granted:
 
 - `storage.plugin` - Plugin private storage
-- `clipboard.write` - Write to clipboard
 - `window.create` - Create windows
 
 ## SDK Version and Permission Enforcement

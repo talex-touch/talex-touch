@@ -89,7 +89,7 @@ code: |
 | `fs.write` | High | Write files |
 | `fs.execute` | High | Execute files |
 | `clipboard.read` | Medium | Read clipboard |
-| `clipboard.write` | Low | Write clipboard (auto-granted) |
+| `clipboard.write` | Low | Write clipboard |
 | `network.local` | Low | Local network |
 | `network.internet` | Medium | Internet access |
 | `network.download` | Medium | Download files |
@@ -104,6 +104,8 @@ code: |
 | `storage.sqlite` | Medium | Plugin SQLite database access |
 | `window.create` | Low | Create windows (auto-granted) |
 | `window.capture` | High | Screen capture |
+| `account.read` | Medium | Read the account's profile, plan and usage |
+| `search.root-results` | High | Push or update CoreBox root results |
 
 ## Example
 :::TuffCodeBlock{lang="json"}

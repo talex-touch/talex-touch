@@ -124,8 +124,8 @@ code: |
 | 插件配置          | `storage` 或 `usePluginStorage()` | 适合普通设置和非敏感数据，每插件有容量限制。                                                                 |
 | 插件结构化数据    | `usePluginSqlite()`               | 需要 `sdkapi >= 260215` 和 `storage.sqlite`。                                                                |
 | Secret            | `usePluginSecret()`               | API Key、Token、Provider secret 不允许明文写入 JSON、localStorage 或日志。                                   |
-| 用户私有同步      | `CloudSyncSDK`                    | 走 `/api/v1/sync/*`，同步载荷必须使用密文 `payload_enc` 或 `payload_ref`。                                   |
-| 内容包分享        | `CloudShareSDK`                   | 用于公开或团队可见的插件内容包，例如 snippet pack；不要混作用户私有同步。                                    |
+| 用户私有同步      | `storage` 或 `usePluginStorage()` | 插件拿不到账户凭据，不能自己调 `CloudSyncSDK`；插件存储在用户开启同步后由 Tuff 加密同步。                     |
+| 内容包分享        | `CloudShareSDK`                   | 用于公开或团队可见的插件内容包，例如 snippet pack；不要混作用户私有同步。发布要经 `getAuthToken` 传入插件作者带 `plugin:publish` 的 API Key。 |
 | 传输通道          | typed transport SDK               | 新能力优先走 typed transport，不新增 raw IPC 依赖。                                                          |
 | AI 能力 / Command | `intelligence`                    | 声明 `intelligence.basic`，先发现 capability health；每个命令的模板走 typed invoke options，不新增 raw IPC。 |
 
@@ -203,7 +203,7 @@ code: |
 
 - 插件包：发布 `.tpex`，更新插件代码、Manifest、资产和 Surface。
 - 内容包：发布插件可导入的数据，例如 `touch-snippets` 的 `tuff.snippet-pack+json`。
-- CloudSync：同步用户自己的加密业务数据，不用于公开市场内容。
+- CloudSync：同步用户自己的加密数据，插件存储也在其中，不用于公开市场内容；插件不能直接调用。
 - CloudShare：分发可安装内容包，内容应经过敏感信息过滤与目标插件校验。
 
 当插件同时支持“同步”和“分享”时，建议把同步数据结构、分享数据结构、导入合并逻辑拆开维护，避免把用户私有数据直接发布成公开内容。

@@ -124,8 +124,8 @@ Choose the smallest SDK for the task. Do not request permissions for future feat
 | Plugin settings         | `storage` or `usePluginStorage()` | Use for regular settings and non-sensitive data; each plugin has a storage quota.                                                                |
 | Structured plugin data  | `usePluginSqlite()`               | Requires `sdkapi >= 260215` and `storage.sqlite`.                                                                                                |
 | Secrets                 | `usePluginSecret()`               | API keys, tokens, and provider secrets must not be stored in plain JSON, localStorage, or logs.                                                  |
-| Private user sync       | `CloudSyncSDK`                    | Uses `/api/v1/sync/*`; sync payloads must be encrypted through `payload_enc` or `payload_ref`.                                                   |
-| Content sharing         | `CloudShareSDK`                   | Publishes public or team-visible plugin content packages, such as snippet packs; do not use it as private sync.                                  |
+| Private user sync       | `storage` or `usePluginStorage()` | Plugins receive no account credential and cannot call `CloudSyncSDK` themselves; Tuff syncs plugin storage, encrypted, once the user turns sync on. |
+| Content sharing         | `CloudShareSDK`                   | Publishes public or team-visible plugin content packages, such as snippet packs; do not use it as private sync. Publishing takes the plugin author's API key with `plugin:publish` through `getAuthToken`. |
 | Transport               | typed transport SDK               | New capabilities should use typed transport instead of adding raw IPC dependencies.                                                              |
 | AI capability / command | `intelligence`                    | Declare `intelligence.basic`, discover capability health first, and pass per-command templates through typed invoke options rather than raw IPC. |
 
@@ -203,7 +203,7 @@ Plugin package publishing and plugin content package publishing are separate:
 
 - Plugin package: publishes `.tpex`, updating plugin code, Manifest, assets, and Surface.
 - Content package: publishes installable data for a plugin, such as `touch-snippets` `tuff.snippet-pack+json`.
-- CloudSync: syncs a user's own encrypted business data and is not for public store content.
+- CloudSync: syncs a user's own encrypted data, plugin storage included, and is not for public store content; plugins cannot call it directly.
 - CloudShare: distributes installable content packages after sensitive-data filtering and target-plugin validation.
 
 When a plugin supports both sync and sharing, keep sync data, share data, and import/merge logic separate so private user data is not accidentally published as public content.

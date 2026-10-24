@@ -3,25 +3,14 @@
 ## Purpose
 Client SDK for Nexus Sync V1. It handles handshake, push/pull, blob upload, quotas, and key management with automatic sync_token handling.
 
-## Install
-```ts
-import { CloudSyncSDK, useCloudSyncSDK } from '@talex-touch/utils/plugin/sdk'
-```
+Sync signs in as the account on this device, and the caller supplies the credential and the device ID. Plugins receive neither, so they cannot sync through the account: the `CloudSyncSDK` exported from `@talex-touch/utils/plugin/sdk` is deprecated, and every call fails with `PLUGIN_SYNC_UNAVAILABLE` before anything is sent. A plugin keeps its data in plugin storage, which Tuff syncs once the user turns sync on.
 
-For Node/Electron main or custom auth handling:
+## Install
 ```ts
 import { CloudSyncSDK } from '@talex-touch/utils'
 ```
 
-## Plugin Quick Start (no token handling)
-```ts
-const sdk = useCloudSyncSDK()
-
-await sdk.push(items)
-const pulled = await sdk.pull({ cursor: 0, limit: 100 })
-```
-
-## Renderer/Node (custom auth)
+## Quick Start
 ```ts
 const sdk = new CloudSyncSDK({
   baseUrl: 'https://api.example.com',
@@ -32,6 +21,7 @@ const sdk = new CloudSyncSDK({
 })
 
 await sdk.push(items)
+const pulled = await sdk.pull({ cursor: 0, limit: 100 })
 ```
 
 ## Token Cache (reduce handshake calls)
@@ -57,8 +47,7 @@ const sdk = new CloudSyncSDK({
 
 ## End-to-end Example (delete/conflict/blob)
 ```ts
-const sdk = useCloudSyncSDK()
-
+// sdk as created in Quick Start
 const handshake = await sdk.handshake()
 
 const now = new Date().toISOString()
@@ -125,7 +114,7 @@ const quotas = await sdk.getQuotas()
 
 ## Error Handling
 ```ts
-import { CloudSyncError } from '@talex-touch/utils/plugin/sdk'
+import { CloudSyncError } from '@talex-touch/utils'
 
 try {
   await sdk.push(items)
@@ -142,5 +131,3 @@ try {
 - `payload_enc` must be ciphertext; `meta_plain` must not contain sensitive data.
 - `op_seq` must be monotonic for idempotency and deduplication.
 - For Node/Electron main, pass `fetch` and `formDataFactory` if globals are missing.
-- Plugin SDK reads auth token + device id from AccountSDK (`account:get-auth-token` / `account:get-device-id`).
-- In Prelude, call `accountSDK.setChannelSend(send)` or pass `channelSend` in CloudSyncSDK options.

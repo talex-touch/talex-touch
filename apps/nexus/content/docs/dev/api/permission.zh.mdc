@@ -55,11 +55,14 @@ code: |
 |              | `storage.sqlite`      | 中       | 访问插件本地 SQLite 数据库        |
 | **窗口**     | `window.create`       | 低       | 创建窗口（自动授予）              |
 |              | `window.capture`      | 高       | 屏幕截图                          |
+| **账户**     | `account.read`        | 中       | 读取账户资料、套餐与用量          |
 | **搜索**     | `search.root-results` | 高       | 向 CoreBox 根结果推送或更新搜索项 |
 
 `search.root-results` 是 Search Provider 的根结果写入权限。任何插件只要通过 push feature 或 `boxItems.push()` / `plugin.feature.pushItems()` 把内容写入 CoreBox 根结果，都必须在 `manifest.json` 中声明并获得授权；删除或清理自己插件已有结果不需要该权限，以免权限状态异常时留下 stale items。
 
 `window.capture` 会门禁 `context.utils.screenshot` / `context.utils.plugin.screenshot` 的 support、显示器列表与 capture 调用。Screenshot SDK 仍要求 verified plugin context；声明权限并不授权插件自行拼接 raw `native:screenshot:*` channel。截图后 OCR 还必须独立声明 `intelligence.basic`。
+
+`account.read` 门禁插件的全部账户调用：读取资料、订阅、用量、功能和团队，跟随登录状态，打开登录页和账户页面。资料里有邮箱，所以风险等级为中。凭据、设备 ID 和退出登录不对插件开放，声明了这个权限也拿不到。见 [Account SDK](./account.zh.mdc)。
 
 **3. 风险等级说明**
 
@@ -72,7 +75,6 @@ code: |
 以下权限会自动授予，无需用户确认：
 
 - `storage.plugin` - 插件私有存储
-- `clipboard.write` - 写入剪贴板
 - `window.create` - 创建窗口
 
 ## SDK 版本与权限校验

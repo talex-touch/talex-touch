@@ -91,7 +91,7 @@ code: |
 | `fs.write` | 高 | 写入文件 |
 | `fs.execute` | 高 | 执行文件 |
 | `clipboard.read` | 中 | 读取剪贴板 |
-| `clipboard.write` | 低 | 写入剪贴板（自动授予） |
+| `clipboard.write` | 低 | 写入剪贴板 |
 | `network.local` | 低 | 本地网络 |
 | `network.internet` | 中 | 互联网访问 |
 | `network.download` | 中 | 下载文件 |
@@ -106,6 +106,8 @@ code: |
 | `storage.sqlite` | 中 | 插件 SQLite 数据库访问 |
 | `window.create` | 低 | 创建窗口（自动授予） |
 | `window.capture` | 高 | 屏幕截图 |
+| `account.read` | 中 | 读取账户资料、套餐与用量 |
+| `search.root-results` | 高 | 向 CoreBox 根结果推送或更新搜索项 |
 
 ## 示例
 :::TuffCodeBlock{lang="json"}

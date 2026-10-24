@@ -3,25 +3,14 @@
 ## 目的
 为 Nexus Sync V1 提供客户端能力，覆盖握手、推送/拉取、blob 上传、配额与密钥管理，并自动处理 sync_token。
 
-## 安装
-```ts
-import { CloudSyncSDK, useCloudSyncSDK } from '@talex-touch/utils/plugin/sdk'
-```
+同步以这台设备上的账户身份进行，凭据和设备 ID 由调用方提供。插件拿不到这两样，不能通过账户同步：`@talex-touch/utils/plugin/sdk` 导出的 `CloudSyncSDK` 已弃用，每个调用都在发出请求前以 `PLUGIN_SYNC_UNAVAILABLE` 失败。插件的数据放进插件存储，用户开启同步后由 Tuff 一并同步。
 
-Node/Electron 主进程或自定义认证场景：
+## 安装
 ```ts
 import { CloudSyncSDK } from '@talex-touch/utils'
 ```
 
-## 插件快速上手（无需手动处理 token）
-```ts
-const sdk = useCloudSyncSDK()
-
-await sdk.push(items)
-const pulled = await sdk.pull({ cursor: 0, limit: 100 })
-```
-
-## Renderer/Node（自定义认证）
+## 快速上手
 ```ts
 const sdk = new CloudSyncSDK({
   baseUrl: 'https://api.example.com',
@@ -32,6 +21,7 @@ const sdk = new CloudSyncSDK({
 })
 
 await sdk.push(items)
+const pulled = await sdk.pull({ cursor: 0, limit: 100 })
 ```
 
 ## Token 缓存（避免频繁握手）
@@ -57,8 +47,7 @@ const sdk = new CloudSyncSDK({
 
 ## 端到端示例（含删除/冲突/大对象）
 ```ts
-const sdk = useCloudSyncSDK()
-
+// sdk 按「快速上手」创建
 const handshake = await sdk.handshake()
 
 const now = new Date().toISOString()
@@ -125,7 +114,7 @@ const quotas = await sdk.getQuotas()
 
 ## 错误处理示例
 ```ts
-import { CloudSyncError } from '@talex-touch/utils/plugin/sdk'
+import { CloudSyncError } from '@talex-touch/utils'
 
 try {
   await sdk.push(items)
@@ -142,5 +131,3 @@ try {
 - `payload_enc` 必须为密文，`meta_plain` 仅能放非敏感元信息。
 - `op_seq` 必须单调递增，用于去重与幂等。
 - Node/Electron 主进程需要自行注入 `fetch` 与 `formDataFactory`。
-- 插件 SDK 默认通过 AccountSDK 获取 auth token 与 device id（`account:get-auth-token` / `account:get-device-id`）。
-- Prelude 中需要先调用 `accountSDK.setChannelSend(send)` 或在 CloudSyncSDK options 传入 `channelSend`。

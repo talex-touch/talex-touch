@@ -60,6 +60,22 @@ code: |
 ---
 :::
 
+A plugin uses these methods, opening the sign-in and account pages included, only after it declares `account.read` in `manifest.json` and the user grants it. Without the grant, `usePluginAccount()` calls reject with `ACCOUNT_PERMISSION_DENIED` and `onDidChange` never calls back; `accountSDK` reads its queries as "none", and its page openers reject. See [Permission System](./permission.en.mdc).
+
+:::TuffCodeBlock{lang="json"}
+---
+code: |
+  {
+    "permissions": {
+      "required": ["account.read"]
+    },
+    "permissionReasons": {
+      "account.read": "Shows your plan and the quota you have left"
+    }
+  }
+---
+:::
+
 ::alert{type="warning"}
 **Note**: `accountSDK` reads a failed call as "none": `getProfile()` returns `null` and `isLoggedIn()` returns `false`. To tell signing out from a failed call, or to hear when the sign-in changes, use `usePluginAccount()` below.
 ::
@@ -94,10 +110,12 @@ code: |
 | `getProfile()` | `UserProfile \| null` | The signed-in account's profile, `null` when signed out |
 | `getSubscription()` | `Subscription \| null` | Subscription |
 | `getUsage()` | `UsageStats \| null` | Usage |
-| `getFeatures()` | `FeatureFlag[]` | Feature flags |
-| `getTeams()` | `Team[]` | Teams the account belongs to |
-| `openUpgradePage(plan?)`, `openBillingPage()`, `openAccountSettings()`, `openProfileEditor()` | `void` | Opens the matching page of the account site in the browser |
-| `requestLogin()` | `boolean` | Opens the sign-in page. `true` means the sign-in has started, not that anyone is signed in |
+| `getFeatures()` | `FeatureFlag[]` | The plan's features: `aiRequests` and `aiTokens` carry their limit in `value` (`-1` for unlimited); `customModels`, `prioritySupport` and `apiAccess` are on or off |
+| `getTeams()` | `Team[]` | The organization the account belongs to, empty when there is none; the personal team is not listed |
+| `openUpgradePage(plan?)` | `void` | Opens the pricing page in the browser, with `plan` outlined when given |
+| `openBillingPage()` | `void` | Opens the team page, where the plan and activation codes are managed |
+| `openAccountSettings()`, `openProfileEditor()` | `void` | Opens the account page |
+| `requestLogin()` | `boolean` | Joins the sign-in when the app is signed in or a sign-in is under way, and opens the sign-in page otherwise. `true` does not mean anyone is signed in yet; `false` means the page could not be opened |
 | `onDidChange(callback)` | `() => void` | Calls back once with the current state, then after every change; returns a function that stops it |
 
 The state `onDidChange` receives (`AccountSessionState`):
@@ -114,7 +132,7 @@ The state carries no credential and no email, and a change to details it does no
 
 **Auth Token & Device**
 
-Used by SDKs that need authenticated API access (e.g., Cloud Sync SDK). Only Tuff itself can get them; in a plugin they return `null`.
+What Tuff itself uses to reach the account service. Plugins receive neither the credential nor the device ID; in a plugin these return `null`.
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -548,15 +566,14 @@ code: |
 
 **`getTeams()`**
 
-Get all teams user belongs to.
+Gets the organization the account belongs to, at most one; the personal team every account has is not listed. The account service reports no slug or creation time, so `slug` is the `id` and `createdAt` is `0`.
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
   const teams = await accountSDK.getTeams()
   // [
-  //   { id: 'team_xxx', name: 'Dev Team', role: 'admin', memberCount: 5 },
-  //   { id: 'team_yyy', name: 'Design', role: 'member', memberCount: 3 }
+  //   { id: 'team_xxx', name: 'Dev Team', slug: 'team_xxx', role: 'admin', memberCount: 5, createdAt: 0 }
   // ]
 ---
 :::
@@ -640,19 +657,19 @@ code: |
 
 **`openUpgradePage(plan?)`**
 
-Open upgrade page.
+Opens the pricing page in the browser. Given a `plan`, the pricing page outlines that plan's card.
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
-  await accountSDK.openUpgradePage() // Open upgrade page
-  await accountSDK.openUpgradePage(SubscriptionPlan.PLUS) // Jump to Plus
+  await accountSDK.openUpgradePage() // Open the pricing page
+  await accountSDK.openUpgradePage(SubscriptionPlan.PLUS) // Open the pricing page with Plus outlined
 ---
 :::
 
 **`openBillingPage()`**
 
-Open billing management page.
+Opens the team page, where the plan and activation codes are managed.
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -667,7 +684,7 @@ code: |
 
 **`requestLogin()`**
 
-Opens the sign-in page. `true` means the sign-in has started, not that the user is signed in; the result arrives through `usePluginAccount().onDidChange`.
+Asks the user to sign in. When the app is already signed in, or a sign-in is already under way, no new page opens and that sign-in is joined; otherwise the sign-in page opens in the browser. All of those return `true`, possibly before anyone has signed in; `false` means the page could not be opened. The result arrives through `usePluginAccount().onDidChange`.
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -690,7 +707,7 @@ code: |
 
 **`openAccountSettings()`**
 
-Open account settings page.
+Opens the account page, which holds the settings and the profile.
 
 :::TuffCodeBlock{lang="ts"}
 ---
