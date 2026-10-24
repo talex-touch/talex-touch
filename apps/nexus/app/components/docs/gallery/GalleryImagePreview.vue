@@ -15,6 +15,18 @@ const labels = computed(() => zh.value
       zoomOut: '缩小',
       reset: '适应屏幕',
       failed: '图片加载失败',
+      rotate: '旋转',
+      copy: '复制图片',
+      share: '分享',
+      download: '下载',
+      menu: '图片操作',
+      indicator: '图片列表',
+      copied: '已复制图片',
+      linkCopied: '已复制链接',
+      copyFailed: '无法复制图片',
+      item: (current: number, total: number, name?: string) => `${name ? `${name}，` : ''}第 ${current} 张，共 ${total} 张`,
+      dialog: (title: string, name: string) => `${title}：${name}`,
+      readout: (readout: string, label: string) => `${readout}，${label}`,
       open: (name: string) => `查看${name}`,
     }
   : {
@@ -26,6 +38,18 @@ const labels = computed(() => zh.value
       zoomOut: 'Zoom out',
       reset: 'Fit to screen',
       failed: 'This image could not be loaded',
+      rotate: 'Rotate',
+      copy: 'Copy image',
+      share: 'Share',
+      download: 'Download',
+      menu: 'Image actions',
+      indicator: 'Images',
+      copied: 'Image copied',
+      linkCopied: 'Link copied',
+      copyFailed: 'Could not copy the image',
+      item: (current: number, total: number, name?: string) => name ? `${name}, ${current} of ${total}` : `Image ${current} of ${total}`,
+      dialog: (title: string, name: string) => `${title}: ${name}`,
+      readout: (readout: string, label: string) => `${readout}, ${label}`,
       open: (name: string) => `View ${name}`,
     })
 
@@ -88,6 +112,18 @@ function show(at: number, event: MouseEvent): void {
       :zoom-out-label="labels.zoomOut"
       :reset-label="labels.reset"
       :failed-text="labels.failed"
+      :rotate-label="labels.rotate"
+      :copy-label="labels.copy"
+      :share-label="labels.share"
+      :download-label="labels.download"
+      :menu-label="labels.menu"
+      :indicator-label="labels.indicator"
+      :copied-text="labels.copied"
+      :link-copied-text="labels.linkCopied"
+      :copy-failed-text="labels.copyFailed"
+      :indicator-item-formatter="labels.item"
+      :label-formatter="labels.dialog"
+      :readout-label-formatter="labels.readout"
     />
   </div>
 </template>
