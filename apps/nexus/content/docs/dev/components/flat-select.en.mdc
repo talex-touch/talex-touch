@@ -92,6 +92,8 @@ code: |
 | `modelValue` / `v-model` | `string \| number` | `''` | The selected value, matching one item's `value`; shows the placeholder when nothing matches. |
 | `placeholder` | `string` | `''` | Trigger text while nothing is selected. |
 | `disabled` | `boolean` | `false` | Disables the group: the trigger can't be clicked and the dropdown won't open. |
+| `ariaLabel` | `string` | - | Accessible name of the trigger and the panel; unset, the panel uses `placeholder`. |
+| `ariaLabelledby` | `string` | - | Id of a visible element naming the trigger and the panel; wins over `ariaLabel`. |
 
 #### Events
 
@@ -135,7 +137,7 @@ code: |
 
 ## Overview
 
-- The trigger is `role="combobox"`, the panel `role="listbox"`, and each item a `role="option"` with `aria-selected`.
+- The trigger is `role="combobox"`, the panel `role="listbox"`, and each item a `role="option"` with `aria-selected`; `aria-label` / `aria-labelledby` land on the trigger, and the panel takes the same name.
 - Options overlay the trigger, with the selected item anchored at the trigger's position.
 - While open, ArrowUp / ArrowDown move and commit immediately, skipping disabled items.
 - Closing collapses the panel onto the trigger and fades its surface, border, shadow, and selected accent over the same 200ms.

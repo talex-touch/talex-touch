@@ -628,6 +628,11 @@ const copy = computed(() => zh.value
         feedback: '操作结果',
         variantPrev: '上一张',
         variantNext: '下一张',
+        variantClose: '关闭',
+        variantZoomIn: '放大',
+        variantZoomOut: '缩小',
+        variantReset: '适应屏幕',
+        variantFailed: '图片加载失败',
         variantTitle: '变体预览',
         variantName: (i: number) => (i === 0 ? '原图' : `变体 ${String.fromCharCode(64 + i)}`),
         variantOpen: (label: string) => `放大查看 ${label}`,
@@ -694,6 +699,11 @@ const copy = computed(() => zh.value
         feedback: 'Result',
         variantPrev: 'Previous image',
         variantNext: 'Next image',
+        variantClose: 'Close',
+        variantZoomIn: 'Zoom in',
+        variantZoomOut: 'Zoom out',
+        variantReset: 'Fit to screen',
+        variantFailed: 'This image could not be loaded',
         variantTitle: 'Variant preview',
         variantName: (i: number) => (i === 0 ? 'Original' : `Variant ${String.fromCharCode(64 + i)}`),
         variantOpen: (label: string) => `Enlarge ${label}`,
@@ -1488,8 +1498,11 @@ onBeforeUnmount(() => {
                   :preview-title="copy.detail.variantTitle"
                   :previous-label="copy.detail.variantPrev"
                   :next-label="copy.detail.variantNext"
-                  :previous-text="copy.detail.variantPrev"
-                  :next-text="copy.detail.variantNext"
+                  :close-label="copy.detail.variantClose"
+                  :zoom-in-label="copy.detail.variantZoomIn"
+                  :zoom-out-label="copy.detail.variantZoomOut"
+                  :reset-label="copy.detail.variantReset"
+                  :failed-text="copy.detail.variantFailed"
                   :item-label-formatter="copy.detail.variantName"
                   :open-label-formatter="copy.detail.variantOpen"
                 />

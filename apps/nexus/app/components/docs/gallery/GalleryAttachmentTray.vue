@@ -6,8 +6,38 @@ import { tileImage } from './tile-image'
 const { locale } = useI18n()
 const zh = computed(() => locale.value === 'zh')
 const labels = computed(() => zh.value
-  ? { preview: '预览', previous: '上一张', next: '下一张', previousText: '上一张', nextText: '下一张', close: '关闭', remove: '移除附件' }
-  : { preview: 'Preview', previous: 'Previous image', next: 'Next image', previousText: 'Prev', nextText: 'Next', close: 'Close', remove: 'Remove attachment' })
+  ? { preview: '预览', previous: '上一张', next: '下一张', close: '关闭', zoomIn: '放大', zoomOut: '缩小', reset: '适应屏幕', failed: '图片加载失败', remove: '移除附件', open: (name: string) => `预览：${name}` }
+  : { preview: 'Preview', previous: 'Previous image', next: 'Next image', close: 'Close', zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Fit to screen', failed: 'This image could not be loaded', remove: 'Remove attachment', open: (name: string) => `Preview: ${name}` })
+// The preview's own text, which the tray does not forward.
+const viewer = computed(() => zh.value
+  ? {
+      rotateLabel: '旋转',
+      copyLabel: '复制图片',
+      shareLabel: '分享',
+      downloadLabel: '下载',
+      menuLabel: '图片操作',
+      indicatorLabel: '图片列表',
+      copiedText: '已复制图片',
+      linkCopiedText: '已复制链接',
+      copyFailedText: '无法复制图片',
+      indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}，` : ''}第 ${current} 张，共 ${total} 张`,
+      labelFormatter: (title: string, name: string) => `${title}：${name}`,
+      readoutLabelFormatter: (readout: string, label: string) => `${readout}，${label}`,
+    }
+  : {
+      rotateLabel: 'Rotate',
+      copyLabel: 'Copy image',
+      shareLabel: 'Share',
+      downloadLabel: 'Download',
+      menuLabel: 'Image actions',
+      indicatorLabel: 'Images',
+      copiedText: 'Image copied',
+      linkCopiedText: 'Link copied',
+      copyFailedText: 'Could not copy the image',
+      indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}, ` : ''}${current} of ${total}`,
+      labelFormatter: (title: string, name: string) => `${title}: ${name}`,
+      readoutLabelFormatter: (readout: string, label: string) => `${readout}, ${label}`,
+    })
 
 const RIDGE = tileImage('#1e3a8a', '#60a5fa', '#e0f2fe', 4)
 const VALLEY = tileImage('#064e3b', '#4ade80', '#fef9c3', 4)
@@ -37,10 +67,14 @@ function remove(id: string): void {
     :preview-title="labels.preview"
     :previous-label="labels.previous"
     :next-label="labels.next"
-    :previous-text="labels.previousText"
-    :next-text="labels.nextText"
     :close-label="labels.close"
+    :zoom-in-label="labels.zoomIn"
+    :zoom-out-label="labels.zoomOut"
+    :reset-label="labels.reset"
+    :failed-text="labels.failed"
     :remove-label="labels.remove"
+    :open-label-formatter="labels.open"
+    :preview-props="viewer"
     @remove="remove"
   />
 </template>

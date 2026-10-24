@@ -459,7 +459,7 @@ code: |
 
 - 首屏展开状态依次取持久化值、`defaultExpand`、`!collapsed`；用户切换后，props 变化不再覆盖当前状态。
 - 分组内容始终挂载，折叠只改变高度、透明度与 `display`。
-- 分组重置组内每行的 `--fake-radius` 与外边距，圆角只出现在分组卡片上；单独使用的行保留 12px 圆角。
+- 分组重置组内每行的 `--fake-radius` 与外边距，圆角只出现在分组卡片上；单独使用的行保留 12px 圆角。这一重置止于行本身，行内的控件（如 `TxBlockSelect` 的下拉框）保留自己的圆角。
 - `TxBlockLine` 默认是非交互的 `div`，`link` 时才是 `<button type="button">`。
 - `TxBlockSlot` 的控件区不收缩；`TxBlockInput` 例外，输入框可收缩到 120px，为标题让出空间。
 - `TxBlockSwitch` 的忙碌提示只在内部开关上（`is-loading` + `aria-busy`），行只叠加 shimmer；`guidance` 模式不改写 `modelValue`。

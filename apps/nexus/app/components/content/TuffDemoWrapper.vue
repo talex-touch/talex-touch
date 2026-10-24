@@ -55,6 +55,8 @@ const demoRenderKey = ref(0)
 const isDemoActive = ref(false)
 const demoInstanceRef = ref<DemoResetController | null>(null)
 const isResetting = ref(false)
+const windowBodyRef = ref<HTMLElement | null>(null)
+const toggleRowRef = ref<HTMLElement | null>(null)
 
 const toggleLabel = computed(() => {
   if (showCode.value)
@@ -68,8 +70,22 @@ const loadingLabel = computed(() => t('docs.demo.loading'))
 const errorLabel = computed(() => t('docs.demo.loadFailed'))
 const notFoundLabel = computed(() => t('docs.demo.notFound'))
 
-function toggleCode() {
+async function toggleCode() {
+  const row = toggleRowRef.value
+  const body = windowBodyRef.value
+  // Stuck = held above where the code ends. Collapsing from there would drop
+  // the reader somewhere past the demo, so the row keeps its place on screen.
+  const rowTop = row?.getBoundingClientRect().top ?? 0
+  const wasStuck = showCode.value && !!body && rowTop < body.getBoundingClientRect().bottom - 1
+
   showCode.value = !showCode.value
+  if (!wasStuck || !row)
+    return
+
+  await nextTick()
+  const shift = row.getBoundingClientRect().top - rowTop
+  if (shift < 0)
+    window.scrollBy({ top: shift, behavior: 'instant' })
 }
 
 async function hardResetDemo() {
@@ -168,7 +184,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
-      <div class="tuff-demo__window-body">
+      <div ref="windowBodyRef" class="tuff-demo__window-body">
         <div class="tuff-demo__preview">
           <ClientOnly>
             <LazyTuffDemoClientRenderer
@@ -205,7 +221,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-      <div v-if="hasCode" class="tuff-demo__toggle-row">
+      <div v-if="hasCode" ref="toggleRowRef" class="tuff-demo__toggle-row">
         <button type="button" class="tuff-demo__toggle-btn" :aria-expanded="showCode" @click="toggleCode">
           <span class="tuff-demo__toggle-icon i-carbon-chevron-down" :class="{ 'is-open': showCode }" />
           {{ toggleLabel }}
@@ -261,6 +277,9 @@ onBeforeUnmount(() => {
   background: var(--tuff-demo-window-bg);
   box-shadow: var(--tuff-demo-window-shadow);
   overflow: hidden;
+  /* clip still rounds the corners, but unlike hidden it is not a scroll
+     container, which would keep the toggle row from sticking to the viewport */
+  overflow: clip;
 }
 
 .tuff-demo__window-bar {
@@ -370,12 +389,34 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+/*
+ * Sticks to the bottom of the viewport while the window runs past it, so long
+ * code can be hidden again without scrolling to its end. The docs layout blurs
+ * and fades the last strip of the viewport, which this row cannot rise above:
+ * only the row's empty bottom padding dips into the strip, and the ::after
+ * carries its background on to the viewport edge, so no code shows through
+ * below the button. Unstuck, the window's overflow clips the ::after.
+ */
 .tuff-demo__toggle-row {
+  position: sticky;
+  bottom: max(0px, calc(var(--docs-edge-bottom-height, 0px) - 20px));
+  z-index: 2;
   display: flex;
   justify-content: center;
   padding: 16px 18px 20px;
   border-top: 1px solid var(--tuff-demo-divider);
   background: var(--tuff-demo-row-bg);
+}
+
+.tuff-demo__toggle-row::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: var(--docs-edge-bottom-height, 0px);
+  background: var(--tuff-demo-row-bg);
+  pointer-events: none;
 }
 
 .tuff-demo__toggle-btn {

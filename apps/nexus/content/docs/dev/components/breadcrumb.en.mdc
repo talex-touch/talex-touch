@@ -58,6 +58,7 @@ code: |
 |------|------|---------|-------------|
 | `items` | `BreadcrumbItem[]` | required | Ordered entries; the last one is the current page. |
 | `separatorIcon` | `string` | `'i-carbon-chevron-right'` | Icon between entries. |
+| `ariaLabel` | `string` | `'Breadcrumb'` | Accessible name of the `<nav>` landmark; pass it in the page's language. |
 
 ### Events
 
@@ -78,7 +79,7 @@ code: |
 
 ## Overview
 
-- The root is `<nav aria-label="Breadcrumb">` around an ordered list.
+- The root is a `<nav>` named by `ariaLabel` (`Breadcrumb` by default) around an ordered list.
 - The last item renders as `<span aria-current="page">` and stays inert even with `href`.
 - Other enabled items render as `<a>` with `href`, using native navigation, or as `<button>` without it.
 - Disabled items render as `<span aria-disabled="true">` and emit nothing.

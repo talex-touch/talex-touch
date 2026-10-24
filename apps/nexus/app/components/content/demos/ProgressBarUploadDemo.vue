@@ -76,7 +76,10 @@ defineExpose({ replayDemo: start })
     />
     <TxProgressBar
       :percentage="percentage"
+      detail="report.pdf"
       :aria-label="copy.aria"
+      show-text
+      text-placement="bottom"
       height="6px"
       color="linear-gradient(90deg, #3b82f6, #a855f7)"
       flow-effect="stardust"

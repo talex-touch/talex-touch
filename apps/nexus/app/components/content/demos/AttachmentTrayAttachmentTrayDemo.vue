@@ -6,28 +6,63 @@ const { locale } = useI18n()
 
 const copy = computed(() => (locale.value === 'zh'
   ? {
-      hint: '点击图片打开内置预览器，用 ← / → 翻页；点击文件胶囊会派发 open 事件。',
+      hint: '点击图片全屏预览，可缩放、拖动并左右滑动翻页；点击文件胶囊会派发 open 事件。',
       opened: '宿主将打开：',
       previewTitle: '预览',
       previousLabel: '上一张',
       nextLabel: '下一张',
-      previousText: '上一张',
-      nextText: '下一张',
       removeLabel: '移除附件',
       cancelLabel: '取消上传',
       closeLabel: '关闭',
+      zoomInLabel: '放大',
+      zoomOutLabel: '缩小',
+      resetLabel: '适应屏幕',
+      failedText: '图片加载失败',
+      openLabel: (name: string) => `预览：${name}`,
+      // The preview's own text, which the tray does not forward.
+      preview: {
+        rotateLabel: '旋转',
+        copyLabel: '复制图片',
+        shareLabel: '分享',
+        downloadLabel: '下载',
+        menuLabel: '图片操作',
+        indicatorLabel: '图片列表',
+        copiedText: '已复制图片',
+        linkCopiedText: '已复制链接',
+        copyFailedText: '无法复制图片',
+        indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}，` : ''}第 ${current} 张，共 ${total} 张`,
+        labelFormatter: (title: string, name: string) => `${title}：${name}`,
+        readoutLabelFormatter: (readout: string, label: string) => `${readout}，${label}`,
+      },
     }
   : {
-      hint: 'Click an image for the built-in viewer and page with ← / →; a file chip emits open.',
+      hint: 'Click an image to preview it full-window, where it zooms, pans, and swipes to page; a file chip emits open.',
       opened: 'Host would open: ',
       previewTitle: 'Preview',
       previousLabel: 'Previous image',
       nextLabel: 'Next image',
-      previousText: 'Prev',
-      nextText: 'Next',
       removeLabel: 'Remove attachment',
       cancelLabel: 'Cancel upload',
       closeLabel: 'Close',
+      zoomInLabel: 'Zoom in',
+      zoomOutLabel: 'Zoom out',
+      resetLabel: 'Fit to screen',
+      failedText: 'This image could not be loaded',
+      openLabel: (name: string) => `Preview: ${name}`,
+      preview: {
+        rotateLabel: 'Rotate',
+        copyLabel: 'Copy image',
+        shareLabel: 'Share',
+        downloadLabel: 'Download',
+        menuLabel: 'Image actions',
+        indicatorLabel: 'Images',
+        copiedText: 'Image copied',
+        linkCopiedText: 'Link copied',
+        copyFailedText: 'Could not copy the image',
+        indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}, ` : ''}${current} of ${total}`,
+        labelFormatter: (title: string, name: string) => `${title}: ${name}`,
+        readoutLabelFormatter: (readout: string, label: string) => `${readout}, ${label}`,
+      },
     }))
 
 function seed(): AiAttachment[] {
@@ -54,7 +89,7 @@ function onCancel(id: string): void {
   attachments.value = attachments.value.filter(item => item.id !== id)
 }
 
-// Files only — images use the built-in viewer and emit nothing.
+// Files only — images open the built-in preview and emit nothing.
 function onOpen(attachment: AiAttachmentFile): void {
   opened.value = attachment.name
 }
@@ -77,11 +112,15 @@ defineExpose({ resetDemo })
       :preview-title="copy.previewTitle"
       :previous-label="copy.previousLabel"
       :next-label="copy.nextLabel"
-      :previous-text="copy.previousText"
-      :next-text="copy.nextText"
       :close-label="copy.closeLabel"
+      :zoom-in-label="copy.zoomInLabel"
+      :zoom-out-label="copy.zoomOutLabel"
+      :reset-label="copy.resetLabel"
+      :failed-text="copy.failedText"
       :remove-label="copy.removeLabel"
       :cancel-label="copy.cancelLabel"
+      :open-label-formatter="copy.openLabel"
+      :preview-props="copy.preview"
       @remove="onRemove"
       @cancel="onCancel"
       @open="onOpen"

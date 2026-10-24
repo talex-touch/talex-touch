@@ -459,7 +459,7 @@ code: |
 
 - The first-render state comes from the stored state, then `defaultExpand`, then `!collapsed`; after the user toggles, prop changes no longer override it.
 - The group body stays mounted; collapsing only changes height, opacity, and `display`.
-- The group resets each row's `--fake-radius` and margin so only the group card is rounded; a standalone row keeps its 12px radius.
+- The group resets each row's `--fake-radius` and margin so only the group card is rounded; a standalone row keeps its 12px radius. The reset stops at the row: a control inside it, such as the select in `TxBlockSelect`, keeps its own corners.
 - `TxBlockLine` is a non-interactive `div` unless `link` is set, when it becomes a `<button type="button">`.
 - `TxBlockSlot` never shrinks its control area; `TxBlockInput` is the exception, letting its field shrink to 120px to make room for the title.
 - In `TxBlockSwitch`, the busy cue lives only on the inner switch (`is-loading` + `aria-busy`) and the row only shimmers; `guidance` mode never writes `modelValue`.

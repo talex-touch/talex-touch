@@ -130,7 +130,7 @@ code: |
 ::
 
 ### Block
-`block` fills the container width; with `loadingVariant="bar"`, loading shows as a sweep layer.
+`block` fills the container width and ends a label that does not fit in an ellipsis on one line; with `loadingVariant="bar"`, loading shows as a sweep layer.
 ::TuffDemoWrapper{demo="ButtonBlockDemo" code-lang="vue"}
 ---
 code: |
@@ -276,7 +276,7 @@ rows:
   - parameter: block
     type: boolean
     default: 'false'
-    description: 'Fills the parent width.'
+    description: 'Fills the parent width; a label that does not fit ends in an ellipsis on one line.'
   - parameter: plain
     type: boolean
     default: 'false'
@@ -376,7 +376,7 @@ rows:
 
 | Slot | Description |
 |------|-------------|
-| `default` | Label or custom content, rendered after the icon and loading indicator. |
+| `default` | Label or custom content, rendered after the icon and loading indicator; on a `block` button its bare text goes into a `.tx-button__label` that truncates. |
 
 ### TxSplitButton
 

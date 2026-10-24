@@ -58,7 +58,7 @@ Every chart in the family accepts the shared props below plus its own data props
 | `TxRadarChart` | `indicators` (`name`, `max`, `min?`), `series` (`name`, `data`, `color?`, `area?`), `shape?`, `splitNumber?`, `showLegend?`, `showAxisName?` |
 | `TxGaugeChart` | `value`, `min?`, `max?`, `name?`, `unit?`, `precision?`, `progress?`, `segments?`, `color?` |
 | `TxScatterChart` | `series` (`name`, `data`, `color?`, `symbolSize?`), `xAxisName?`, `yAxisName?`, `symbolSize?`, `showLegend?`, `grid?`, `xMin?`, `xMax?`, `yMin?`, `yMax?`, `zoom?`, `cooperativeWheel?` |
-| `TxHeatmapChart` | `values`, `rows`, `columns`, `xAxisName?`, `yAxisName?`, `visualMap?`, `min?`, `max?`, `showLabel?`, `unit?`, `selectable?`, `labels?` |
+| `TxHeatmapChart` | `values`, `rows`, `columns`, `xAxisName?`, `yAxisName?`, `visualMap?`, `min?`, `max?`, `showLabel?`, `cellLabel?`, `unit?`, `selectable?`, `selection?` (`v-model:selection`), `labels?` |
 | `TxTreemapChart` | `data` (`name`, `value?`, `color?`, `children?`), `maxDepth?`, `showBreadcrumb?`, `showLabel?`, `unit?`, `roam?`, `cooperativeWheel?` |
 
 The builders themselves are public too — `buildBarChartOption`, `buildLineChartOption`, and the rest return a plain `EChartsOption`. Use one when a chart has to mix mark types: build the options you want and hand the merged result to `TxEChart`.
@@ -244,7 +244,9 @@ code: |
 
 A matrix of intensities. Pass `values` row-major (`values[row][column]`) with `rows` and `columns` naming the two category axes. The builder hands both arrays to ECharts untouched, and ECharts plots the first category at the bottom — so `rows[0]` is the bottom band, not the top one. The declared `visualMap` takes the sequential token ramp unless you pass your own `inRange.color`.
 
-Drag across the plot to select a block of cells. `select` reports a `HeatmapSelection` — `rows` and `columns` as inclusive index ranges, plus the `cells` inside — and `null` once it is cleared. The `cells` are a snapshot: new `values` under the same labels keep the block without a new `select`, while new `rows` or `columns` clear it. A drag never fires `click`; `:selectable="false"` turns the selection off. Instructions and announcements come from `labels`, merged over `HEATMAP_DEFAULT_LABELS`.
+Drag across the plot to select a block of cells. `select` reports a `HeatmapSelection` — `rows` and `columns` as inclusive index ranges, plus the `cells` inside — and `null` once it is cleared; `v-model:selection` holds the same value. The `cells` are a snapshot: new `values` under the same labels keep the block without a new `select`, while new `rows` or `columns` clear it. A drag never fires `click`; `:selectable="false"` turns the selection off.
+
+From outside the chart, the exposed `clearSelection()` clears the block as a click would — announced, and emitted through `select` — while a value written through `v-model:selection` (`null`, or a block from `heatmapSelection()`) moves the box quietly. `cellLabel` sets the text `showLabel` prints in a cell. Instructions and announcements come from `labels`, merged over `HEATMAP_DEFAULT_LABELS`: in `selected`, `{count}` and `{total}` count cells, and `{first}` and `{last}` name the block's corners as `labels.cell` puts them (`'{column} {row}'`, with `{value}` for the printed text).
 
 :::TuffDemoWrapper{demo="EChartHeatmapChartDemo" code-lang="vue" title="Activity by hour" description="Five time buckets across the week; drag across the cells to select a block."}
 ---
@@ -320,7 +322,7 @@ Compared with the native maps and Sankey:
 
 - Zoom moves in ECharts' fixed steps (1.1×, 1.2× or 1.4× per event) instead of following the gesture. There are no springs, no release glide and no rubber band: a pan stops where the pointer stops.
 - Resets animate over 350 ms, and jump under `prefers-reduced-motion: reduce`.
-- There is no keyboard zoom or pan. The heatmap is the only chart with a focus target: a tab stop while a selection exists, so `Escape` can clear it. Its `labels` carry the instructions and the `{count}` / `{total}` announcements.
+- There is no keyboard zoom or pan. The heatmap is the only chart with a focus target: a tab stop while a selection exists, so `Escape` can clear it. Its `labels` carry the instructions and the announcements: `{count}` / `{total}` count cells, `{first}` / `{last}` name the block's corners.
 - On touch a pinch zooms. An unzoomed line, bar or scatter chart lets a swipe scroll the page, and once zoomed in a swipe pans. A treemap with `roam` always keeps the swipe, so leave it a margin of page to scroll from or set `:roam="false"`. A selectable heatmap keeps every swipe too, since a swipe is how a touch selects: set `:selectable="false"` where the page should scroll through it.
 - A treemap pans without bounds, as ECharts does; double-click brings it back. Heatmap selections snap to whole cells.
 
@@ -334,6 +336,7 @@ Compared with the native maps and Sankey:
 | `legendselectchanged` | `(params: EChartEventParams)` | A legend entry was toggled. |
 | `datazoom` | `(params: EChartEventParams)` | A dataZoom range changed, the built-in zoom included. |
 | `select` | `(selection: HeatmapSelection \| null)` | `TxHeatmapChart` only: a drag selected a block of cells, or the selection was cleared. |
+| `update:selection` | `(selection: HeatmapSelection \| null)` | `TxHeatmapChart` only: for `v-model:selection`; fires with `select`, never for a value the host wrote. |
 
 ## Technologies
 

@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-
-const emit = defineEmits<{
-  (event: 'openAssistant', source: HTMLElement | null): void
-}>()
+import { computed } from 'vue'
 
 const runtimeConfig = useRuntimeConfig()
 const { t } = useI18n()
-const assistantTriggerRef = ref<HTMLElement | null>(null)
 const showCardChrome = computed(() => {
   const value = runtimeConfig.public?.docs?.asideCardChrome as string | boolean | undefined
   if (value === true)
@@ -16,8 +11,6 @@ const showCardChrome = computed(() => {
     return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
   return false
 })
-const assistantAriaLabel = computed(() => t('docs.assistant.open'))
-const askAiLabel = computed(() => t('docs.aside.askAi'))
 const resourcesLabel = computed(() => t('docs.aside.resources'))
 const resourceLinks = computed(() => [
   {
@@ -36,26 +29,10 @@ const resourceLinks = computed(() => [
     href: 'https://github.com/talex-touch/tuff',
   },
 ])
-
-function openAssistant() {
-  emit('openAssistant', assistantTriggerRef.value)
-}
 </script>
 
 <template>
   <section class="docs-aside-cards" :class="{ 'docs-aside-cards--chrome': showCardChrome }">
-    <button
-      ref="assistantTriggerRef"
-      type="button"
-      class="docs-aside-assistant"
-      :aria-label="assistantAriaLabel"
-      @click="openAssistant"
-    >
-      <span class="docs-aside-assistant__spark i-carbon-ai-status" aria-hidden="true" />
-      <span class="docs-aside-assistant__label">{{ askAiLabel }}</span>
-      <span class="docs-aside-assistant__arrow i-carbon-arrow-up-right" aria-hidden="true" />
-    </button>
-
     <div class="docs-aside-card">
       <div class="docs-aside-card__title">
         {{ resourcesLabel }}
@@ -103,53 +80,6 @@ function openAssistant() {
   font-weight: 600;
   letter-spacing: 0;
   color: var(--tx-text-color-placeholder, #a8abb2);
-}
-
-/*
- * The one accent in the rail: a hairline gradient border rendered with two
- * backgrounds (padding-box over border-box) so it stays crisp at 1px.
- */
-.docs-aside-assistant {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 9px;
-  border: 1px solid transparent;
-  padding: 11px 13px;
-  border-radius: 10px;
-  color: var(--tx-text-color-primary, #303133);
-  background:
-    linear-gradient(var(--tx-bg-color-overlay, #fff), var(--tx-bg-color-overlay, #fff)) padding-box,
-    linear-gradient(135deg, #6e8bff, #b07cff 50%, #ff9fc0) border-box;
-  cursor: pointer;
-  font: inherit;
-  transition:
-    box-shadow var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out),
-    transform var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out);
-}
-
-.docs-aside-assistant:hover,
-.docs-aside-assistant:focus-visible {
-  box-shadow: 0 4px 16px color-mix(in srgb, #b07cff 22%, transparent);
-  transform: translateY(-1px);
-  outline: none;
-}
-
-.docs-aside-assistant__spark {
-  font-size: 16px;
-  color: var(--tx-text-color-primary, #303133);
-}
-
-.docs-aside-assistant__label {
-  flex: 1;
-  text-align: left;
-  font-size: 13.5px;
-  font-weight: 500;
-}
-
-.docs-aside-assistant__arrow {
-  color: var(--tx-text-color-placeholder, #a8abb2);
-  font-size: 15px;
 }
 
 .docs-aside-card__list {

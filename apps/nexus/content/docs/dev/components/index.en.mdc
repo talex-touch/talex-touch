@@ -30,7 +30,7 @@ Tuffex (`@talex-touch/tuffex`) is the Vue 3 component library behind CoreBox, pl
 | Suite | Groups | Pages | Entry |
 |-------|--------|-------|-------|
 | [Concepts](./index.en.mdc) | Installation, design rules, concepts manual, helpers | 27 | Documentation only |
-| [Templates](./template-shell.en.mdc) | App shells / Content / AI apps / Data & flow | 16 | Compositions of existing entries |
+| [Templates](./template-shell.en.mdc) | App shells / Content / AI apps / Data & flow | 22 | Compositions of existing entries |
 | [Basics Suite](./base-suite.en.mdc) | General / Form / Layout / Navigation / Data Display / Feedback / Status & Empty | 95 | `@talex-touch/tuffex/base` |
 | [Pro Suite](./pro-suite.en.mdc) | Interaction / Effects / Primitives | 40 | `@talex-touch/tuffex/pro` |
 | [AI Suite](./ai-suite.en.mdc) | Chat / Agents / Reasoning / Context & Insight | 36 | `@talex-touch/tuffex/ai` |
@@ -79,6 +79,7 @@ code: |
 - [Launcher](./template-launcher.en.mdc)
 - [Settings](./template-settings.en.mdc)
 - [Onboarding](./template-onboarding.en.mdc)
+- [Workbench](./template-workbench.en.mdc)
 
 ### Content
 
@@ -88,18 +89,23 @@ code: |
 - [Files](./template-files.en.mdc)
 - [Store](./template-store.en.mdc)
 - [Docs](./template-docs.en.mdc)
+- [Notes](./template-notes.en.mdc)
+- [Showcase](./template-showcase.en.mdc)
 
 ### AI apps
 
 - [Agent chat](./template-agent-chat.en.mdc)
 - [AI answer](./template-ai-answer.en.mdc)
 - [Research](./template-research.en.mdc)
+- [Voice notes](./template-voice.en.mdc)
+- [Image studio](./template-image-studio.en.mdc)
 
 ### Data & flow
 
 - [Dashboard](./template-dashboard.en.mdc)
 - [Automation](./template-automation.en.mdc)
 - [Release](./template-release.en.mdc)
+- [Experiments](./template-experiments.en.mdc)
 
 ## Basics
 
@@ -185,6 +191,7 @@ code: |
 - [FilterChips](./filter-chips.en.mdc)
 - [MarkdownView](./markdown-view.en.mdc)
 - [ImageGallery](./image-gallery.en.mdc)
+- [ImagePreview](./image-preview.en.mdc)
 
 ### Feedback
 

@@ -244,6 +244,7 @@ const SECTION_ORDER: Record<string, string[]> = {
     '/docs/dev/components/template-launcher',
     '/docs/dev/components/template-settings',
     '/docs/dev/components/template-onboarding',
+    '/docs/dev/components/template-workbench',
     // templates — Content
     '/docs/dev/components/template-cms',
     '/docs/dev/components/template-gallery',
@@ -251,14 +252,19 @@ const SECTION_ORDER: Record<string, string[]> = {
     '/docs/dev/components/template-files',
     '/docs/dev/components/template-store',
     '/docs/dev/components/template-docs',
+    '/docs/dev/components/template-notes',
+    '/docs/dev/components/template-showcase',
     // templates — AI apps
     '/docs/dev/components/template-agent-chat',
     '/docs/dev/components/template-ai-answer',
     '/docs/dev/components/template-research',
+    '/docs/dev/components/template-voice',
+    '/docs/dev/components/template-image-studio',
     // templates — Data & flow
     '/docs/dev/components/template-dashboard',
     '/docs/dev/components/template-automation',
     '/docs/dev/components/template-release',
+    '/docs/dev/components/template-experiments',
     // ── suite: base — overview
     '/docs/dev/components/base-suite',
     // base — Basic
@@ -333,6 +339,7 @@ const SECTION_ORDER: Record<string, string[]> = {
     '/docs/dev/components/filter-chips',
     '/docs/dev/components/markdown-view',
     '/docs/dev/components/image-gallery',
+    '/docs/dev/components/image-preview',
     // base — Feedback
     '/docs/dev/components/dialog',
     '/docs/dev/components/modal',

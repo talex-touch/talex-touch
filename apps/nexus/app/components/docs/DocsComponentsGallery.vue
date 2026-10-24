@@ -61,6 +61,7 @@ const props = defineProps<{ suite: Exclude<DocsSuiteKey, 'concepts' | 'templates
 
 const GalleryVoiceClip = defineAsyncComponent(() => import('./gallery/GalleryVoiceClip.vue'))
 const GalleryLearningCurve = defineAsyncComponent(() => import('./gallery/GalleryLearningCurve.vue'))
+const GalleryImagePreview = defineAsyncComponent(() => import('./gallery/GalleryImagePreview.vue'))
 
 const { locale } = useI18n()
 
@@ -588,9 +589,9 @@ const filterChipItems = computed(() => [
   { value: 'beta', label: copy.value.reviewing, count: 12, dot: 'var(--tx-color-warning)' },
 ])
 const galleryTiles = [
-  { id: 'a', url: tileImage('#1e3a8a', '#60a5fa', '#e0f2fe'), en: 'Dawn ridge', zh: '山脊晨光' },
-  { id: 'b', url: tileImage('#064e3b', '#4ade80', '#fef9c3'), en: 'Pine valley', zh: '松谷' },
-  { id: 'c', url: tileImage('#7c2d12', '#fbbf24', '#fff7ed'), en: 'Dune pass', zh: '沙丘垭口' },
+  { id: 'a', url: tileImage('#1e3a8a', '#60a5fa', '#e0f2fe', 8), en: 'Dawn ridge', zh: '山脊晨光' },
+  { id: 'b', url: tileImage('#064e3b', '#4ade80', '#fef9c3', 8), en: 'Pine valley', zh: '松谷' },
+  { id: 'c', url: tileImage('#7c2d12', '#fbbf24', '#fff7ed', 8), en: 'Dune pass', zh: '沙丘垭口' },
 ]
 const galleryItems = computed(() => galleryTiles.map(({ id, url, en, zh }) => ({ id, url, name: localeKey.value === 'zh' ? zh : en })))
 // Keyed rather than labelled: the list reorders this ref in place, so labels
@@ -2573,6 +2574,22 @@ const motionGalleryItems = [
           <ClientOnly>
             <div class="docs-gallery__block">
               <GalleryImageGallery :items="galleryItems" />
+            </div>
+            <template #fallback>
+              <div class="docs-gallery__ph" />
+            </template>
+          </ClientOnly>
+        </div>
+      </section>
+
+      <section class="docs-gallery__cell">
+        <NuxtLink class="docs-gallery__label" :to="docPath('image-preview')">
+          {{ cellLabel('ImagePreview', '图片预览') }}
+        </NuxtLink>
+        <div class="docs-gallery__stage not-prose">
+          <ClientOnly>
+            <div class="docs-gallery__block">
+              <GalleryImagePreview />
             </div>
             <template #fallback>
               <div class="docs-gallery__ph" />

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import DocsCopyPromptButton from '~/components/docs/DocsCopyPromptButton.vue'
 
 const DocsDrawer = defineAsyncComponent(() => import('~/components/ui/Drawer.vue'))
-const LazyDocsAsideCards = defineAsyncComponent(() => import('~/components/docs/DocsAsideCards.vue'))
 const LazyDocsAsideCardsShell = defineAsyncComponent(() => import('~/components/docs/DocsAsideCardsShell.vue'))
-const LazyDocsOutline = defineAsyncComponent(() => import('~/components/DocsOutline.vue'))
+const loadDocsOutline = () => import('~/components/DocsOutline.vue')
+const LazyDocsOutline = defineAsyncComponent(loadDocsOutline)
 const LazyBackToTop = defineAsyncComponent(() => import('~/components/ui/BackToTop.vue'))
 const LazyTuffFooter = defineAsyncComponent(() => import('~/components/TuffFooter.vue'))
 const TuffexDocsHeroBackground = defineAsyncComponent(() => import('~/components/docs/TuffexDocsHeroBackground.vue'))
@@ -23,13 +24,8 @@ const sidebarVisible = ref(false)
 const outlineVisible = ref(false)
 const sidebarDrawerMounted = ref(false)
 const outlineDrawerMounted = ref(false)
-const shouldMountDocsAsideCards = ref(false)
 const shouldMountDocsAsideShell = ref(false)
 const shouldMountDocsOutline = ref(false)
-const docsAssistantShellTriggerRef = ref<HTMLElement | null>(null)
-const docsAssistantOpenRequest = ref(0)
-const docsAssistantSource = shallowRef<HTMLElement | null>(null)
-const docsAssistantContextRequestState = useState<number>('docs-assistant-context-request', () => 0)
 const shouldMountDocsFooter = ref(false)
 const shouldMountBackToTop = ref(false)
 const shouldMountTuffexBackground = ref(false)
@@ -52,7 +48,6 @@ const outlinePublicState = useState<{ hasOutline: boolean, loading: boolean }>('
 const outlineTocState = useState<any[]>('docs-toc', () => [])
 const outlineLoadingState = useState<boolean>('docs-outline-loading', () => false)
 const docMetaState = useState<Record<string, any>>('docs-meta', () => ({}))
-const assistantAriaLabel = computed(() => t('docs.assistant.open'))
 const docsAsideAiNoticeTitle = computed(() => t('docs.aiNotice.title'))
 const docsAsideAiNoticeDescription = computed(() => t('docs.aiNotice.description'))
 const shouldShowAsideOutline = computed(() =>
@@ -61,6 +56,22 @@ const shouldShowAsideOutline = computed(() =>
   || outlineTocState.value.length > 0
   || outlineLoadingState.value,
 )
+// The rows DocsOutline draws, its first two heading levels, so the placeholder before it mounts
+// is as tall as it will be and nothing below moves.
+const outlineShellEntries = computed(() => {
+  const links: Array<{ id: string, text: string, depth: number }> = []
+  const collect = (list: any[] | undefined) => {
+    for (const link of list ?? []) {
+      links.push(link)
+      collect(link.children)
+    }
+  }
+  collect(outlineTocState.value)
+  const base = Math.min(...links.map(link => link.depth))
+  return links
+    .filter(link => link.depth === base || link.depth === base + 1)
+    .map(link => ({ id: link.id, text: link.text, nested: link.depth !== base }))
+})
 
 type DocsAsideSyncStatusKey = 'not_started' | 'in_progress' | 'migrated' | 'verified'
 
@@ -121,18 +132,6 @@ function openOutlineDrawer() {
   outlineDrawerMounted.value = true
   mountDocsOutline()
   outlineVisible.value = true
-}
-
-function openDocsAssistantFromShell(source: HTMLElement | null) {
-  docsAssistantSource.value = source
-  shouldMountDocsAsideCards.value = true
-  mountDocsAsideShell()
-  docsAssistantContextRequestState.value += 1
-  docsAssistantOpenRequest.value += 1
-}
-
-function openDocsAssistantFromPlaceholder() {
-  openDocsAssistantFromShell(docsAssistantShellTriggerRef.value)
 }
 
 function clearDocsFooterSchedule() {
@@ -272,8 +271,13 @@ function clearDocsOutlineSchedule() {
 function mountDocsOutline() {
   if (shouldMountDocsOutline.value)
     return
-  shouldMountDocsOutline.value = true
   clearDocsOutlineSchedule()
+  // Swap the shell out once the chunk is here: flipping first leaves the panel empty for the
+  // frames the import takes. A failed import still flips, so the async component reports it.
+  const mount = () => {
+    shouldMountDocsOutline.value = true
+  }
+  loadDocsOutline().then(mount, mount)
 }
 
 function scheduleDocsOutlineMount() {
@@ -463,18 +467,29 @@ onBeforeUnmount(() => {
                 <div v-show="shouldShowAsideOutline" class="docs-outline-panel max-h-[calc(100vh-12rem)] overflow-y-auto pr-2 relative z-30">
                   <LazyDocsOutline v-if="shouldMountDocsOutline" />
                   <div v-else class="docs-outline-shell" aria-hidden="true">
-                    <span class="docs-outline-shell__line is-wide" />
-                    <span class="docs-outline-shell__line" />
-                    <span class="docs-outline-shell__line is-short" />
-                    <span class="docs-outline-shell__line is-wide" />
-                    <span class="docs-outline-shell__line" />
+                    <div class="docs-outline-shell__label">
+                      <span class="docs-outline-shell__icon i-carbon-text-align-left" />
+                      <span>{{ t('docs.outlineLabel') }}</span>
+                    </div>
+                    <div v-if="outlineShellEntries.length" class="docs-outline-shell__track">
+                      <span
+                        v-for="entry in outlineShellEntries"
+                        :key="entry.id"
+                        class="docs-outline-shell__row"
+                        :class="{ 'is-nested': entry.nested }"
+                      >
+                        <span class="line-clamp-2"><span class="docs-outline-shell__text">{{ entry.text }}</span></span>
+                      </span>
+                    </div>
+                    <div v-else class="docs-outline-shell__lines">
+                      <span class="docs-outline-shell__line is-wide" />
+                      <span class="docs-outline-shell__line" />
+                      <span class="docs-outline-shell__line is-short" />
+                      <span class="docs-outline-shell__line is-wide" />
+                      <span class="docs-outline-shell__line" />
+                    </div>
                   </div>
                 </div>
-                <LazyDocsAsideCards
-                  v-if="shouldMountDocsAsideCards"
-                  :assistant-open-request="docsAssistantOpenRequest"
-                  :assistant-source="docsAssistantSource"
-                />
                 <section
                   v-if="shouldShowDocsAsideAiNotice"
                   class="docs-aside-ai-notice"
@@ -488,22 +503,11 @@ onBeforeUnmount(() => {
                     {{ docsAsideAiNoticeDescription }}
                   </p>
                 </section>
-                <LazyDocsAsideCardsShell
-                  v-if="shouldMountDocsAsideShell"
-                  @open-assistant="openDocsAssistantFromShell"
-                />
-                <button
-                  v-else
-                  ref="docsAssistantShellTriggerRef"
-                  type="button"
-                  class="docs-aside-assistant-shell"
-                  :aria-label="assistantAriaLabel"
-                  @click="openDocsAssistantFromPlaceholder"
-                >
-                  <span class="docs-aside-assistant-shell__spark" aria-hidden="true">✦</span>
-                  <span class="docs-aside-assistant-shell__label">Tuff Assistant</span>
-                  <span class="docs-aside-assistant-shell__arrow i-carbon-chevron-right" aria-hidden="true" />
-                </button>
+                <!-- The button renders from the start; only the resources below it wait for the shell. -->
+                <div class="docs-aside-actions">
+                  <DocsCopyPromptButton />
+                  <LazyDocsAsideCardsShell v-if="shouldMountDocsAsideShell" />
+                </div>
               </ClientOnly>
             </div>
           </aside>
@@ -926,50 +930,80 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.docs-aside-assistant-shell {
+.docs-aside-actions {
   display: flex;
-  width: 100%;
-  min-height: 38px;
-  align-items: center;
-  justify-content: space-between;
-  border: 1px solid color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 70%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--tx-bg-color-overlay, #ffffff) 86%, transparent);
-  color: var(--tx-text-color-primary, #303133);
-  cursor: pointer;
-  font: inherit;
-  padding: 12px;
-  transition:
-    background var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out),
-    border-color var(--tx-transition-duration-fast, 0.2s) var(--tx-transition-function, ease-in-out);
+  flex-direction: column;
+  gap: 30px;
 }
 
-.docs-aside-assistant-shell:hover,
-.docs-aside-assistant-shell:focus-visible {
-  border-color: color-mix(in srgb, var(--tx-color-primary, #409eff) 35%, transparent);
-  background: color-mix(in srgb, var(--tx-color-primary, #409eff) 12%, transparent);
-  outline: none;
-}
-
-.docs-aside-assistant-shell__spark {
-  color: var(--tx-color-primary, #409eff);
-  font-size: 14px;
-}
-
-.docs-aside-assistant-shell__label {
-  flex: 1;
-  padding-left: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-}
-
-.docs-aside-assistant-shell__arrow {
-  color: var(--tx-text-color-secondary, #909399);
-  font-size: 14px;
-}
-
+/* The label and rows mirror DocsOutline's, which replaces this in place. */
 .docs-outline-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  user-select: none;
+}
+
+.docs-outline-shell__label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--tx-text-color-secondary, #909399) 88%, transparent);
+}
+
+.docs-outline-shell__icon {
+  font-size: 15px;
+  color: color-mix(in srgb, var(--tx-text-color-secondary, #909399) 78%, transparent);
+}
+
+.docs-outline-shell__track {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, calc(100vh - 16rem));
+  padding: 2px 0;
+  overflow: hidden;
+}
+
+.docs-outline-shell__track::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 8.5px;
+  top: 6px;
+  bottom: 6px;
+  width: 1.5px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--tx-text-color-primary, #303133) 12%, transparent);
+}
+
+.docs-outline-shell__row {
+  display: flex;
+  align-items: center;
+  padding-block: 6px;
+  padding-inline-start: 20px;
+  color: transparent;
+  font-size: 13.5px;
+  line-height: 1.375;
+  letter-spacing: var(--wm-letter-space-2, 0px);
+}
+
+.docs-outline-shell__row.is-nested {
+  padding-inline-start: 32px;
+}
+
+/* Text-shaped bars: the heading itself, transparent, wraps exactly as it will. */
+.docs-outline-shell__text {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tx-text-color-primary, #303133) 10%, transparent);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.docs-outline-shell__lines {
   display: grid;
   gap: 0.625rem;
   padding: 0.25rem 0.25rem 0.5rem;

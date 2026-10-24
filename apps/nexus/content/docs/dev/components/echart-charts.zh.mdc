@@ -58,7 +58,7 @@ import { TxEChart, TxLineChart } from '@talex-touch/tuffex/charts'
 | `TxRadarChart` | `indicators`（`name`、`max`、`min?`）、`series`（`name`、`data`、`color?`、`area?`）、`shape?`、`splitNumber?`、`showLegend?`、`showAxisName?` |
 | `TxGaugeChart` | `value`、`min?`、`max?`、`name?`、`unit?`、`precision?`、`progress?`、`segments?`、`color?` |
 | `TxScatterChart` | `series`（`name`、`data`、`color?`、`symbolSize?`）、`xAxisName?`、`yAxisName?`、`symbolSize?`、`showLegend?`、`grid?`、`xMin?`、`xMax?`、`yMin?`、`yMax?`、`zoom?`、`cooperativeWheel?` |
-| `TxHeatmapChart` | `values`、`rows`、`columns`、`xAxisName?`、`yAxisName?`、`visualMap?`、`min?`、`max?`、`showLabel?`、`unit?`、`selectable?`、`labels?` |
+| `TxHeatmapChart` | `values`、`rows`、`columns`、`xAxisName?`、`yAxisName?`、`visualMap?`、`min?`、`max?`、`showLabel?`、`cellLabel?`、`unit?`、`selectable?`、`selection?`（`v-model:selection`）、`labels?` |
 | `TxTreemapChart` | `data`（`name`、`value?`、`color?`、`children?`）、`maxDepth?`、`showBreadcrumb?`、`showLabel?`、`unit?`、`roam?`、`cooperativeWheel?` |
 
 构造器本身也是公开 API——`buildBarChartOption`、`buildLineChartOption` 等都返回一份普通 `EChartsOption`。需要在一张图里混用图形类型时，用它们先各自生成再合并，然后把结果交给 `TxEChart`。
@@ -244,7 +244,9 @@ code: |
 
 强度矩阵。`values` 按行主序传入（`values[row][column]`），`rows` 与 `columns` 命名两个类目轴。构造器把这两个数组原样交给 ECharts，而 ECharts 把第一个类目画在底部——所以 `rows[0]` 是最下面那一行。声明的 `visualMap` 默认读顺序色板的 token 渐变，除非你自己传 `inRange.color`。
 
-在绘图区拖拽可框选一块单元格。`select` 给出 `HeatmapSelection`——`rows` 与 `columns` 是含两端的索引区间，`cells` 是区间内的单元格——清除后给出 `null`。`cells` 是快照：标签不变而 `values` 更新时，选区保留且不会再次触发 `select`；`rows` 或 `columns` 变化则清除选区。拖拽不会触发 `click`；`:selectable="false"` 关闭框选。朗读文案与播报来自 `labels`，合并到 `HEATMAP_DEFAULT_LABELS` 之上。
+在绘图区拖拽可框选一块单元格。`select` 给出 `HeatmapSelection`——`rows` 与 `columns` 是含两端的索引区间，`cells` 是区间内的单元格——清除后给出 `null`；`v-model:selection` 绑定的是同一个值。`cells` 是快照：标签不变而 `values` 更新时，选区保留且不会再次触发 `select`；`rows` 或 `columns` 变化则清除选区。拖拽不会触发 `click`；`:selectable="false"` 关闭框选。
+
+要在图表外部清除选区，调用暴露的 `clearSelection()`：效果与在绘图区单击相同，会播报并通过 `select` 派发；经 `v-model:selection` 写入的值（`null`，或 `heatmapSelection()` 构造的区块）只移动选框，不播报也不派发。`cellLabel` 决定 `showLabel` 在单元格里打印的文字。朗读文案与播报来自 `labels`，合并到 `HEATMAP_DEFAULT_LABELS` 之上：`selected` 里的 `{count}` 与 `{total}` 是格数，`{first}` 与 `{last}` 按 `labels.cell` 的写法（默认 `'{column} {row}'`，`{value}` 为打印的文字）说出区块的两个角。
 
 :::TuffDemoWrapper{demo="EChartHeatmapChartDemo" code-lang="vue" title="时段活跃度" description="五个时段铺满一周；在单元格上拖拽可框选一块。"}
 ---
@@ -320,7 +322,7 @@ code: |
 
 - 缩放按 ECharts 固定的档位前进（每次事件 1.1×、1.2× 或 1.4×），而不是跟随手势连续变化。没有弹簧、没有松手后的惯性、没有橡皮筋：平移在指针停下的地方停下。
 - 复位动画 350 ms；`prefers-reduced-motion: reduce` 下直接跳到终点。
-- 没有键盘缩放与平移。热力图是唯一带焦点停靠点的图表：有选区时才是 Tab 停靠点，让 `Escape` 能清除它。它的 `labels` 携带朗读文案与带 `{count}` / `{total}` 的播报。
+- 没有键盘缩放与平移。热力图是唯一带焦点停靠点的图表：有选区时才是 Tab 停靠点，让 `Escape` 能清除它。它的 `labels` 携带朗读文案与播报：`{count}` / `{total}` 是格数，`{first}` / `{last}` 是区块两角的名称。
 - 触屏上双指捏合可以缩放。未缩放的折线、柱状、散点让滑动滚动页面，放大之后滑动改为平移；带 `roam` 的矩形树图始终占用滑动，请给它留出可供页面滚动的边距，或设 `:roam="false"`。可框选的热力图同样占用所有滑动，因为触屏就是靠滑动来框选的：想让页面从它上面滚过去，请设 `:selectable="false"`。
 - 矩形树图的平移没有边界，这是 ECharts 的原生行为，双击即可回位。热力图的选区吸附到整格。
 
@@ -334,6 +336,7 @@ code: |
 | `legendselectchanged` | `(params: EChartEventParams)` | 图例项被切换。 |
 | `datazoom` | `(params: EChartEventParams)` | dataZoom 区间变化，内置缩放也算在内。 |
 | `select` | `(selection: HeatmapSelection \| null)` | 仅 `TxHeatmapChart`：拖拽框选了一块单元格，或选区被清除。 |
+| `update:selection` | `(selection: HeatmapSelection \| null)` | 仅 `TxHeatmapChart`：供 `v-model:selection` 使用，与 `select` 一同触发；宿主自己写入的值不会触发。 |
 
 ## 技术实现
 

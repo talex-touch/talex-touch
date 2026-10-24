@@ -74,7 +74,7 @@ code: |
 ## Overview
 
 - It renders `TxProgressBar` with no wrapper DOM and forwards `percentage`, `status`, `indeterminate`, `showText`, and `format` as-is.
-- `strokeWidth` becomes `height` (such as `"6px"`); text placement is fixed to `outside` and the mask to `maskVariant="plain"`.
+- `strokeWidth` becomes `height` (such as `"6px"`); text placement is fixed to `outside`, where a long `format` text wraps to at most two lines within half the row, and the mask to `maskVariant="plain"`.
 - It emits no events and has no slots; the host drives progress by updating props.
 - Determinate progress gets `role="progressbar"` and `aria-valuenow` from `TxProgressBar`; indeterminate progress omits `aria-valuenow`.
 

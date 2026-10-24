@@ -128,7 +128,6 @@ const metrics = computed(() => [
         :percentage="86"
         status="success"
         height="10px"
-        show-text
         flow-effect="shimmer"
         mask-variant="dashed"
       />
@@ -140,7 +139,6 @@ const metrics = computed(() => [
         :percentage="72"
         status="warning"
         height="10px"
-        show-text
         flow-effect="wave"
       />
       <div>
@@ -150,7 +148,6 @@ const metrics = computed(() => [
       <TxProgressBar
         :percentage="48"
         height="10px"
-        show-text
         indicator-effect="sparkle"
       />
     </div>

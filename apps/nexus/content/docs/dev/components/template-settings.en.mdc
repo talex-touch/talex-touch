@@ -47,7 +47,7 @@ code: |
           >
             <TxTabHeader>
               <h3>{{ titles[page] }}</h3>
-              <TxStatusBadge :text="saveText[saveState]" :status="saveState === 'saved' ? 'success' : 'info'" size="sm" />
+              <TxStatusHint :text="saveText[saveState]" :tone="saveState === 'saved' ? 'success' : saveState === 'saving' ? 'info' : 'muted'" size="sm" />
               <TxButton size="sm" variant="ghost" icon="i-carbon-reset" @click="ask('reset')">
                 Reset
               </TxButton>
@@ -114,7 +114,7 @@ Tuff's settings center: every change saves on its own, so the header shows a sav
 | Region | Components | Role |
 |---|---|---|
 | Navigation | [TxTabs / TxTabItemGroup / TxTabItem](/docs/dev/components/tabs) | Grouped section navigation |
-| Header | TxTabHeader from [TxTabs](/docs/dev/components/tabs), [TxStatusBadge](/docs/dev/components/status-badge), [TxButton](/docs/dev/components/button) | Section title, save status, Reset |
+| Header | TxTabHeader from [TxTabs](/docs/dev/components/tabs), [TxStatusHint](/docs/dev/components/status-hint), [TxButton](/docs/dev/components/button) | Section title, save status, Reset |
 | Setting rows | [TxGroupBlock / TxBlockSlot / TxBlockLine](/docs/dev/components/group-block) | Open groups of setting rows |
 | General and CoreBox | [TuffSwitch](/docs/dev/components/switch), [TxFlatSelect](/docs/dev/components/flat-select), [TxFlatRadio](/docs/dev/components/flat-radio), [TxSlider](/docs/dev/components/slider), [TxSelect](/docs/dev/components/select), [TxSegmentedSlider](/docs/dev/components/segmented-slider), [TxNumberInput](/docs/dev/components/number-input), [TxInput](/docs/dev/components/input), [TxKbd](/docs/dev/components/kbd) | Appearance, shortcut, and result settings |
 | Shortcuts | [TxSearchInput](/docs/dev/components/search-input), [TxKbd](/docs/dev/components/kbd), [TuffSwitch](/docs/dev/components/switch), [TxSearchEmpty](/docs/dev/components/search-empty) | Filterable shortcuts with switches |

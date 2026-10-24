@@ -105,7 +105,7 @@ code: |
 ### Best Practices
 
 - Keep `sanitize=true` for content written by users or providers.
-- Use a controlled `mode` when the route or query stores it.
+- Use a controlled `mode` or `v-model:comments-open` when the route or query stores it; to just reveal a thread, call `openComments(id)`.
 - In narrow editors such as comments or release notes, trim the toolbar with `toolbarActions` and turn off `slash` or `bubble` as needed.
 - Have `uploadImage` and `ai` honour `signal`: it aborts when the user deletes the placeholder, stops or discards.
 - If the host doesn't scan tuffex sources, add `MARKDOWN_EDITOR_ICON_CLASSES` from `src/toolbar-icons.ts` to the UnoCSS safelist.
@@ -140,6 +140,7 @@ code: |
 | `ai` | `MarkdownEditorAi` | - | AI rewriting on the formatting bar; hidden without it. |
 | `uploadImage` | `MarkdownEditorUploadImage` | - | Uploads pasted, dropped or chosen images and returns their hosted address; without it, the image button asks for an address. |
 | `comments` / `v-model:comments` | `MarkdownEditorComment[]` | - | Comment threads; comments are hidden without it. |
+| `commentsOpen` / `v-model:comments-open` | `boolean` | - | Whether the comment sidebar is open; the editor keeps it when unbound. |
 | `user` | `MarkdownEditorUser` | `{ id: 'local', name: labels.you }` | The local user: the author of comments, and who collaborators see. |
 | `collaboration` | `MarkdownEditorCollaboration` | - | Transport for real-time collaboration. |
 | `statusBar` | `boolean` | `true` | Word count, character count and collaborators at the bottom. |
@@ -156,6 +157,7 @@ code: |
 | `focus` | `()` | Fires when the editing surface gains focus. |
 | `blur` | `()` | Fires when the editing surface loses focus. |
 | `update:comments` | `(comments: MarkdownEditorComment[])` | Fires when threads change or their ranges move with edits, for `v-model:comments`. |
+| `update:commentsOpen` | `(open: boolean)` | Fires when the comment sidebar opens or closes, for `v-model:comments-open`. |
 | `comment-create` | `(comment: MarkdownEditorComment)` | Fires when a thread is created. |
 | `comment-reply` | `(comment: MarkdownEditorComment, reply: MarkdownEditorCommentReply)` | Fires when a thread gets a reply. |
 | `comment-resolve` | `(comment: MarkdownEditorComment)` | Fires when a thread is resolved or reopened; `resolved` tells which. |
@@ -171,6 +173,7 @@ code: |
 | `blur()` | Blurs the current editing surface. |
 | `setMode(mode)` | Switches the mode. |
 | `getMode()` | Returns the current mode. |
+| `openComments(id?)` | Opens the comment sidebar; with a thread `id`, selects that thread and scrolls it into view. |
 | `getValue()` | Returns the current Markdown. |
 | `setValue(value)` | Replaces the whole text as one edit: emits updates and sends it to collaborators. |
 | `getSelection()` | Returns the selection as offsets into the Markdown source. |
@@ -245,6 +248,14 @@ Collaboration adapters merge concurrent edits with these functions, all exported
 | `mapMarkdownPosition(pos, changes, assoc?)` | Where a position lands after a change set; `assoc` puts a position at an insertion before (`-1`) or after (`1`) the inserted text. |
 | `transformMarkdownChanges(a, b, docLength)` | Rebases two concurrent change sets over each other and returns `[a', b']`; at the same insertion point, `a` goes first. |
 
+## Word Count
+
+The status bar counts with `markdownStats`, exported from `@talex-touch/tuffex/markdown-editor`; call it to show the same numbers outside the editor.
+
+| Function | Description |
+|------|-------------|
+| `markdownStats(markdown)` | Returns `{ words, characters }`. Markdown marks and link addresses don't count; each Han, kana or Hangul character is one word; `characters` leaves out whitespace. |
+
 ## Overview
 
 - Passing `mode` makes the mode controlled; otherwise `defaultMode` seeds it. All three modes share one Markdown document; preview takes no typing and disables the formatting buttons, but its task boxes still toggle.
@@ -253,6 +264,7 @@ Collaboration adapters merge concurrent edits with these functions, all exported
 - An image goes in as a placeholder with progress, then becomes the address `uploadImage` returns; deleting the placeholder aborts the upload.
 - Every edit commits as a change set, which moves the undo history, comment ranges and collaborators' carets. The local caret is sent at most every 50 ms; a collaborator's name shows for 2.5 s after their caret moves.
 - Both editing modes share shortcuts: `Mod+B` bold, `Mod+I` italic, `Mod+E` inline code, `Mod+Shift+X` strikethrough, `Mod+Shift+H` highlight, `Mod+K` link, `Mod+Alt+1–6` headings (`Mod+Alt+0` back to a paragraph), `Mod+Alt+M` comment. The mode switcher is a `role="group"` of toggle buttons; `aria-pressed` marks the active mode.
+- `Esc` closes an open emoji or highlight-colour menu and claims the key (`preventDefault` in the document's capture phase), so a surrounding overlay that closes on an unclaimed `Esc` stays open. This holds while a highlight menu opened with the mouse leaves focus in the text.
 
 ## Technologies
 

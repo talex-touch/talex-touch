@@ -148,7 +148,7 @@ code: |
 
 ### Best Practices
 
-- Use for two to five short options that benefit from side-by-side comparison (labels don't wrap); use `TxSelect` for more.
+- Use for two to five short options that benefit from side-by-side comparison (labels don't wrap, and one that doesn't fit ends in an ellipsis); use `TxSelect` for more.
 - Use `xl` when the control is the primary choice on screen; keep the default `md` inline and in toolbars.
 - Don't bold custom slot content only when selected: every item already carries the selected weight, and extra bold reflows the row.
 - Use `multiple` only for independent values; otherwise use switches or checkboxes.
@@ -204,13 +204,14 @@ code: |
 - Single mode renders `role="radiogroup"` with `role="radio"` items; `multiple` renders `role="group"` with `role="checkbox"` items.
 - Only the container is tabbable; items keep `tabindex="-1"`. Name the group with nearby field text or an external label.
 - In single mode the arrow keys select directly; in `multiple` mode they only move focus, and Enter / Space toggles.
-- The thumb never scales. It lands in place on mount, resize, and item registration, glides to a new selection, and never leaves the track.
+- The thumb never scales. It lands in place on mount, when the track or an item resizes, and on item registration, glides to a new selection, and never leaves the track.
 - A press scales the label and icon, never the item box.
 - Under reduced motion, the thumb lands in place and the press scale is dropped; the fade stays.
 
 ## Technologies
 
 - The thumb runs on the glide material of the shared `useJellyIndicator` (as in `TxTabs`, `TxTabBar`, and `TxSidebarNav`), writing `transform`, `width`, and `opacity` each frame without re-rendering.
+- The group has `max-width: 100%` and its items shrink, each to no less than `min(3em, its own width)` (`calc-size()`, 0 where unsupported); as a flex item, the group also needs `min-width: 0` from its host.
 - Source: `packages/tuffex/packages/components/src/flat-radio/`.
 
 <TuffDocSourceLink />

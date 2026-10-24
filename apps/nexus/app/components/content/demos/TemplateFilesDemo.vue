@@ -448,9 +448,24 @@ const copy = computed(() => zh.value
         noSelection: '选择一个文件',
         noSelectionDesc: '单击文件在这里预览；空格打开快速预览。',
         siblings: '同文件夹的图片',
-        gallery: { title: '图片', prev: '上一张', next: '下一张', prevText: '上一张', nextText: '下一张', close: '关闭' },
+        gallery: { title: '图片', prev: '上一张', next: '下一张', zoomIn: '放大', zoomOut: '缩小', reset: '适应屏幕', failed: '图片加载失败', close: '关闭' },
         galleryItem: (index: number) => `图片 ${index + 1}`,
         galleryOpen: (name: string) => `查看 ${name}`,
+        // The preview's own text, which the gallery does not forward.
+        galleryPreview: {
+          rotateLabel: '旋转',
+          copyLabel: '复制图片',
+          shareLabel: '分享',
+          downloadLabel: '下载',
+          menuLabel: '图片操作',
+          indicatorLabel: '图片列表',
+          copiedText: '已复制图片',
+          linkCopiedText: '已复制链接',
+          copyFailedText: '无法复制图片',
+          indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}，` : ''}第 ${current} 张，共 ${total} 张`,
+          labelFormatter: (title: string, name: string) => `${title}：${name}`,
+          readoutLabelFormatter: (readout: string, label: string) => `${readout}，${label}`,
+        },
         folderSummary: (count: number, size: string) => `${count} 项 · ${size}`,
       },
       rename: {
@@ -584,9 +599,23 @@ const copy = computed(() => zh.value
         noSelection: 'Pick a file',
         noSelectionDesc: 'Click a file to preview it here; Space opens quick look.',
         siblings: 'Images in this folder',
-        gallery: { title: 'Image', prev: 'Previous image', next: 'Next image', prevText: 'Prev', nextText: 'Next', close: 'Close' },
+        gallery: { title: 'Image', prev: 'Previous image', next: 'Next image', zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Fit to screen', failed: 'This image could not be loaded', close: 'Close' },
         galleryItem: (index: number) => `Image ${index + 1}`,
         galleryOpen: (name: string) => `View ${name}`,
+        galleryPreview: {
+          rotateLabel: 'Rotate',
+          copyLabel: 'Copy image',
+          shareLabel: 'Share',
+          downloadLabel: 'Download',
+          menuLabel: 'Image actions',
+          indicatorLabel: 'Images',
+          copiedText: 'Image copied',
+          linkCopiedText: 'Link copied',
+          copyFailedText: 'Could not copy the image',
+          indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}, ` : ''}${current} of ${total}`,
+          labelFormatter: (title: string, name: string) => `${title}: ${name}`,
+          readoutLabelFormatter: (readout: string, label: string) => `${readout}, ${label}`,
+        },
         folderSummary: (count: number, size: string) => `${count === 1 ? '1 item' : `${count} items`} · ${size}`,
       },
       rename: {
@@ -2200,11 +2229,14 @@ onBeforeUnmount(() => {
               :preview-title="copy.preview.gallery.title"
               :previous-label="copy.preview.gallery.prev"
               :next-label="copy.preview.gallery.next"
-              :previous-text="copy.preview.gallery.prevText"
-              :next-text="copy.preview.gallery.nextText"
+              :zoom-in-label="copy.preview.gallery.zoomIn"
+              :zoom-out-label="copy.preview.gallery.zoomOut"
+              :reset-label="copy.preview.gallery.reset"
+              :failed-text="copy.preview.gallery.failed"
               :close-label="copy.preview.gallery.close"
               :item-label-formatter="copy.preview.galleryItem"
               :open-label-formatter="copy.preview.galleryOpen"
+              :preview-props="copy.preview.galleryPreview"
             />
           </div>
           <div v-if="compact" class="files-preview__actions">

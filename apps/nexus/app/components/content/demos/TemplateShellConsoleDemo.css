@@ -647,6 +647,12 @@
   gap: 8px;
 }
 
+/* The line beside it ellipsises; the badge must not shrink, or 「运行中」
+   wraps onto two lines when the line is long. */
+.console__card-status .tx-status-badge {
+  flex: none;
+}
+
 .console__card-line {
   overflow: hidden;
   color: var(--tx-text-color-regular, #606266);

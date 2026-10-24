@@ -130,7 +130,7 @@ code: |
 ::
 
 ### 块级
-`block` 撑满容器宽度；搭配 `loadingVariant="bar"` 时加载显示为扫光层。
+`block` 撑满容器宽度，放不下的文案单行截断为省略号；搭配 `loadingVariant="bar"` 时加载显示为扫光层。
 ::TuffDemoWrapper{demo="ButtonBlockDemo" code-lang="vue"}
 ---
 code: |
@@ -276,7 +276,7 @@ rows:
   - parameter: block
     type: boolean
     default: 'false'
-    description: '撑满父容器宽度。'
+    description: '撑满父容器宽度；放不下的文案单行截断为省略号。'
   - parameter: plain
     type: boolean
     default: 'false'
@@ -376,7 +376,7 @@ rows:
 
 | 插槽名 | 说明 |
 |--------|------|
-| `default` | 文案或自定义内容，渲染在图标与加载指示之后。 |
+| `default` | 文案或自定义内容，渲染在图标与加载指示之后；`block` 时其中的纯文本包进 `.tx-button__label`，放不下时截断。 |
 
 ### TxSplitButton
 

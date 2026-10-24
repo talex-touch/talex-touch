@@ -283,7 +283,7 @@ code: |
 - A pinned header or footer needs `maxHeight` or a scrolling ancestor; don't nest the table in `TxScroll`'s default mode, whose transform scrolling disables sticky.
 - Sort on comparable fields such as timestamps or ranks, never on formatted relative-time text.
 - Use `filterOnClient=false` for remote filtering and handle `filterChange` alongside pagination, passing tag-option row counts as `count` in `filterOptions`; controlled `filter` remains the parent's state.
-- The filter controls speak English by default; localize them through `labels`, whose keys `DATA_TABLE_DEFAULT_LABELS` lists.
+- The filter controls and selection checkboxes speak English by default: localize the filters through `labels`, whose keys `DATA_TABLE_DEFAULT_LABELS` lists, and name the checkboxes with `selectAllLabel` and `selectRowLabelFormatter`.
 - A `date` column interprets `YYYY-MM-DD` as a local calendar day. A `datetime` column preserves the instant of timezone-qualified values; `today` ends at the next local midnight, including daylight-saving transitions.
 
 ## API Reference
@@ -305,6 +305,9 @@ code: |
 | `interactiveRows` | `boolean` | `false` | Makes rows focusable so Enter / Space fire `rowClick`; on automatically with a `rowClick` listener. |
 | `selectable` | `boolean` | `false` | Adds a selection column. |
 | `selectedKeys` | `Array<string \| number>` | `[]` | Keys of the selected rows. |
+| `selectAllLabel` | `string` | `'Select all'` | Accessible name of the header checkbox. |
+| `selectRowLabel` | `string` | `'Select row'` | Accessible name every row checkbox shares. |
+| `selectRowLabelFormatter` | `(row, index) => string` | - | Names each row checkbox so a screen reader can tell rows apart; wins over `selectRowLabel`. |
 | `expandable` | `boolean` | `false` | Adds a leading toggle column; an expanded row renders a detail row beneath it. |
 | `defaultExpandedKeys` | `Array<string \| number>` | `[]` | Initial expanded rows when uncontrolled; `expandedKeys` wins if both are passed. |
 | `expandedKeys` | `Array<string \| number>` | - | Controlled expanded rows, bound with `v-model:expanded-keys`. |
@@ -401,7 +404,7 @@ code: |
 - `filter` also makes filtering controlled. Tags accept one value or multiple values, numbers accept `{ min, max }`, and dates accept `today`, `3d`, `7d`, `30d`, or timestamp `{ start, end }` values. Text columns match a case-insensitive substring.
 - When a tag filter gathers its options from the rows, client filtering counts the rows behind each one; at 8 options the panel gains a search field.
 - Sortable headers carry `scope="col"` and `aria-sort`; click, Enter, and Space step through `sortCycle`.
-- On a partial selection the select-all box is `indeterminate` (`aria-checked="mixed"`); clicks in the selection and toggle cells never fire `rowClick`.
+- The select-all box is named by `selectAllLabel`, and each row box by `selectRowLabelFormatter`, else `selectRowLabel`. On a partial selection the select-all box is `indeterminate` (`aria-checked="mixed"`); clicks in the selection and toggle cells never fire `rowClick`.
 - `loading` sets `aria-busy` on the `<table>`, and the empty state stays hidden while loading. `overlay` covers only the visible part of the table, and a table with no rows keeps the height of its empty state.
 - Placeholder rows are `aria-hidden` and as tall as a one-line row. Under reduced motion the refresh bar holds still and the shimmer becomes a still wash.
 - `stickyHeader`, `stickyFooter`, or `maxHeight` switches to `border-collapse: separate`. The last row has no bottom rule; the rule above a `tfoot` stays.

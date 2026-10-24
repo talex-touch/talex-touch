@@ -602,7 +602,13 @@ const tabsAnimation = computed(() => (reducedMotion.value
             <div class="settings__header">
               <i :class="PAGE_ICONS[page]" class="settings__header-icon" aria-hidden="true" />
               <h3>{{ copy.pages[page] }}</h3>
-              <TxStatusBadge class="settings__save" :text="copy.save[saveState]" :status="saveTone" :icon="saveIcon" size="sm" />
+              <!-- A hint, not a badge: each state morphs out of the last and
+                   the change is announced politely. -->
+              <TxStatusHint class="settings__save" :text="copy.save[saveState]" :tone="saveTone" size="sm">
+                <template #icon>
+                  <i :class="saveIcon" />
+                </template>
+              </TxStatusHint>
               <TxButton size="sm" variant="ghost" icon="i-carbon-reset" @click="ask('reset')">
                 {{ copy.reset }}
               </TxButton>

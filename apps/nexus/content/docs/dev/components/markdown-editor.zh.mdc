@@ -105,7 +105,7 @@ code: |
 ### 最佳实践
 
 - 用户或 provider 写的内容保持 `sanitize=true`。
-- 模式需要写入路由或 query 时，使用受控的 `mode`。
+- 模式或评论侧栏需要写入路由或 query 时，使用受控的 `mode` 或 `v-model:comments-open`；只想展开某个评论线程时调用 `openComments(id)`。
 - 评论、发布说明等窄场景用 `toolbarActions` 精简工具栏，按需关闭 `slash`、`bubble`。
 - `uploadImage` 与 `ai` 响应 `signal`：用户删除占位、停止或放弃时中止请求。
 - 宿主不扫描 tuffex 源码时，把 `src/toolbar-icons.ts` 的 `MARKDOWN_EDITOR_ICON_CLASSES` 加入 UnoCSS safelist。
@@ -140,6 +140,7 @@ code: |
 | `ai` | `MarkdownEditorAi` | - | 格式条上的 AI 改写；不传则不显示。 |
 | `uploadImage` | `MarkdownEditorUploadImage` | - | 上传粘贴、拖入或选择的图片，返回托管地址；不传时图片按钮改为填写地址。 |
 | `comments` / `v-model:comments` | `MarkdownEditorComment[]` | - | 评论线程；不传则隐藏评论。 |
+| `commentsOpen` / `v-model:comments-open` | `boolean` | - | 评论侧栏是否打开；不绑定时由编辑器自己维护。 |
 | `user` | `MarkdownEditorUser` | `{ id: 'local', name: labels.you }` | 本地用户：评论作者，也是协作者看到的身份。 |
 | `collaboration` | `MarkdownEditorCollaboration` | - | 实时协作的传输。 |
 | `statusBar` | `boolean` | `true` | 底部的字数、字符数与协作者。 |
@@ -156,6 +157,7 @@ code: |
 | `focus` | `()` | 编辑区获得焦点时触发。 |
 | `blur` | `()` | 编辑区失去焦点时触发。 |
 | `update:comments` | `(comments: MarkdownEditorComment[])` | 线程变化或区间随编辑移动时触发，配合 `v-model:comments`。 |
+| `update:commentsOpen` | `(open: boolean)` | 评论侧栏打开或关闭时触发，配合 `v-model:comments-open`。 |
 | `comment-create` | `(comment: MarkdownEditorComment)` | 新建线程时触发。 |
 | `comment-reply` | `(comment: MarkdownEditorComment, reply: MarkdownEditorCommentReply)` | 回复线程时触发。 |
 | `comment-resolve` | `(comment: MarkdownEditorComment)` | 解决或重新打开线程时触发，以 `resolved` 区分。 |
@@ -171,6 +173,7 @@ code: |
 | `blur()` | 让当前编辑区失焦。 |
 | `setMode(mode)` | 切换模式。 |
 | `getMode()` | 返回当前模式。 |
+| `openComments(id?)` | 打开评论侧栏；传入线程 `id` 时选中该线程并滚动到它。 |
 | `getValue()` | 返回当前 Markdown。 |
 | `setValue(value)` | 以一次编辑替换全文：派发更新，并发送给协作者。 |
 | `getSelection()` | 返回选区，以 Markdown 源码偏移表示。 |
@@ -245,6 +248,14 @@ code: |
 | `mapMarkdownPosition(pos, changes, assoc?)` | 位置经过变更集后的落点；`assoc` 决定插入点上的位置落在插入内容之前（`-1`）还是之后（`1`）。 |
 | `transformMarkdownChanges(a, b, docLength)` | 重排两个并发变更集，返回 `[a', b']`；同一处插入时 `a` 在前。 |
 
+## 字数统计
+
+状态栏用 `@talex-touch/tuffex/markdown-editor` 导出的 `markdownStats` 计数；在编辑器之外显示同样的数字时调用它。
+
+| 函数 | 说明 |
+|------|------|
+| `markdownStats(markdown)` | 返回 `{ words, characters }`。Markdown 标记与链接地址不计入；汉字、假名与谚文每个字计一词；`characters` 不含空白。 |
+
 ## 概述
 
 - 传入 `mode` 为受控模式，否则由 `defaultMode` 初始化；三种模式共用同一份 Markdown；预览不能输入，格式按钮停用，任务列表的勾选框仍可点击切换。
@@ -253,6 +264,7 @@ code: |
 - 图片先以带进度的占位插入，上传完成后换成 `uploadImage` 返回的地址；删除占位即中止上传。
 - 每次编辑都以变更集提交，撤销历史、评论区间与协作者的光标随之移动。本地光标至多每 50 ms 发送一次，协作者移动光标后显示名字 2.5 秒。
 - 两种编辑模式共用快捷键：`Mod+B` 加粗、`Mod+I` 斜体、`Mod+E` 行内代码、`Mod+Shift+X` 删除线、`Mod+Shift+H` 高亮、`Mod+K` 链接、`Mod+Alt+1–6` 标题（`Mod+Alt+0` 恢复正文）、`Mod+Alt+M` 评论。模式切换是 `role="group"` 的切换按钮组，以 `aria-pressed` 标出当前模式。
+- `Esc` 关闭打开着的表情或高亮颜色菜单，并认领这个按键（在 document 捕获阶段 `preventDefault`），外层遇到未认领的 `Esc` 才关闭的浮层因此保持打开。用鼠标打开的高亮菜单让焦点留在正文里，这时同样如此。
 
 ## 技术实现
 

@@ -55,7 +55,7 @@ code: |
 
 ### 最佳实践
 
-- 附件是受控的：`send` 后组件只清文本，附件由宿主清空。
+- 附件是受控的：`send` 后组件只清文本，附件由宿主清空；要等本轮受理后再清文本时，设 `clearOnSend: false`。
 - 听写只呈现状态；识别在宿主完成，结果用 `insert()` 或 `v-model` 写回草稿。
 - 品牌图标走 `#source-icon` 插槽，组件不内置第三方 SVG。
 - 菜单相对输入条绝对定位，会被祖先的 `overflow: hidden` 裁切且不翻转；不要把输入条放进会裁剪的滚动容器。
@@ -85,6 +85,7 @@ code: |
 | `maxHeight` | `number` | `100` | 增高上限（px），超过后内部滚动。 |
 | `sendOnEnter` | `boolean` | `true` | Enter 发送，Shift+Enter 换行。 |
 | `allowEmptySend` | `boolean` | `false` | 允许无文本也无附件时发送。 |
+| `clearOnSend` | `boolean` | `true` | 发送后清空草稿；关闭时文本保留，由宿主清空。 |
 
 文案 props 均有英文默认值，可逐个覆盖：`sourcesHintText`、`commandsHintText`、`emptyTextFormatter`、`connectText`、`connectedText`、`sendLabel`、`attachLabel`、`modelLabel`、`startDictationLabel`、`stopDictationLabel`、`attachmentFallbackLabel`、`removeAttachmentLabelFormatter`。
 
@@ -97,7 +98,7 @@ code: |
 | `update:modelValue` | `(value: string)` | 草稿变化时触发。 |
 | `update:model` | `(key: string)` | 选中模型变化时触发。 |
 | `update:listening` | `(listening: boolean)` | 切换听写时触发。 |
-| `send` | `({ text, attachments })` | 发送时触发；组件清空文本，附件由宿主清空。 |
+| `send` | `({ text, attachments })` | 发送时触发；默认清空文本（见 `clearOnSend`），附件由宿主清空。 |
 | `attach` | `()` | 选中「添加附件」行时触发，宿主打开文件选择器。 |
 | `attachmentRemove` | `(id: string)` | 点击附件胶囊的删除时触发。 |
 | `attachmentAdd` | `(files: File[])` | 粘贴或拖入文件时触发。 |
@@ -150,12 +151,13 @@ draft.value = insert(`@${row.name}`)
 - 菜单采用 combobox 模式：输入框为 `role="combobox"` 并带 `aria-activedescendant`，菜单为 `listbox`；没有可提及内容时退化为普通文本框。
 - 高亮只在悬停或按过方向键后出现，首次 ↑ / ↓ 落在列表两端；点按菜单行不会让输入框失焦。
 - 可连接但未连接的行，激活时派发 `connectToggle` 而不插入提及；连接后再激活才插入。
-- 点击外部或按 Esc 关闭菜单；Esc 只在确实关闭了菜单时才被拦截，否则继续冒泡。
+- 点击外部或按 Esc 关闭菜单；Esc 只在确实关闭了菜单时才被拦截，否则冒泡给宿主。聚焦中的发送键或整条输入条被禁用时，焦点移到输入框（光标不动）或输入条根节点，不会掉到 `<body>`。
 - 减少动态效果时弹入与按压动画停止，听写的三根条定格而不消失。
 
 ## 技术实现
 
 - 移植自 [Beautiful UI](https://www.beautifului.dev)（© 2026 Shane Levine，MIT）。
+- 控件行按自身宽度在单行与两行之间切换；新宽度在下一帧才写入，不在 `ResizeObserver` 回调里改布局。
 - 源码：`packages/tuffex/packages/components/src/prompt-bar/`。
 
 <TuffDocSourceLink />

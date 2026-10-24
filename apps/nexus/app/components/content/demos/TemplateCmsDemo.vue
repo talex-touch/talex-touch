@@ -1517,34 +1517,28 @@ onBeforeUnmount(() => {
               {{ L(focused.summary) }}
             </p>
 
-            <dl class="cms-inspector__meta">
-              <div>
-                <dt>{{ copy.meta.author }}</dt>
-                <dd class="cms-author">
+            <TxDescriptions size="sm">
+              <TxDescriptionsItem :label="copy.meta.author">
+                <span class="cms-author">
                   <TxAvatar
                     :name="authorName(focused.authorId)"
                     :size="20"
                     :background-color="avatarColors(focused.authorId).bg"
                     :text-color="avatarColors(focused.authorId).ink"
                   />
-                  {{ authorName(focused.authorId) }}
-                </dd>
-              </div>
-              <div>
-                <dt>{{ copy.meta.updated }}</dt>
-                <dd>{{ relative(focused.updatedAt) }}</dd>
-              </div>
-              <div>
-                <dt>{{ copy.meta.publish }}</dt>
-                <dd>{{ focused.publishAt === null ? copy.meta.unscheduled : dateFormat.format(focused.publishAt) }}</dd>
-              </div>
-              <div>
-                <dt>{{ copy.meta.views }}</dt>
-                <dd class="cms-number">
-                  {{ focused.views ? numberFormat.format(focused.views) : '—' }}
-                </dd>
-              </div>
-            </dl>
+                  <span class="cms-author__name">{{ authorName(focused.authorId) }}</span>
+                </span>
+              </TxDescriptionsItem>
+              <TxDescriptionsItem :label="copy.meta.updated">
+                {{ relative(focused.updatedAt) }}
+              </TxDescriptionsItem>
+              <TxDescriptionsItem :label="copy.meta.publish">
+                {{ focused.publishAt === null ? copy.meta.unscheduled : dateFormat.format(focused.publishAt) }}
+              </TxDescriptionsItem>
+              <TxDescriptionsItem :label="copy.meta.views">
+                <span class="cms-number">{{ focused.views ? numberFormat.format(focused.views) : '—' }}</span>
+              </TxDescriptionsItem>
+            </TxDescriptions>
 
             <div v-if="focused.tags.length" class="cms-inspector__tags">
               <TxTag v-for="tag in focused.tags" :key="tag" :label="`#${tag}`" variant="plain" />
@@ -2109,30 +2103,6 @@ onBeforeUnmount(() => {
   color: var(--tx-text-color-regular, #606266);
   font-size: 13px;
   line-height: 1.6;
-}
-
-.cms-inspector__meta {
-  display: grid;
-  margin: 0;
-  gap: 8px 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.cms-inspector__meta > div {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.cms-inspector__meta dt {
-  color: var(--tx-text-color-secondary, #909399);
-  font-size: 12px;
-}
-
-.cms-inspector__meta dd {
-  margin: 0;
-  font-size: 13px;
 }
 
 .cms-inspector__tags {

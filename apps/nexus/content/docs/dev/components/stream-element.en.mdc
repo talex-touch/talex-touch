@@ -112,6 +112,8 @@ code: |
 | `caret` | `boolean` | `true` | Shows the caret at the write head while live. |
 | `reserve` | `boolean` | `false` | Holds the final layout during playback, plus the answer's current height from `replay()`; ignored while `streaming`. |
 | `renderers` | `Record<string, Component>` | — | Components for custom parts, by name; a `part-<name>` slot wins. |
+| `copyLabel` | `string` | `'Copy'` | Copy-button wording on code parts, passed to `TxCodeStream`; fences in delegated parts read `markdownProps.copyCodeText`. |
+| `copiedLabel` | `string` | `'Copied'` | Wording once copied; fences in delegated parts read `markdownProps.copiedCodeText`. |
 | `markdownProps` | `Partial<StreamMarkdownProps>` | — | Forwarded to the `TxStreamMarkdown` that renders delegated parts. |
 | `locale` | `string` | `'zh'` | Locale for `Intl.Segmenter` word segmentation. |
 

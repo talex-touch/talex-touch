@@ -182,7 +182,7 @@ The content workbench behind the Tuff docs and blog: find posts by status, publi
 | Loading and empty | [TxSkeleton](/docs/dev/components/skeleton), [TxSearchEmpty](/docs/dev/components/search-empty) | Skeleton rows and Clear filters |
 | Footer | [TxPagination](/docs/dev/components/pagination), [TxButton](/docs/dev/components/button) | Paging and bulk actions |
 | Feedback | [TxToastPanel](/docs/dev/components/toast-panel) | Undoable feedback |
-| Details panel (expanded) | [TxCellLink](/docs/dev/components/cell-link), [TxMarkdownView](/docs/dev/components/markdown-view), [TxNoSelection](/docs/dev/components/no-selection) | Summary, metadata, body preview |
+| Details panel (expanded) | [TxCellLink](/docs/dev/components/cell-link), [TxDescriptions](/docs/dev/components/descriptions), [TxMarkdownView](/docs/dev/components/markdown-view), [TxNoSelection](/docs/dev/components/no-selection) | Summary, metadata, body preview |
 | Editor drawer | [TxDrawer](/docs/dev/components/drawer), [TxForm](/docs/dev/components/form), [TxInput](/docs/dev/components/input), [TxSelect](/docs/dev/components/select), [TxTagInput](/docs/dev/components/tag-input), [TxDatePicker](/docs/dev/components/date-picker), [TxFlatRadio](/docs/dev/components/flat-radio), [TuffSwitch](/docs/dev/components/switch), [TxTextarea](/docs/dev/components/textarea), [TxSplitButton](/docs/dev/components/button) | Validated edit form |
 | Header (Editorial board) | [TxAvatarGroup / TxAvatar](/docs/dev/components/avatar) | Collaborators online |
 | Quick filters (Editorial board) | [TxFilterChips](/docs/dev/components/filter-chips), [TxDropdownMenu](/docs/dev/components/dropdown-menu) | Dim cards that don't match |

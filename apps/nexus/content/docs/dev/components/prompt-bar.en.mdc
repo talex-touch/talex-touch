@@ -55,7 +55,7 @@ code: |
 
 ### Best Practices
 
-- Attachments are controlled: after `send` the bar clears only its text, so clear the attachments yourself.
+- Attachments are controlled: after `send` the bar clears only its text, so clear the attachments yourself; to keep the text until the turn is accepted, set `clearOnSend: false`.
 - Dictation is presentation only; recognize speech in the host and write the result back with `insert()` or the `v-model`.
 - Pass brand glyphs through the `#source-icon` slot; the component ships no third-party SVGs.
 - Menus are absolutely positioned against the bar, so an `overflow: hidden` ancestor clips them and they never flip; keep the bar out of clipping scroll containers.
@@ -85,6 +85,7 @@ code: |
 | `maxHeight` | `number` | `100` | Growth ceiling in px; past it the textarea scrolls. |
 | `sendOnEnter` | `boolean` | `true` | Enter sends; Shift+Enter breaks the line. |
 | `allowEmptySend` | `boolean` | `false` | Allows sending with neither text nor attachments. |
+| `clearOnSend` | `boolean` | `true` | Empties the draft on send; off, the text stays until the host clears it. |
 
 Every string is a prop with an English default, overridable one by one: `sourcesHintText`, `commandsHintText`, `emptyTextFormatter`, `connectText`, `connectedText`, `sendLabel`, `attachLabel`, `modelLabel`, `startDictationLabel`, `stopDictationLabel`, `attachmentFallbackLabel`, `removeAttachmentLabelFormatter`.
 
@@ -97,7 +98,7 @@ Every string is a prop with an English default, overridable one by one: `sources
 | `update:modelValue` | `(value: string)` | Fires when the draft changes. |
 | `update:model` | `(key: string)` | Fires when the selected model changes. |
 | `update:listening` | `(listening: boolean)` | Fires when dictation is toggled. |
-| `send` | `({ text, attachments })` | Fires on send; the bar clears its text, the host clears attachments. |
+| `send` | `({ text, attachments })` | Fires on send; the bar clears its text by default (see `clearOnSend`), the host clears attachments. |
 | `attach` | `()` | Fires when the attach row is picked; open your file dialog. |
 | `attachmentRemove` | `(id: string)` | Fires when a chip's remove control is clicked. |
 | `attachmentAdd` | `(files: File[])` | Fires for pasted or dropped files. |
@@ -150,12 +151,13 @@ Sources match as a substring of the name; commands match as a prefix once the sl
 - The menus follow the combobox pattern: the textarea is a `role="combobox"` with `aria-activedescendant`, the menu a `listbox`; with nothing to offer, it stays a plain text box.
 - The highlight appears only after a hover or an arrow key, and the first ↑ / ↓ lands on an end of the list; pressing a row never blurs the textarea.
 - Activating an unconnected connectable row emits `connectToggle` instead of inserting a mention; once connected, it inserts.
-- Clicking outside or pressing Esc closes the menus; Esc is consumed only when it closed something, so it otherwise bubbles.
+- Clicking outside or pressing Esc closes the menus; Esc is consumed only when it closed something, so it otherwise bubbles to the host. When a focused send button or the whole bar disables, focus moves to the textarea (caret kept) or the bar's root, never to `<body>`.
 - Under reduced motion the pop and press animations stop, and the three dictation bars freeze rather than vanish.
 
 ## Technologies
 
 - Adapted from [Beautiful UI](https://www.beautifului.dev) (© 2026 Shane Levine, MIT).
+- The controls row switches between one and two lines by its own width, applied on the next frame rather than inside the `ResizeObserver` callback.
 - Source: `packages/tuffex/packages/components/src/prompt-bar/`.
 
 <TuffDocSourceLink />

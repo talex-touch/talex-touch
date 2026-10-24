@@ -163,7 +163,7 @@ const copy = computed(() => zh.value
       kpiLabel: '关键指标',
       kpi: {
         dau: '日活用户',
-        searches: 'CoreBox 日均搜索',
+        searches: '日均搜索',
         ai: 'AI 请求',
         installs: '插件安装',
         crash: '崩溃率',
@@ -222,8 +222,8 @@ const copy = computed(() => zh.value
       dateTitle: 'Pick a date range',
       kpiLabel: 'Key metrics',
       kpi: {
-        dau: 'Daily active users',
-        searches: 'CoreBox searches / day',
+        dau: 'Daily actives',
+        searches: 'Searches / day',
         ai: 'AI requests',
         installs: 'Plugin installs',
         crash: 'Crash rate',

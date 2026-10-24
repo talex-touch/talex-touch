@@ -551,8 +551,6 @@ const outlineState = useState<any[]>('docs-toc', () => [])
 const docTitleState = useState<string>('docs-title', () => '')
 const docLocaleState = useState<string>('docs-locale', () => docsLocale.value)
 const docMetaState = useState<Record<string, any>>('docs-meta', () => ({}))
-const docAssistantContextState = useState<string>('docs-assistant-context', () => '')
-const docAssistantContextRequestState = useState<number>('docs-assistant-context-request', () => 0)
 const viewCount = ref<number | null>(null)
 const docsClientPanelsMounted = ref(false)
 const shouldMountDocClientPanels = ref(false)
@@ -568,15 +566,12 @@ watch(
     docTitleState.value = ''
     docLocaleState.value = docsLocale.value
     docMetaState.value = {}
-    docAssistantContextState.value = ''
     clearDocClientPanelIntentListeners()
     clearDocClientPanelSchedule()
     clearDeferredDocBodySchedule()
     shouldMountDocClientPanels.value = false
     shouldMountDocEngagementPanels.value = false
     shouldRenderDeferredDocBody.value = false
-    pendingAssistantContextRequest.value = 0
-    lastAssistantContextBuildKey = ''
   },
 )
 
@@ -598,15 +593,6 @@ function extractDocText(value: any): string {
       return value.children.map(extractDocText).join(' ')
   }
   return ''
-}
-
-const ASSISTANT_CONTEXT_LIMIT = 8000
-
-function buildAssistantContext(value: any): string {
-  const text = extractDocText(value).replace(/\s+/g, ' ').trim()
-  if (!text)
-    return ''
-  return text.length > ASSISTANT_CONTEXT_LIMIT ? text.slice(0, ASSISTANT_CONTEXT_LIMIT) : text
 }
 
 function collectDomToc(): TocEntry[] {
@@ -1247,7 +1233,6 @@ const shouldShowDeferredDocBodyShell = computed(() =>
   && !shouldRenderDeferredDocBody.value,
 )
 let lastEnhancedDocKey = ''
-let lastAssistantContextBuildKey = ''
 const DOC_ENGAGEMENT_PANEL_DELAY_MS = 3200
 const DOC_ENGAGEMENT_PANEL_IDLE_TIMEOUT_MS = 5000
 const DOC_ENGAGEMENT_PANEL_ROOT_MARGIN = '360px 0px'
@@ -1262,11 +1247,7 @@ watch(
       const rawTitle = currentDoc.seo?.title ?? currentDoc.title ?? ''
       docTitleState.value = normalizeTitleForLocale(String(rawTitle), currentDoc.path ?? docPath.value)
       docLocaleState.value = resolveDocLocale(currentDoc)
-      docMetaState.value = {
-        ...docMeta.value,
-        assistantTitle: docTitleState.value,
-      }
-      docAssistantContextState.value = ''
+      docMetaState.value = { ...docMeta.value }
       if (!outlineState.value.length)
         void scheduleOutlineSync(120)
       return
@@ -1276,7 +1257,6 @@ watch(
     docTitleState.value = ''
     docLocaleState.value = docsLocale.value
     docMetaState.value = {}
-    docAssistantContextState.value = ''
   },
   { immediate: true },
 )
@@ -1285,11 +1265,9 @@ onBeforeUnmount(() => {
   outlineState.value = []
   docTitleState.value = ''
   docMetaState.value = {}
-  docAssistantContextState.value = ''
   clearCodeEnhanceSchedule()
   clearFullDocFetchSchedule()
   clearPagerFullBodyPrefetchSchedules()
-  clearAssistantContextSchedule()
   clearDocClientPanelIntentListeners()
   clearDocClientPanelSchedule()
   clearDeferredDocBodySchedule()
@@ -1511,9 +1489,6 @@ let codeEnhanceTimer: ReturnType<typeof setTimeout> | null = null
 let codeEnhanceRaf: number | null = null
 let codeEnhanceRunId = 0
 const codeHeaderTargets = new Set<HTMLElement>()
-let assistantContextTimer: ReturnType<typeof setTimeout> | null = null
-let assistantContextIdleId: number | null = null
-const pendingAssistantContextRequest = ref(0)
 let engagementPanelTimer: ReturnType<typeof setTimeout> | null = null
 let engagementPanelIdleId: number | null = null
 let engagementPanelObserver: IntersectionObserver | null = null
@@ -1544,19 +1519,6 @@ function clearRenderedCodeHeaders() {
     target.replaceChildren()
   }
   codeHeaderTargets.clear()
-}
-
-function clearAssistantContextSchedule() {
-  if (import.meta.server)
-    return
-  if (assistantContextTimer) {
-    clearTimeout(assistantContextTimer)
-    assistantContextTimer = null
-  }
-  if (assistantContextIdleId !== null && 'cancelIdleCallback' in window) {
-    window.cancelIdleCallback(assistantContextIdleId)
-    assistantContextIdleId = null
-  }
 }
 
 function mountDocEngagementPanels() {
@@ -1837,50 +1799,6 @@ async function scheduleCodeEnhance(delay = 0) {
   await queueEnhance()
 }
 
-function scheduleAssistantContextBuild(value: any, delay = 800) {
-  if (import.meta.server)
-    return
-
-  clearAssistantContextSchedule()
-
-  assistantContextTimer = setTimeout(() => {
-    assistantContextTimer = null
-    const build = () => {
-      assistantContextIdleId = null
-      docAssistantContextState.value = buildAssistantContext(value)
-    }
-
-    if ('requestIdleCallback' in window) {
-      assistantContextIdleId = window.requestIdleCallback(build, { timeout: 1200 })
-      return
-    }
-
-    build()
-  }, delay)
-}
-
-function requestAssistantContextBuild(requestId: number) {
-  if (import.meta.server || requestId <= 0 || !isDocsContentReady.value)
-    return
-
-  pendingAssistantContextRequest.value = requestId
-  const body = renderDoc.value?.body
-  if (!body) {
-    startFullDocFetchForRoute()
-    return
-  }
-
-  const buildKey = `${requestId}:${currentDocRenderKey.value}`
-  if (lastAssistantContextBuildKey === buildKey && docAssistantContextState.value) {
-    pendingAssistantContextRequest.value = 0
-    return
-  }
-
-  lastAssistantContextBuildKey = buildKey
-  pendingAssistantContextRequest.value = 0
-  scheduleAssistantContextBuild(body, 0)
-}
-
 // Enhance code blocks on mount
 onMounted(() => {
   docsClientPanelsMounted.value = true
@@ -1903,8 +1821,6 @@ watch(
       void scheduleCodeEnhance(260)
       void scheduleOutlineSync(280)
       scheduleDocEngagementPanels()
-      if (pendingAssistantContextRequest.value > 0)
-        requestAssistantContextBuild(pendingAssistantContextRequest.value)
     }
   },
   { immediate: true },
@@ -1930,15 +1846,6 @@ watch(
 )
 
 watch(
-  docAssistantContextRequestState,
-  (requestId) => {
-    if (!docsClientPanelsMounted.value)
-      return
-    requestAssistantContextBuild(requestId)
-  },
-)
-
-watch(
   docsClientPanelsMounted,
   (isMounted) => {
     if (!isMounted || !isDocsContentReady.value)
@@ -1948,8 +1855,6 @@ watch(
     scheduleDeferredDocBodySections()
     void scheduleCodeEnhance(260)
     void scheduleOutlineSync(280)
-    if (docAssistantContextRequestState.value > 0)
-      requestAssistantContextBuild(docAssistantContextRequestState.value)
     scheduleDocEngagementPanels()
   },
 )

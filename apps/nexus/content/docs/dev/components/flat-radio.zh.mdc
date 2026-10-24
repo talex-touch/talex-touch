@@ -148,7 +148,7 @@ code: |
 
 ### 最佳实践
 
-- 用于 2–5 个需要直接比较的短选项（标签不换行）；更多选项用 `TxSelect`。
+- 用于 2–5 个需要直接比较的短选项（标签不换行，放不下时截断为省略号）；更多选项用 `TxSelect`。
 - 页面上的主选择用 `xl`；行内与工具栏保持默认 `md`。
 - 自定义插槽内容不要只在选中时加粗：每一项本就带选中字重，再加粗会引起重排。
 - 只有各值相互独立时才用 `multiple`；否则用开关或复选框。
@@ -204,13 +204,14 @@ code: |
 - 单选时容器为 `role="radiogroup"`、项为 `role="radio"`；多选时为 `role="group"` 与 `role="checkbox"`。
 - 只有容器进入 Tab 序列，项保持 `tabindex="-1"`；用相邻字段文案或外部 label 为整组命名。
 - 单选时方向键直接选中；多选时方向键只移动焦点，Enter / Space 切换。
-- 滑块从不缩放：挂载、尺寸变化与注册新项时直接落位，选中新项时滑过去，两端不越出轨道。
+- 滑块从不缩放：挂载、轨道或单项尺寸变化与注册新项时直接落位，选中新项时滑过去，两端不越出轨道。
 - 按压只缩放文字与图标，不缩放项本身。
 - 减少动态效果时，滑块直接落位并去掉按压缩放，保留淡入。
 
 ## 技术实现
 
 - 滑块由共享的 `useJellyIndicator` 滑行材质驱动（与 `TxTabs`、`TxTabBar`、`TxSidebarNav` 相同），每帧直接写 `transform`、`width`、`opacity`，不触发重渲染。
+- 整组 `max-width: 100%`，各项可收缩，最窄 `min(3em, 自身宽度)`（`calc-size()`，不支持时为 0）；作为 flex 子项时，宿主还要给整组 `min-width: 0`。
 - 源码：`packages/tuffex/packages/components/src/flat-radio/`。
 
 <TuffDocSourceLink />

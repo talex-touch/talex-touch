@@ -30,7 +30,7 @@ Tuffex（`@talex-touch/tuffex`）是服务 CoreBox、插件界面与本文档站
 | 套件 | 分组 | 页数 | 引入入口 |
 |------|------|------|----------|
 | [理念](./index.zh.mdc) | 安装、设计规则、概念手册与工具 | 27 | 纯文档 |
-| [模板](./template-shell.zh.mdc) | 应用框架 / 内容运营 / AI 应用 / 数据与流程 | 16 | 组合现有入口 |
+| [模板](./template-shell.zh.mdc) | 应用框架 / 内容运营 / AI 应用 / 数据与流程 | 22 | 组合现有入口 |
 | [基础套件](./base-suite.zh.mdc) | 通用 / 表单 / 布局 / 导航 / 数据展示 / 反馈 / 状态占位 | 95 | `@talex-touch/tuffex/base` |
 | [进阶套件](./pro-suite.zh.mdc) | 高级交互 / 视觉效果 / 底层原语 | 40 | `@talex-touch/tuffex/pro` |
 | [AI 套件](./ai-suite.zh.mdc) | 对话 / 智能体 / 推理与生成 / 上下文与洞察 | 36 | `@talex-touch/tuffex/ai` |
@@ -79,6 +79,7 @@ code: |
 - [启动器](./template-launcher.zh.mdc)
 - [设置](./template-settings.zh.mdc)
 - [引导](./template-onboarding.zh.mdc)
+- [插件工作台](./template-workbench.zh.mdc)
 
 ### 内容运营
 
@@ -88,18 +89,23 @@ code: |
 - [文件](./template-files.zh.mdc)
 - [商店](./template-store.zh.mdc)
 - [文档](./template-docs.zh.mdc)
+- [协作笔记](./template-notes.zh.mdc)
+- [版本亮点](./template-showcase.zh.mdc)
 
 ### AI 应用
 
 - [智能体对话](./template-agent-chat.zh.mdc)
 - [AI 回答](./template-ai-answer.zh.mdc)
 - [研究](./template-research.zh.mdc)
+- [语音速记](./template-voice.zh.mdc)
+- [图像工作室](./template-image-studio.zh.mdc)
 
 ### 数据与流程
 
 - [仪表盘](./template-dashboard.zh.mdc)
 - [自动化](./template-automation.zh.mdc)
 - [发布](./template-release.zh.mdc)
+- [训练实验](./template-experiments.zh.mdc)
 
 ## 基础组件
 
@@ -184,7 +190,8 @@ code: |
 - [DotIndicator 圆点指示器](./dot-indicator.zh.mdc)
 - [FilterChips 筛选胶囊](./filter-chips.zh.mdc)
 - [MarkdownView Markdown 渲染](./markdown-view.zh.mdc)
-- [ImageGallery 图片预览](./image-gallery.zh.mdc)
+- [ImageGallery 图片画廊](./image-gallery.zh.mdc)
+- [ImagePreview 图片预览](./image-preview.zh.mdc)
 
 ### 反馈
 

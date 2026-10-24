@@ -114,6 +114,10 @@ code: |
 | `indent` | `number` | `16` | 每级缩进（px）。 |
 | `filterText` | `string` | `''` | 过滤文本；非空时匹配分支临时展开。 |
 | `filterMethod` | `(node: TreeNode, query: string) => boolean` | - | 自定义匹配，收到 trim 后的原始查询；默认按小写 label 包含匹配。 |
+| `emptyText` | `string` | `'No results'` | 没有可显示的行时显示的文字；按页面语言传入。 |
+| `expandLabel` | `string` | `'Expand'` | 折叠节点展开箭头的可访问名称。 |
+| `collapseLabel` | `string` | `'Collapse'` | 已展开节点箭头的可访问名称。 |
+| `selectLabel` | `string` | `'Select'` | `checkable` 时每个 checkbox 的可访问名称。 |
 
 ### 事件
 
@@ -129,7 +133,7 @@ code: |
 | 插槽名 | 参数 | 说明 |
 |------|------|------|
 | `item` | `{ node, level, expanded, hasChildren, selected, toggleExpand, toggleSelect, indent }` | 替换整行渲染；调用插槽 helper 保留选择与展开行为。 |
-| `empty` | - | 过滤后无可见行时的空状态，默认为 `No results`。 |
+| `empty` | - | 没有可显示的行（如过滤无匹配）时的空状态，默认显示 `emptyText`。 |
 
 ### TreeNode
 
@@ -149,10 +153,12 @@ code: |
 - 选择模型是扁平的：`checkable` 只改变控件形态，没有半选或级联。
 - `disabled` 与 `node.disabled` 阻止选择，但仍可展开。
 - 根节点为 `role="tree"`（`multiple` 时带 `aria-multiselectable`）；每行为 `role="treeitem"`，带 `aria-level`、`aria-setsize`、`aria-posinset` 及按需的 `aria-expanded` / `aria-selected` / `aria-disabled`。`item` 插槽只替换行内视觉，这些语义保留。
+- 超出行宽的标签在树的边缘以省略号截断，悬停时显示全文；读屏仍会读出完整标签。
 
 ## 技术实现
 
 - 节点按展开状态与过滤结果展平成可见行。
+- 方向键、`Home` 与 `End` 用 `focus({ preventScroll: true })` 移动焦点，再在树最近的纵向滚动容器内以最小距离把该行滚入视野，树外的页面保持不动；普通 `focus()` 会连带滚动所有可滚动的祖先，并把行滚到正中。
 - 源码：`packages/tuffex/packages/components/src/tree/`。
 
 <TuffDocSourceLink />

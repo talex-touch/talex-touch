@@ -127,6 +127,7 @@ code: |
 
 ## Overview
 
+- The track is inset by half an active stop at each end, so the end stops sit wholly inside the box on either axis, and the fill ends at the selected stop's center.
 - The row is a `radiogroup` and each stop a `radio`.
 - Tab enters the row once, on the current stop; arrow keys move and stop at both ends, and Home / End jump to them. In the vertical layout, Up moves forward.
 - The focus ring shows only for keyboard use; hover slightly grows an unselected stop. Both stop under reduced motion.

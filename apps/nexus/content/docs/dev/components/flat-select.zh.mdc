@@ -92,6 +92,8 @@ code: |
 | `modelValue` / `v-model` | `string \| number` | `''` | 当前值，匹配某项的 `value`；无匹配时显示占位。 |
 | `placeholder` | `string` | `''` | 未选中时触发器的文本。 |
 | `disabled` | `boolean` | `false` | 禁用整组：触发器不可点击，下拉不再展开。 |
+| `ariaLabel` | `string` | - | 触发器与面板的可访问名称；未设置时面板用 `placeholder`。 |
+| `ariaLabelledby` | `string` | - | 命名触发器与面板的可见元素 id，优先于 `ariaLabel`。 |
 
 #### 事件
 
@@ -135,7 +137,7 @@ code: |
 
 ## 概述
 
-- 触发器为 `role="combobox"`，面板为 `role="listbox"`，选项为带 `aria-selected` 的 `role="option"`。
+- 触发器为 `role="combobox"`，面板为 `role="listbox"`，选项为带 `aria-selected` 的 `role="option"`；`aria-label` / `aria-labelledby` 落在触发器上，面板沿用同一名称。
 - 选项覆盖触发器展开，选中项锚定在触发器的位置。
 - 打开时 ArrowUp / ArrowDown 切换并立即提交，跳过禁用项。
 - 关闭时面板收回触发器，并在同样的 200ms 内淡出底色、边框、阴影与选中强调色。

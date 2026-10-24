@@ -608,10 +608,29 @@ const copy = computed(() => zh.value
         preview: '预览',
         prev: '上一张',
         next: '下一张',
-        prevText: '上一张',
-        nextText: '下一张',
+        close: '关闭',
+        zoomIn: '放大',
+        zoomOut: '缩小',
+        reset: '适应屏幕',
+        failed: '图片加载失败',
         remove: '移除附件',
         cancel: '取消上传',
+        open: (name: string) => `预览：${name}`,
+        // The preview's own text, which the tray does not forward.
+        viewer: {
+          rotateLabel: '旋转',
+          copyLabel: '复制图片',
+          shareLabel: '分享',
+          downloadLabel: '下载',
+          menuLabel: '图片操作',
+          indicatorLabel: '图片列表',
+          copiedText: '已复制图片',
+          linkCopiedText: '已复制链接',
+          copyFailedText: '无法复制图片',
+          indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}，` : ''}第 ${current} 张，共 ${total} 张`,
+          labelFormatter: (title: string, name: string) => `${title}：${name}`,
+          readoutLabelFormatter: (readout: string, label: string) => `${readout}，${label}`,
+        },
       },
       toastLabel: '通知',
       dismiss: '关闭提示',
@@ -688,10 +707,28 @@ const copy = computed(() => zh.value
         preview: 'Preview',
         prev: 'Previous image',
         next: 'Next image',
-        prevText: 'Prev',
-        nextText: 'Next',
+        close: 'Close',
+        zoomIn: 'Zoom in',
+        zoomOut: 'Zoom out',
+        reset: 'Fit to screen',
+        failed: 'This image could not be loaded',
         remove: 'Remove attachment',
         cancel: 'Cancel upload',
+        open: (name: string) => `Preview: ${name}`,
+        viewer: {
+          rotateLabel: 'Rotate',
+          copyLabel: 'Copy image',
+          shareLabel: 'Share',
+          downloadLabel: 'Download',
+          menuLabel: 'Image actions',
+          indicatorLabel: 'Images',
+          copiedText: 'Image copied',
+          linkCopiedText: 'Link copied',
+          copyFailedText: 'Could not copy the image',
+          indicatorItemFormatter: (current: number, total: number, name?: string) => `${name ? `${name}, ` : ''}${current} of ${total}`,
+          labelFormatter: (title: string, name: string) => `${title}: ${name}`,
+          readoutLabelFormatter: (readout: string, label: string) => `${readout}, ${label}`,
+        },
       },
       toastLabel: 'Notifications',
       dismiss: 'Dismiss',
@@ -1717,10 +1754,15 @@ onBeforeUnmount(() => {
                         :preview-title="copy.tray.preview"
                         :previous-label="copy.tray.prev"
                         :next-label="copy.tray.next"
-                        :previous-text="copy.tray.prevText"
-                        :next-text="copy.tray.nextText"
+                        :close-label="copy.tray.close"
+                        :zoom-in-label="copy.tray.zoomIn"
+                        :zoom-out-label="copy.tray.zoomOut"
+                        :reset-label="copy.tray.reset"
+                        :failed-text="copy.tray.failed"
                         :remove-label="copy.tray.remove"
                         :cancel-label="copy.tray.cancel"
+                        :open-label-formatter="copy.tray.open"
+                        :preview-props="copy.tray.viewer"
                         @open="onOpenAttachment($event.name)"
                       />
                     </div>
@@ -1763,10 +1805,15 @@ onBeforeUnmount(() => {
                           :preview-title="copy.tray.preview"
                           :previous-label="copy.tray.prev"
                           :next-label="copy.tray.next"
-                          :previous-text="copy.tray.prevText"
-                          :next-text="copy.tray.nextText"
+                          :close-label="copy.tray.close"
+                          :zoom-in-label="copy.tray.zoomIn"
+                          :zoom-out-label="copy.tray.zoomOut"
+                          :reset-label="copy.tray.reset"
+                          :failed-text="copy.tray.failed"
                           :remove-label="copy.tray.remove"
                           :cancel-label="copy.tray.cancel"
+                          :open-label-formatter="copy.tray.open"
+                          :preview-props="copy.tray.viewer"
                           @remove="removeDraftFile"
                         />
                       </template>

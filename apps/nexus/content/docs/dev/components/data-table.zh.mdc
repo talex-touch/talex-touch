@@ -283,7 +283,7 @@ code: |
 - 吸顶、吸底需要 `maxHeight` 或已有滚动祖先；不要放进默认模式的 `TxScroll`，transform 滚动会让 sticky 失效。
 - 按时间戳、序号等可比较字段排序，不按格式化后的相对时间文本排序。
 - 远程筛选设置 `filterOnClient=false`，结合分页处理 `filterChange`，标签选项的行数通过 `filterOptions` 的 `count` 传入；受控 `filter` 的状态归父级所有。
-- 筛选控件默认显示英文；中文界面传 `labels`，可用的键见 `DATA_TABLE_DEFAULT_LABELS`。
+- 筛选控件与选择框默认使用英文：中文界面用 `labels` 改筛选文案（可用的键见 `DATA_TABLE_DEFAULT_LABELS`），用 `selectAllLabel` 与 `selectRowLabelFormatter` 为选择框命名。
 - `date` 列把 `YYYY-MM-DD` 作为本地日历日期；`datetime` 保留带时区值的真实时间点。`today` 的上界为下一个本地午夜，包含夏令时切换。
 
 ## API 参考
@@ -305,6 +305,9 @@ code: |
 | `interactiveRows` | `boolean` | `false` | 整行可聚焦，Enter / Space 触发 `rowClick`；监听 `rowClick` 时自动开启。 |
 | `selectable` | `boolean` | `false` | 增加选择列。 |
 | `selectedKeys` | `Array<string \| number>` | `[]` | 选中行的 key。 |
+| `selectAllLabel` | `string` | `'Select all'` | 表头全选框的可访问名称。 |
+| `selectRowLabel` | `string` | `'Select row'` | 所有行选择框共用的可访问名称。 |
+| `selectRowLabelFormatter` | `(row, index) => string` | - | 为每行的选择框单独命名，读屏时能分清是哪一行；优先于 `selectRowLabel`。 |
 | `expandable` | `boolean` | `false` | 增加前置展开列，展开行下方渲染详情行。 |
 | `defaultExpandedKeys` | `Array<string \| number>` | `[]` | 非受控的初始展开行；与 `expandedKeys` 同传时后者优先。 |
 | `expandedKeys` | `Array<string \| number>` | - | 受控展开行，配合 `v-model:expanded-keys`。 |
@@ -401,7 +404,7 @@ code: |
 - `filter` 一经传入也为受控。标签可传单值或多值数组，数值使用 `{ min, max }`，日期使用 `today`、`3d`、`7d`、`30d` 或时间戳 `{ start, end }`；文本列按不区分大小写的包含关系匹配。
 - 标签筛选的选项来自数据时，本地筛选会给每项标出行数；选项达到 8 个时面板顶部出现搜索框。
 - 可排序表头带 `scope="col"` 与 `aria-sort`，点击、Enter、Space 按 `sortCycle` 循环。
-- 部分选中时全选框为 `indeterminate`（`aria-checked="mixed"`）；选择与展开单元格的点击不触发 `rowClick`。
+- 全选框以 `selectAllLabel` 命名，行选择框以 `selectRowLabelFormatter` 命名，未传时用 `selectRowLabel`。部分选中时全选框为 `indeterminate`（`aria-checked="mixed"`）；选择与展开单元格的点击不触发 `rowClick`。
 - `loading` 在 `<table>` 上设置 `aria-busy`，加载期间不显示空状态；`overlay` 只盖住表格的可见区域，没有行时表格保持空状态的高度。
 - 占位行 `aria-hidden`，与单行文本行等高；减少动态效果时，刷新进度条静止，光带改为静止的浅色底。
 - 开启 `stickyHeader`、`stickyFooter` 或 `maxHeight` 时改用 `border-collapse: separate`；末行不画下边框，`tfoot` 上方的分隔线保留。

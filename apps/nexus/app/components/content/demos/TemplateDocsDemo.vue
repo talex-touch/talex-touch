@@ -351,7 +351,7 @@ const ARTICLES: Record<ArticleId, Article> = {
         '',
         '### 非官方来源',
         '',
-        '商店之外的插件包在权限确认之前还会多一步：「插件「{name}」来自非官方来源，确定继续安装吗？」确认之后才进入权限确认。',
+        '商店之外的插件包在权限确认之前还会多一步：「插件「快速取色」来自非官方来源，确定继续安装吗？」确认之后才进入权限确认。',
         '',
         '## 撤销与审计',
         '',
@@ -410,7 +410,7 @@ const ARTICLES: Record<ArticleId, Article> = {
         '',
         '### Unofficial sources',
         '',
-        'A package from outside the store adds one step before the permission dialog: “"{name}" comes from an unofficial source. Proceed with installation?” The permission dialog follows only once you confirm.',
+        'A package from outside the store adds one step before the permission dialog: “"Quick Color" comes from an unofficial source. Proceed with installation?” The permission dialog follows only once you confirm.',
         '',
         '## Revoking and auditing',
         '',
@@ -2321,6 +2321,9 @@ onBeforeUnmount(() => {
 }
 
 .docs-md :deep(.markdown-body pre) {
+  /* A long manifest line scrolls inside its block; left visible it widened
+     the whole reading pane. */
+  overflow-x: auto;
   padding: 12px 14px;
   border: 0;
   border-radius: 10px;

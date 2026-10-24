@@ -1050,6 +1050,11 @@ const zhCopy = {
       title: '截图预览',
       prev: '上一张',
       next: '下一张',
+      close: '关闭',
+      zoomIn: '放大',
+      zoomOut: '缩小',
+      reset: '适应屏幕',
+      failed: '截图加载失败',
       item: (index: number) => `截图 ${index + 1}`,
       open: (label: string) => `放大查看${label}`,
     },
@@ -1194,6 +1199,11 @@ const enCopy: typeof zhCopy = {
       title: 'Screenshot preview',
       prev: 'Previous screenshot',
       next: 'Next screenshot',
+      close: 'Close',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out',
+      reset: 'Fit to screen',
+      failed: 'This screenshot could not be loaded',
       item: (index: number) => `Screenshot ${index + 1}`,
       open: (label: string) => `Enlarge ${label}`,
     },
@@ -2744,8 +2754,11 @@ onBeforeUnmount(clearTimers)
                       :preview-title="copy.detail.gallery.title"
                       :previous-label="copy.detail.gallery.prev"
                       :next-label="copy.detail.gallery.next"
-                      :previous-text="copy.detail.gallery.prev"
-                      :next-text="copy.detail.gallery.next"
+                      :close-label="copy.detail.gallery.close"
+                      :zoom-in-label="copy.detail.gallery.zoomIn"
+                      :zoom-out-label="copy.detail.gallery.zoomOut"
+                      :reset-label="copy.detail.gallery.reset"
+                      :failed-text="copy.detail.gallery.failed"
                       :item-label-formatter="copy.detail.gallery.item"
                       :open-label-formatter="copy.detail.gallery.open"
                     />

@@ -74,7 +74,7 @@ code: |
 ## 概述
 
 - 直接渲染 `TxProgressBar`，不额外包裹 DOM；`percentage`、`status`、`indeterminate`、`showText`、`format` 原样转发。
-- `strokeWidth` 转为 `height`（如 `"6px"`）；文本位置固定为 `outside`，遮罩样式固定为 `maskVariant="plain"`。
+- `strokeWidth` 转为 `height`（如 `"6px"`）；文本位置固定为 `outside`（过长的 `format` 文本最多折成两行、最多占半行），遮罩样式固定为 `maskVariant="plain"`。
 - 不派发事件、不提供插槽，进度由宿主更新 props 驱动。
 - 确定进度由 `TxProgressBar` 提供 `role="progressbar"` 与 `aria-valuenow`；不确定进度省略 `aria-valuenow`。
 

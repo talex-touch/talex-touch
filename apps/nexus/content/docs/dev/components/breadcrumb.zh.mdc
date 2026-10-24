@@ -58,6 +58,7 @@ code: |
 |------|------|---------|------|
 | `items` | `BreadcrumbItem[]` | 必填 | 有序条目，最后一项为当前页。 |
 | `separatorIcon` | `string` | `'i-carbon-chevron-right'` | 条目之间的分隔图标。 |
+| `ariaLabel` | `string` | `'Breadcrumb'` | `<nav>` 地标的可访问名称；按页面语言传入。 |
 
 ### 事件
 
@@ -78,7 +79,7 @@ code: |
 
 ## 概述
 
-- 根节点是 `<nav aria-label="Breadcrumb">`，内含有序列表。
+- 根节点是以 `ariaLabel` 命名的 `<nav>`（默认 `Breadcrumb`），内含有序列表。
 - 最后一项渲染为 `<span aria-current="page">`，即使带 `href` 也不可交互。
 - 其余未禁用的条目：带 `href` 渲染为 `<a>`，走原生导航；无 `href` 渲染为 `<button>`。
 - 禁用项渲染为 `<span aria-disabled="true">`，不派发事件。

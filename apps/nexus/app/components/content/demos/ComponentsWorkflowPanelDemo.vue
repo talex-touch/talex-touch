@@ -143,7 +143,6 @@ function statusTone(value: string) {
       <TxProgressBar
         :percentage="progress"
         :status="progress < 60 ? 'warning' : 'success'"
-        show-text
         height="10px"
         flow-effect="wave"
       />

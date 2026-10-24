@@ -2064,6 +2064,18 @@ defineExpose({ resetDemo })
   font-size: 14px;
 }
 
+/* TxSources keeps the whole domain and squeezes the title, which in a
+   300px rail left 「Apple Vi…」 beside a full developer.apple.com. Here the
+   title matters more, so the domain gives way first. */
+.rs :deep(.tx-sources__domain) {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* A citation lands on its entry: ring it, and pulse once when motion is on.
    TxSources exposes no per-row state, so the rail carries the index. */
 @for $i from 1 through 6 {

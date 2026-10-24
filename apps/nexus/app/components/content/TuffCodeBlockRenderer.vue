@@ -134,9 +134,9 @@ async function handleCopy() {
 </script>
 
 <template>
-  <!-- data-theme scopes TuffEx's dark tokens to the panel: code blocks are dark
-       in both page themes, and the switch and copy button sit on that surface. -->
-  <div v-if="install" class="tuff-code-block tuff-code-block--install" data-theme="dark">
+  <!-- The panel follows the page theme, so the switch and copy button take
+       TuffEx's tokens for the same surface they sit on. -->
+  <div v-if="install" class="tuff-code-block tuff-code-block--install">
     <div class="tuff-install__head">
       <TxFlatRadio v-model="manager" size="sm" :aria-label="installLabels.manager">
         <TxFlatRadioItem v-for="name in MANAGERS" :key="name" :value="name" :label="name" />
@@ -193,17 +193,42 @@ async function handleCopy() {
 </template>
 
 <style scoped>
+/*
+ * Every colour the block paints is one of these, so the install card, the
+ * joined snippet and a demo's embedded code all follow the page theme: TuffEx's
+ * light surface and ink by default, the warm near-black panel under .dark.
+ */
 .tuff-code-block {
+  --tuff-code-surface: var(--tx-fill-color-light);
+  --tuff-code-face: var(--tx-fill-color-light);
+  --tuff-code-face-hover: var(--tx-fill-color);
+  --tuff-code-header: var(--tx-fill-color);
+  --tuff-code-border: var(--tx-border-color-light);
+  --tuff-code-hairline: var(--tx-border-color-lighter);
+  --tuff-code-shadow: 0 1px 2px rgba(16, 14, 12, 0.05);
+  --tuff-code-ink: var(--tx-text-color-primary);
+  --tuff-code-muted: var(--tx-text-color-secondary);
+  --tuff-code-faint: var(--tx-text-color-placeholder);
+  --tuff-code-control: color-mix(in srgb, var(--tx-text-color-primary) 6%, transparent);
+  --tuff-code-control-hover: color-mix(in srgb, var(--tx-text-color-primary) 11%, transparent);
+  --tuff-code-control-ink: var(--tx-text-color-regular);
+  --tuff-code-control-ink-hover: var(--tx-text-color-primary);
+  --tuff-code-ring: var(--tx-border-color);
+  --tuff-code-dot-ring: rgba(16, 14, 12, 0.12);
+  /* hljs tokens, GitHub light */
+  --tuff-code-keyword: #d73a49;
+  --tuff-code-title: #6f42c1;
+  --tuff-code-attr: #005cc5;
+  --tuff-code-string: #032f62;
+  --tuff-code-builtin: #e36209;
+  --tuff-code-comment: #6a737d;
+  --tuff-code-tag: #22863a;
+
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--docs-border) 70%, transparent);
-  background: linear-gradient(180deg, rgba(16, 14, 12, 0.98), rgba(10, 8, 6, 0.98));
-  /*
-   * Close and mostly downward. The old 0 22px 60px shadow was invisible on the
-   * dark page but a heavy grey slab on the light one, and a full-width block's
-   * sideways blur got cut by the column into a box with hard edges.
-   */
-  box-shadow: 0 1px 2px rgba(16, 14, 12, 0.1), 0 4px 10px -4px rgba(16, 14, 12, 0.3);
+  border: 1px solid var(--tuff-code-border);
+  background: var(--tuff-code-surface);
+  box-shadow: var(--tuff-code-shadow);
 }
 
 .tuff-code-block--embedded {
@@ -218,8 +243,8 @@ async function handleCopy() {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(90deg, rgba(24, 20, 18, 0.96), rgba(18, 15, 13, 0.95));
+  border-bottom: 1px solid var(--tuff-code-hairline);
+  background: var(--tuff-code-header);
   justify-content: space-between;
 }
 
@@ -240,7 +265,7 @@ async function handleCopy() {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 0 0 1px var(--tuff-code-dot-ring);
 }
 
 .tuff-code-block__dot.is-red {
@@ -261,7 +286,7 @@ async function handleCopy() {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--tuff-code-muted);
 }
 
 .tuff-code-block__copy--floating {
@@ -277,8 +302,8 @@ async function handleCopy() {
   gap: 0.35rem;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.72);
+  background: var(--tuff-code-control);
+  color: var(--tuff-code-control-ink);
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 600;
@@ -288,24 +313,26 @@ async function handleCopy() {
 }
 
 .tuff-code-block__copy:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.92);
+  background: var(--tuff-code-control-hover);
+  color: var(--tuff-code-control-ink-hover);
 }
 
 .tuff-code-block__pre {
   margin: 0;
   padding: 20px 22px 22px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--tuff-code-ink);
   overflow-x: auto;
   position: relative;
 }
 
-.tuff-code-block__pre code {
+/* The class puts this ahead of the docs page's inline `code` rule; at equal
+   specificity its font and size won or lost on stylesheet order. */
+.tuff-code-block__pre code.tuff-code-block__code {
   background: transparent !important;
   border: none !important;
   padding: 0 !important;
-  color: rgba(255, 255, 255, 0.96) !important;
+  color: var(--tuff-code-ink) !important;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.92rem;
   line-height: 1.7;
@@ -334,7 +361,7 @@ async function handleCopy() {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 8px 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--tuff-code-hairline);
 }
 
 .tuff-install__command {
@@ -343,7 +370,7 @@ async function handleCopy() {
   gap: 12px;
   padding: 16px 22px 18px;
   overflow-x: auto;
-  color: rgba(255, 255, 255, 0.96);
+  color: var(--tuff-code-ink);
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.92rem;
   line-height: 1.7;
@@ -352,22 +379,37 @@ async function handleCopy() {
 }
 
 .tuff-install__prompt {
-  color: rgba(255, 255, 255, 0.32);
+  color: var(--tuff-code-faint);
   user-select: none;
 }
 
+/* Only variables change here, so the embedded variant's own overrides still hold. */
 :global(.dark .tuff-code-block),
 :global([data-theme='dark'] .tuff-code-block) {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(16, 14, 12, 0.96), rgba(10, 8, 6, 0.98));
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
-}
-
-:global(.dark .tuff-code-block--embedded),
-:global([data-theme='dark'] .tuff-code-block--embedded) {
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  --tuff-code-surface: linear-gradient(180deg, rgba(16, 14, 12, 0.96), rgba(10, 8, 6, 0.98));
+  --tuff-code-face: rgb(16, 14, 12);
+  --tuff-code-face-hover: rgb(36, 33, 30);
+  --tuff-code-header: linear-gradient(90deg, rgba(24, 20, 18, 0.96), rgba(18, 15, 13, 0.95));
+  --tuff-code-border: rgba(255, 255, 255, 0.08);
+  --tuff-code-hairline: rgba(255, 255, 255, 0.06);
+  --tuff-code-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  --tuff-code-ink: rgba(255, 255, 255, 0.96);
+  --tuff-code-muted: rgba(255, 255, 255, 0.55);
+  --tuff-code-faint: rgba(255, 255, 255, 0.32);
+  --tuff-code-control: rgba(255, 255, 255, 0.06);
+  --tuff-code-control-hover: rgba(255, 255, 255, 0.12);
+  --tuff-code-control-ink: rgba(255, 255, 255, 0.72);
+  --tuff-code-control-ink-hover: rgba(255, 255, 255, 0.92);
+  --tuff-code-ring: rgba(255, 255, 255, 0.14);
+  --tuff-code-dot-ring: rgba(255, 255, 255, 0.25);
+  /* hljs tokens, GitHub dark */
+  --tuff-code-keyword: #ff7b72;
+  --tuff-code-title: #d2a8ff;
+  --tuff-code-attr: #79c0ff;
+  --tuff-code-string: #a5d6ff;
+  --tuff-code-builtin: #ffa657;
+  --tuff-code-comment: #8b949e;
+  --tuff-code-tag: #7ee787;
 }
 </style>
 
@@ -387,7 +429,7 @@ async function handleCopy() {
 .tuff-code-block--install + .tuff-code-block {
   position: relative;
   margin-top: 0 !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--tuff-code-hairline);
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
@@ -406,8 +448,8 @@ async function handleCopy() {
   padding: 0 14px 0 0;
   border: 0;
   /* opaque to the card's edge, feathered on the left, so no code shows beside it */
-  background: rgb(16, 14, 12);
-  box-shadow: -14px 0 12px rgb(16, 14, 12);
+  background: var(--tuff-code-face);
+  box-shadow: -14px 0 12px var(--tuff-code-face);
   opacity: 0;
   transition: opacity 0.12s ease-out;
 }
@@ -424,12 +466,12 @@ async function handleCopy() {
   padding: 0;
   border-radius: 8px;
   font-size: 0;
-  background: rgb(16, 14, 12);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  background: var(--tuff-code-face);
+  box-shadow: inset 0 0 0 1px var(--tuff-code-ring);
 }
 
 .tuff-code-block--install + .tuff-code-block .tuff-code-block__copy:hover {
-  background: rgb(36, 33, 30);
+  background: var(--tuff-code-face-hover);
 }
 
 .tuff-code-block--install + .tuff-code-block:hover .tuff-code-block__header,
@@ -451,5 +493,38 @@ async function handleCopy() {
 
 .tuff-code-block--install + .tuff-code-block .tuff-code-block__copy > span {
   font-size: 14px;
+}
+
+/*
+ * hljs colours tokens from whichever stylesheet the page has loaded, and the one
+ * CodeRenderer brings is github-dark. The block names its own palette instead,
+ * so tokens stay legible on the light surface as well as the dark one.
+ */
+.tuff-code-block .tuff-code-block__pre :is(.hljs-keyword, .hljs-doctag, .hljs-template-tag, .hljs-template-variable, .hljs-type, .hljs-variable.language_) {
+  color: var(--tuff-code-keyword);
+}
+
+.tuff-code-block .tuff-code-block__pre .hljs-title {
+  color: var(--tuff-code-title);
+}
+
+.tuff-code-block .tuff-code-block__pre :is(.hljs-attr, .hljs-attribute, .hljs-literal, .hljs-meta, .hljs-number, .hljs-operator, .hljs-selector-attr, .hljs-selector-class, .hljs-selector-id, .hljs-variable) {
+  color: var(--tuff-code-attr);
+}
+
+.tuff-code-block .tuff-code-block__pre :is(.hljs-string, .hljs-regexp) {
+  color: var(--tuff-code-string);
+}
+
+.tuff-code-block .tuff-code-block__pre :is(.hljs-built_in, .hljs-symbol) {
+  color: var(--tuff-code-builtin);
+}
+
+.tuff-code-block .tuff-code-block__pre :is(.hljs-comment, .hljs-code, .hljs-formula) {
+  color: var(--tuff-code-comment);
+}
+
+.tuff-code-block .tuff-code-block__pre :is(.hljs-name, .hljs-quote, .hljs-selector-pseudo, .hljs-selector-tag) {
+  color: var(--tuff-code-tag);
 }
 </style>
