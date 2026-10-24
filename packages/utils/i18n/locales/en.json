@@ -36,7 +36,8 @@
       "window": "Window",
       "media": "Media",
       "search": "Search",
-      "account": "Account"
+      "account": "Account",
+      "localization": "Localization & Lexicon"
     },
     "risk": {
       "low": "Low Risk",
@@ -98,6 +99,22 @@
       "read": {
         "name": "Read Account",
         "desc": "Read your profile (including email), plan and usage, see when you sign in or out, and open the sign-in and account pages"
+      }
+    },
+    "i18n": {
+      "read": {
+        "name": "Read App Language",
+        "desc": "Read the current app language and resolve localized plugin text"
+      }
+    },
+    "lexicon": {
+      "read": {
+        "name": "Read Domain Lexicon",
+        "desc": "Search and resolve official and plugin-scoped terminology"
+      },
+      "register": {
+        "name": "Register Domain Lexicon",
+        "desc": "Register bounded terminology inside this plugin's isolated namespace"
       }
     },
     "grant": "Grant",

@@ -66,6 +66,8 @@ export const PermissionKeys = {
   CATEGORY_WINDOW: 'permission.category.window',
   CATEGORY_SEARCH: 'permission.category.search',
   CATEGORY_ACCOUNT: 'permission.category.account',
+  CATEGORY_MEDIA: 'permission.category.media',
+  CATEGORY_LOCALIZATION: 'permission.category.localization',
 
   // Risk levels
   RISK_LOW: 'permission.risk.low',
@@ -145,6 +147,14 @@ export const PermissionKeys = {
   // Account permissions
   ACCOUNT_READ_NAME: 'permission.account.read.name',
   ACCOUNT_READ_DESC: 'permission.account.read.desc',
+
+  // Localization permissions
+  I18N_READ_NAME: 'permission.i18n.read.name',
+  I18N_READ_DESC: 'permission.i18n.read.desc',
+  LEXICON_READ_NAME: 'permission.lexicon.read.name',
+  LEXICON_READ_DESC: 'permission.lexicon.read.desc',
+  LEXICON_REGISTER_NAME: 'permission.lexicon.register.name',
+  LEXICON_REGISTER_DESC: 'permission.lexicon.register.desc',
 
   // UI messages
   GRANT: 'permission.grant',
