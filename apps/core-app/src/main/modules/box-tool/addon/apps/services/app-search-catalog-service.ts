@@ -60,6 +60,13 @@ export interface AppSearchCatalogDeps {
   generateKeywords: (info: ScannedAppInfo) => Promise<Set<string>>
   /** Index commits for this provider are the one signal every write path reaches. */
   subscribeCommits: (listener: (providerIds: readonly string[]) => void) => () => void
+  /**
+   * Called after a reload swaps in a new snapshot. The search cache trusts the index revision, but
+   * an app commit moves that revision ~250 ms before this catalog has reloaded: a search in that
+   * gap recalls the old snapshot and is cached under the new revision. Without a second signal
+   * when the snapshot lands, an uninstalled app stayed in repeated results for the full cache TTL.
+   */
+  onSnapshotReplaced?: () => void
   now?: () => number
   debounceMs?: number
   staleAfterMs?: number
@@ -516,6 +523,7 @@ export class AppSearchCatalogService {
       this.entries = entries
       this.loadedAt = this.now()
       this.ready = true
+      this.deps.onSnapshotReplaced?.()
       log.debug('App search catalog loaded', {
         meta: { reason, entries: entries.length, durationMs: this.loadedAt - startedAt }
       })

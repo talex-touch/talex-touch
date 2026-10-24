@@ -11,7 +11,8 @@ import type { ActiveAppInfo } from '../../system/active-app'
 import type * as DbUtilsModule from '../../../db/utils'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1198,6 +1199,76 @@ describe('SearchEngineCore facade contracts', () => {
     expect(snapshots.map((result) => result.items.map((item) => item.id))).toEqual([
       ['native-file']
     ])
+  })
+  it('drops deleted index-owned files from cached hits while retaining missing native-file results', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'tuff-search-cache-files-'))
+    const ownedTempPath = join(directory, 'owned.txt')
+    const nativeTempPath = join(directory, 'native.txt')
+    const ownedPath = '/scope/cache-owned.txt'
+    const nativePath = '/scope/cache-native.txt'
+    await writeFile(ownedTempPath, 'indexed file')
+    await writeFile(nativeTempPath, 'native file')
+    const realExistsSync = fs.existsSync.bind(fs)
+    const existsSyncSpy = vi.spyOn(fs, 'existsSync').mockImplementation((candidate) => {
+      if (candidate === ownedPath) return realExistsSync(ownedTempPath)
+      if (candidate === nativePath) return realExistsSync(nativeTempPath)
+      return realExistsSync(candidate)
+    })
+
+    const owned: TuffItem = {
+      ...buildItem('owned-file-cache', 'file-provider', 'Owned indexed file'),
+      kind: 'file',
+      source: { id: 'file-provider', name: 'Files', type: 'file' },
+      meta: { file: { path: ownedPath } }
+    }
+    const native: TuffItem = {
+      ...buildItem('native-file-cache', 'mac-file-provider', 'Native file'),
+      kind: 'file',
+      source: { id: 'mac-file-provider', name: 'Native files', type: 'file' },
+      meta: { file: { path: nativePath } }
+    }
+    let ownedItems = [owned]
+    let nativeItems = [native]
+    core.unregisterProvider('file-provider')
+    core.unregisterProvider('mac-file-provider')
+    core.registerProvider({
+      ...buildProvider('file-provider', async () => ({ items: ownedItems }) as never),
+      type: 'file'
+    } as never)
+    core.registerProvider({
+      ...buildProvider('mac-file-provider', async () => ({ items: nativeItems }) as never),
+      type: 'file'
+    } as never)
+    core.activateProviders([
+      { id: 'file-provider' },
+      { id: 'mac-file-provider' }
+    ] as IProviderActivate[])
+
+    const query = { inputs: [], text: 'deleted file cache existence' } as TuffQuery
+    try {
+      const first = core.startSearch(query, {
+        caller: { kind: 'core-box', id: 'cache-file-before-delete' }
+      })
+      expect((await first.result).items.map((item) => item.id).sort()).toEqual([
+        'native-file-cache',
+        'owned-file-cache'
+      ])
+      await first.completed
+
+      ownedItems = []
+      nativeItems = []
+      await rm(ownedTempPath)
+      await rm(nativeTempPath)
+
+      const second = core.startSearch(query, {
+        caller: { kind: 'core-box', id: 'cache-file-after-delete' }
+      })
+      expect((await second.result).items.map((item) => item.id)).toEqual(['native-file-cache'])
+      await second.completed
+    } finally {
+      existsSyncSpy.mockRestore()
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   it('rechecks rebuilt recommendation ownership when roots change during recommendation lookup', async () => {

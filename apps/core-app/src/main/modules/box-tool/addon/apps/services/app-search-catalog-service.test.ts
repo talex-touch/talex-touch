@@ -247,13 +247,17 @@ describe('AppSearchCatalogService lifecycle', () => {
     vi.useRealTimers()
   })
 
-  function createService(loadRows: () => Promise<AppCatalogRow[]>) {
+  function createService(
+    loadRows: () => Promise<AppCatalogRow[]>,
+    onSnapshotReplaced?: () => void
+  ) {
     let commitListener: ((providerIds: readonly string[]) => void) | null = null
     const unsubscribe = vi.fn()
     const service = new AppSearchCatalogService({
       providerId: 'app-provider',
       loadRows,
       ...deps,
+      onSnapshotReplaced,
       subscribeCommits: (listener) => {
         commitListener = listener
         return unsubscribe
@@ -267,6 +271,42 @@ describe('AppSearchCatalogService lifecycle', () => {
       commit: (providerIds: string[]) => commitListener?.(providerIds)
     }
   }
+
+  it('notifies after each successful reload, once the new snapshot is available to recall', async () => {
+    const loadRows = vi
+      .fn<() => Promise<AppCatalogRow[]>>()
+      .mockResolvedValueOnce([createRow(catalog[2]!)])
+      .mockResolvedValueOnce([createRow(catalog[7]!)])
+    let service: AppSearchCatalogService | undefined
+    let callbackCount = 0
+    const onSnapshotReplaced = vi.fn(() => {
+      callbackCount += 1
+      const query = callbackCount === 1 ? 'obs' : 'term'
+      const expected = callbackCount === 1 ? ['Obsidian'] : ['Terminal']
+      expect(names(service!.recall({ text: query } as never).rows)).toEqual(expected)
+    })
+    service = createService(loadRows, onSnapshotReplaced).service
+
+    await service.reload('initial-load')
+    await service.reload('index-commit')
+
+    expect(onSnapshotReplaced).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not notify when loading a replacement snapshot fails', async () => {
+    const loadRows = vi
+      .fn<() => Promise<AppCatalogRow[]>>()
+      .mockResolvedValueOnce([createRow(catalog[2]!)])
+      .mockRejectedValueOnce(new Error('db gone'))
+    const onSnapshotReplaced = vi.fn()
+    const { service } = createService(loadRows, onSnapshotReplaced)
+
+    await service.reload('initial-load')
+    await service.reload('failed-reload')
+
+    expect(onSnapshotReplaced).toHaveBeenCalledTimes(1)
+    expect(names(service.recall({ text: 'obs' } as never).rows)).toEqual(['Obsidian'])
+  })
 
   it('is not ready before the first load and serves the snapshot after it', async () => {
     const loadRows = vi.fn(async () => [createRow(catalog[2]!)])

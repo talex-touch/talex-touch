@@ -34,6 +34,7 @@ import { createDbUtils } from '../../../db/utils'
 import { appTaskGate } from '../../../service/app-task-gate'
 import { enterPerfContext } from '../../../utils/perf-context'
 import { perfMonitor } from '../../../utils/perf-monitor'
+import { normalizeResultFilePath } from '../../../utils/local-renderable-assets'
 import { databaseModule } from '../../database'
 import { pluginEntityProvider } from '../../plugin/adapters/plugin-entity-provider'
 import PluginFeaturesAdapter from '../../plugin/adapters/plugin-features-adapter'
@@ -344,6 +345,34 @@ export class SearchEngineCore
       if (accepted) accepted.push(item)
     }
     return accepted ?? filtered
+  }
+
+  /**
+   * A cached hit re-checks that each index-owned file still exists, as the file provider does on a
+   * fresh search. A deleted directory tree leaves the index through a subtree reconcile that yields
+   * to foreground search (`waitForIndexMaintenanceIdle`), so its rows -- and the commit that would
+   * reject this entry on revision -- can trail the deletion by seconds while the user keeps typing.
+   * Without this check a query repeated inside the TTL showed the deleted files until it expired.
+   */
+  private dropMissingIndexedFiles(items: TuffItem[]): TuffItem[] {
+    let kept: TuffItem[] | null = null
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index]
+      const original = item.meta?._originalSourceId
+      const sourceId = typeof original === 'string' ? original : item.source.id
+      const filePath = item.meta?.file?.path
+      if (
+        sourceId === FILE_INDEXED_SOURCE_ID &&
+        typeof filePath === 'string' &&
+        filePath.trim() &&
+        'missing' in normalizeResultFilePath(filePath)
+      ) {
+        if (!kept) kept = items.slice(0, index)
+        continue
+      }
+      if (kept) kept.push(item)
+    }
+    return kept ?? items
   }
 
   /**
@@ -1210,7 +1239,9 @@ export class SearchEngineCore
     if (cacheOutcome === 'hit' && cachedEntry) {
       this.cacheTelemetry.recordHit(cachedAgeMs, cachedEntry.result.duration)
       const cachedResult = materializeCachedSearchResult(cachedEntry.result, sessionId)
-      cachedResult.items = this.filterCurrentFileScope(cachedResult.items ?? [])
+      cachedResult.items = this.dropMissingIndexedFiles(
+        this.filterCurrentFileScope(cachedResult.items ?? [])
+      )
       const cachedItems = cachedResult.items.length
       this.logSearchTrace({
         event: 'first.result',

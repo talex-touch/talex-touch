@@ -418,7 +418,9 @@ class AppProvider implements ISearchProvider<ProviderContext> {
     toScannedInfo: (row) => this._mapDbAppToScannedInfo(row),
     generateKeywords: (info) => this._generateKeywordsForApp(info),
     subscribeCommits: (listener) =>
-      searchIndexCommitHub.subscribe((payload) => listener(payload.providerIds))
+      searchIndexCommitHub.subscribe((payload) => listener(payload.providerIds)),
+    // No provider id: naming this provider would schedule another reload of the same snapshot.
+    onSnapshotReplaced: () => searchIndexCommitHub.markCommitted()
   })
   /**
    * The index manager's API: summaries, aliases, launch shortcuts, launch and usage.
