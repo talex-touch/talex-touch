@@ -310,9 +310,12 @@ return item 1 of shareChoice
       } else {
         const subject = encodeURIComponent(title || '')
         const body = encodeURIComponent(normalizedBody)
-        await openValidatedExternalUrl(`mailto:?subject=${subject}&body=${body}`, {
+        const decision = await openValidatedExternalUrl(`mailto:?subject=${subject}&body=${body}`, {
           opener: shell.openExternal
         })
+        if (!decision.allowed) {
+          return { success: false, error: `Mail link refused: ${decision.reason}` }
+        }
       }
     } else {
       if (files?.length) {
@@ -323,9 +326,12 @@ return item 1 of shareChoice
       }
       const subject = encodeURIComponent(title || '')
       const body = encodeURIComponent(normalizedBody)
-      await openValidatedExternalUrl(`mailto:?subject=${subject}&body=${body}`, {
+      const decision = await openValidatedExternalUrl(`mailto:?subject=${subject}&body=${body}`, {
         opener: shell.openExternal
       })
+      if (!decision.allowed) {
+        return { success: false, error: `Mail link refused: ${decision.reason}` }
+      }
     }
 
     return { success: true, target: 'mail' }

@@ -194,12 +194,14 @@ export function registerWorkflowTools(capabilities: WorkflowToolCapabilities): v
         provider === 'bing'
           ? `https://www.bing.com/search?q=${encodeURIComponent(query)}`
           : `https://www.google.com/search?q=${encodeURIComponent(query)}`
+      let opened = false
       if (open) {
-        await openValidatedExternalUrl(url, {
+        const decision = await openValidatedExternalUrl(url, {
           opener: capabilities.systemShell.openExternal
         })
+        opened = decision.allowed
       }
-      return { provider, query, url, opened: open }
+      return { provider, query, url, opened }
     }
   )
 

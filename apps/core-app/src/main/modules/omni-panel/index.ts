@@ -1460,8 +1460,10 @@ export class OmniPanelModule extends BaseModule {
       }
 
       const url = `https://translate.google.com/?sl=auto&tl=zh-CN&text=${encodeURIComponent(text)}&op=translate`
-      await openValidatedExternalUrl(url, { opener: shell.openExternal })
-      return { success: true }
+      const decision = await openValidatedExternalUrl(url, { opener: shell.openExternal })
+      return decision.allowed
+        ? { success: true }
+        : this.buildExecuteError('FEATURE_EXECUTION_FAILED')
     }
 
     if (featureId === 'builtin.search') {
@@ -1469,8 +1471,10 @@ export class OmniPanelModule extends BaseModule {
         return this.buildExecuteError('SELECTION_REQUIRED')
       }
       const url = `https://www.google.com/search?q=${encodeURIComponent(text)}`
-      await openValidatedExternalUrl(url, { opener: shell.openExternal })
-      return { success: true }
+      const decision = await openValidatedExternalUrl(url, { opener: shell.openExternal })
+      return decision.allowed
+        ? { success: true }
+        : this.buildExecuteError('FEATURE_EXECUTION_FAILED')
     }
 
     if (featureId === 'builtin.copy') {
