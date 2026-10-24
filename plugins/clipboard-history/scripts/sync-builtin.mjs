@@ -10,11 +10,10 @@ const pluginRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(pluginRoot, '..', '..')
 
 const sourceDir = path.join(pluginRoot, 'dist', 'build')
-const builtInTargetDir = path.join(
-  repoRoot,
-  'apps/core-app/tuff/modules/plugins/clipboard-history',
-)
-
+const builtInTargetDirs = [
+  path.join(repoRoot, 'apps/core-app/tuff/modules/plugins/clipboard-history'),
+  path.join(repoRoot, 'apps/core-app/resources/bundled-plugins/clipboard-history'),
+]
 function uniq(values) {
   return [...new Set(values.filter(Boolean))]
 }
@@ -47,6 +46,15 @@ function getDevTargetCandidates() {
 
   return uniq([
     explicitTarget,
+    '/Applications/Tuff.app/Contents/Resources/bundled-plugins/clipboard-history',
+    ...appDataRoots.map(root =>
+      root
+        ? path.join(
+            root,
+            '@talex-touch/core-app/tuff/modules/plugins/clipboard-history',
+          )
+        : '',
+    ),
     ...appDataRoots.map(root =>
       root
         ? path.join(
@@ -72,20 +80,27 @@ async function syncCleanTarget(targetDir) {
   await cp(sourceDir, targetDir, { recursive: true })
 }
 
-async function syncRuntimeTarget(targetDir) {
-  const entries = await readdir(sourceDir)
+// Runtime-owned entries inside an installed plugin dir (see TouchPlugin.getRuntimeLogsPath).
+const RUNTIME_OWNED_ENTRIES = new Set(['logs'])
 
+async function syncRuntimeTarget(targetDir) {
   await mkdir(targetDir, { recursive: true })
-  for (const entry of entries) {
+  // Drop every stale entry (not only those present in the build), so leftovers such as an
+  // old package.json cannot trip the core-app runtime drift preflight.
+  for (const entry of await readdir(targetDir)) {
+    if (RUNTIME_OWNED_ENTRIES.has(entry)) {
+      continue
+    }
     await rm(path.join(targetDir, entry), { recursive: true, force: true })
   }
 
   await cp(sourceDir, targetDir, { recursive: true })
 }
 
-await syncCleanTarget(builtInTargetDir)
-
-console.log(`[clipboard-history] synced built-in fallback -> ${builtInTargetDir}`)
+for (const targetDir of builtInTargetDirs) {
+  await syncCleanTarget(targetDir)
+  console.log(`[clipboard-history] synced built-in fallback -> ${targetDir}`)
+}
 
 for (const targetDir of getDevTargetCandidates()) {
   const explicit = targetDir === process.env.TUFF_CLIPBOARD_HISTORY_DEV_PLUGIN_DIR?.trim()

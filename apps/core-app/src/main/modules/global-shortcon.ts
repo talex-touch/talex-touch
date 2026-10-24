@@ -254,6 +254,41 @@ function owningPlugin(shortcut: Shortcut): { status: PluginStatus } | null | und
   return null
 }
 
+/**
+ * Keys the host puts on a feature of a plugin it ships, for a user who has not bound one.
+ *
+ * Binding a feature is the user's act (see `setFeatureShortcut`), and a default does not change
+ * whose record it is: the host writes the record the user would have recorded, once, and from then
+ * on it is theirs to rebind or clear. A plugin cannot declare one; this table is the host's.
+ *
+ * A platform without a key here gets no default. Spelled with Electron's cross-platform names, like
+ * every default.
+ */
+interface FeatureShortcutDefault {
+  pluginName: string
+  featureId: string
+  accelerators: Partial<Record<NodeJS.Platform, string>>
+}
+
+const FEATURE_SHORTCUT_DEFAULTS: readonly FeatureShortcutDefault[] = [
+  {
+    pluginName: 'clipboard-history',
+    featureId: 'clipboard-history',
+    // The same key everywhere. Off macOS, Alt+V is the View menu's access key in most windows with a
+    // menu bar, and the global shortcut takes it from every app.
+    accelerators: { darwin: 'Alt+V', win32: 'Alt+V', linux: 'Alt+V' }
+  }
+]
+
+/** Whether the feature `id` names has a default key on this platform. */
+function hasFeatureShortcutDefault(id: string): boolean {
+  return FEATURE_SHORTCUT_DEFAULTS.some(
+    (entry) =>
+      Boolean(entry.accelerators[process.platform]) &&
+      buildFeatureShortcutId(entry.pluginName, entry.featureId) === id
+  )
+}
+
 export class ShortcutModule extends BaseModule {
   static key: symbol = Symbol.for('Shortcut')
   name: ModuleKey = ShortcutModule.key
@@ -290,6 +325,7 @@ export class ShortcutModule extends BaseModule {
       shortconLog.info(`Removed ${removedRetiredShortcuts} retired global shortcuts`)
     }
     this.renameRecordedMacModifiers()
+    this.seedFeatureShortcutDefaults()
     this.registerBeforeQuitTeardownListener()
     this.registerPluginStatusListener()
     const runtime = resolveMainRuntime(ctx, 'ShortcutModule.onInit')
@@ -341,6 +377,104 @@ export class ShortcutModule extends BaseModule {
         })
       }
     }
+  }
+
+  /**
+   * Writes each feature default (see {@link FEATURE_SHORTCUT_DEFAULTS}) whose plugin runs and whose
+   * feature has no record yet. Runs before the first pass and before every pass a plugin starting
+   * or stopping causes, so a profile without the plugin is never given a key it cannot use.
+   *
+   * Once per profile: any record under the id is the user's answer, the empty one a clear leaves
+   * included, and is left alone.
+   *
+   * A key a plugin binding already holds is not taken. Two plugin bindings on one key both lose it
+   * (`resolveConflictStatuses`), so the default would silently switch off a key the user relies on;
+   * it is stored cleared instead, and the user can still bind the feature themselves. A system
+   * binding keeps its key either way -- system outranks plugin -- so there the default is written
+   * and its row shows the conflict until the key is free.
+   */
+  private seedFeatureShortcutDefaults(): void {
+    const storage = this.storage
+    if (!storage) return
+
+    for (const entry of FEATURE_SHORTCUT_DEFAULTS) {
+      const accelerator = this.normalizeAccelerator(entry.accelerators[process.platform] ?? '')
+      if (!accelerator) continue
+      const plugin = pluginModule.pluginManager?.plugins.get(entry.pluginName)
+      if (!isRunningStatus(plugin?.status)) continue
+      const id = buildFeatureShortcutId(entry.pluginName, entry.featureId)
+
+      // A write that fails is retried on the plugin's next start. Thrown out of here, it would skip
+      // the registration pass that follows, or fail the module's init.
+      try {
+        if (storage.getShortcutById(id)) continue
+        const holder = this.findPluginBinding(id, accelerator)
+        if (holder) {
+          this.storeClearedFeatureBinding(id, entry.pluginName, entry.featureId)
+          shortconLog.info(
+            `Feature default ${id} (${accelerator}) left unbound: ${holder.id} holds it`
+          )
+          continue
+        }
+        const now = Date.now()
+        storage.addShortcut({
+          id,
+          accelerator,
+          type: ShortcutType.FEATURE,
+          meta: {
+            creationTime: now,
+            modificationTime: now,
+            author: entry.pluginName,
+            enabled: true,
+            featureId: entry.featureId
+          }
+        })
+        shortconLog.success(`Feature default bound: ${id} (${accelerator})`)
+      } catch (error) {
+        shortconLog.warn(`Could not write the feature default ${id}`, { error })
+      }
+    }
+  }
+
+  /**
+   * A plugin's binding on `accelerator`, read from the store whether or not its plugin runs yet:
+   * plugins start one after another, and one still loading takes its key back once it runs.
+   */
+  private findPluginBinding(id: string, accelerator: string): Shortcut | undefined {
+    return this.storage?.getAllShortcuts().find((shortcut) => {
+      if (shortcut.id === id || shortcut.meta?.enabled === false) return false
+      if (this.isSystemShortcut(shortcut)) return false
+      const held = this.normalizeAccelerator(shortcut.accelerator)
+      return held !== null && acceleratorsMatch(held, accelerator, process.platform)
+    })
+  }
+
+  /**
+   * Stores feature `id` as cleared: an empty record, switched off, which every pass reads as
+   * `disabled` and no holder lookup counts. Returns `false` when it already is. Only for a feature
+   * with a default, which would be seeded again with no record at all.
+   */
+  private storeClearedFeatureBinding(id: string, pluginName: string, featureId: string): boolean {
+    const existing = this.storage!.getShortcutById(id)
+    if (existing) {
+      if (!existing.accelerator && existing.meta?.enabled === false) return false
+      this.storage!.updateShortcutAccelerator(id, '', false)
+      return true
+    }
+    const now = Date.now()
+    this.storage!.addShortcut({
+      id,
+      accelerator: '',
+      type: ShortcutType.FEATURE,
+      meta: {
+        creationTime: now,
+        modificationTime: now,
+        author: pluginName,
+        enabled: false,
+        featureId
+      }
+    })
+    return true
   }
 
   onDestroy(): MaybePromise<void> {
@@ -892,7 +1026,9 @@ export class ShortcutModule extends BaseModule {
    * anything. Requiring the permission here would let a plugin refuse the user a keybinding on
    * the plugin's own feature.
    *
-   * An empty `accelerator` removes the binding, which is what the clear button in the row sends.
+   * An empty `accelerator` clears the binding, which is what the clear button in the row sends: the
+   * record is removed, or, for a feature with a default ({@link FEATURE_SHORTCUT_DEFAULTS}), emptied
+   * and switched off.
    */
   setFeatureShortcut(pluginName: string, featureId: string, accelerator: string): boolean {
     if (!pluginName || !featureId) return false
@@ -901,8 +1037,14 @@ export class ShortcutModule extends BaseModule {
     const existing = this.storage!.getShortcutById(id)
 
     if (!accelerator.trim()) {
-      if (!existing) return true
-      this.storage!.removeShortcuts([id])
+      if (hasFeatureShortcutDefault(id)) {
+        // Kept as an empty record: with none, the default would be seeded again on the plugin's
+        // next start and undo the clear.
+        if (!this.storeClearedFeatureBinding(id, pluginName, featureId)) return true
+      } else {
+        if (!existing) return true
+        this.storage!.removeShortcuts([id])
+      }
       this.reregisterAllShortcuts()
       shortconLog.success(`Feature shortcut cleared: ${id}`)
       return true
@@ -1631,6 +1773,7 @@ export class ShortcutModule extends BaseModule {
       if (timer) return
       timer = setTimeout(() => {
         timer = null
+        this.seedFeatureShortcutDefaults()
         this.reregisterAllShortcuts()
       }, PLUGIN_STATUS_SETTLE_MS)
     }

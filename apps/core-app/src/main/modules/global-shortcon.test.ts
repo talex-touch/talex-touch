@@ -2246,4 +2246,175 @@ describe('ShortcutModule restores durable user choices', () => {
       }
     }
   )
+
+  /**
+   * Clipboard history ships with Alt+V (⌥V on macOS) on its feature. The host writes that record
+   * once, the first time the plugin runs; from then on it is the user's, and a clear has to survive
+   * a restart.
+   */
+  describe('the clipboard history default', () => {
+    const plugin = 'clipboard-history'
+    const clipboardId = buildFeatureShortcutId(plugin, 'clipboard-history')
+    const pluginHarness = pluginModule as unknown as { pluginManager: unknown }
+
+    function setPlugins(statuses: Record<string, PluginStatus>): void {
+      pluginHarness.pluginManager = {
+        plugins: new Map(Object.entries(statuses).map(([name, status]) => [name, { name, status }]))
+      }
+    }
+
+    function stored(disk: ReturnType<typeof persistence>): Shortcut | undefined {
+      return disk.records().find((row) => row.id === clipboardId)
+    }
+
+    afterEach(() => {
+      vi.useRealTimers()
+      pluginHarness.pluginManager = null
+    })
+
+    it('is written and registered the first time the plugin runs', () => {
+      vi.useFakeTimers()
+      const disk = persistence()
+      setPlugins({ [plugin]: PluginStatus.LOADING })
+      try {
+        const module = disk.reopen()
+        expect(stored(disk)).toBeUndefined()
+
+        setPlugins({ [plugin]: PluginStatus.ENABLED })
+        touchEventBus.emit(TalexEvents.PLUGIN_STATUS_CHANGED, {
+          pluginName: plugin,
+          previousStatus: PluginStatus.LOADING,
+          status: PluginStatus.ENABLED
+        } as never)
+        vi.advanceTimersByTime(100)
+
+        expect(stored(disk)).toMatchObject({
+          accelerator: 'Alt+V',
+          type: ShortcutType.FEATURE,
+          meta: { author: plugin, enabled: true, featureId: 'clipboard-history' }
+        })
+        expect(module.getEffectiveAccelerator(clipboardId)).toBe('Alt+V')
+        expect(electronMocks.register).toHaveBeenCalledWith('Alt+V', expect.any(Function))
+      } finally {
+        disk.cleanup()
+      }
+    })
+
+    it('stays cleared across restarts, and keeps the key the user records next', () => {
+      const disk = persistence()
+      setPlugins({ [plugin]: PluginStatus.ENABLED })
+      try {
+        let module = disk.reopen()
+        expect(module.getEffectiveAccelerator(clipboardId)).toBe('Alt+V')
+
+        expect(module.setFeatureShortcut(plugin, 'clipboard-history', '')).toBe(true)
+        disk.close(module)
+        electronMocks.register.mockClear()
+        module = disk.reopen()
+        expect(stored(disk)).toMatchObject({ accelerator: '', meta: { enabled: false } })
+        expect(module.getFeatureShortcuts(plugin)['clipboard-history']).toMatchObject({
+          accelerator: '',
+          status: { state: 'disabled' }
+        })
+        expect(electronMocks.register).not.toHaveBeenCalledWith('Alt+V', expect.any(Function))
+
+        mainStorageMocks.saveConfig.mockClear()
+        expect(module.setFeatureShortcut(plugin, 'clipboard-history', '')).toBe(true)
+        expect(mainStorageMocks.saveConfig).not.toHaveBeenCalled()
+
+        expect(module.setFeatureShortcut(plugin, 'clipboard-history', 'Command+Shift+V')).toBe(true)
+        disk.close(module)
+        module = disk.reopen()
+        expect(module.getEffectiveAccelerator(clipboardId)).toBe('Command+Shift+V')
+      } finally {
+        disk.cleanup()
+      }
+    })
+
+    it.each(['Option+V', 'Alt+V'])(
+      'leaves %s to the plugin binding that holds it, for good',
+      (held) => {
+        const disk = persistence()
+        setPlugins({ demo: PluginStatus.ENABLED })
+        try {
+          let module = disk.reopen()
+          module.setFeatureShortcut('demo', 'translate', held)
+          disk.close(module)
+
+          setPlugins({ demo: PluginStatus.ENABLED, [plugin]: PluginStatus.ENABLED })
+          module = disk.reopen()
+          expect(module.getEffectiveAccelerator(featureId)).toBe(held)
+          expect(stored(disk)).toMatchObject({ accelerator: '', meta: { enabled: false } })
+
+          // Decided once: freeing the key later does not hand it to the default.
+          module.setFeatureShortcut('demo', 'translate', '')
+          disk.close(module)
+          module = disk.reopen()
+          expect(module.getEffectiveAccelerator(clipboardId)).toBeNull()
+        } finally {
+          disk.cleanup()
+        }
+      }
+    )
+
+    it('waits behind a system binding on the key, shown as a conflict on its row', () => {
+      const disk = persistence()
+      try {
+        let module = disk.reopen()
+        module.registerMainShortcut('core.test.alt-v', 'Alt+V', vi.fn())
+        disk.close(module)
+
+        setPlugins({ [plugin]: PluginStatus.ENABLED })
+        module = disk.reopen()
+        module.registerMainShortcut('core.test.alt-v', 'Alt+V', vi.fn())
+
+        expect(module.getEffectiveAccelerator('core.test.alt-v')).toBe('Alt+V')
+        expect(module.getFeatureShortcuts(plugin)['clipboard-history']).toMatchObject({
+          accelerator: 'Alt+V',
+          meta: { enabled: true },
+          status: {
+            state: 'conflict',
+            reason: 'conflict-system',
+            conflictWith: ['core.test.alt-v']
+          }
+        })
+      } finally {
+        disk.cleanup()
+      }
+    })
+
+    it.each(['win32', 'linux'])('is written on %s too', (platform) => {
+      const disk = persistence()
+      setPlugins({ [plugin]: PluginStatus.ENABLED })
+      const pinned = process.platform
+      Object.defineProperty(process, 'platform', { value: platform, configurable: true })
+      try {
+        const module = disk.reopen()
+        expect(stored(disk)).toMatchObject({ accelerator: 'Alt+V', meta: { enabled: true } })
+        expect(module.getEffectiveAccelerator(clipboardId)).toBe('Alt+V')
+      } finally {
+        Object.defineProperty(process, 'platform', { value: pinned, configurable: true })
+        disk.cleanup()
+      }
+    })
+
+    it('starts without the default when its write fails, and writes it on the next start', () => {
+      const disk = persistence()
+      setPlugins({ [plugin]: PluginStatus.ENABLED })
+      try {
+        mainStorageMocks.saveConfig.mockImplementationOnce(() => {
+          throw new Error('disk full')
+        })
+        let module = disk.reopen()
+        expect(stored(disk)).toBeUndefined()
+        expect(module.getEffectiveAccelerator(systemId)).toBe(systemKey)
+
+        disk.close(module)
+        module = disk.reopen()
+        expect(module.getEffectiveAccelerator(clipboardId)).toBe('Alt+V')
+      } finally {
+        disk.cleanup()
+      }
+    })
+  })
 })
