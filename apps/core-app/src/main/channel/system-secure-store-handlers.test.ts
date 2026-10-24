@@ -152,6 +152,30 @@ describe('registerSystemSecureStoreHandlers', () => {
     ).rejects.toThrow('Secure storage is unavailable')
   })
 
+  it.each([
+    ['getSecureValue', { key: 'auth.token' }],
+    ['setSecureValue', { key: 'auth.token', value: 'next-secret' }]
+  ] as const)('refuses %s from a plugin caller', async (event, payload) => {
+    const logger = { warn: vi.fn() }
+    const { handlers, transport } = createTransport()
+
+    registerSystemSecureStoreHandlers(transport as never, {
+      rootPath: () => '/tmp/tuff',
+      logger
+    })
+
+    await expect(
+      handlers.get(AppEvents.system[event].toEventName())?.(payload, {
+        plugin: { name: 'evil-plugin' }
+      })
+    ).rejects.toThrow('HOST_ONLY_HANDLER')
+    expect(getSecureStoreValueMock).not.toHaveBeenCalled()
+    expect(setSecureStoreValueMock).not.toHaveBeenCalled()
+    expect(logger.warn).toHaveBeenCalledWith('Blocked a host-only handler invoked from a plugin', {
+      meta: { eventName: `system.${event}`, plugin: 'evil-plugin' }
+    })
+  })
+
   it('reports secure store health for the configured root path', () => {
     const { handlers, transport } = createTransport()
 

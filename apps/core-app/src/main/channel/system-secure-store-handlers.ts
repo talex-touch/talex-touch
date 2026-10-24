@@ -3,7 +3,7 @@ import type {
   SecureValueGetRequest,
   SecureValueSetRequest
 } from '@talex-touch/utils/transport/events/types'
-import type { ITuffTransportMain } from '@talex-touch/utils/transport/main'
+import type { HandlerContext, ITuffTransportMain } from '@talex-touch/utils/transport/main'
 import { AppEvents } from '@talex-touch/utils/transport/events'
 import {
   getSecureStoreHealth,
@@ -25,6 +25,23 @@ function createWarnLogger(logger: SystemSecureStoreHandlerOptions['logger']) {
       error: toErrorMessage(error)
     })
   }
+}
+
+/**
+ * The store holds the host's own secrets, `auth.token` among them, so a plugin caller is refused
+ * whatever the key. Plugins keep their secrets through the namespaced `plugin:storage:*-secret`
+ * handlers instead.
+ */
+function assertHostOnly(
+  context: HandlerContext | undefined,
+  eventName: string,
+  options: SystemSecureStoreHandlerOptions
+): void {
+  if (!context?.plugin) return
+  options.logger.warn('Blocked a host-only handler invoked from a plugin', {
+    meta: { eventName, plugin: context.plugin.name }
+  })
+  throw new Error('HOST_ONLY_HANDLER')
 }
 
 async function getSecureValue(
@@ -67,7 +84,8 @@ export function registerSystemSecureStoreHandlers(
   return [
     transport.on<SecureValueGetRequest, string | null>(
       AppEvents.system.getSecureValue,
-      async (payload) => {
+      async (payload, context) => {
+        assertHostOnly(context, 'system.getSecureValue', options)
         const key = typeof payload?.key === 'string' ? payload.key : ''
         if (!key) {
           return null
@@ -75,13 +93,17 @@ export function registerSystemSecureStoreHandlers(
         return await getSecureValue(key, options)
       }
     ),
-    transport.on<SecureValueSetRequest, void>(AppEvents.system.setSecureValue, async (payload) => {
-      const key = typeof payload?.key === 'string' ? payload.key : ''
-      if (!key) {
-        throw new Error('Missing secure storage key')
+    transport.on<SecureValueSetRequest, void>(
+      AppEvents.system.setSecureValue,
+      async (payload, context) => {
+        assertHostOnly(context, 'system.setSecureValue', options)
+        const key = typeof payload?.key === 'string' ? payload.key : ''
+        if (!key) {
+          throw new Error('Missing secure storage key')
+        }
+        await setSecureValue(key, payload?.value ?? null, options)
       }
-      await setSecureValue(key, payload?.value ?? null, options)
-    }),
+    ),
     transport.on<void, SecureStoreHealthResponse>(AppEvents.system.getSecureStoreHealth, () =>
       getSecureStoreHealth(options.rootPath())
     )

@@ -1813,7 +1813,7 @@ export class TouchPlugin implements ITouchPlugin {
   }
 
   private canUse(capability: privileges.PrivilegedPluginCapability): boolean {
-    return privileges.isPrivilegedPluginFor(capability, this.name, this.sdkapi)
+    return privileges.isPrivilegedPluginFor(capability, this.name)
   }
 
   private createBatchRenameFilesystemCapability(
