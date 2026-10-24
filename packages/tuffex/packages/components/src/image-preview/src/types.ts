@@ -76,6 +76,8 @@ export interface ImagePreviewProps {
   contextMenu?: boolean
   /** The strip along the bottom. @default 'thumbnails' */
   indicator?: ImagePreviewIndicator
+  /** While a picture is zoomed in, the whole of it in the bottom-right corner, the part on screen framed; a press or a drag on it moves there. @default true */
+  minimap?: boolean
   /** How far a page turn and the flight out of `origin` overshoot before they settle, 0 to 1. @default 0.2 */
   bounce?: number
   /** The material behind the picture. @default 'refraction' */

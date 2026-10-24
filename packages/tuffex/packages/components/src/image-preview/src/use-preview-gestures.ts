@@ -105,6 +105,12 @@ export interface PreviewGestures {
   resetZoom: () => void
   /** Turns the current picture a quarter clockwise (1) or back (-1), and shows it whole. */
   rotate: (direction: 1 | -1) => void
+  /**
+   * A zoomed picture moves so `point`, in its own pixels as turned, sits in the middle of the
+   * stage, as far as its edges allow: a minimap's press glides there, and its drag (`follow`)
+   * follows at once.
+   */
+  lookAt: (point: PreviewPoint, follow?: boolean) => void
   /** Turns the page, sliding the next picture in. */
   go: (step: -1 | 1) => void
   /** Escape: the gesture under way goes back to where it started. Returns whether there was one. */
@@ -479,6 +485,19 @@ export function usePreviewGestures(options: PreviewGestureOptions): PreviewGestu
     }
     angleMotion = { mode: 'spring', value: angle.value, velocity: angleMotion?.velocity ?? 0, target }
     springTo(fit.value!, true)
+  }
+
+  function lookAt(point: PreviewPoint, follow = false): void {
+    const from = goal()
+    if (!options.active() || busy() || !from || !zoomed.value)
+      return
+    const size = options.size()
+    const target = { k: from.k, tx: size.width / 2 - point.x * from.k, ty: size.height / 2 - point.y * from.k }
+    // A drag still gliding to where its press began is headed on instead, and catches up.
+    if (follow && !viewMotion)
+      drawn.value = clampView(target, boundsAt(target.k))
+    else
+      aim(target)
   }
 
   function toggleZoom(point: PreviewPoint): void {
@@ -1204,6 +1223,7 @@ export function usePreviewGestures(options: PreviewGestureOptions): PreviewGestu
     zoomOut,
     resetZoom,
     rotate,
+    lookAt,
     go,
     cancel,
     endPress,

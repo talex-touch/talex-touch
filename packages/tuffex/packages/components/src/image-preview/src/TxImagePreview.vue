@@ -9,6 +9,7 @@ import { useReducedMotion } from '../../../../utils/use-reduced-motion'
 import { isTopmostModalDialog, useZIndexAllocator } from '../../../../utils/z-index-manager'
 import TxBaseSurface from '../../base-surface/src/TxBaseSurface.vue'
 import { isOriginInView, lerpPose, originPose, poseStyles, resolveOrigin, uprightAngle, viewPose } from './flight'
+import ImagePreviewMinimap from './ImagePreviewMinimap.vue'
 import ImagePreviewStrip from './ImagePreviewStrip.vue'
 import ImagePreviewToolbar from './ImagePreviewToolbar.vue'
 import { ACTION_ICONS, usePreviewActions } from './use-preview-actions'
@@ -21,9 +22,10 @@ import { fitView } from './zoom'
 // One picture at a time over the whole window, with its neighbours waiting on either side. The
 // hands are use-preview-gestures'; the comings and goings use-preview-transition's, and a flight
 // between a thumbnail and the stage is drawn with flight's poses. The pictures' loading is
-// use-preview-pictures', the actions use-preview-actions' and their menu use-preview-menu's, and
-// the strip along the bottom ImagePreviewStrip's. This file owns opening and closing, focus, the
-// keyboard, and the chrome around it all, which a touch tap hides and shows.
+// use-preview-pictures', the actions use-preview-actions' and their menu use-preview-menu's, the
+// strip along the bottom ImagePreviewStrip's, and the minimap in the corner ImagePreviewMinimap's.
+// This file owns opening and closing, focus, the keyboard, and the chrome around it all, which a
+// touch tap hides and shows.
 
 // Resolved in setup: inject is only valid here, while allocation happens on opening.
 const zIndexAllocator = useZIndexAllocator()
@@ -37,6 +39,7 @@ const props = withDefaults(defineProps<ImagePreviewProps>(), {
   actions: () => ['rotate', 'copy', 'share', 'download'],
   contextMenu: true,
   indicator: 'thumbnails',
+  minimap: true,
   bounce: 0.2,
   maskSurface: 'refraction',
   maskColor: 'rgb(10, 10, 12)',
@@ -812,13 +815,42 @@ function stepFromStrip(direction: 1 | -1): void {
     gestures.go(direction)
 }
 
+// -- The minimap in the corner, ImagePreviewMinimap's: the whole picture while it is zoomed in.
+
+interface MinimapPicture {
+  src: string
+  size: PreviewSize
+  turns: number
+  view: PreviewView
+  stage: PreviewSize
+}
+
+/** The current picture while it is zoomed in, at rest on its page and turned square. */
+const minimapPicture = computed<MinimapPicture | null>(() => {
+  const item = currentItem.value
+  const size = item && !isFailed(item.url) ? sizes.value.get(item.url) : undefined
+  const view = gestures.view.value
+  if (!props.minimap || !item || !size || !view || !gestures.zoomed.value || gestures.track.value !== 0 || gestures.angle.value !== gestures.turns.value * 90)
+    return null
+  return { src: item.url, size, turns: gestures.turns.value, view, stage: stageSize.value }
+})
+const minimapWanted = computed(() => chromeWanted.value && minimapPicture.value !== null)
+const minimapLevel = transition.level(() => minimapWanted.value, 180)
+// It fades out on what it showed last: before a turn, a page turned, or the whole picture again.
+const minimapShown = shallowRef<MinimapPicture | null>(null)
+watch(minimapPicture, (picture) => {
+  if (picture)
+    minimapShown.value = picture
+}, { immediate: true })
+const minimapDragging = ref(false)
+
 watch(current, () => closeMenu(false))
 
 const overlayClass = computed(() => ({
   'is-closing': closing.value,
   'is-single': count.value <= 1,
   'is-zoomed': gestures.zoomed.value,
-  'is-moving': gestures.moving.value || gestures.gesture.value !== 'idle',
+  'is-moving': gestures.moving.value || gestures.gesture.value !== 'idle' || minimapDragging.value,
   'is-grabbing': gestures.gesture.value === 'pan' || gestures.gesture.value === 'swipe',
   'is-dismissing': dismissing.value,
   'is-chrome-hidden': !chromeWanted.value,
@@ -836,6 +868,7 @@ const overlayStyle = computed<CSSProperties>(() => ({
   '--tx-image-preview-mask': `${maskLevel.value}`,
   '--tx-image-preview-stage': `${stageLevel.value}`,
   '--tx-image-preview-chrome': `${chromeLevel.value}`,
+  '--tx-image-preview-minimap': `${minimapLevel.value}`,
   '--tx-image-preview-menu': `${menuLevel.value}`,
   '--tx-image-preview-status': `${statusLevel.value}`,
   '--tx-image-preview-bounce-ease': `cubic-bezier(0.32, ${1 + bounce.value * 1.6}, 0.5, 1)`,
@@ -1110,6 +1143,15 @@ defineExpose({
         @zoom-out="zoomOut"
         @reset="resetZoom"
         @action="runAction"
+      />
+
+      <ImagePreviewMinimap
+        v-if="minimapShown && (minimapWanted || minimapLevel > 0)"
+        v-bind="minimapShown"
+        :shown="minimapWanted"
+        :material="controlMaterial"
+        @look="gestures.lookAt"
+        @drag="minimapDragging = $event"
       />
 
       <button
@@ -1589,6 +1631,115 @@ defineExpose({
   z-index: 2;
 }
 
+// -- The minimap, in the corner while a picture is zoomed in: all of it, the part on the stage
+// framed and the rest dimmed. It fades on a level of its own, which the chrome's gates. Its
+// corners are smooth (`tx-squircle`), and the map's concentric with them inside the padding.
+
+$tx-image-preview-minimap-radius: 12px;
+$tx-image-preview-minimap-padding: 4px;
+
+.tx-image-preview__minimap {
+  --tx-image-preview-level: var(--tx-image-preview-minimap, 1);
+
+  position: absolute;
+  right: calc(24px + env(safe-area-inset-right));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  isolation: isolate;
+  padding: $tx-image-preview-minimap-padding;
+  pointer-events: none;
+  @include tx-squircle($tx-image-preview-minimap-radius);
+
+  &.is-shown {
+    pointer-events: auto;
+  }
+}
+
+.tx-image-preview__minimap-map {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: min(160px, calc(112px * var(--tx-image-preview-minimap-ratio, 1)));
+  aspect-ratio: var(--tx-image-preview-minimap-ratio, 1);
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+  // The frame measures its corners against the map's width.
+  container-type: inline-size;
+  @include tx-squircle($tx-image-preview-minimap-radius, $inset: $tx-image-preview-minimap-padding);
+}
+
+.tx-image-preview__minimap-image {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  max-width: none;
+  max-height: none;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+// At the map's corner a corner of the frame is the map's own, and on the way there concentric with
+// it: the map's radius less how far off it is (`--…-reach-*`, in shares of the map's width), never
+// under the frame's own. So the map's clip never cuts into the frame.
+.tx-image-preview__minimap-viewport {
+  --tx-image-preview-minimap-outer: #{$tx-image-preview-minimap-radius - $tx-image-preview-minimap-padding};
+  --tx-image-preview-minimap-inner: 3px;
+
+  position: absolute;
+  box-sizing: border-box;
+  min-width: 8px;
+  min-height: 8px;
+  border: 1.5px solid var(--tx-image-preview-ink);
+  border-radius:
+    max(var(--tx-image-preview-minimap-inner), var(--tx-image-preview-minimap-outer) - var(--tx-image-preview-minimap-reach-tl) * 100cqw)
+    max(var(--tx-image-preview-minimap-inner), var(--tx-image-preview-minimap-outer) - var(--tx-image-preview-minimap-reach-tr) * 100cqw)
+    max(var(--tx-image-preview-minimap-inner), var(--tx-image-preview-minimap-outer) - var(--tx-image-preview-minimap-reach-br) * 100cqw)
+    max(var(--tx-image-preview-minimap-inner), var(--tx-image-preview-minimap-outer) - var(--tx-image-preview-minimap-reach-bl) * 100cqw);
+  // A dark hairline inside keeps it seen on a bright picture. The spread dims all that is off the
+  // stage, and the map clips it.
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  cursor: grab;
+
+  @supports (corner-shape: superellipse(2)) {
+    --tx-image-preview-minimap-outer: #{tx-squircle-inset(tx-squircle-radius($tx-image-preview-minimap-radius), $tx-image-preview-minimap-padding)};
+    --tx-image-preview-minimap-inner: #{tx-squircle-radius(3px)};
+    corner-shape: superellipse(#{tx-squircle-exponent()});
+  }
+}
+
+.tx-image-preview__minimap-map.is-dragging,
+.tx-image-preview__minimap-map.is-dragging .tx-image-preview__minimap-viewport {
+  cursor: grabbing;
+}
+
+// Where the toolbar, with all four actions, reaches the corner, above it.
+@media (max-width: 713px) {
+  .tx-image-preview__minimap {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+}
+
+// Where the strip reaches the corner, above it. Up there the next-page button at the middle of the
+// side comes near, so a short window takes a shorter map: the room under the button is half the
+// window less half the button, a gap, the minimap's offset and its padding.
+@media (max-width: 1167px) {
+  .tx-image-preview.has-thumbnails .tx-image-preview__minimap {
+    bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+
+  .tx-image-preview.has-thumbnails .tx-image-preview__minimap-map {
+    width: min(
+      160px,
+      calc(112px * var(--tx-image-preview-minimap-ratio, 1)),
+      calc((50vh - 184px - env(safe-area-inset-bottom)) * var(--tx-image-preview-minimap-ratio, 1))
+    );
+  }
+}
+
 // -- The strip. The thumbnails have no material behind them, so the strip fades as a whole.
 
 .tx-image-preview__strip {
@@ -1901,6 +2052,37 @@ defineExpose({
 
   .tx-image-preview:not(.has-actions) .tx-image-preview__dots {
     bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  // Above whatever runs along the bottom: the toolbar, the strip, or the page buttons.
+  .tx-image-preview__minimap {
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(68px + env(safe-area-inset-bottom));
+  }
+
+  .tx-image-preview.has-thumbnails .tx-image-preview__minimap {
+    bottom: calc(124px + env(safe-area-inset-bottom));
+  }
+
+  .tx-image-preview.has-dots .tx-image-preview__minimap {
+    bottom: calc(102px + env(safe-area-inset-bottom));
+  }
+
+  .tx-image-preview:not(.has-actions).has-thumbnails .tx-image-preview__minimap {
+    bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+
+  .tx-image-preview:not(.has-actions).has-dots .tx-image-preview__minimap {
+    bottom: calc(48px + env(safe-area-inset-bottom));
+  }
+
+  .tx-image-preview.is-single:not(.has-actions) .tx-image-preview__minimap {
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .tx-image-preview__minimap-map,
+  .tx-image-preview.has-thumbnails .tx-image-preview__minimap-map {
+    width: min(112px, calc(80px * var(--tx-image-preview-minimap-ratio, 1)));
   }
 }
 

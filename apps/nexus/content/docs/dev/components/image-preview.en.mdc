@@ -158,6 +158,7 @@ const preview = ref<TxImagePreviewInstance | null>(null)
 | `actions` | `ImagePreviewAction[]` | `['rotate', 'copy', 'share', 'download']` | The toolbar's and the menu's actions, in this order; share shows only where the browser can share. |
 | `contextMenu` | `boolean` | `true` | A long press on the image, a right-click, or the context-menu key opens a menu of the actions. |
 | `indicator` | `'thumbnails' \| 'dots' \| 'none'` | `'thumbnails'` | The strip along the bottom: thumbnails, dots, or nothing; hidden with a single image. |
+| `minimap` | `boolean` | `true` | While an image is zoomed in, the whole of it in the bottom-right corner with the part on screen framed; a press or a drag on it moves there. |
 | `bounce` | `number` | `0.2` | How far a page turn, a jump, the menu, and the flight out of the thumbnail overshoot; `0` for none, `0.9` at most. |
 | `maskSurface` | `BaseSurfaceMode` | `'refraction'` | The [TxBaseSurface](/docs/dev/components/base-surface) material behind the image. |
 | `maskColor` | `string` | `'rgb(10, 10, 12)'` | The colour of that material. |
@@ -255,6 +256,7 @@ const preview = ref<TxImagePreviewInstance | null>(null)
 - Keyboard: `+` / `-` zoom, `0` shows the whole image, ← / → page, and while zoomed the arrows pan; `R` / `Shift + R` rotate, ⌘/Ctrl + C copies, and the context-menu key or Shift + F10 opens the menu, where ↑ / ↓ / Home / End move and Escape or Tab close it. Escape first undoes a gesture under way, then closes; Tab cycles within the dialog, and closing returns focus to the element that had it.
 - Actions: rotate turns a quarter at a time and fits the image again, and a page turn straightens it. Copy puts the image on the clipboard as a PNG, or only its link when the image's server does not allow CORS; share sends a web image as its link and a `data:` / `blob:` image as a file; download saves a same-origin, `data:`, or `blob:` image under its name and opens a cross-origin one in a new tab. A failed image offers no actions, and the outcome is said in a `role="status"` region.
 - The strip: among thumbnails the current one opens out to its own shape, and the dots shrink at an end with more beyond it. The strip follows the page, a click jumps, a drag across it scrubs through, and only the current item is a Tab stop. The dialog has `role="dialog"` and `aria-modal="true"`, named by `labelFormatter` from `label` and the current image's `name`; the top bar's name and count are an `aria-live` region, and at either end the page button is `aria-disabled` rather than disabled, so focus never drops to `body`.
+- The minimap: zoomed in, the whole image sits in the bottom-right corner with the part on screen framed and the rest dimmed, in step with every pan and zoom. A press outside the frame glides there, a drag on the frame carries the view along, and Escape during the drag goes back to where it began without closing the preview. It answers only to the pointer and is hidden from assistive technology, since the arrow keys pan; it fades out when the whole image shows again, when the page turns, and when the image is rotated.
 
 ## Technologies
 
