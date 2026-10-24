@@ -1743,6 +1743,11 @@ onUnmounted(() => {
   color: #888888;
   border: 1px solid #888888;
 }
+.status-truncated {
+  background: #000000;
+  color: #ffb300;
+  border: 1px solid #ffb300;
+}
 .status-processing {
   background: #000000;
   color: #0088ff;
