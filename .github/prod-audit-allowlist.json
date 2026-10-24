@@ -12,7 +12,8 @@
     "entry allows: GHSA-2v37-7h3g-55p8 carried a verbatim copy of the neighbouring nanoid reason,",
     "which described a range that entry did not have. Nothing could see that by reading. Now the",
     "audit is asked instead.",
-    "2026-10-03: GHSA-86w9-cpqp-85rv (node-forge) and GHSA-vfj7-8cjw-p6xm (braces) entered the --prod audit with no patched release, failing every PR. Allowlisted for 30 days with traced paths; the owner approved the exception."
+    "2026-10-03: GHSA-86w9-cpqp-85rv (node-forge) and GHSA-vfj7-8cjw-p6xm (braces) entered the --prod audit with no patched release, failing every PR. Allowlisted for 30 days with traced paths; the owner approved the exception.",
+    "2026-10-24: GHSA-jr5w-w6x2-84p9 (electron) and GHSA-mrhx-c7xc-m3w5 (zod 3.25.76) entered the --prod audit with no patch on the installed lines, failing every PR alongside dompurify, body-parser and undici advisories that the same change patched. Allowlisted for 30 days with traced paths; the owner approved the exception. GHSA-vfj7-8cjw-p6xm (braces) was withdrawn on 2026-10-23 and its entry removed."
   ],
   "advisories": [
     {
@@ -78,17 +79,6 @@
         "1.4.0"
       ],
       "reason": "Reaches --prod only through listhen@1.10.0, the local HTTP(S) listener behind `nuxt dev` / `nitro dev` (it also mints the self-signed dev certificate). Traced with `pnpm why node-forge --prod`: listhen -> @nuxt/cli@3.37.0 -> nuxt, and listhen -> nitropack@2.13.4 -> @talex-touch/tuff-nexus. Not in the deployed worker: no file under nitropack/dist/runtime imports listhen; only dist/core/index.mjs and dist/cli/dev.mjs do. The advisory is RSA PKCS#1 v1.5 signature verification accepting extra nested DigestAlgorithm elements, and no runtime path verifies a signature with node-forge. No patched release exists (vulnerable <= 1.4.0, first_patched_version null). Remove this entry and upgrade when node-forge ships a fix.",
-      "owner": "#328",
-      "expires": "2026-11-02"
-    },
-    {
-      "id": "GHSA-vfj7-8cjw-p6xm",
-      "module": "braces",
-      "severity": "high",
-      "versions": [
-        "3.0.3"
-      ],
-      "reason": "Reaches --prod through two paths (`pnpm why braces --prod`): chokidar@3.6.0, a production dependency of @talex-touch/core-app used by the main-process file watchers (service/file-watch.service.ts, box-tool/file-system-watcher), and nitropack@2.13.4 -> globby@16.2.1 -> fast-glob@3.3.3 -> micromatch@4.0.8 (Nexus build-time globbing, not part of the deployed worker runtime). The advisory is stack exhaustion when expanding deeply nested brace patterns. core-app's watchers watch directories the app indexes on the user's own machine and filter with an ignore function, not attacker-supplied brace globs; nitropack expands patterns from its own config at build time. No patched release exists (vulnerable <= 3.0.3, first_patched_version null). Remove this entry and upgrade when braces ships a fix.",
       "owner": "#328",
       "expires": "2026-11-02"
     },
@@ -223,6 +213,28 @@
       "reason": "Upstream transitive dependency advisory for sharp; allowlisted for release parity with active audit gate.",
       "owner": "#328",
       "expires": "2026-11-09"
+    },
+    {
+      "id": "GHSA-jr5w-w6x2-84p9",
+      "module": "electron",
+      "severity": "high",
+      "versions": [
+        "41.10.7"
+      ],
+      "reason": "The runtime the packaged app ships. Reaches --prod through the root package.json's electron ^41.10.6 dependency and through @electron-toolkit/preload and @electron-toolkit/utils, production dependencies of @talex-touch/core-app that take electron as a peer (`pnpm audit --prod --json`, 3 paths). The advisory is Chromium's distrust of compromised eMudhra intermediate certificates: until the runtime moves, the app's network stack still accepts certificates chained to them. No 41.x release carries the fix (patched in 42.11.16, 43.8.1, 44.9.1 and 45.0.0-beta.6), and leaving Electron 41 is a major upgrade with its own native-module and packaging verification. Remove this entry when core-app moves to a patched major.",
+      "owner": "#328",
+      "expires": "2026-11-23"
+    },
+    {
+      "id": "GHSA-mrhx-c7xc-m3w5",
+      "module": "zod",
+      "severity": "high",
+      "versions": [
+        "3.25.76"
+      ],
+      "reason": "LangChain 0.3's own copy. Reaches --prod only through @langchain/core@0.3.80 and @langchain/langgraph@0.4.9 (zod ^3.25.32) and @langchain/openai@0.4.9 (zod ^3.22.4), with @langchain/anthropic reaching it through @langchain/core; production dependencies of apps/core-app, apps/nexus and packages/tuff-intelligence (`pnpm audit --prod --json`, 34 paths). LangChain validates tool arguments and structured output with it, so an oversized collection would have to come from the configured model provider's response, in core-app's main process, packages/tuff-intelligence or Nexus's server/utils/tuffIntelligenceLangChainProviderAdapters.ts. The advisory is memory exhaustion while validating oversized constrained collections. No 3.x release is patched (vulnerable < 4.6.6); the zod 4 copy moved to 4.6.6 in the same change. Remove this entry when LangChain moves to a release that runs on zod 4.",
+      "owner": "#328",
+      "expires": "2026-11-23"
     }
   ]
 }
