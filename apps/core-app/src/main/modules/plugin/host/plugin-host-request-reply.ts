@@ -5,6 +5,7 @@ import {
   PluginHostCapabilityError,
   type PluginHostCapabilityDefinition
 } from './plugin-host-capabilities'
+import { isPrivilegedPluginFor } from '../../../../shared/privileged-plugins'
 
 export const PLUGIN_CHANNEL_OPERATION_IDS = Object.freeze([
   'auth.session.get-state',
@@ -71,6 +72,17 @@ const QUICK_OPS_PERMISSION_REQUIREMENTS = Object.freeze<
   'common-directory.get': Object.freeze(['fs.read']),
   'developer-preview.get': Object.freeze(['fs.read', 'clipboard.read']),
   'developer-preview.save': Object.freeze(['fs.write', 'clipboard.write'])
+})
+
+const CHANNEL_PERMISSION_REQUIREMENTS = Object.freeze<
+  Record<PluginChannelOperationId, readonly string[]>
+>({
+  // Who is signed in is account data, so it takes the account permission rather than network access.
+  'auth.session.get-state': Object.freeze(['account.read']),
+  'snippets.cloud.list': Object.freeze(['network.internet']),
+  'snippets.cloud.publish': Object.freeze(['network.internet']),
+  'snippets.cloud.download': Object.freeze(['network.internet']),
+  'snippets.cloud.install': Object.freeze(['network.internet'])
 })
 
 export interface PluginHostNexusRequest {
@@ -1067,14 +1079,19 @@ export function createPluginRequestReplyCapabilities(
     return current
   }
 
-  const invokeAuthorizedQuickOps = async (
+  /**
+   * Runs one operation under the permissions it needs, aborting it if any of them is revoked
+   * mid-call. A result that `isCommitted` says has already taken effect is returned even then.
+   */
+  const invokeWithPermissions = async (
     activation: PluginActivationIdentity,
-    envelope: ReturnType<typeof validateQuickOpsRequest>,
-    signal: AbortSignal
+    permissions: readonly string[],
+    signal: AbortSignal,
+    run: (signal: AbortSignal) => unknown,
+    isCommitted: (data: unknown) => boolean = () => false
   ): Promise<unknown> => {
-    const permissions = QUICK_OPS_PERMISSION_REQUIREMENTS[envelope.operation] ?? []
     if (permissions.length === 0) {
-      return await quickOpsInvoke.call(quickOps, envelope.operation, envelope.payload, signal)
+      return await run(signal)
     }
 
     const controller = new AbortController()
@@ -1116,19 +1133,10 @@ export function createPluginRequestReplyCapabilities(
       }
 
       try {
-        const data = await quickOpsInvoke.call(
-          quickOps,
-          envelope.operation,
-          envelope.payload,
-          controller.signal
-        )
-        const committed =
-          envelope.operation === 'developer-preview.save' &&
-          data !== null &&
-          typeof data === 'object' &&
-          !utilTypes.isProxy(data) &&
-          Object.getOwnPropertyDescriptor(data, 'state')?.value === 'saved'
-        if (controller.signal.aborted && !committed) throw new PluginHostCapabilityError(abortCode)
+        const data = await run(controller.signal)
+        if (controller.signal.aborted && !isCommitted(data)) {
+          throw new PluginHostCapabilityError(abortCode)
+        }
         return data
       } catch (error) {
         if (controller.signal.aborted) throw new PluginHostCapabilityError(abortCode)
@@ -1149,40 +1157,48 @@ export function createPluginRequestReplyCapabilities(
   const definitions: PluginHostCapabilityDefinition[] = [
     freezeDefinition({
       id: 'channel.invoke',
-      permission: 'network.internet',
       timeoutMs: 30_000,
       maxConcurrency: 8,
       validateRequest: validateChannelRequest,
       validateResult: validateChannelResult,
       async invoke(context, request, signal) {
-        assertAuthority(context)
+        const activation = assertAuthority(context)
         const envelope = request as ReturnType<typeof validateChannelRequest>
-        let data: unknown
-        switch (envelope.operation) {
-          case 'auth.session.get-state':
-            data = authState.call(rawOptions)
-            break
-          case 'snippets.cloud.list':
-            data = await listSnippets.call(nexus, envelope.payload, signal)
-            break
-          case 'snippets.cloud.publish':
-            data = await publishSnippets.call(nexus, envelope.payload, signal)
-            break
-          case 'snippets.cloud.download':
-            data = await downloadSnippet.call(
-              nexus,
-              (envelope.payload as { packageId: string }).packageId,
-              signal
-            )
-            break
-          case 'snippets.cloud.install':
-            data = await installSnippet.call(
-              nexus,
-              (envelope.payload as { packageId: string }).packageId,
-              signal
-            )
-            break
+        // Publishing is the one operation signed with the account's credential, so it is not
+        // something `network.internet` alone can grant to any plugin that declares it.
+        if (
+          envelope.operation === 'snippets.cloud.publish' &&
+          !isPrivilegedPluginFor('snippetsCloudPublish', activation.name)
+        ) {
+          throw new PluginHostCapabilityError('PLUGIN_HOST_CAPABILITY_PERMISSION_DENIED')
         }
+        const data = await invokeWithPermissions(
+          activation,
+          CHANNEL_PERMISSION_REQUIREMENTS[envelope.operation],
+          signal,
+          async (callSignal) => {
+            switch (envelope.operation) {
+              case 'auth.session.get-state':
+                return authState.call(rawOptions)
+              case 'snippets.cloud.list':
+                return await listSnippets.call(nexus, envelope.payload, callSignal)
+              case 'snippets.cloud.publish':
+                return await publishSnippets.call(nexus, envelope.payload, callSignal)
+              case 'snippets.cloud.download':
+                return await downloadSnippet.call(
+                  nexus,
+                  (envelope.payload as { packageId: string }).packageId,
+                  callSignal
+                )
+              case 'snippets.cloud.install':
+                return await installSnippet.call(
+                  nexus,
+                  (envelope.payload as { packageId: string }).packageId,
+                  callSignal
+                )
+            }
+          }
+        )
         return { operation: envelope.operation, payload: data }
       }
     }),
@@ -1196,7 +1212,19 @@ export function createPluginRequestReplyCapabilities(
       async invoke(context, request, signal) {
         const activation = assertAuthority(context)
         const envelope = request as ReturnType<typeof validateQuickOpsRequest>
-        const data = await invokeAuthorizedQuickOps(activation, envelope, signal)
+        const data = await invokeWithPermissions(
+          activation,
+          QUICK_OPS_PERMISSION_REQUIREMENTS[envelope.operation] ?? [],
+          signal,
+          (callSignal) =>
+            quickOpsInvoke.call(quickOps, envelope.operation, envelope.payload, callSignal),
+          (result) =>
+            envelope.operation === 'developer-preview.save' &&
+            result !== null &&
+            typeof result === 'object' &&
+            !utilTypes.isProxy(result) &&
+            Object.getOwnPropertyDescriptor(result, 'state')?.value === 'saved'
+        )
         return { operation: envelope.operation, payload: data }
       }
     }),

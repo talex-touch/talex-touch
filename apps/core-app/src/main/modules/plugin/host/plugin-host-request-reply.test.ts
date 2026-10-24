@@ -89,6 +89,7 @@ function createNexusHarness(responseFor: (request: PluginHostNexusRequest) => un
 
 function createRegistry(
   options: {
+    activation?: PluginActivationIdentity
     current?: PluginActivationIdentity
     authorize?: (pluginName: string, permissionId: string) => boolean
     watchPermissionRevoked?: (
@@ -107,6 +108,7 @@ function createRegistry(
     ) => unknown
   } = {}
 ) {
+  const identity = options.activation ?? activation
   const nexus = createNexusHarness(
     options.nexusResponse ??
       ((request) => {
@@ -118,7 +120,7 @@ function createRegistry(
       })
   )
   const capabilities = createPluginRequestReplyCapabilities({
-    resolveCurrentActivation: () => options.current ?? activation,
+    resolveCurrentActivation: () => options.current ?? identity,
     resolveHostGeneration: () => owner.hostGeneration,
     authorizeCapability: options.authorize ?? (() => true),
     watchPermissionRevoked: options.watchPermissionRevoked ?? (() => () => undefined),
@@ -139,8 +141,8 @@ function createRegistry(
   })
   const registry = new PluginHostCapabilityRegistry({
     owner,
-    activation,
-    resolveCurrentActivation: () => options.current ?? activation,
+    activation: identity,
+    resolveCurrentActivation: () => options.current ?? identity,
     authorize: options.authorize ?? (() => true),
     watchPermissionRevoked: () => () => undefined,
     onFatalViolation: () => undefined
@@ -156,7 +158,7 @@ describe('plugin host fixed request/reply capabilities', () => {
     expect(
       capabilities.definitions.map((definition) => [definition.id, definition.permission])
     ).toEqual([
-      ['channel.invoke', 'network.internet'],
+      ['channel.invoke', undefined],
       ['quick-ops.invoke', undefined],
       ['flow.invoke', 'storage.shared']
     ])
@@ -221,6 +223,71 @@ describe('plugin host fixed request/reply capabilities', () => {
         })
       )
     ).not.toMatch(/host-only-token|authorization|cookie|api.?key/i)
+  })
+
+  it('checks each channel operation against its own permission', async () => {
+    const authorize = vi.fn(
+      (_pluginName: string, permissionId: string) => permissionId !== 'network.internet'
+    )
+    const offline = createRegistry({ authorize })
+
+    await expect(
+      offline.registry.dispatch('channel.invoke', {
+        operation: 'auth.session.get-state',
+        payload: null
+      })
+    ).resolves.toMatchObject({ operation: 'auth.session.get-state' })
+    expect(authorize).toHaveBeenCalledWith('touch-snippets', 'account.read')
+    expect(authorize).not.toHaveBeenCalledWith('touch-snippets', 'network.internet')
+
+    await expect(
+      offline.registry.dispatch('channel.invoke', {
+        operation: 'snippets.cloud.list',
+        payload: { limit: 10 }
+      })
+    ).rejects.toMatchObject({ code: 'PLUGIN_HOST_CAPABILITY_PERMISSION_DENIED' })
+    expect(offline.nexus.requestPinned).not.toHaveBeenCalled()
+
+    const authState = vi.fn()
+    const signedOut = createRegistry({
+      authorize: (_pluginName, permissionId) => permissionId !== 'account.read',
+      authState
+    })
+    await expect(
+      signedOut.registry.dispatch('channel.invoke', {
+        operation: 'auth.session.get-state',
+        payload: null
+      })
+    ).rejects.toMatchObject({ code: 'PLUGIN_HOST_CAPABILITY_PERMISSION_DENIED' })
+    expect(authState).not.toHaveBeenCalled()
+  })
+
+  it('publishes with the account credential only for the bundled snippets plugin', async () => {
+    const other = createRegistry({
+      activation: {
+        name: 'community-snippets',
+        pluginInstanceId: 'community-instance',
+        activationGeneration: 1,
+        key: 'community-key'
+      }
+    })
+
+    await expect(
+      other.registry.dispatch('channel.invoke', {
+        operation: 'snippets.cloud.publish',
+        payload: { pack: contentPackage.contentInline, visibility: 'public' }
+      })
+    ).rejects.toMatchObject({ code: 'PLUGIN_HOST_CAPABILITY_PERMISSION_DENIED' })
+    expect(other.nexus.requestPinned).not.toHaveBeenCalled()
+
+    // The anonymous operations stay open to it under network.internet.
+    await expect(
+      other.registry.dispatch('channel.invoke', {
+        operation: 'snippets.cloud.list',
+        payload: { limit: 10 }
+      })
+    ).resolves.toMatchObject({ operation: 'snippets.cloud.list' })
+    expect(other.nexus.requests[0]?.headers).not.toHaveProperty('authorization')
   })
 
   it('accepts only strict IPv4 or parsed IPv6 resolver results before pinned requests', async () => {

@@ -54,7 +54,9 @@ export const PRIVILEGED_PLUGIN_CAPABILITIES = {
   /** Converts only lifecycle-approved image inputs through the bounded host renderer. */
   imageTools: ['touch-image'],
   /** Reaches the intelligence providers for translation requests. */
-  translation: ['touch-translation']
+  translation: ['touch-translation'],
+  /** Publishes snippet packs to Nexus, signed with the signed-in account's credential. */
+  snippetsCloudPublish: ['touch-snippets']
 } as const satisfies Record<string, readonly string[]>
 
 export type PrivilegedPluginCapability = keyof typeof PRIVILEGED_PLUGIN_CAPABILITIES
