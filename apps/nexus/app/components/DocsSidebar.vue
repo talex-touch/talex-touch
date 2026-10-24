@@ -516,6 +516,7 @@ const SECTION_ORDER: Record<string, string[]> = {
     '/docs/guide/features/plugin-ecosystem',
     '/docs/guide/features/store',
     '/docs/guide/features/preview',
+    '/docs/guide/features/search-freshness-benchmark',
     '/docs/guide/features/wallpaper',
   ],
   '/docs/guide/scenes': ['/docs/guide/scenes/student', '/docs/guide/scenes/creator', '/docs/guide/scenes/developer'],
