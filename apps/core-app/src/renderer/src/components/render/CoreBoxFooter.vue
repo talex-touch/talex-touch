@@ -1,8 +1,10 @@
 <script lang="ts" name="CoreBoxFooter" setup>
 import type { IProviderActivate, ITuffIcon, TuffFooterHints, TuffItem } from '@talex-touch/utils'
-import { useDebounce } from '@vueuse/core'
+import { useDebounce, useElementSize, useResizeObserver } from '@vueuse/core'
 import { normalizeCoreBoxQuickSelectAction } from '@talex-touch/utils/common/storage/entity/app-settings'
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { useTuffTransport } from '@talex-touch/utils/transport'
+import { CoreBoxEvents } from '@talex-touch/utils/transport/events'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DefaultIcon from '~/assets/svg/EmptyAppPlaceholder.svg'
 import { TxIcon as TuffIcon } from '@talex-touch/tuffex/icon'
@@ -10,6 +12,7 @@ import { useFileIndexMonitor } from '~/composables/useFileIndexMonitor'
 import { useCoreBoxFooterFeedback } from '~/modules/box/meta-actions/footer-feedback'
 import { useRendererPlatform } from '~/modules/platform/renderer-platform'
 import { appSetting } from '~/modules/storage/app-storage'
+import { uiPreferenceStorage } from '~/modules/storage/ui-preference-storage'
 import CoreBoxActionFeedback from './CoreBoxActionFeedback.vue'
 import { resolveCoreBoxFooterTitle } from './coreBoxFooterDisplay'
 import {
@@ -38,10 +41,12 @@ const props = withDefaults(
     isRecommendation?: boolean
     /** The preview pane is showing a file, including its delayed close. */
     previewVisible?: boolean
+    /** Something is open in the pane beside the results (a preview or a plugin's detail). */
+    sidePaneVisible?: boolean
     /** CoreBox's motion gate (`shouldAnimate()`): false lands an action's outcome in place. */
     animated?: boolean
   }>(),
-  { animated: true, previewVisible: false }
+  { animated: true, previewVisible: false, sidePaneVisible: false }
 )
 
 const displayValue = computed(() => props.display)
@@ -165,7 +170,10 @@ const quickSelectVisible = computed(() => {
   )
 })
 
-const keyHints = computed(() => {
+type FooterHintId = 'primary' | 'meta' | 'quick'
+
+/** Every hint the item offers, before the footer decides which of them fit. */
+const candidateHints = computed(() => {
   // The digits run the numbered result or only move onto it — the setting decides, so the hint has
   // to name what the key does now; a fixed label teaches half the profiles the wrong gesture.
   const quickSelectLabelKey =
@@ -177,37 +185,102 @@ const keyHints = computed(() => {
   const aiHotkey = isMac.value ? '⌘K' : 'Ctrl+K'
   const quickSelectHotkey = isMac.value ? '⌘1-0' : 'Alt+1-0'
 
-  const hints: Array<{ key: string; label: string; visible: boolean }> = []
+  const hints: Array<{ id: FooterHintId; key: string; label: string }> = []
 
   // 主操作（回车）
   if (primaryVisible.value && !props.previewVisible) {
-    hints.push({ key: '↵', label: primaryActionLabel.value, visible: true })
+    hints.push({ id: 'primary', key: '↵', label: primaryActionLabel.value })
   }
 
   // 辅助操作（Meta+K）- 操作面板
   if (secondaryVisible.value) {
-    hints.push({
-      key: aiHotkey,
-      label: secondaryLabel.value,
-      visible: true
-    })
+    hints.push({ id: 'meta', key: aiHotkey, label: secondaryLabel.value })
   }
 
   // 快速选择（Meta+1-0）
   if (quickSelectVisible.value && !props.previewVisible) {
     hints.push({
+      id: 'quick',
       key: quickSelectHotkey,
-      label: quickSelectLabel === quickSelectLabelKey ? 'Quick Execute' : quickSelectLabel,
-      visible: true
+      label: quickSelectLabel === quickSelectLabelKey ? 'Quick Execute' : quickSelectLabel
     })
   }
 
   return hints
 })
+
+// --- Fitting the hints ---
+// When the bar is too narrow for every hint, the ones the user needs least go first: ⌘K once they
+// have opened the panel (they know the key), ⌘1-0 first while the side pane is open (the numbered
+// rows sit right beside it). ↵ goes last; the item itself keeps at least FOOTER_INFO_MIN_WIDTH.
+const META_PANEL_LEARNED_KEY = 'corebox.footer.metaPanelLearned'
+const FOOTER_PADDING_X = 24 // px-3 on both sides
+const FOOTER_GAP = 12 // gap-3 between the item and the hints
+const FOOTER_HINT_GAP = 12 // `.FooterHints` gap
+const FOOTER_INFO_MIN_WIDTH = 96 // the item's icon and a few characters of its title
+
+const metaPanelLearned = shallowRef(
+  uiPreferenceStorage.getJson<boolean>(META_PANEL_LEARNED_KEY) === true
+)
+const disposeMetaPanelState = useTuffTransport().on(
+  CoreBoxEvents.metaOverlay.panelState,
+  (state) => {
+    if (state?.visible !== true || metaPanelLearned.value) return
+    metaPanelLearned.value = true
+    uiPreferenceStorage.setJson(META_PANEL_LEARNED_KEY, true)
+  }
+)
+onBeforeUnmount(disposeMetaPanelState)
+
+const footerRoot = ref<HTMLElement | null>(null)
+const hintMeasure = ref<HTMLElement | null>(null)
+const { width: footerWidth } = useElementSize(footerRoot)
+const hintWidths = shallowRef<Partial<Record<FooterHintId, number>>>({})
+
+// Every candidate is laid out once, out of sight, so a dropped hint still has a width to come back
+// with; the observer re-measures when a label or the platform's key names change it.
+function measureHints(): void {
+  const widths: Partial<Record<FooterHintId, number>> = {}
+  hintMeasure.value?.querySelectorAll<HTMLElement>('[data-hint-id]').forEach((node) => {
+    widths[node.dataset.hintId as FooterHintId] = node.getBoundingClientRect().width
+  })
+  hintWidths.value = widths
+}
+useResizeObserver(hintMeasure, measureHints)
+
+const hintDropOrder = computed<FooterHintId[]>(() => {
+  if (props.sidePaneVisible) return ['quick', 'meta', 'primary']
+  return metaPanelLearned.value ? ['meta', 'quick', 'primary'] : ['quick', 'meta', 'primary']
+})
+
+const keyHints = computed(() => {
+  // An action's outcome takes the footer: the hints step aside so its words have the room, and come
+  // back (through `footer-hint`) once it clears.
+  if (shownFeedback.value) return []
+
+  const hints = candidateHints.value
+  const widths = hintWidths.value
+  // Not laid out yet: show them all rather than guess.
+  if (!footerWidth.value || hints.some((hint) => widths[hint.id] === undefined)) return hints
+
+  const available = footerWidth.value - FOOTER_PADDING_X - FOOTER_GAP - FOOTER_INFO_MIN_WIDTH
+  const kept = new Set(hints.map((hint) => hint.id))
+  const usedWidth = (): number => {
+    const shown = hints.filter((hint) => kept.has(hint.id))
+    const sum = shown.reduce((total, hint) => total + (widths[hint.id] ?? 0), 0)
+    return sum + Math.max(0, shown.length - 1) * FOOTER_HINT_GAP
+  }
+  for (const id of hintDropOrder.value) {
+    if (usedWidth() <= available) break
+    kept.delete(id)
+  }
+  return hints.filter((hint) => kept.has(hint.id))
+})
 </script>
 
 <template>
   <div
+    ref="footerRoot"
     :class="{ display: onScreen }"
     class="CoreBoxFooter transition-cubic fake-background flex-shrink-0 absolute overflow-hidden z-0 flex items-center justify-between gap-3 h-44px px-3 border-t border-[var(--tx-border-color-lighter)] bg-transparent text-12px text-[color:var(--tx-text-color-secondary)]"
   >
@@ -257,7 +330,11 @@ const keyHints = computed(() => {
     </div>
     <TransitionGroup name="footer-hint" tag="div" class="FooterHints" :css="animated">
       <!-- Show indexing label on the right when search results are visible -->
-      <span v-if="isIndexing && debouncedDisplay" key="indexing" class="IndexingHint">
+      <span
+        v-if="isIndexing && debouncedDisplay && !shownFeedback"
+        key="indexing"
+        class="IndexingHint"
+      >
         <span class="IndexingDot" />
         <span>{{ indexingLabel }}</span>
       </span>
@@ -266,6 +343,13 @@ const keyHints = computed(() => {
         <span class="HintLabel">{{ hint.label }}</span>
       </div>
     </TransitionGroup>
+    <!-- Every candidate hint, laid out out of sight so `keyHints` knows what fits. -->
+    <div ref="hintMeasure" class="FooterHintMeasure" aria-hidden="true">
+      <div v-for="hint in candidateHints" :key="hint.id" :data-hint-id="hint.id" class="FooterHint">
+        <span class="HintKey">{{ hint.key }}</span>
+        <span class="HintLabel">{{ hint.label }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -329,6 +413,17 @@ const keyHints = computed(() => {
   position: relative;
   align-items: center;
   gap: 12px;
+}
+
+// Out of sight and out of the footer's flow: it only gives each candidate hint a width.
+.FooterHintMeasure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 12px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .IndexingDot {

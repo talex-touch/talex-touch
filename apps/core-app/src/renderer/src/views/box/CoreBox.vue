@@ -1469,6 +1469,7 @@ const customCss = computed(() => {
             :result-count="res.length"
             :is-recommendation="!searchVal && !activeActivations?.length"
             :preview-visible="addonType === 'preview' && !isWidgetMode"
+            :side-pane-visible="hasPreview && !isWidgetMode"
             :animated="shouldAnimate()"
             :class="[
               'CoreBoxFooter-Sticky',

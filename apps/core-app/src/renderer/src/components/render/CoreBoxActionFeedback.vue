@@ -47,10 +47,10 @@ const isError = computed(() => props.feedback.tone === 'error')
 </template>
 
 <style scoped lang="scss">
-// Over the footer's left half, the full height of the bar, so the wash rises out of the footer's
-// own edge. The footer (`.CoreBoxFooter-Sticky`) is positioned, so it is the containing block. Out
-// of the footer's flow, the hints on the right stay where they are; and it takes no pointer, since
-// nothing it covers is a control and a leaving hint must not catch a click.
+// Across the whole footer, the full height of the bar, so the wash rises out of the footer's own
+// edge. The footer (`.CoreBoxFooter-Sticky`) is positioned, so it is the containing block. The
+// footer drops its key hints while an outcome shows, so the words get the full width. It takes no
+// pointer, since nothing it covers is a control and a leaving hint must not catch a click.
 .CoreBoxActionFeedback.is-footer {
   --tx-status-hint-radius: 0;
   // The footer's `px-3`: the glyph lines up with the item icon it stands in for.
@@ -59,7 +59,7 @@ const isError = computed(() => props.feedback.tone === 'error')
   position: absolute;
   inset-block: 0;
   inset-inline-start: 0;
-  width: 50%;
+  inset-inline-end: 0;
   pointer-events: none;
 }
 
