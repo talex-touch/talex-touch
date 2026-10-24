@@ -92,6 +92,7 @@ code: |
 
 - Copying never reveals the value.
 - The masked container is a `role="button"` (it holds buttons, so it can't be a `<button>`) with its own `tabindex`, `aria-label` (`<label>, masked.`), and `aria-describedby`; while masked, the `<input>` is `aria-hidden` with `tabindex="-1"`.
+- Inside a `TxFormItem`, the input takes the item's id; without `label`, the item's label becomes the accessible name, `aria-describedby` adds the item's message, and the field turns red while the item shows an error. The form's `disabled` applies too, and a default `size` takes the form's.
 - A `role="status" aria-live="polite"` region announces `Value hidden` and `Copied to clipboard`.
 - Clicking the `<label>` reveals instead of forwarding focus.
 - `autocomplete="off"` and `data-1p-ignore` / `data-lpignore` keep password-manager overlays off the field.

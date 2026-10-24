@@ -158,6 +158,7 @@ code: |
 - `indeterminate` sets `aria-checked="mixed"`, which is what tells checked from mixed while loading, since both look the same.
 - `disabled` and `loading` both set the native `disabled` attribute; `loading` also sets `aria-busy="true"`.
 - With visible text, no `aria-label` is rendered.
+- Inside a `TxFormItem`, the item's label names the checkbox through `for`; a checkbox with text of its own uses `aria-labelledby` to name both. The form's `disabled` applies too.
 - Under reduced motion, the loading ring stops spinning.
 
 ## Technologies

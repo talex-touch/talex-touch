@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TxRadioGroupProps, TxRadioIndicatorVariant, TxRadioValue } from './types'
 import { computed, provide, ref, shallowRef, toRefs } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { TxGlassSurface } from '../../glass-surface'
 import { useRadioGroupIndicator } from './radio-group-indicator'
 import { useRadioGroupModel } from './radio-group-model'
@@ -25,7 +26,11 @@ const emit = defineEmits<{
   (e: 'change', v: TxRadioValue): void
 }>()
 
-const { disabled, type } = toRefs(props)
+const { type } = toRefs(props)
+
+const field = useTxFormField('group')
+const disabled = computed(() => props.disabled || !!field?.disabled)
+const fieldAttrs = computed(() => field?.attrs() ?? {})
 
 const resolvedIndicatorVariant = computed<TxRadioIndicatorVariant>(() => {
   const v = props.indicatorVariant
@@ -133,6 +138,7 @@ provide('tx-radio-group', ctx)
     class="tx-radio-group"
     role="radiogroup"
     :aria-disabled="disabled"
+    v-bind="fieldAttrs"
     :class="[
       `tx-radio-group--${type}`,
       `tx-radio-group--dir-${resolvedDirection}`,

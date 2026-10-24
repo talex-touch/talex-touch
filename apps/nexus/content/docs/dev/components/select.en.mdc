@@ -365,6 +365,7 @@ code: |
 - `searchable` filters locally only when not editable; `remote` turns local filtering off and emits `search` only while the panel is open.
 - A value passed before its options mount gets its label once they register; finite numeric strings and numbers match by numeric value.
 - The trigger is a `combobox` (`aria-haspopup="listbox"`, `aria-expanded`), the list a `listbox` (`aria-multiselectable` with `multiple`), and each option an `option` with `aria-selected`. `id` and accessible names land on the actual combobox; `class` and `style` stay on the root.
+- Inside a `TxFormItem`, a single select's input takes the id and the label's `for`; a multiple select's trigger takes the id and points at the label with `aria-labelledby`. While the item shows an error, `status` is `error`; the form's `disabled` applies too.
 
 ## Technologies
 

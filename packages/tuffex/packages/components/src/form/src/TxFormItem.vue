@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { FormItemEmits, FormItemProps, FormRule } from './types'
-import { computed, inject, onBeforeUnmount, onMounted, ref, useId } from 'vue'
-import { TX_FORM_CONTEXT_KEY } from './context'
+import type { FormItemEmits, FormItemProps } from './types'
+import { ref } from 'vue'
+import { useFormItem } from './use-form-item'
 
 defineOptions({ name: 'TxFormItem' })
 
@@ -14,208 +14,263 @@ const props = withDefaults(defineProps<FormItemProps>(), {
 
 const emit = defineEmits<FormItemEmits>()
 
-const form = inject(TX_FORM_CONTEXT_KEY, null)
-const errorMessage = ref('')
-const initialValue = ref<any>(undefined)
-const fieldId = useId()
-const errorId = useId()
+const rootRef = ref<HTMLElement | null>(null)
 
-const fieldValue = computed(() => {
-  const model = form?.model.value
-  if (!model || !props.prop)
-    return undefined
-  return model[props.prop]
-})
-
-const resolvedRules = computed<FormRule[]>(() => {
-  const local = props.rules
-  const fromForm = props.prop ? form?.rules.value?.[props.prop] : undefined
-  const merged = local ?? fromForm
-  if (!merged)
-    return []
-  return Array.isArray(merged) ? merged : [merged]
-})
-
-/**
- * `required` is honoured inside runRule, but runRule is only reachable from the
- * rule loop — so an item declaring `required` with no rules had nothing to
- * iterate and validated as passing while still rendering the required marker.
- */
-const effectiveRules = computed<FormRule[]>(() => {
-  const rules = resolvedRules.value
-  if (rules.length === 0 && props.required)
-    return [{ required: true }]
-  return rules
-})
-
-const isRequired = computed(() => {
-  if (props.required)
-    return true
-  return resolvedRules.value.some(rule => rule.required)
-})
-
-const labelText = computed(() => props.label || props.prop || '')
-
-// Exposed so a slotted control can wire full labelling:
-//   <TxFormItem #default="{ id, ariaInvalid, ariaDescribedby }">
-//     <input :id="id" :aria-invalid="ariaInvalid" :aria-describedby="ariaDescribedby">
-const fieldSlotProps = computed(() => ({
-  id: fieldId,
-  ariaInvalid: errorMessage.value ? 'true' : undefined,
-  ariaDescribedby: errorMessage.value ? errorId : undefined,
-}))
-
-function isEmpty(value: any): boolean {
-  if (value === null || value === undefined || value === '')
-    return true
-  if (Array.isArray(value))
-    return value.length === 0
-  return false
-}
-
-async function runRule(rule: FormRule): Promise<string | null> {
-  const value = fieldValue.value
-  const message = rule.message || `${labelText.value || 'Field'} is invalid`
-
-  if (rule.required || props.required) {
-    if (isEmpty(value))
-      return rule.message || `${labelText.value || 'Field'} is required`
-  }
-
-  if (rule.validator) {
-    const result = await rule.validator(value, rule, form?.model.value ?? {})
-    if (result === false)
-      return message
-    if (typeof result === 'string')
-      return result
-  }
-
-  return null
-}
-
-async function validate(): Promise<boolean> {
-  for (const rule of effectiveRules.value) {
-    const message = await runRule(rule)
-    if (message) {
-      errorMessage.value = message
-      emit('validate', false)
-      return false
-    }
-  }
-  errorMessage.value = ''
-  emit('validate', true)
-  return true
-}
-
-function clearValidate() {
-  errorMessage.value = ''
-}
-
-function reset() {
-  const model = form?.model.value
-  if (model && props.prop)
-    model[props.prop] = initialValue.value
-  clearValidate()
-}
-
-const itemContext = { prop: props.prop, validate, reset, clearValidate }
-
-const labelStyle = computed(() => {
-  if (form?.labelPosition.value === 'top')
-    return {}
-  const width = form?.labelWidth.value
-  if (!width)
-    return {}
-  return {
-    width: typeof width === 'number' ? `${width}px` : width,
-  }
-})
-
-onMounted(() => {
-  const model = form?.model.value
-  if (model && props.prop)
-    initialValue.value = model[props.prop]
-  form?.registerItem(itemContext)
-})
-
-onBeforeUnmount(() => {
-  form?.unregisterItem(itemContext)
+const {
+  labelId,
+  messageId,
+  labelFor,
+  messages,
+  note,
+  notePrefix,
+  invalid,
+  required,
+  markRequired,
+  markOptional,
+  layout,
+  labelAlign,
+  slotProps,
+  onFocusout,
+} = useFormItem({
+  prop: () => props.prop,
+  label: () => props.label,
+  rules: () => props.rules,
+  required: () => props.required,
+  help: () => props.help,
+  showMessage: () => props.showMessage,
+  root: rootRef,
+  labelledBy: 'for',
+  onValidated: valid => emit('validate', valid),
 })
 </script>
 
 <template>
   <div
+    ref="rootRef"
     class="tx-form-item"
     :class="[
-      `tx-form-item--label-${form?.labelPosition.value ?? 'left'}`,
-      { 'is-error': !!errorMessage, 'is-required': isRequired, 'is-inline': inline },
+      `tx-form-item--${layout}`,
+      `tx-form-item--label-${labelAlign}`,
+      width ? `tx-form-item--w-${width}` : '',
+      { 'is-error': invalid, 'is-required': required, 'is-inline': inline },
     ]"
+    @focusout="onFocusout"
   >
-    <label v-if="labelText" class="tx-form-item__label" :for="fieldId" :style="labelStyle">
-      {{ labelText }}
+    <label v-if="label" :id="labelId" class="tx-form-item__label" :for="labelFor">
+      <span class="tx-form-item__label-text">{{ label }}</span>
+      <span v-if="markRequired" class="tx-form-item__required" aria-hidden="true">*</span>
+      <span v-else-if="markOptional" class="tx-form-item__optional">{{ messages.optional }}</span>
     </label>
     <div class="tx-form-item__content">
-      <slot v-bind="fieldSlotProps" />
-      <div v-if="showMessage && errorMessage" :id="errorId" class="tx-form-item__error" role="alert">
-        {{ errorMessage }}
+      <div class="tx-form-item__control">
+        <slot v-bind="slotProps" />
       </div>
+      <p
+        v-if="note"
+        :id="messageId"
+        class="tx-form-item__message"
+        :class="`tx-form-item__${note.kind}`"
+      >
+        <span v-if="notePrefix" class="tx-form-item__sr-only">{{ notePrefix }}</span>
+        <span class="tx-form-item__message-text">{{ note.text }}</span>
+      </p>
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
 .tx-form-item {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  min-width: 0;
+}
 
-  &--label-top {
-    flex-direction: column;
-    gap: 6px;
+.tx-form-item__label {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--tx-text-color-regular, #606266);
+  overflow-wrap: anywhere;
+}
+
+.tx-form-item__required {
+  color: var(--tx-color-danger, #f56c6c);
+}
+
+.tx-form-item__optional {
+  color: var(--tx-text-color-secondary, #909399);
+}
+
+.tx-form-item__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+// Tall enough for one row of controls, so a switch or a radio group lines up
+// with the label the way an input does.
+.tx-form-item__control {
+  display: block;
+  align-content: center;
+  min-width: 0;
+  min-height: var(--tx-form-control-height, 32px);
+  max-width: var(--tx-form-item-width, none);
+}
+
+.tx-form-item--w-xs {
+  --tx-form-item-width: 80px;
+}
+
+.tx-form-item--w-sm {
+  --tx-form-item-width: 160px;
+}
+
+.tx-form-item--w-md {
+  --tx-form-item-width: 240px;
+}
+
+.tx-form-item--w-lg {
+  --tx-form-item-width: 360px;
+}
+
+.tx-form-item__message {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--tx-text-color-secondary, #909399);
+}
+
+.tx-form-item__error {
+  color: var(--tx-color-danger, #f56c6c);
+}
+
+.tx-form-item__warning {
+  color: var(--tx-color-warning, #e6a23c);
+}
+
+.tx-form-item__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// --- stacked: the label above the control ---
+.tx-form-item--stacked,
+.tx-form-item--auto {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  // Only the text is the label; the empty line beside it is not.
+  .tx-form-item__label {
+    align-self: flex-start;
+    max-width: 100%;
+  }
+}
+
+// `inline` on an item: the label beside the control, centred on it.
+.tx-form-item--stacked.is-inline,
+.tx-form-item--auto.is-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+// --- side: the form's label column, shared through subgrid ---
+@mixin side {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: start;
+  // `normal` takes the form's column gap through the subgrid.
+  gap: normal;
+
+  .tx-form-item__label {
+    align-self: stretch;
+    grid-column: label;
+    // Centres the first line of the label on a single-row control.
+    padding-block: calc((var(--tx-form-control-height, 32px) - 20px) / 2);
   }
 
-  // Give the documented `labelPosition="right"` an actual effect; without this it
-  // rendered identically to the default `left`.
-  &--label-right .tx-form-item__label {
-    text-align: right;
+  .tx-form-item__content {
+    grid-column: field;
   }
 
   &.is-inline {
     align-items: center;
+
+    .tx-form-item__label {
+      padding-block: 0;
+    }
   }
 }
 
-.tx-form-item__label {
-  font-size: 13px;
-  color: var(--tx-text-color-regular, #606266);
-  min-width: 0;
-  padding-top: 6px;
+// A right-aligned label keeps its text flush with the field; the asterisk
+// moves in front of it.
+@mixin label-end {
+  .tx-form-item__label {
+    justify-content: flex-end;
+    text-align: end;
+  }
+
+  .tx-form-item__required {
+    order: -1;
+  }
 }
 
-.tx-form-item--label-top .tx-form-item__label {
-  padding-top: 0;
+.tx-form-item--side {
+  @include side;
 }
 
-.tx-form-item__content {
-  flex: 1;
-  min-width: 0;
+.tx-form-item--side.tx-form-item--label-end {
+  @include label-end;
+}
+
+@container tx-form (inline-size >= 520px) {
+  .tx-form-item--auto {
+    @include side;
+  }
+
+  .tx-form-item--auto.tx-form-item--label-end {
+    @include label-end;
+  }
+}
+
+// --- inline: items side by side in a wrapping line ---
+.tx-form-item--inline {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+  align-items: flex-start;
+  gap: 8px;
 
-.tx-form-item__error {
-  font-size: 12px;
-  color: var(--tx-color-danger, #f56c6c);
-}
+  .tx-form-item__label {
+    flex: none;
+    padding-block: calc((var(--tx-form-control-height, 32px) - 20px) / 2);
+    white-space: nowrap;
+  }
 
-.tx-form-item.is-error .tx-form-item__label {
-  color: var(--tx-color-danger, #f56c6c);
-}
+  .tx-form-item__content {
+    width: var(--tx-form-item-width, 200px);
+  }
 
-.tx-form-item.is-required .tx-form-item__label::after {
-  content: '*';
-  margin-left: 4px;
-  color: var(--tx-color-danger, #f56c6c);
+  .tx-form-item__control {
+    max-width: none;
+  }
+
+  &.tx-form-item--w-full {
+    flex: 1 1 100%;
+
+    .tx-form-item__content {
+      flex: 1;
+      width: auto;
+    }
+  }
 }
 </style>

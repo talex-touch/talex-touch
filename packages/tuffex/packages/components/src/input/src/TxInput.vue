@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { StyleValue } from 'vue'
 import { computed, ref, useAttrs } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
@@ -44,10 +45,13 @@ const emit = defineEmits<{
 }>()
 
 const attrs = useAttrs()
+const field = useTxFormField('input')
+
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
 
 const inputAttrs = computed(() => {
   const { class: _class, style: _style, ...rest } = attrs
-  return rest
+  return field ? field.attrs(rest) : rest
 })
 
 const wrapperStyle = computed(() => attrs.style as StyleValue)
@@ -70,7 +74,7 @@ const capsLockOn = ref(false)
 const morphing = useMorphWindow(isFocused, 250)
 
 const showClear = computed(() => {
-  return props.clearable && inputValue.value !== '' && inputValue.value !== null && inputValue.value !== undefined && !props.disabled && !props.readonly
+  return props.clearable && inputValue.value !== '' && inputValue.value !== null && inputValue.value !== undefined && !isDisabled.value && !props.readonly
 })
 
 const showCapsLock = computed(() => {
@@ -78,7 +82,7 @@ const showCapsLock = computed(() => {
 })
 
 function handleClear() {
-  if (props.disabled || props.readonly)
+  if (isDisabled.value || props.readonly)
     return
   inputValue.value = ''
   emit('clear')
@@ -115,8 +119,9 @@ defineExpose({
   <div
     class="tx-input fake-background" :class="[
       {
-        'is-disabled': disabled,
+        'is-disabled': isDisabled,
         'is-readonly': readonly,
+        'is-invalid': field?.invalid,
         'is-textarea': type === 'textarea',
         'is-focused': isFocused,
         'is-morphing': morphing,
@@ -134,7 +139,7 @@ defineExpose({
       ref="inputEl"
       v-model="inputValue"
       :placeholder="placeholder"
-      :disabled="disabled"
+      :disabled="isDisabled"
       :readonly="readonly"
       :rows="rows"
       class="tx-input__inner tx-input__textarea"
@@ -149,7 +154,7 @@ defineExpose({
       v-model="inputValue"
       :type="type"
       :placeholder="placeholder"
-      :disabled="disabled"
+      :disabled="isDisabled"
       :readonly="readonly"
       class="tx-input__inner"
       v-bind="inputAttrs"
@@ -217,6 +222,16 @@ defineExpose({
   &.is-focused:not(.is-disabled) {
     border-color: var(--tx-color-primary, #409eff);
     box-shadow: 0 0 0 3px var(--tx-color-primary-light-9, #ecf5ff);
+  }
+
+  // Set by a TxFormItem while it shows an error for this field.
+  &.is-invalid:not(.is-disabled) {
+    border-color: var(--tx-color-danger, #f56c6c);
+
+    &:focus-within,
+    &.is-focused {
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--tx-color-danger, #f56c6c) 15%, transparent);
+    }
   }
 
   &__icon {

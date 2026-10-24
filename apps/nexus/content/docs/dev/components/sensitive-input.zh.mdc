@@ -92,6 +92,7 @@ code: |
 
 - 复制不会揭示值。
 - 掩码容器是 `role="button"`（内含按钮，不能用 `<button>`），自带 `tabindex`、`aria-label`（`<label>, 已遮蔽。`）与 `aria-describedby`；掩码期间 `<input>` 为 `aria-hidden` 且 `tabindex="-1"`。
+- 在 `TxFormItem` 中，输入框取得表单项的 id；未传 `label` 时以表单项的 label 作为可访问名称，`aria-describedby` 并入表单项的消息，显示错误时字段变红。表单的 `disabled` 同样生效；`size` 为默认值时取表单的 `size`。
 - `role="status" aria-live="polite"` 区域播报「值已隐藏」与「已复制到剪贴板」。
 - 点击 `<label>` 直接揭示，而不是转发焦点。
 - `autocomplete="off"` 与 `data-1p-ignore` / `data-lpignore` 让密码管理器浮层避开该字段。

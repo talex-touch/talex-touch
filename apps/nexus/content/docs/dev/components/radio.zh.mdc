@@ -207,6 +207,7 @@ code: |
 ## 概述
 
 - `TxRadioGroup` 持有选中值，向子项注入样式与禁用状态，并处理键盘导航。
+- 在 `TxFormItem` 中，`TxRadioGroup` 取得 id、`aria-invalid` 与 `aria-required`，并用 `aria-labelledby` 指向表单项的 label；表单的 `disabled` 同样生效。
 - 组内点击已选中的项不派发任何事件。
 - 按钮组的指示器可横向拖动，松手后吸附并选中最近的启用项；整组禁用时忽略拖动。
 

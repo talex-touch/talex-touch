@@ -178,6 +178,7 @@ code: |
 ## 概述
 
 - 根节点是原生 `<button role="switch">`，带 `aria-checked`；有可见文案（`label` 或插槽）时不渲染 `aria-label`。
+- 在 `TxFormItem` 中，表单项的 label 经 `for` 命名开关；开关自带文案时改用 `aria-labelledby`，同时引用两者。表单的 `disabled` 同样生效；`size` 为默认值时取表单的 `size`。
 - 受控组件：切换只派发事件，父级回写 `modelValue` 后外观才更新。
 - `disabled` 与 `loading` 都设置原生 `disabled`；`loading` 不降低透明度，并设置 `aria-busy="true"`。
 - 滑块走 glide 材质：两端各乘一个弹簧，途中拉长、到位收拢；行进中再次切换会就地转向，不会从头再来。

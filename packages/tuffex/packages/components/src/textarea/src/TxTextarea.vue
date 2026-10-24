@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { StyleValue } from 'vue'
 import { computed, ref, useAttrs } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
@@ -41,15 +42,21 @@ const emit = defineEmits<{
 }>()
 
 const attrs = useAttrs()
+const field = useTxFormField('input')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const isFocused = ref(false)
+
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
+// A TxFormItem showing an error for this field turns it to the error status.
+const resolvedStatus = computed(() => (field?.invalid ? 'error' : props.status))
+
 // Focus, status and disabled changes ease the border and fill; a hover
 // repaints the border at once.
-const morphing = useMorphWindow(() => [isFocused.value, props.status, props.disabled], 200)
+const morphing = useMorphWindow(() => [isFocused.value, resolvedStatus.value, isDisabled.value], 200)
 
 const textareaAttrs = computed(() => {
   const { class: _class, style: _style, ...rest } = attrs
-  return rest
+  return field ? field.attrs(rest) : rest
 })
 
 const wrapperStyle = computed(() => attrs.style as StyleValue)
@@ -88,10 +95,10 @@ defineExpose({
   <label
     class="tx-textarea"
     :class="[
-      `tx-textarea--${status}`,
+      `tx-textarea--${resolvedStatus}`,
       `tx-textarea--resize-${resize}`,
       {
-        'is-disabled': disabled,
+        'is-disabled': isDisabled,
         'is-readonly': readonly,
         'is-focused': isFocused,
         'has-counter': showCount,
@@ -107,7 +114,7 @@ defineExpose({
       class="tx-textarea__field"
       :placeholder="placeholder"
       :rows="rows"
-      :disabled="disabled"
+      :disabled="isDisabled"
       :readonly="readonly"
       :maxlength="maxLength"
       v-bind="textareaAttrs"

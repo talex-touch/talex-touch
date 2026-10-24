@@ -75,6 +75,7 @@ code: |
 ## 概述
 
 - 外部 `class` 与 `style` 留在根节点，其余 attrs（如 `id`、`name`）透传给内部 `<textarea>`。
+- 在 `TxFormItem` 中自动取得 id、`aria-describedby`、`aria-invalid` 与 `required`，显示错误时 `status` 为 `error`；表单的 `disabled` 同样生效。显式传入的属性优先。
 
 ## 技术实现
 

@@ -1,6 +1,28 @@
+import type { FormRule } from '../../form/src/types'
 import type { TxIconSource } from '../../icon'
 
 type IconValue = TxIconSource | string | null | undefined
+
+/**
+ * Joins a block to the `TxForm` around it, the way a `TxFormItem` joins: the
+ * title names the control, a message replaces the description while one
+ * shows. Without `prop` the block stays a plain settings row.
+ *
+ * @public
+ */
+export interface BlockFormFieldProps {
+  /** Path of the field in the form's model, such as `profile.email`. */
+  prop?: string
+
+  /** Rules for this field. They replace the form's `rules` for the same path. */
+  rules?: FormRule | FormRule[]
+
+  /**
+   * Marks the field required: adds a required rule and an asterisk after the title.
+   * @default false
+   */
+  required?: boolean
+}
 
 /**
  * Props interface for the TxGroupBlock component.
@@ -123,7 +145,7 @@ export interface BlockLineEmits {
  *
  * @public
  */
-export interface BlockSlotProps {
+export interface BlockSlotProps extends BlockFormFieldProps {
   /**
    * The title text of the block slot.
    */
@@ -182,7 +204,7 @@ export interface BlockSlotEmits {
  *
  * @public
  */
-export interface BlockSwitchProps {
+export interface BlockSwitchProps extends BlockFormFieldProps {
   /**
    * The title text of the block switch.
    */
@@ -258,7 +280,7 @@ export interface BlockSwitchEmits {
  *
  * @public
  */
-export interface BlockInputProps {
+export interface BlockInputProps extends BlockFormFieldProps {
   /**
    * The title text of the block input.
    */
@@ -346,7 +368,7 @@ export interface BlockInputEmits {
  *
  * @public
  */
-export interface BlockSelectProps {
+export interface BlockSelectProps extends BlockFormFieldProps {
   /**
    * The title text of the block select.
    */

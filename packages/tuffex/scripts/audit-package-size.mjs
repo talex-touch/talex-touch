@@ -272,7 +272,17 @@ const LIMITS = {
   // reach it through style-deps (`attachment-tray, image-gallery -> image-preview`, which no
   // longer pulls in modal), and no rule repeats across sheets. Measured 877,887 B (857.31 KiB).
   // Actuals plus minimal headroom, growth from here fails.
-  fullCssBytes: 858 * 1024,
+  // 858 -> 865 the same day for TxForm's layouts and the controls that join a form item: the
+  // auto / side / stacked / inline layouts with their container query and subgrid label column,
+  // TxFormRow, TxFormErrorSummary, the message states and the width tiers (`form/style.css`
+  // 1,047 -> 7,202 B); a block row that joins a form marks itself required and shows its
+  // message in place of the description (`group-block/style.css` 9,549 -> 10,077 B); and the
+  // danger border and focus ring an input and a number input take while their item shows an
+  // error (`input/style.css` 2,892 -> 3,217 B, `number-input/style.css` 2,481 -> 2,751 B). No
+  // other sheet moved: HEAD measures 878,315 B here and this 885,593 B, exactly that growth.
+  // Checked for inlining: the new rules sit on `.tx-form*`, `.tx-block-slot*`, `.tx-input` and
+  // `.tx-number-input` selectors alone. Actuals plus minimal headroom, growth from here fails.
+  fullCssBytes: 865 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus
@@ -312,7 +322,17 @@ const pageStyleBudgets = [
   // TxButton alone reaches the anchor and surface stack, the icon, and the copy button's text
   // engine, so every page below starts from these 13 sheets.
   { label: 'button', components: ['button'], limit: 58 * 1024 },
-  { label: 'form', components: ['form', 'input', 'select', 'checkbox', 'switch', 'button', 'modal'], limit: 88 * 1024 },
+  {
+    label: 'form',
+    components: ['form', 'input', 'select', 'checkbox', 'switch', 'button', 'modal'],
+    // 88 -> 93.5 on 2026-10-23 for TxForm's layouts, in two sheets: the auto / side / stacked /
+    // inline layouts with their container query and subgrid label column, TxFormRow,
+    // TxFormErrorSummary, the message states and the width tiers (`form/style.css` 1,047 ->
+    // 7,202 B), and the danger border and focus ring an input takes while its item shows an
+    // error (`input/style.css` 2,892 -> 3,217 B). HEAD measured 88,753 B against the 90,112 B
+    // limit; this measures 95,233 B. Actuals plus minimal headroom, growth from here fails.
+    limit: 93.5 * 1024,
+  },
   { label: 'admin list', components: ['data-table', 'pagination', 'tabs', 'input', 'select', 'button', 'drawer'], limit: 135 * 1024 },
   {
     label: 'chat',

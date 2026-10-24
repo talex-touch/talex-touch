@@ -74,6 +74,9 @@ function handleClick(event: MouseEvent): void {
     :active-icon="resolvedActiveIcon"
     :active="isActive"
     :disabled="disabled || loading"
+    :prop="prop"
+    :rules="rules"
+    :required="required"
     @click="handleClick"
   >
     <template #tags>

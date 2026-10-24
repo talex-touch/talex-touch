@@ -75,6 +75,7 @@ code: |
 ## Overview
 
 - `class` and `style` stay on the root; other attrs (such as `id` and `name`) pass through to the inner `<textarea>`.
+- Inside a `TxFormItem` it takes the id, `aria-describedby`, `aria-invalid` and `required`, and its `status` turns to `error` while the item shows one; the form's `disabled` applies too. Attributes passed explicitly win.
 
 ## Technologies
 

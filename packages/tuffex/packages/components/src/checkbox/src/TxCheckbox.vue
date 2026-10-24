@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { computed, useSlots } from 'vue'
+import { computed, useId, useSlots } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
@@ -46,12 +47,29 @@ const isChecked = computed({
   },
 })
 
-const hasLabel = computed(() => Boolean(props.label) || Boolean(useSlots().default))
+// Read once in setup: the form item evaluates `hasLabel` through the field
+// kind while it renders, when `useSlots()` would return the item's slots.
+const slots = useSlots()
+const hasLabel = computed(() => Boolean(props.label) || Boolean(slots.default))
+const labelId = useId()
+
+// With text of its own, the checkbox is named by both the item's label and
+// that text; a `<label for>` would name it by the item's label alone.
+const field = useTxFormField(() => (hasLabel.value ? 'group' : 'button'))
 
 const effectiveAriaLabel = computed(() => {
-  if (hasLabel.value)
+  if (hasLabel.value || field?.labelId)
     return undefined
   return props.ariaLabel
+})
+
+const fieldAttrs = computed(() => {
+  if (!field)
+    return {}
+  const attrs = field.attrs()
+  if (hasLabel.value && field.labelId)
+    attrs['aria-labelledby'] = `${field.labelId} ${labelId}`
+  return attrs
 })
 
 // `mixed` is the only value that lets a screen reader announce a partial
@@ -60,13 +78,14 @@ const ariaChecked = computed<'mixed' | boolean>(() =>
   props.indeterminate ? 'mixed' : isChecked.value,
 )
 
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
 // Loading blocks input the same way `disabled` does, but stays a separate class
 // so the ring reads as "busy" instead of inheriting the greyed-out disabled box.
-const isBlocked = computed(() => props.disabled || props.loading)
+const isBlocked = computed(() => isDisabled.value || props.loading)
 
 // Checking, loading or disabling eases the box's fill and border; a hover
 // repaints at once.
-const morphing = useMorphWindow(() => [isChecked.value, props.indeterminate, props.disabled, props.loading], 180)
+const morphing = useMorphWindow(() => [isChecked.value, props.indeterminate, isDisabled.value, props.loading], 180)
 
 function toggle() {
   if (isBlocked.value)
@@ -84,11 +103,12 @@ function toggle() {
     :aria-busy="loading || undefined"
     :aria-label="effectiveAriaLabel"
     :disabled="isBlocked"
+    v-bind="fieldAttrs"
     class="tx-checkbox" :class="[
       {
         'is-checked': isChecked,
         'is-indeterminate': indeterminate,
-        'is-disabled': disabled,
+        'is-disabled': isDisabled,
         'is-loading': loading,
         'is-morphing': morphing,
       },
@@ -98,6 +118,7 @@ function toggle() {
   >
     <span
       v-if="(label || $slots.default) && labelPlacement === 'start'"
+      :id="labelId"
       class="tx-checkbox__label"
     >
       <slot>{{ label }}</slot>
@@ -117,7 +138,7 @@ function toggle() {
       </svg>
     </span>
 
-    <span v-if="(label || $slots.default) && labelPlacement === 'end'" class="tx-checkbox__label">
+    <span v-if="(label || $slots.default) && labelPlacement === 'end'" :id="labelId" class="tx-checkbox__label">
       <slot>{{ label }}</slot>
     </span>
   </button>

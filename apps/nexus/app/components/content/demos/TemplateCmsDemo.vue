@@ -2147,20 +2147,6 @@ onBeforeUnmount(() => {
 
 /* Editor drawer ----------------------------------------------------------- */
 
-/* With the label on top, TxFormItem's content box shrinks to its control, so
-   every field came out a different width (the title input cut its value off
-   at ~170px). Stretch the box and let the control fill it; the language
-   segmented control keeps its own width. */
-.cms-editor :deep(.tx-form-item__content) {
-  align-self: stretch;
-  width: 100%;
-}
-
-.cms-editor :deep(.tx-form-item__content > :not(.tx-flat-radio)) {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
 /* The segmented control stretches its track by default, leaving its three
    options bunched on the left of an empty bar. */
 .cms-editor :deep(.tx-flat-radio) {

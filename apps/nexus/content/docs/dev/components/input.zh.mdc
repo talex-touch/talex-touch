@@ -240,6 +240,7 @@ rows:
 - `type="number"` 非空时派发 `Number(value)`，清空时为 `''`。
 - 清空依次派发 `update:modelValue`、`input`、`clear`；禁用或只读时清空无效。
 - 外层保留 `class` / `style`，其余 attrs 透传给原生 `input` / `textarea`。
+- 在 `TxFormItem` 中自动取得 id、`aria-describedby`、`aria-invalid` 与 `required`，显示错误时边框变红；表单的 `disabled` 同样生效。显式传入的属性优先。
 
 ## 技术实现
 

@@ -365,6 +365,7 @@ code: |
 - `searchable` 只在非编辑模式下本地过滤；`remote` 关闭本地过滤，只在面板打开时派发 `search`。
 - 值先于选项传入时，选项注册后再解析显示文本；有限的数字字符串与数字按数值相等匹配。
 - 触发器是 `combobox`（`aria-haspopup="listbox"`、`aria-expanded`），列表是 `listbox`（多选时加 `aria-multiselectable`），选项是带 `aria-selected` 的 `option`。`id` 与可访问名落在实际 combobox 上，`class`、`style` 留在外层。
+- 在 `TxFormItem` 中，单选的输入框取得 id 与 label 的 `for`；多选的触发器取得 id，并用 `aria-labelledby` 指向 label。显示错误时 `status` 为 `error`，表单的 `disabled` 同样生效。
 
 ## 技术实现
 

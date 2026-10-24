@@ -2,6 +2,7 @@
 import type { StyleValue } from 'vue'
 import type { TxSelectModelValue, TxSelectOption, TxSelectOptionGroup, TxSelectOptionId, TxSelectOptionLike, TxSelectProps, TxSelectValue } from './types'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, useAttrs, useId, watch } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { useMorphWindow } from '../../../../utils/use-morph-window'
 import TxCardItem from '../../card-item/src/TxCardItem.vue'
 import TuffInput from '../../input/src/TxInput.vue'
@@ -58,16 +59,20 @@ const emit = defineEmits<{
 }>()
 
 const attrs = useAttrs()
+// A multiple select's trigger is a div, which a `<label for>` cannot name.
+const field = useTxFormField(() => (props.multiple ? 'group' : 'input'))
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
+const resolvedStatus = computed(() => (field?.invalid ? 'error' : props.status))
 
 function triggerAttrs() {
   const { class: _class, style: _style, ...controlAttrs } = attrs
-  return controlAttrs
+  return field ? field.attrs(controlAttrs) : controlAttrs
 }
 
 const isOpen = ref(false)
 // Opening and a status change ease the trigger's border; a hover repaints it
 // at once. 250ms covers TxInput's border leg, the longer of the two.
-const morphing = useMorphWindow(() => [isOpen.value, props.status], 250)
+const morphing = useMorphWindow(() => [isOpen.value, resolvedStatus.value], 250)
 const listDomId = `${useId() ?? 'tuff-select'}-list`
 const selectedLabel = ref('')
 const multiInput = ref('')
@@ -96,7 +101,7 @@ const triggerText = computed({
     if (!isEditable.value)
       return
     searchQuery.value = v
-    if (!isOpen.value && !props.disabled)
+    if (!isOpen.value && !isDisabled.value)
       isOpen.value = true
   },
 })
@@ -236,7 +241,7 @@ const hasVisibleOptions = computed(() => {
 const normalizedCreateLabel = computed(() => activeQuery.value.trim())
 
 const canCreateOption = computed(() => {
-  if (!props.allowCreate || props.disabled)
+  if (!props.allowCreate || isDisabled.value)
     return false
   const label = normalizedCreateLabel.value
   if (!label)
@@ -307,7 +312,7 @@ const currentValue = computed({
 })
 
 function toggle() {
-  if (props.disabled)
+  if (isDisabled.value)
     return
   isOpen.value = !isOpen.value
 }
@@ -325,7 +330,7 @@ function clear() {
 }
 
 function removeSelectedValue(value: TxSelectValue) {
-  if (props.disabled || !props.multiple)
+  if (isDisabled.value || !props.multiple)
     return
   currentValue.value = selectedValues.value.filter(item => !isSelectValueEqual(item, value))
 }
@@ -371,7 +376,7 @@ function moveActiveOption(delta: number): void {
 }
 
 function handleTriggerKeydown(e: KeyboardEvent): void {
-  if (props.disabled)
+  if (isDisabled.value)
     return
 
   switch (e.key) {
@@ -455,7 +460,7 @@ function createOptionFromInput() {
 
 function handleMultiInput(v: string) {
   multiInput.value = v
-  if (!isOpen.value && !props.disabled)
+  if (!isOpen.value && !isDisabled.value)
     isOpen.value = true
 }
 
@@ -530,7 +535,7 @@ function unregisterOption(id: TxSelectOptionId) {
 }
 
 function openFromFocus() {
-  if (props.disabled || !isEditable.value)
+  if (isDisabled.value || !isEditable.value)
     return
   isOpen.value = true
 }
@@ -666,7 +671,7 @@ watch(
 )
 
 watch(
-  () => props.disabled,
+  isDisabled,
   (disabled) => {
     if (disabled)
       isOpen.value = false
@@ -732,9 +737,9 @@ onBeforeUnmount(() => {
     class="tuff-select" :class="[attrs.class,
       {
         'is-open': isOpen,
-        'is-disabled': disabled,
-        'is-status-error': status === 'error',
-        'is-status-warning': status === 'warning',
+        'is-disabled': isDisabled,
+        'is-status-error': resolvedStatus === 'error',
+        'is-status-warning': resolvedStatus === 'warning',
         'is-morphing': morphing,
       },
     ]"
@@ -743,7 +748,7 @@ onBeforeUnmount(() => {
   >
     <TxPopover
       v-model="isOpen"
-      :disabled="disabled"
+      :disabled="isDisabled"
       :eager="eager"
       placement="bottom-start"
       :offset="dropdownOffset"
@@ -768,7 +773,7 @@ onBeforeUnmount(() => {
             ref="multiTriggerRef"
             v-bind="triggerAttrs()"
             class="tuff-select__multi-trigger"
-            :class="{ 'is-disabled': disabled }"
+            :class="{ 'is-disabled': isDisabled }"
             :style="multiTriggerHeight != null ? { height: `${multiTriggerHeight}px` } : undefined"
             role="combobox"
             aria-haspopup="listbox"
@@ -791,7 +796,7 @@ onBeforeUnmount(() => {
                   <span class="tuff-select__tag-label">{{ resolveTagLabel(opt.label) }}</span>
                 </slot>
                 <button
-                  v-if="!disabled"
+                  v-if="!isDisabled"
                   type="button"
                   class="tuff-select__tag-remove"
                   aria-label="Remove selected option"
@@ -812,7 +817,7 @@ onBeforeUnmount(() => {
                 class="tuff-select__multi-input"
                 :value="multiInput"
                 :placeholder="selectedOptions.length ? '' : searchPlaceholder"
-                :disabled="disabled"
+                :disabled="isDisabled"
                 @focus="isOpen = true"
                 @input="handleMultiInput(($event.target as HTMLInputElement).value)"
                 @keydown="handleMultiInputKeydown"
@@ -825,7 +830,7 @@ onBeforeUnmount(() => {
                 class="tuff-select__multi-input"
                 :value="multiInput"
                 :placeholder="placeholder"
-                :disabled="disabled"
+                :disabled="isDisabled"
                 @focus="isOpen = true"
                 @input="handleMultiInput(($event.target as HTMLInputElement).value)"
                 @keydown="handleMultiInputKeydown"
@@ -845,7 +850,7 @@ onBeforeUnmount(() => {
             v-bind="triggerAttrs()"
             :placeholder="placeholder"
             :readonly="!isEditable"
-            :disabled="disabled"
+            :disabled="isDisabled"
             role="combobox"
             aria-haspopup="listbox"
             :aria-expanded="isOpen"

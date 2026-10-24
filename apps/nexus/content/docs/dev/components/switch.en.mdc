@@ -178,6 +178,7 @@ code: |
 ## Overview
 
 - The root is a native `<button role="switch">` with `aria-checked`; with visible text (`label` or the slot), no `aria-label` is rendered.
+- Inside a `TxFormItem`, the item's label names the switch through `for`; a switch with text of its own uses `aria-labelledby` to name both. The form's `disabled` applies too, and a default `size` takes the form's.
 - It is controlled: a toggle only emits, and the switch updates once the parent writes `modelValue` back.
 - `disabled` and `loading` both set the native `disabled` attribute; `loading` keeps full opacity and sets `aria-busy="true"`.
 - The thumb travels on the glide material: each end rides its own spring, so it stretches on the way and gathers as it lands; toggling mid-flight turns it around instead of restarting.

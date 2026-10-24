@@ -240,6 +240,7 @@ rows:
 - `type="number"` emits `Number(value)` for non-empty input and `''` when cleared.
 - Clearing emits `update:modelValue`, `input`, then `clear`; it is a no-op when disabled or readonly.
 - `class` / `style` stay on the wrapper; all other attrs go to the native `input` / `textarea`.
+- Inside a `TxFormItem` it takes the id, `aria-describedby`, `aria-invalid` and `required`, and draws a red border while the item shows an error; the form's `disabled` applies too. Attributes passed explicitly win.
 
 ## Technologies
 

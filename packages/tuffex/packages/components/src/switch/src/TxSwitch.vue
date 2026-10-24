@@ -1,6 +1,8 @@
 <script lang="ts" setup>
+import type { FormControlSize } from '../../../../utils/form-field'
 import type { JellyRect } from '../../../../utils/use-jelly-indicator'
-import { computed, nextTick, onMounted, ref, useSlots, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useId, useSlots, watch } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { useJellyIndicator } from '../../../../utils/use-jelly-indicator'
 import { springSteps } from '../../liquid/src/spring'
 import { TxTextTransformer } from '../../text-transformer'
@@ -48,18 +50,39 @@ const isActive = computed({
   set: (val: boolean) => emit('update:modelValue', val),
 })
 
+const hasLabel = computed(() => Boolean(props.label) || Boolean(slots.default))
+const labelId = useId()
+
+// With text of its own, the switch is named by both the item's label and that
+// text; a `<label for>` would name it by the item's label alone.
+const field = useTxFormField(() => (hasLabel.value ? 'group' : 'button'))
+
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
 // Loading blocks input the same way `disabled` does, but stays a separate class
 // so the ring indicator reads as "busy" instead of inheriting the dimmed look.
-const isBlocked = computed(() => props.disabled || props.loading)
+const isBlocked = computed(() => isDisabled.value || props.loading)
 
-const hasLabel = computed(() => Boolean(props.label) || Boolean(slots.default))
+const FORM_SIZES: Record<FormControlSize, 'small' | 'default' | 'large'> = { sm: 'small', md: 'default', lg: 'large' }
+// An explicit size wins; otherwise the form around it decides.
+const resolvedSize = computed(() => (props.size === 'default' && field ? FORM_SIZES[field.size] : props.size))
 
 // A visible label already names the control, and a competing `aria-label` would
 // override the text a speech-control user actually reads (label-in-name).
 const effectiveAriaLabel = computed(() => {
-  if (props.ariaLabelledby || hasLabel.value)
+  if (props.ariaLabelledby || hasLabel.value || field?.labelId)
     return undefined
   return props.ariaLabel
+})
+
+const fieldAttrs = computed(() => {
+  if (!field)
+    return {}
+  const attrs = field.attrs()
+  if (props.ariaLabelledby)
+    delete attrs['aria-labelledby']
+  else if (hasLabel.value && field.labelId)
+    attrs['aria-labelledby'] = `${field.labelId} ${labelId}`
+  return attrs
 })
 
 function toggle() {
@@ -141,7 +164,7 @@ function placeThumb(animate: boolean) {
 
 onMounted(() => placeThumb(false))
 watch(() => props.modelValue, () => nextTick(() => placeThumb(true)))
-watch(() => props.size, () => nextTick(() => placeThumb(false)))
+watch(resolvedSize, () => nextTick(() => placeThumb(false)))
 </script>
 
 <template>
@@ -154,18 +177,19 @@ watch(() => props.size, () => nextTick(() => placeThumb(false)))
     :aria-label="effectiveAriaLabel"
     :aria-labelledby="ariaLabelledby"
     :disabled="isBlocked"
+    v-bind="fieldAttrs"
     class="tuff-switch" :class="[
       {
         'is-active': isActive,
-        'is-disabled': disabled,
+        'is-disabled': isDisabled,
         'is-loading': loading,
         'has-label': hasLabel,
-        [`tuff-switch--${size}`]: size !== 'default',
+        [`tuff-switch--${resolvedSize}`]: resolvedSize !== 'default',
       },
     ]"
     @click="toggle"
   >
-    <span v-if="hasLabel && labelPlacement === 'start'" class="tuff-switch__label">
+    <span v-if="hasLabel && labelPlacement === 'start'" :id="labelId" class="tuff-switch__label">
       <!-- The prop path animates; slot content is arbitrary nodes we cannot diff. -->
       <TxTextTransformer v-if="!slots.default" :text="label ?? ''" />
       <slot v-else />
@@ -175,7 +199,7 @@ watch(() => props.size, () => nextTick(() => placeThumb(false)))
       <span ref="thumbRef" class="tuff-switch__thumb" />
     </span>
 
-    <span v-if="hasLabel && labelPlacement === 'end'" class="tuff-switch__label">
+    <span v-if="hasLabel && labelPlacement === 'end'" :id="labelId" class="tuff-switch__label">
       <TxTextTransformer v-if="!slots.default" :text="label ?? ''" />
       <slot v-else />
     </span>

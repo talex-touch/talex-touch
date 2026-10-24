@@ -27,7 +27,7 @@ describe('txForm', () => {
     const form = (wrapper.vm as any).formRef
     const valid = await form.validate()
     expect(valid).toBe(false)
-    expect(wrapper.find('.tx-form-item__error').text()).toBe('Name required')
+    expect(wrapper.find('.tx-form-item__error .tx-form-item__message-text').text()).toBe('Name required')
 
     ;(wrapper.vm as any).model.name = 'Alice'
     await nextTick()
@@ -67,8 +67,9 @@ describe('txForm', () => {
     await form.validate()
 
     const error = wrapper.find('.tx-form-item__error')
-    // The error is an alert and is referenced by the control.
-    expect(error.attributes('role')).toBe('alert')
+    // The control points at the error; the form's live region announces it,
+    // so the message is no alert of its own.
+    expect(error.attributes('role')).toBeUndefined()
     expect(input.attributes('aria-invalid')).toBe('true')
     expect(input.attributes('aria-describedby')).toBe(error.attributes('id'))
   })
@@ -93,7 +94,7 @@ describe('txForm', () => {
 
     const form = (wrapper.vm as any).formRef
     await form.validate()
-    expect(wrapper.find('.tx-form-item__error').text()).toBe('Name required')
+    expect(wrapper.find('.tx-form-item__error .tx-form-item__message-text').text()).toBe('Name required')
 
     // A brand-new rules object identity (e.g. from a locale-dependent computed in
     // the parent) must still reach TxFormItem after mount.
@@ -101,7 +102,7 @@ describe('txForm', () => {
     await nextTick()
 
     await form.validate()
-    expect(wrapper.find('.tx-form-item__error').text()).toBe('Nom requis')
+    expect(wrapper.find('.tx-form-item__error .tx-form-item__message-text').text()).toBe('Nom requis')
   })
 
   it('resets fields to initial values', async () => {
@@ -152,7 +153,7 @@ describe('txForm', () => {
 
     const form = (wrapper.vm as any).formRef
     expect(await form.validate()).toBe(false)
-    expect(wrapper.find('.tx-form-item__error').text()).toBe('Name is required')
+    expect(wrapper.find('.tx-form-item__error .tx-form-item__message-text').text()).toBe('Name is required')
 
     ;(wrapper.vm as any).model.name = 'Alice'
     await nextTick()

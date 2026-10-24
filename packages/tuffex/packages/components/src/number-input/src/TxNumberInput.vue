@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { StyleValue } from 'vue'
 import { computed, ref, useAttrs } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { useMorphWindow } from '../../../../utils/use-morph-window'
 
 defineOptions({
@@ -47,15 +48,18 @@ const emit = defineEmits<{
 }>()
 
 const attrs = useAttrs()
+const field = useTxFormField('input')
 const inputRef = ref<HTMLInputElement | null>(null)
 const isFocused = ref(false)
 // Raw text while the user is typing. Kept unclamped so intermediate states
 // ("5" on the way to "50", "-", "1.") survive until blur re-normalizes.
 const rawValue = ref('')
 
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
+
 const inputAttrs = computed(() => {
   const { class: _class, style: _style, ...rest } = attrs
-  return rest
+  return field ? field.attrs(rest) : rest
 })
 
 const wrapperStyle = computed(() => attrs.style as StyleValue)
@@ -69,11 +73,11 @@ const displayValue = computed(() => {
 })
 
 const canDecrease = computed(() => {
-  return !props.disabled && !props.readonly && (props.min === undefined || (props.modelValue ?? 0) > props.min)
+  return !isDisabled.value && !props.readonly && (props.min === undefined || (props.modelValue ?? 0) > props.min)
 })
 
 const canIncrease = computed(() => {
-  return !props.disabled && !props.readonly && (props.max === undefined || (props.modelValue ?? 0) < props.max)
+  return !isDisabled.value && !props.readonly && (props.max === undefined || (props.modelValue ?? 0) < props.max)
 })
 
 // Focusing eases the border, and a step that hits a bound eases that control
@@ -117,7 +121,7 @@ function handleInput(event: Event) {
 }
 
 function stepBy(direction: 1 | -1) {
-  if (props.disabled || props.readonly)
+  if (isDisabled.value || props.readonly)
     return
   const base = props.modelValue ?? 0
   commitValue(normalizeValue(base + props.step * direction), true)
@@ -160,8 +164,9 @@ defineExpose({
     class="tx-number-input"
     :class="[
       {
-        'is-disabled': disabled,
+        'is-disabled': isDisabled,
         'is-readonly': readonly,
+        'is-invalid': field?.invalid,
         'is-focused': isFocused,
         'has-controls': controls,
         'is-morphing': morphing,
@@ -189,7 +194,7 @@ defineExpose({
       :max="max"
       :step="step"
       :placeholder="placeholder"
-      :disabled="disabled"
+      :disabled="isDisabled"
       :readonly="readonly"
       v-bind="inputAttrs"
       @input="handleInput"
@@ -235,6 +240,15 @@ defineExpose({
 .tx-number-input.is-focused:not(.is-disabled) {
   border-color: var(--tx-color-primary, #409eff);
   box-shadow: 0 0 0 3px var(--tx-color-primary-light-9, #ecf5ff);
+}
+
+/* Set by a TxFormItem while it shows an error for this field. */
+.tx-number-input.is-invalid:not(.is-disabled) {
+  border-color: var(--tx-color-danger, #f56c6c);
+}
+
+.tx-number-input.is-invalid.is-focused:not(.is-disabled) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tx-color-danger, #f56c6c) 15%, transparent);
 }
 
 .tx-number-input__field {

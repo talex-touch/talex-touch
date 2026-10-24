@@ -7,6 +7,7 @@ import type {
   SensitiveInputProps,
 } from './types'
 import { computed, nextTick, onBeforeUnmount, ref, useAttrs, useId, watch } from 'vue'
+import { useTxFormField } from '../../../../utils/form-field'
 import { SENSITIVE_INPUT_DEFAULT_LABELS } from './types'
 
 defineOptions({
@@ -32,13 +33,14 @@ const props = withDefaults(defineProps<SensitiveInputProps>(), {
 const emit = defineEmits<SensitiveInputEmits>()
 
 const attrs = useAttrs()
+const field = useTxFormField('input')
 
 // Wrapper takes class/style; everything else lands on the field, matching
 // TxInput. `v-bind="inputAttrs"` is bound *before* the explicit attributes so a
 // stray `type` or `readonly` from the host cannot unmask the value.
 const inputAttrs = computed(() => {
   const { class: _class, style: _style, ...rest } = attrs
-  return rest
+  return field ? field.attrs(rest) : rest
 })
 const wrapperStyle = computed(() => attrs.style as StyleValue)
 
@@ -47,7 +49,9 @@ const text = computed<SensitiveInputLabels>(() => ({
   ...props.labels,
 }))
 
-const inputId = useId()
+const localInputId = useId()
+// Inside a TxFormItem, the item's label points at the field.
+const inputId = computed(() => field?.id ?? localInputId)
 const instructionId = useId()
 const liveId = useId()
 
@@ -59,8 +63,15 @@ const mode = ref<SensitiveInputMode>(hasValue.value ? 'masked' : 'empty')
 const copied = ref(false)
 let copiedTimer: ReturnType<typeof setTimeout> | undefined
 
-/** Explicit `status` wins; otherwise a message and its styling cannot disagree. */
-const resolvedStatus = computed(() => props.status ?? (props.error ? 'error' : 'default'))
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
+// An explicit size wins; otherwise the form around it decides.
+const resolvedSize = computed(() => (props.size === 'md' && field ? field.size : props.size))
+
+/**
+ * A form item showing an error wins, then an explicit `status`; otherwise a
+ * message and its styling cannot disagree.
+ */
+const resolvedStatus = computed(() => (field?.invalid ? 'error' : props.status ?? (props.error ? 'error' : 'default')))
 
 /**
  * The only state where the container becomes the control: the value exists and
@@ -68,12 +79,12 @@ const resolvedStatus = computed(() => props.status ?? (props.error ? 'error' : '
  * turning the field into a button would announce an action that does nothing.
  */
 const isMasked = computed(() => mode.value === 'masked' && hasValue.value)
-const showEye = computed(() => !props.disabled && (mode.value === 'revealed' || (mode.value === 'empty' && hasValue.value)))
-const showCopy = computed(() => props.copyable && hasValue.value && !props.disabled)
+const showEye = computed(() => !isDisabled.value && (mode.value === 'revealed' || (mode.value === 'empty' && hasValue.value)))
+const showCopy = computed(() => props.copyable && hasValue.value && !isDisabled.value)
 
-const accessibleName = computed(() => props.label || text.value.fallbackName)
+const accessibleName = computed(() => props.label || field?.label || text.value.fallbackName)
 const maskedName = computed(() => `${accessibleName.value}, ${text.value.masked}`)
-const describedBy = computed(() => `${instructionId} ${liveId}`)
+const describedBy = computed(() => [instructionId, liveId, field?.describedBy].filter(Boolean).join(' '))
 const liveMessage = computed(() => {
   if (copied.value)
     return text.value.copySuccess
@@ -93,7 +104,7 @@ watch(hasValue, (next) => {
 })
 
 function reveal(): void {
-  if (props.disabled || !hasValue.value || mode.value === 'revealed')
+  if (isDisabled.value || !hasValue.value || mode.value === 'revealed')
     return
 
   mode.value = 'revealed'
@@ -202,7 +213,7 @@ async function writeClipboard(value: string): Promise<void> {
 }
 
 async function handleCopy(): Promise<void> {
-  if (props.disabled || !hasValue.value)
+  if (isDisabled.value || !hasValue.value)
     return
 
   try {
@@ -240,10 +251,10 @@ defineExpose({
   <div
     class="tx-sensitive-input"
     :class="[
-      `tx-sensitive-input--${size}`,
+      `tx-sensitive-input--${resolvedSize}`,
       {
         'is-error': resolvedStatus === 'error',
-        'is-disabled': disabled,
+        'is-disabled': isDisabled,
         'is-masked': isMasked,
       },
       attrs.class,
@@ -279,10 +290,10 @@ defineExpose({
         ref="containerRef"
         class="tx-sensitive-input__field"
         :role="isMasked ? 'button' : undefined"
-        :tabindex="isMasked ? (disabled ? -1 : 0) : undefined"
+        :tabindex="isMasked ? (isDisabled ? -1 : 0) : undefined"
         :aria-label="isMasked ? maskedName : undefined"
         :aria-describedby="isMasked ? describedBy : undefined"
-        :aria-disabled="isMasked && disabled ? 'true' : undefined"
+        :aria-disabled="isMasked && isDisabled ? 'true' : undefined"
         @click="handleFieldClick"
         @keydown="handleFieldKeydown"
       >
@@ -294,7 +305,7 @@ defineExpose({
           :type="mode === 'revealed' ? 'text' : 'password'"
           :value="modelValue"
           :placeholder="placeholder"
-          :disabled="disabled"
+          :disabled="isDisabled"
           :readonly="readonly || isMasked"
           :tabindex="isMasked ? -1 : 0"
           :aria-hidden="isMasked ? 'true' : undefined"
@@ -312,7 +323,7 @@ defineExpose({
         <span v-if="isMasked" class="tx-sensitive-input__mask" aria-hidden="true">
           <span class="tx-sensitive-input__mask-stack">
             <span class="tx-sensitive-input__mask-dots">{{ mask }}</span>
-            <span v-if="!disabled" class="tx-sensitive-input__mask-reveal">{{ text.reveal }}</span>
+            <span v-if="!isDisabled" class="tx-sensitive-input__mask-reveal">{{ text.reveal }}</span>
           </span>
         </span>
 

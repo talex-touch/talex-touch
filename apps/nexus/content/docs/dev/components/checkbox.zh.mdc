@@ -158,6 +158,7 @@ code: |
 - `indeterminate` 时 `aria-checked="mixed"`；加载中已选中与部分选中外观相同，靠它区分。
 - `disabled` 与 `loading` 都设置原生 `disabled`；`loading` 另设 `aria-busy="true"`。
 - 有可见文案时不渲染 `aria-label`。
+- 在 `TxFormItem` 中，表单项的 label 经 `for` 命名复选框；复选框自带文案时改用 `aria-labelledby`，同时引用两者。表单的 `disabled` 同样生效。
 - 减少动态效果时，加载环停止旋转。
 
 ## 技术实现

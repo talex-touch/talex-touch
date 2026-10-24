@@ -1,6 +1,6 @@
 ---
 title: "Form"
-description: "A form container with field layout and validation."
+description: "A form container with layouts, validation and submit state."
 category: Form
 status: beta
 since: 0.3.4
@@ -12,61 +12,239 @@ verified: true
 ## Usage
 
 ### Validation
-`rules` match fields by `prop`, and `validate()` resolves to whether all of them pass.
+A field shows its message once the user changes it and leaves; submit shows every message and focuses the first field in error.
 :::TuffDemoWrapper{demo="FormFormDemo" code-lang="vue"}
 ---
 code: |
   <script setup lang="ts">
-  import { reactive, ref } from 'vue'
+  import { reactive } from 'vue'
 
-  const formRef = ref()
-  const form = reactive({ name: '', email: '' })
+  const form = reactive({ username: '', email: '', confirm: '', website: '' })
   const rules = {
-    name: { required: true, message: 'Please enter your name' },
-    email: {
-      validator: (value: string) => {
-        if (!value) return 'Please enter your email'
-        return value.includes('@') || 'Invalid email format'
-      },
-    },
+    username: [{ required: true }, { minLength: 3, maxLength: 20 }],
+    email: [{ required: true }, { type: 'email' }],
+    confirm: [
+      { required: true },
+      { validator: value => value === form.email || 'The emails do not match', deps: ['email'] },
+    ],
+    website: [
+      { type: 'url' },
+      { validator: value => !value || value.startsWith('https://') || 'An https address is safer', level: 'warning' },
+    ],
   }
 
-  async function submit() {
-    if (!await formRef.value?.validate()) return
-    // submit form
+  function onSubmit(values) {
+    // Called only once every check passes
   }
   </script>
 
   <template>
-    <TxForm ref="formRef" :model="form" :rules="rules" label-width="90px">
-      <TxFormItem label="Name" prop="name">
-        <TuffInput v-model="form.name" placeholder="Enter your name" />
+    <TxForm :model="form" :rules="rules" @submit="onSubmit">
+      <TxFormItem label="Username" prop="username" help="3 to 20 characters">
+        <TuffInput v-model="form.username" />
       </TxFormItem>
       <TxFormItem label="Email" prop="email">
-        <TuffInput v-model="form.email" placeholder="name@example.com" />
+        <TuffInput v-model="form.email" type="email" />
       </TxFormItem>
-      <TxButton variant="primary" @click="submit">Validate</TxButton>
+      <TxFormItem label="Confirm email" prop="confirm">
+        <TuffInput v-model="form.confirm" type="email" />
+      </TxFormItem>
+      <TxFormItem label="Website" prop="website">
+        <TuffInput v-model="form.website" placeholder="https://" />
+      </TxFormItem>
+      <TxFormItem>
+        <TxButton variant="primary" native-type="submit">Sign up</TxButton>
+        <TxButton native-type="reset">Reset</TxButton>
+      </TxFormItem>
     </TxForm>
   </template>
 ---
 :::
 
-### Linking Label and Error
-Spread the default slot's props onto the control so the label and error message point at it.
+### Layout
+`auto` puts labels beside the fields once the form is 520px wide, and above them when it is narrower.
+:::TuffDemoWrapper{demo="FormLayoutDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <TxForm :model="form" layout="auto">
+      <TxFormItem label="Recipient" prop="name" width="md">
+        <TuffInput v-model="form.name" />
+      </TxFormItem>
+      <TxFormItem label="Phone" prop="phone" width="sm">
+        <TuffInput v-model="form.phone" inputmode="tel" />
+      </TxFormItem>
+      <TxFormRow label="Address">
+        <TxFormItem label="City" prop="city">
+          <TuffInput v-model="form.city" />
+        </TxFormItem>
+        <TxFormItem label="Postcode" prop="zip" width="sm">
+          <TuffInput v-model="form.zip" inputmode="numeric" />
+        </TxFormItem>
+      </TxFormRow>
+      <TxFormItem label="Note" prop="note" width="full">
+        <TxTextarea v-model="form.note" :rows="2" />
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### Async Validation
+An `async` validator runs after the synchronous rules pass, debounces while the user types, and aborts when the value moves on.
+:::TuffDemoWrapper{demo="FormAsyncDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  const rules = {
+    handle: [
+      { required: true },
+      { pattern: /^[a-z0-9-]+$/ },
+      {
+        async validator(value, _rule, _model, { signal }) {
+          const res = await fetch(`/api/handles/${value}`, { signal })
+          return res.status === 404 || `${value} is taken`
+        },
+      },
+    ],
+  }
+  </script>
+
+  <template>
+    <TxForm :model="form" :rules="rules" :messages="{ validating: 'Checking…' }">
+      <TxFormItem label="Handle" prop="handle">
+        <TuffInput v-model="form.handle" />
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### Submit and Server Errors
+`@submit` runs once every check passes; `setErrors()` inside the handler hands server errors back to their fields.
+:::TuffDemoWrapper{demo="FormSubmitDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { ref } from 'vue'
+
+  const formRef = ref()
+
+  async function onSubmit(values) {
+    const res = await fetch('/api/accounts', { method: 'POST', body: JSON.stringify(values) })
+    if (res.status === 409)
+      formRef.value.setErrors({ email: 'This email is already registered' })
+    else if (!res.ok)
+      formRef.value.setRootError('Could not reach the server. Try again.')
+  }
+  </script>
+
+  <template>
+    <TxForm ref="formRef" v-slot="{ submitting }" :model="form" :rules="rules" @submit="onSubmit">
+      <TxFormErrorSummary />
+      <TxFormItem label="Nickname" prop="name">
+        <TuffInput v-model="form.name" />
+      </TxFormItem>
+      <TxFormItem label="Email" prop="email">
+        <TuffInput v-model="form.email" type="email" />
+      </TxFormItem>
+      <TxFormItem>
+        <TxButton variant="primary" native-type="submit" :loading="submitting">Create account</TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### Loading and Merging Data
+`setBaseline()` loads fetched data; fields the user changed are kept unless `reconcile` decides otherwise.
+:::TuffDemoWrapper{demo="FormBaselineDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { onMounted, reactive, ref } from 'vue'
+
+  const formRef = ref()
+  const profile = reactive({ name: '', role: '', bio: '' })
+
+  async function refresh() {
+    formRef.value.setBaseline(await fetch('/api/profile').then(res => res.json()))
+  }
+
+  // The server wins; without reconcile, fields the user changed are kept
+  const serverWins = ({ incoming }) => incoming
+
+  onMounted(refresh)
+  </script>
+
+  <template>
+    <TxForm ref="formRef" v-slot="{ dirty }" :model="profile" :reconcile="serverWins" @submit="save">
+      <TxFormItem label="Name" prop="name">
+        <TuffInput v-model="profile.name" />
+      </TxFormItem>
+      <TxFormItem label="Role" prop="role">
+        <TuffInput v-model="profile.role" />
+      </TxFormItem>
+      <TxFormItem>
+        <TxButton @click="refresh">Refresh from server</TxButton>
+        <TxButton variant="primary" native-type="submit" :disabled="!dirty">Save</TxButton>
+        <TxButton native-type="reset" :disabled="!dirty">Restore</TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### Schema Validation
+`schema` takes any Standard Schema v1 validator and hands each issue to the field at its path.
 
 ```vue
-<TxFormItem v-slot="{ id, ariaInvalid, ariaDescribedby }" label="Email" prop="email">
-  <input v-model="form.email" :id="id" :aria-invalid="ariaInvalid" :aria-describedby="ariaDescribedby">
+<script setup lang="ts">
+import { z } from 'zod'
+
+const schema = z.object({
+  email: z.string().email('Enter a valid email address'),
+  age: z.number().int().min(18, 'You must be 18 or older'),
+})
+</script>
+
+<template>
+  <TxForm :model="form" :schema="schema">
+    <TxFormItem label="Email" prop="email">
+      <TuffInput v-model="form.email" />
+    </TxFormItem>
+    <TxFormItem label="Age" prop="age">
+      <TxNumberInput v-model="form.age" />
+    </TxFormItem>
+  </TxForm>
+</template>
+```
+
+### Custom Controls
+TuffEx controls join the item around them on their own; bind the default slot's props on a native element, or call `useTxFormField()` in a component.
+
+```vue
+<TxFormItem v-slot="{ id, ariaInvalid, ariaDescribedby, required }" label="Accent colour" prop="color">
+  <input :id="id" v-model="form.color" type="color" :aria-invalid="ariaInvalid" :aria-describedby="ariaDescribedby" :required="required">
 </TxFormItem>
+```
+
+```ts
+import { useTxFormField } from '@talex-touch/tuffex/form'
+
+// In the custom control's setup
+const field = useTxFormField('input')
+const controlAttrs = computed(() => field?.attrs(attrs) ?? attrs)
+const isDisabled = computed(() => props.disabled || !!field?.disabled)
 ```
 
 ### Best Practices
 
-- Keep `model` stable and reactive; replacing it after mount makes resets surprising.
-- Put shared rules in form-level `rules`; use item-level `rules` only for one-off overrides.
-- Run async availability checks in `validator` and return a precise error string.
-- When the whole form is locked, pass `disabled` to `TxForm` and to every control.
-- Call `clearValidate()` when switching records without resetting user input.
+- Keep `model` the same reactive object; a new object is a new record, which resets the baseline and clears every message.
+- Pass fetched data to `setBaseline()` instead of writing it into `model`, so `dirty` and `reset()` measure against it.
+- Put shared rules in form-level `rules`; an item's `rules` replace the form-level rules for the same path rather than adding to them.
+- Declare a validator that returns a promise `async`, and pass `signal` to its request.
+- Put the action buttons in a `TxFormItem` without a `label`, so they line up with the field column in side layout.
 
 ## API Reference
 
@@ -76,32 +254,53 @@ Spread the default slot's props onto the control so the label and error message 
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `model` | `Record<string, any>` | - | Reactive form data; `TxFormItem` reads fields by `prop`. |
-| `rules` | `FormRules` | - | Form-level rules keyed by `prop`. |
-| `labelPosition` | `'left' \| 'right' \| 'top'` | `'left'` | Label layout of the child items. |
-| `labelWidth` | `string \| number` | - | Label width outside the `top` layout; numbers are pixels. |
-| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | Only written to the form context; inputs don't read it, so pass `size` per control. |
-| `disabled` | `boolean` | `false` | Only written to the form context; inputs don't read it, so pass `disabled` per control. |
+| `id` | `string` | generated | The `<form>` element's id, and the prefix of every field id: `<id>-<prop>`. |
+| `model` | `Record<string, any>` | - | Reactive form data; items read their field by the `prop` path. |
+| `rules` | `FormRules` | - | Form-level rules keyed by field path. |
+| `schema` | `FormStandardSchema` | - | A Standard Schema v1 validator (Zod, Valibot, ArkType…) checked against the whole `model`. |
+| `layout` | `'auto' \| 'side' \| 'stacked' \| 'inline'` | `'auto'` | Field layout; `auto` is `side` once the form is 520px wide and `stacked` below that; `inline` suits filter bars. |
+| `labelPosition` | `'left' \| 'right' \| 'top'` | - | Older spelling of `layout`: `top` is `stacked`; `left` and `right` are `side` with that alignment. |
+| `labelAlign` | `'start' \| 'end'` | `'end'` | Label alignment in the side column; `start` by default with `labelPosition="left"`. |
+| `labelWidth` | `string \| number` | `16em` | Widest the side label column may grow, numbers in pixels; it stays narrower when every label is, and never exceeds 40% of the form. |
+| `requiredMark` | `'asterisk' \| 'optional' \| 'none'` | `'asterisk'` | Marks required fields with an asterisk, optional fields with `messages.optional`, or neither. |
+| `validateOn` | `'blur' \| 'submit'` | `'blur'` | When the first message appears: on leaving a changed field, or on the first submit. |
+| `messages` | `Partial<FormMessages>` | - | Overrides the built-in text. |
+| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | Passed to the controls inside that have sizes. |
+| `disabled` | `boolean` | `false` | Disables every control inside that reads the form, and blocks submit. |
+| `reconcile` | `FormReconcile` | - | Decides what `model` holds when `setBaseline()` brings values for fields the user changed. |
 
 #### Events
 
 | Event | Payload | Description |
 |------|---------|-------------|
+| `submit` | `(values: FormValues, event?: Event)` | Called once every check passes, with a copy of the values; a returned promise is awaited, and `submitting` is `true` meanwhile. |
 | `validate` | `(valid: boolean)` | Fires after `validate()` has checked every field. |
 
 #### Slots
 
 | Slot | Props | Description |
 |------|------|-------------|
-| `default` | - | Form items and actions. |
+| `default` | `{ dirty, valid, submitting, submitted, errors, rootError }` | Form items and actions. |
 
 #### Exposed Methods
 
 | Name | Type | Description |
 |------|-----------|-------------|
-| `validate` | `() => Promise<boolean>` | Validates every registered field and resolves to whether all passed. |
-| `resetFields` | `() => void` | Restores each field's value at mount and clears messages. |
-| `clearValidate` | `() => void` | Clears messages without changing `model`. |
+| `dirty` | `boolean` | Read-only; `model` differs from the baseline. |
+| `valid` | `boolean` | Read-only; no error blocks submit, whether or not it shows yet. |
+| `submitting` | `boolean` | Read-only; the `submit` handler is running. |
+| `submitted` | `boolean` | Read-only; the form has been submitted at least once; `reset()` clears it. |
+| `errors` | `Record<string, string>` | Read-only; the errors showing, by field path. |
+| `rootError` | `string` | Read-only; the form-level error. |
+| `validate` | `() => Promise<boolean>` | Validates every field, shows the messages, and resolves to whether all passed. |
+| `validateField` | `(path: string) => Promise<boolean>` | Validates one field and shows its message. |
+| `submit` | `() => Promise<boolean>` | What a native submit does: validates, then calls the `submit` handler; resolves to whether it succeeded. |
+| `reset` | `() => void` | Restores `model` to the baseline and clears every message. |
+| `resetFields` | `() => void` | Older name of `reset()`. |
+| `setBaseline` | `(values?: FormValues) => void` | Makes fetched values the baseline; without them, the current `model` becomes the baseline. |
+| `setErrors` | `(errors: Record<string, string \| null \| undefined>, options?: { source?: 'server' \| 'client' }) => void` | Shows outside errors until the user edits the field; a `client` error also blocks submit. |
+| `setRootError` | `(message?: string \| null) => void` | Sets or clears the form-level error. |
+| `clearValidate` | `(paths?: string \| string[]) => void` | Hides messages without changing `model`. |
 
 ### TxFormItem
 
@@ -109,24 +308,68 @@ Spread the default slot's props onto the control so the label and error message 
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `label` | `string` | `''` | Label text; falls back to `prop`. |
-| `prop` | `string` | - | The field's key in `model` and `rules`. |
-| `rules` | `FormRule \| FormRule[]` | - | Rules for this field; override the form-level rules. |
-| `required` | `boolean` | `false` | Shows the required marker and rejects empty values. |
-| `showMessage` | `boolean` | `true` | Shows the error message below the field. |
-| `inline` | `boolean` | `false` | Aligns label and content for compact inline rows. |
+| `label` | `string` | `''` | Label text; no label renders without it. |
+| `prop` | `string` | - | The field's path in `model`: `name`, `meta.homepage`, `links[0].url`. |
+| `rules` | `FormRule \| FormRule[]` | - | Rules for this field; they replace the form-level `rules` for the same path. |
+| `required` | `boolean` | `false` | Shows the required marker and adds a `required` rule. |
+| `help` | `string` | - | Helper text under the control; an error or warning takes its place while it shows. |
+| `width` | `'xs' \| 'sm' \| 'md' \| 'lg' \| 'full'` | - | Control width: 80, 160, 240 or 360px, or the whole column. |
+| `showMessage` | `boolean` | `true` | Shows the message under the control; with it off, the control is still marked invalid. |
+| `inline` | `boolean` | `false` | Centres the label on the control; in a stacked layout, puts it beside the control. |
 
 #### Events
 
 | Event | Payload | Description |
 |------|---------|-------------|
-| `validate` | `(valid: boolean)` | Fires after this field validates. |
+| `validate` | `(valid: boolean)` | Fires after this field validates: on leaving it changed, or when the form validates. |
 
 #### Slots
 
 | Slot | Props | Description |
 |------|------|-------------|
-| `default` | `{ id, ariaInvalid, ariaDescribedby }` | The field control; spread the props to link the label and error message. |
+| `default` | `{ id, labelId, ariaInvalid, ariaDescribedby, invalid, required }` | The field control; bind the props on a native element to link it to the label and message. |
+
+### TxFormRow
+
+#### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `string` | `''` | Names the row as a group; in side layout it sits in the label column. |
+| `condensed` | `boolean` | `false` | Lets each item shrink to 110px instead of 220px before the row wraps. |
+
+#### Slots
+
+| Slot | Props | Description |
+|------|------|-------------|
+| `default` | - | The row's `TxFormItem`s, with their labels above. |
+
+### TxFormErrorSummary
+
+#### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `title` | `string` | `messages.summaryTitle` | The summary's heading. |
+
+### useTxFormField
+
+| Name | Type | Description |
+|------|-----------|-------------|
+| `useTxFormField` | `(kind?: 'input' \| 'button' \| 'group') => TxFormField \| null` | Connects a control to the item around it; `kind` decides how the label names the control. Returns `null` outside a form. |
+| `id` | `string \| undefined` | Read-only; the id the label points at. Only the first control in an item receives one. |
+| `labelId` / `label` | `string \| undefined` / `string` | Read-only; the id and text of the item's label. |
+| `describedBy` | `string \| undefined` | Read-only; the id of the message or help text. |
+| `invalid` / `required` | `boolean` | Read-only; an error is showing; the field is required. |
+| `disabled` / `size` | `boolean` / `'sm' \| 'md' \| 'lg'` | Read-only; the form's `disabled` and `size`. |
+| `attrs` | `(host?: Record<string, unknown>) => Record<string, unknown>` | The control's merged attributes; those the control was given win, except `aria-describedby`, which keeps both. |
+
+### provideTxFormHost
+
+| Name | Type | Description |
+|------|-----------|-------------|
+| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | Gives the forms below — or, with `app`, in the whole app — the built-in text. Call it in a component's `setup`. |
+| `host.messages` | `MaybeRefOrGetter<Partial<FormMessages>>` | Text in the host's language; a ref or getter follows locale switches. |
 
 ### Types
 
@@ -135,18 +378,62 @@ Spread the default slot's props onto the control so the label and error message 
 | Field | Type | Description |
 |------|------|-------------|
 | `required` | `boolean` | Rejects empty values. |
-| `message` | `string` | Message when required fails or the validator returns `false`. |
-| `validator` | `(value, rule, model) => boolean \| string \| Promise<boolean \| string>` | Custom check; a returned string becomes the error message. |
+| `type` | `'email' \| 'url' \| 'number' \| 'integer'` | The value's format. |
+| `min` / `max` | `number` | Numeric range. |
+| `minLength` / `maxLength` | `number` | Characters in a string, or items in an array. |
+| `pattern` | `RegExp` | A pattern the value must match. |
+| `message` | `string` | Message when this rule fails, replacing the built-in text. |
+| `level` | `'error' \| 'warning'` | `warning` shows its message but never blocks submit. |
+| `deps` | `string[]` | Fields whose edits re-check this one while it shows a message. |
+| `validator` | `(value, rule, model, { signal, path }) => boolean \| string \| Promise<boolean \| string>` | Return `false` or a message to fail; declare it `async` when it awaits. |
+
+`FormReconcileContext`, the argument of `reconcile`; every value is a copy, free to change:
+
+| Field | Type | Description |
+|------|------|-------------|
+| `source` | `'baseline'` | Where the values came from; `baseline` is `setBaseline()`. |
+| `incoming` | `FormValues` | The values arriving; they become the new baseline whatever `model` ends up holding. |
+| `current` | `FormValues` | `model` as the user left it. |
+| `baseline` | `FormValues` | The baseline the user's edits were made against. |
+| `dirtyPaths` | `string[]` | Paths the user changed that `incoming` also carries. |
+| `merged` | `FormValues` | The default: `incoming`, with every path in `dirtyPaths` kept as the user left it. Returning nothing takes it. |
+
+`FormMessages`, the built-in text; the English defaults are `FORM_DEFAULT_MESSAGES`:
+
+| Field | Type | Description |
+|------|------|-------------|
+| `required` / `invalid` / `pattern` | `(label: string) => string` | Missing value, failed validator, mismatched pattern. |
+| `type` | `(label: string, type: FormRuleType) => string` | Wrong `type`. |
+| `min` / `max` | `(label: string, limit: number) => string` | Out of the numeric range. |
+| `minLength` / `maxLength` | `(label: string, limit: number, unit: 'characters' \| 'items') => string` | Out of the length range. |
+| `field` | `string` | Stands in for the name when an item has neither `label` nor `prop`. |
+| `errorPrefix` / `warningPrefix` | `string` | Read before an error or a warning; hidden on screen. |
+| `validating` | `string` | Shown when an async check runs past one second. |
+| `optional` | `string` | After optional labels when `requiredMark="optional"`. |
+| `summaryTitle` | `string` | Default heading of `TxFormErrorSummary`. |
+
+### CSS Variables
+
+| Variable | Default | Description |
+|------|------|-------------|
+| `--tx-form-gap` | `20px` | Space between fields. |
+| `--tx-form-label-max` | `16em` | Widest the side label column may grow; `labelWidth` writes it. |
+| `--tx-form-control-height` | `32px` | Height of a one-line control, which labels line up with. |
+| `--tx-form-item-min` | `220px` | Narrowest an item in a `TxFormRow` gets before the row wraps; `110px` with `condensed`. |
 
 ## Overview
 
-- `TxForm` renders a native `<form>` and prevents the default submit.
-- `TxFormItem` registers on mount and unregisters before unmount, so the form methods only touch live fields.
-- Empty means `null`, `undefined`, `''`, or an empty array.
-- The label's `for` targets a generated field id and the error message is `role="alert"`; the link is inert until the control takes the slot's `id`.
+- Validity is computed as the values change; a message appears once the user changes a field and leaves it, and follows every edit after that. Switching to another window is not leaving. `validate()` and submit show every message.
+- Rules run in order and stop at the first error. The built-in checks pass an empty value, which only `required` rejects; empty means `undefined`, `null`, `''`, `false` or an empty array.
+- Async rules run after the synchronous ones pass, debounced 300ms while the user types; past one second the field shows `messages.validating`. The form's single polite live region announces their progress and result.
+- Submit validates, then calls the handler; the handler resolving `false`, throwing, or calling `setErrors()` / `setRootError()` counts as a failure. On success the submitted values become the baseline, unless the handler called `setBaseline()` itself. On failure focus moves to the error summary, or to the first field in error when there is none.
+- An error for a field that is not mounted is kept and shows when the field mounts, as in a multi-step form; a `schema` issue no field shows is listed in the error summary and blocks submit.
+- The first control takes the id and the label's `for`; other controls point at the label with `aria-labelledby`, as do controls a `<label for>` cannot name, such as a radio group or a multiple select, once they hold the id. Messages are linked through `aria-describedby` and carry no `role="alert"`. The form's `size` and `disabled` also reach controls outside every item.
 
 ## Technologies
 
-- Source: `packages/tuffex/packages/components/src/form/`.
+- `auto` reads the form's own width through a container query; side layout shares the label column across items with CSS subgrid.
+- `schema` depends only on the Standard Schema v1 interface, not on a validation library.
+- Source: `packages/tuffex/packages/components/src/form/`; `useTxFormField`, which the controls read, lives in `packages/tuffex/packages/utils/form-field.ts`, so an on-demand import of a control does not pull the form in.
 
 <TuffDocSourceLink />

@@ -1,89 +1,126 @@
 <script setup lang="ts">
+import type { FormRules } from '@talex-touch/tuffex/form'
 import { computed, reactive, ref } from 'vue'
 
 const { locale } = useI18n()
-const formRef = ref<any>()
-const message = ref('')
+const status = ref('')
 
 const labels = computed(() => {
   if (locale.value === 'zh') {
     return {
-      name: '名称',
+      username: '用户名',
+      usernameHelp: '3 到 20 个字符',
       email: '邮箱',
-      namePlaceholder: '请输入名称',
-      emailPlaceholder: 'name@example.com',
-      validate: '校验',
+      confirm: '确认邮箱',
+      website: '个人主页',
+      submit: '注册',
       reset: '重置',
-      nameRequired: '请输入名称',
+      usernameRequired: '请输入用户名',
+      usernameLength: '用户名需要 3 到 20 个字符',
       emailRequired: '请输入邮箱',
-      emailInvalid: '邮箱格式错误',
-      pass: '表单校验通过',
-      failed: '请检查表单',
+      emailInvalid: '邮箱格式不正确',
+      confirmRequired: '请再次输入邮箱',
+      confirmMismatch: '两次输入的邮箱不一致',
+      websiteInvalid: '请输入以 http:// 或 https:// 开头的地址',
+      websiteInsecure: '建议使用 https 地址',
+      done: '全部校验通过',
     }
   }
 
   return {
-    name: 'Name',
+    username: 'Username',
+    usernameHelp: '3 to 20 characters',
     email: 'Email',
-    namePlaceholder: 'Enter your name',
-    emailPlaceholder: 'name@example.com',
-    validate: 'Validate',
+    confirm: 'Confirm email',
+    website: 'Website',
+    submit: 'Sign up',
     reset: 'Reset',
-    nameRequired: 'Please enter your name',
-    emailRequired: 'Please enter your email',
-    emailInvalid: 'Invalid email format',
-    pass: 'Form validation passed',
-    failed: 'Please check the form',
+    usernameRequired: 'Enter a username',
+    usernameLength: 'Use 3 to 20 characters',
+    emailRequired: 'Enter your email',
+    emailInvalid: 'Enter a valid email address',
+    confirmRequired: 'Enter your email again',
+    confirmMismatch: 'The emails do not match',
+    websiteInvalid: 'Start the address with http:// or https://',
+    websiteInsecure: 'An https address is safer',
+    done: 'All checks passed',
   }
 })
 
 const form = reactive({
-  name: '',
+  username: '',
   email: '',
+  confirm: '',
+  website: '',
 })
 
-const rules = computed(() => ({
-  name: { required: true, message: labels.value.nameRequired },
-  email: {
-    validator: (value: string) => {
-      if (!value)
-        return labels.value.emailRequired
-      return value.includes('@') || labels.value.emailInvalid
-    },
-  },
+const rules = computed<FormRules>(() => ({
+  username: [
+    { required: true, message: labels.value.usernameRequired },
+    { minLength: 3, maxLength: 20, message: labels.value.usernameLength },
+  ],
+  email: [
+    { required: true, message: labels.value.emailRequired },
+    { type: 'email', message: labels.value.emailInvalid },
+  ],
+  confirm: [
+    { required: true, message: labels.value.confirmRequired },
+    { validator: value => value === form.email || labels.value.confirmMismatch, deps: ['email'] },
+  ],
+  website: [
+    { type: 'url', message: labels.value.websiteInvalid },
+    { validator: value => !value || value.startsWith('https://') || labels.value.websiteInsecure, level: 'warning' },
+  ],
 }))
 
-async function handleValidate() {
-  const ok = await formRef.value?.validate()
-  message.value = ok ? labels.value.pass : labels.value.failed
-}
-
-function handleReset() {
-  formRef.value?.resetFields()
-  message.value = ''
+function handleSubmit() {
+  status.value = labels.value.done
 }
 </script>
 
 <template>
-  <div class="group" style="max-width: 420px;">
-    <TxForm ref="formRef" :model="form" :rules="rules" label-width="90px">
-      <TxFormItem :label="labels.name" prop="name">
-        <TuffInput v-model="form.name" :placeholder="labels.namePlaceholder" />
+  <div class="form-demo not-prose">
+    <TxForm :model="form" :rules="rules" @submit="handleSubmit">
+      <TxFormItem :label="labels.username" prop="username" :help="labels.usernameHelp">
+        <TuffInput v-model="form.username" autocomplete="username" />
       </TxFormItem>
       <TxFormItem :label="labels.email" prop="email">
-        <TuffInput v-model="form.email" :placeholder="labels.emailPlaceholder" />
+        <TuffInput v-model="form.email" type="email" autocomplete="email" />
       </TxFormItem>
-      <div style="display: flex; gap: 8px;">
-        <TxButton variant="primary" @click="handleValidate">
-          {{ labels.validate }}
-        </TxButton>
-        <TxButton @click="handleReset">
-          {{ labels.reset }}
-        </TxButton>
-      </div>
-      <div style="font-size: 12px; color: var(--tx-text-color-secondary, #909399);">
-        {{ message }}
-      </div>
+      <TxFormItem :label="labels.confirm" prop="confirm">
+        <TuffInput v-model="form.confirm" type="email" autocomplete="off" />
+      </TxFormItem>
+      <TxFormItem :label="labels.website" prop="website">
+        <TuffInput v-model="form.website" placeholder="https://" autocomplete="url" />
+      </TxFormItem>
+      <TxFormItem>
+        <div class="form-demo__actions">
+          <TxButton variant="primary" native-type="submit">
+            {{ labels.submit }}
+          </TxButton>
+          <TxButton native-type="reset" @click="status = ''">
+            {{ labels.reset }}
+          </TxButton>
+          <span class="form-demo__status" role="status">{{ status }}</span>
+        </div>
+      </TxFormItem>
     </TxForm>
   </div>
 </template>
+
+<style scoped>
+.form-demo {
+  width: min(100%, 560px);
+}
+
+.form-demo__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-demo__status {
+  font-size: 12px;
+  color: var(--tx-text-color-secondary, #909399);
+}
+</style>

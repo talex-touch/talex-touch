@@ -20,6 +20,7 @@
  *
  * @component
  */
+import type { FormRule } from '../../form/src/types'
 import type { TxIconSource } from '../../icon'
 import { computed } from 'vue'
 import TxSelect from '../../select/src/TxSelect.vue'
@@ -39,6 +40,9 @@ const props = withDefaults(defineProps<{
   activeIcon?: IconValue
   disabled?: boolean
   placeholder?: string
+  prop?: string
+  rules?: FormRule | FormRule[]
+  required?: boolean
 }>(), {
   title: '',
   description: '',
@@ -81,6 +85,9 @@ const resolvedActiveIcon = computed(() => {
     :active-icon="resolvedActiveIcon"
     :active="isActive"
     :disabled="disabled"
+    :prop="prop"
+    :rules="rules"
+    :required="required"
   >
     <template #tags>
       <slot name="tags" />

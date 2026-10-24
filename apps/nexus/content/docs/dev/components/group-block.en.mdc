@@ -274,11 +274,30 @@ code: |
 ---
 :::
 
+### In a Form
+A row with `prop` joins the surrounding `TxForm`: its title names the control, and a message replaces its description while it shows.
+:::TuffDemoWrapper{demo="GroupBlockBlockFormDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <TxForm :model="settings" :rules="rules" @submit="save">
+      <TxGroupBlock name="Notifications" :collapsible="false">
+        <TxBlockInput v-model="settings.name" prop="name" title="Display name" description="Shown in shared workspaces and notifications." />
+        <TxBlockInput v-model="settings.email" prop="email" input-type="email" title="Notification email" description="The weekly digest goes to this address." />
+        <TxBlockSwitch v-model="settings.digest" title="Weekly digest" description="A summary of last week, every Monday." />
+      </TxGroupBlock>
+      <TxButton variant="primary" native-type="submit">Save</TxButton>
+    </TxForm>
+  </template>
+---
+:::
+
 ### Best Practices
 
 - Keep each `memoryName` unique and stable; don't share a key between unrelated groups.
 - Set `collapsible=false` on always-visible status or form sections so they don't imply hidden content.
 - Use `TxBlockLine` for read-only values and light navigation, `TxBlockSlot` for custom controls, `TxBlockInput` / `TxBlockSelect` for standard form rows, and `TxBlockSwitch` for booleans and navigation.
+- Give a row `prop` and put it in a `TxForm` when it needs validation; a setting that applies at once needs no form.
 - Keep row titles short and move long explanations into the description; don't nest complex layouts in a row.
 - The group squares off its rows; don't hard-code `border-radius: 0` on a row to imitate that look.
 
@@ -350,6 +369,9 @@ code: |
 | `iconSize` | `number` | `20` | Icon size in px. |
 | `active` | `boolean` | `false` | Swaps in `activeIcon` and passes `active` to slot scopes; doesn't restyle the row. |
 | `disabled` | `boolean` | `false` | Disabled styling; blocks `click`. |
+| `prop` | `string` | - | The field's path in the surrounding `TxForm`'s `model`; setting it joins the row to the form. |
+| `rules` | `FormRule \| FormRule[]` | - | Rules for this field; they replace the form-level rules for the same path. |
+| `required` | `boolean` | `false` | Adds an asterisk after the title and a required rule. |
 
 #### Events
 
@@ -380,6 +402,9 @@ code: |
 | `disabled` | `boolean` | `false` | Disables the row and the input. |
 | `placeholder` | `string` | `''` | Placeholder text. |
 | `clearable` | `boolean` | `false` | Forwarded to `TxInput`. |
+| `prop` | `string` | - | The field's path in the surrounding `TxForm`'s `model`; setting it joins the row to the form. |
+| `rules` | `FormRule \| FormRule[]` | - | Rules for this field; they replace the form-level rules for the same path. |
+| `required` | `boolean` | `false` | Adds an asterisk after the title and a required rule. |
 | `inputType` | `'text' \| 'password' \| 'number' \| 'email'` | `'text'` | Forwarded as the `TxInput` type. |
 
 #### Events
@@ -411,6 +436,9 @@ code: |
 | `activeIcon` | `TxIconSource \| string` | - | Icon with a value selected. |
 | `disabled` | `boolean` | `false` | Disables the row and the select. |
 | `placeholder` | `string` | `''` | Placeholder text. |
+| `prop` | `string` | - | The field's path in the surrounding `TxForm`'s `model`; setting it joins the row to the form. |
+| `rules` | `FormRule \| FormRule[]` | - | Rules for this field; they replace the form-level rules for the same path. |
+| `required` | `boolean` | `false` | Adds an asterisk after the title and a required rule. |
 
 #### Events
 
@@ -440,6 +468,9 @@ code: |
 | `disabled` | `boolean` | `false` | Disables the row and the switch. |
 | `guidance` | `boolean` | `false` | Shows a chevron instead of the switch, as a navigation row. |
 | `loading` | `boolean` | `false` | Forwarded to the inner switch: the thumb spins, the row shimmers, and interaction pauses. |
+| `prop` | `string` | - | The field's path in the surrounding `TxForm`'s `model`; setting it joins the row to the form. |
+| `rules` | `FormRule \| FormRule[]` | - | Rules for this field; they replace the form-level rules for the same path. |
+| `required` | `boolean` | `false` | Adds an asterisk after the title and a required rule. |
 
 #### Events
 
@@ -462,6 +493,7 @@ code: |
 - The group resets each row's `--fake-radius` and margin so only the group card is rounded; a standalone row keeps its 12px radius. The reset stops at the row: a control inside it, such as the select in `TxBlockSelect`, keeps its own corners.
 - `TxBlockLine` is a non-interactive `div` unless `link` is set, when it becomes a `<button type="button">`.
 - `TxBlockSlot` never shrinks its control area; `TxBlockInput` is the exception, letting its field shrink to 120px to make room for the title.
+- `TxBlockSlot` joins the surrounding `TxForm` only with `prop`: the title names the control through `aria-labelledby`, the description is linked through `aria-describedby`, and an error or warning replaces it while it shows; a row without `prop` stays as it is. The form's `disabled` applies to every row inside it.
 - In `TxBlockSwitch`, the busy cue lives only on the inner switch (`is-loading` + `aria-busy`) and the row only shimmers; `guidance` mode never writes `modelValue`.
 
 ## Technologies
@@ -478,5 +510,6 @@ code: |
 | `--tx-border-color-lighter` | Group border and header divider. |
 | `--tx-fill-color-dark` / `--tx-fill-color` / `--tx-fill-color-light` | Header, row, and hover surfaces. |
 | `--tx-text-color-primary` / `--tx-text-color-secondary` | Titles, labels, descriptions, guidance arrows, and the loading ring. |
+| `--tx-color-danger` / `--tx-color-warning` | Field errors and warnings, and the required asterisk. |
 | `--tx-color-primary` / `--tx-color-primary-dark-2` | Link-row text and hover colors. |
 | `--tx-color-white` | Loading shimmer highlight. |

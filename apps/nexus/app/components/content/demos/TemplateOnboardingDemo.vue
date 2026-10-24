@@ -2088,14 +2088,7 @@ defineExpose({ resetDemo })
 }
 
 .onb__email {
-  gap: 10px;
-}
-
-/* TxFormItem's content column does not stretch by default, which left the
-   field at its intrinsic width under a full-width button. */
-.onb__email :deep(.tx-form-item__content) {
-  align-self: stretch;
-  width: 100%;
+  --tx-form-gap: 10px;
 }
 
 .onb__email :deep(.tx-input) {

@@ -18,6 +18,7 @@
  *
  * @component
  */
+import type { FormRule } from '../../form/src/types'
 import type { TxIconSource } from '../../icon'
 import { computed, ref } from 'vue'
 import TxInput from '../../input/src/TxInput.vue'
@@ -38,6 +39,9 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   placeholder?: string
   clearable?: boolean
+  prop?: string
+  rules?: FormRule | FormRule[]
+  required?: boolean
   inputType?: 'text' | 'password' | 'number' | 'email'
 }>(), {
   title: '',
@@ -99,6 +103,9 @@ function handleInput(val: string | number) {
     :active-icon="resolvedActiveIcon"
     :active="isActive"
     :disabled="disabled"
+    :prop="prop"
+    :rules="rules"
+    :required="required"
   >
     <template #tags>
       <slot name="tags" />

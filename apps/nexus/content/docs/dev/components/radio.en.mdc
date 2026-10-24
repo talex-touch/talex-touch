@@ -207,6 +207,7 @@ code: |
 ## Overview
 
 - `TxRadioGroup` owns the selected value, injects style and disabled state into its radios, and handles keyboard navigation.
+- Inside a `TxFormItem`, `TxRadioGroup` takes the id, `aria-invalid` and `aria-required`, and points at the item's label with `aria-labelledby`; the form's `disabled` applies too.
 - In a group, clicking the checked radio emits nothing.
 - In button groups, the indicator can be dragged horizontally; on release it snaps to and selects the nearest enabled radio. Disabled groups ignore the drag.
 

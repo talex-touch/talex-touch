@@ -7,7 +7,8 @@
  */
 import type { TxIconSource } from '../../icon'
 import type { BlockSlotEmits, BlockSlotProps } from './types'
-import { computed, getCurrentInstance } from 'vue'
+import { computed, getCurrentInstance, ref } from 'vue'
+import { useFormItem } from '../../form/src/use-form-item'
 import { TuffIcon } from '../../icon'
 
 defineOptions({
@@ -20,14 +21,44 @@ const props = withDefaults(defineProps<BlockSlotProps>(), {
   iconSize: 20,
   disabled: false,
   active: false,
+  required: false,
 })
 
 const emit = defineEmits<BlockSlotEmits>()
 
 type IconValue = TxIconSource | string | null | undefined
 
+const rootRef = ref<HTMLElement | null>(null)
+
+// With `prop`, the block is a form item: the title names the control and a
+// message takes the description's place while it shows.
+const {
+  form,
+  labelId,
+  messageId,
+  note,
+  notePrefix,
+  invalid,
+  markRequired,
+  onFocusout,
+} = useFormItem({
+  prop: () => props.prop,
+  label: () => props.title,
+  rules: () => props.rules,
+  required: () => props.required,
+  help: () => props.description,
+  showMessage: () => true,
+  root: rootRef,
+  labelledBy: 'aria',
+  offersField: () => !!props.prop,
+})
+
+const isDisabled = computed(() => props.disabled || !!form?.disabled.value)
+/** A message, not the description. */
+const fieldMessage = computed(() => (note.value && note.value.kind !== 'help' ? note.value : null))
+
 function handleClick(event: MouseEvent): void {
-  if (props.disabled)
+  if (isDisabled.value)
     return
   emit('click', event)
 }
@@ -43,7 +74,7 @@ function handleKeydown(event: KeyboardEvent): void {
   // in the slot so their own keyboard handling is preserved.
   if (event.target !== event.currentTarget)
     return
-  if (props.disabled || !interactive.value)
+  if (isDisabled.value || !interactive.value)
     return
   if (event.key !== 'Enter' && event.key !== ' ')
     return
@@ -78,13 +109,15 @@ const currentIcon = computed(() => {
 
 <template>
   <div
+    ref="rootRef"
     class="tx-block-slot fake-background index-fix"
-    :class="{ 'tx-block-slot--disabled': disabled, disabled }"
+    :class="{ 'tx-block-slot--disabled': isDisabled, 'disabled': isDisabled, 'is-error': invalid }"
     :role="interactive ? 'button' : undefined"
-    :tabindex="interactive && !disabled ? 0 : undefined"
-    :aria-disabled="interactive && disabled ? true : undefined"
+    :tabindex="interactive && !isDisabled ? 0 : undefined"
+    :aria-disabled="interactive && isDisabled ? true : undefined"
     @click="handleClick"
     @keydown="handleKeydown"
+    @focusout="onFocusout"
   >
     <div class="tx-block-slot__content">
       <slot name="icon" :active="active">
@@ -96,18 +129,30 @@ const currentIcon = computed(() => {
           <div v-if="$slots.tags" class="tx-block-slot__tags tx-block-slot__tags--after">
             <slot name="tags" />
           </div>
+          <p
+            v-if="fieldMessage"
+            :id="messageId"
+            class="tx-block-slot__description"
+            :class="`tx-block-slot__description--${fieldMessage.kind}`"
+          >
+            <span class="tx-block-slot__sr-only">{{ notePrefix }}</span>{{ fieldMessage.text }}
+          </p>
         </template>
         <template v-else>
           <div class="tx-block-slot__title-row">
-            <h5 class="tx-block-slot__title">
-              {{ title }}
+            <h5 :id="prop && title ? labelId : undefined" class="tx-block-slot__title">
+              {{ title }}<span v-if="markRequired" class="tx-block-slot__required" aria-hidden="true">*</span>
             </h5>
             <div v-if="$slots.tags" class="tx-block-slot__tags">
               <slot name="tags" />
             </div>
           </div>
-          <p class="tx-block-slot__description">
-            {{ description }}
+          <p
+            :id="prop && note ? messageId : undefined"
+            class="tx-block-slot__description"
+            :class="fieldMessage ? `tx-block-slot__description--${fieldMessage.kind}` : undefined"
+          >
+            <span v-if="notePrefix" class="tx-block-slot__sr-only">{{ notePrefix }}</span>{{ note?.text ?? description }}
           </p>
         </template>
       </div>
@@ -186,7 +231,34 @@ const currentIcon = computed(() => {
       line-height: 16px;
       opacity: 0.5;
       color: var(--tx-text-color-secondary, #909399);
+
+      &--error {
+        opacity: 1;
+        color: var(--tx-color-danger, #f56c6c);
+      }
+
+      &--warning {
+        opacity: 1;
+        color: var(--tx-color-warning, #e6a23c);
+      }
     }
+
+    .tx-block-slot__required {
+      margin-left: 4px;
+      color: var(--tx-color-danger, #f56c6c);
+    }
+  }
+
+  .tx-block-slot__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .tx-block-slot__title-row {
