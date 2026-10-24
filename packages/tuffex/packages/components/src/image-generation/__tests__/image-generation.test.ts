@@ -247,6 +247,13 @@ beforeEach(() => {
 
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
+  // A browser stamps each frame on the clock performance.now() reads, and the engine's frame cap
+  // compares the two. jsdom stamps frames on a clock that starts with the window, half a second
+  // or more behind, so the first paint waited out the gap: past a second under load, where the
+  // frame-driven waits below gave up. Same frames, browser timestamps.
+  const jsdomFrame = window.requestAnimationFrame.bind(window)
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) =>
+    jsdomFrame(() => cb(performance.now())))
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement, type: string) {
     return type === '2d' ? create2dStub(this) : {}
   } as unknown as typeof HTMLCanvasElement.prototype.getContext)
