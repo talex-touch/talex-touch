@@ -90,6 +90,10 @@ const plans = computed<PricingPlan[]>(() => [
   },
 ])
 
+const route = useRoute()
+/** The plan the app sent the user here for, as in `/pricing?plan=plus`. Its card is outlined. */
+const requestedPlanId = computed(() => typeof route.query.plan === 'string' ? route.query.plan : '')
+
 const ctaToneClass: Record<PricingPlan['tone'], string> = {
   primary: 'bg-primary text-white shadow-[0_16px_34px_-14px_rgba(27,181,244,0.9)] hover:bg-primary/90',
   solid: 'bg-black text-white hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/90',
@@ -136,9 +140,12 @@ const faqItems = computed(() => [1, 2, 3, 4].map(n => ({
           :key="plan.id"
           class="pricing-reveal group relative flex flex-col rounded-[26px] p-6 transition duration-300"
           :style="{ animationDelay: `${60 + index * 60}ms` }"
-          :class="plan.featured
-            ? 'z-1 bg-white ring-1 ring-black/[0.06] shadow-[0_40px_90px_-34px_rgba(15,23,42,0.32)] dark:bg-white/[0.075] dark:ring-white/12 dark:shadow-[0_40px_90px_-34px_rgba(0,0,0,0.8)] xl:-my-7 xl:p-7'
-            : 'bg-black/[0.035] hover:bg-black/[0.055] dark:bg-white/[0.045] dark:hover:bg-white/[0.07]'"
+          :class="[
+            plan.featured
+              ? 'z-1 bg-white ring-1 ring-black/[0.06] shadow-[0_40px_90px_-34px_rgba(15,23,42,0.32)] dark:bg-white/[0.075] dark:ring-white/12 dark:shadow-[0_40px_90px_-34px_rgba(0,0,0,0.8)] xl:-my-7 xl:p-7'
+              : 'bg-black/[0.035] hover:bg-black/[0.055] dark:bg-white/[0.045] dark:hover:bg-white/[0.07]',
+            plan.id === requestedPlanId && 'outline outline-2 outline-offset-4 outline-primary',
+          ]"
         >
           <!-- Featured sheen -->
           <div
