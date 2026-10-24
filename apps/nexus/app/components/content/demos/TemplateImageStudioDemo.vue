@@ -185,6 +185,7 @@ const ZH = {
   varying: '变体中',
   progress: (done: number, total: number) => `生成中 ${done}/${total}`,
   tileName: (style: string, ratio: string, index: number) => `${style} · ${ratio} · 第 ${index} 张`,
+  viewerName: (style: string, ratio: string) => `${style} · ${ratio}`,
   tileAlt: (prompt: string, index: number) => `${prompt}（第 ${index} 张）`,
   actions: (index: number) => `第 ${index} 张的操作`,
   zoom: '放大',
@@ -262,6 +263,7 @@ const EN: Copy = {
   varying: 'New variation',
   progress: (done, total) => `Generating ${done}/${total}`,
   tileName: (style, ratio, index) => `${style} · ${ratio} · Image ${index}`,
+  viewerName: (style, ratio) => `${style} · ${ratio}`,
   tileAlt: (prompt, index) => `${prompt} (image ${index})`,
   actions: index => `Image ${index} actions`,
   zoom: 'Enlarge',
@@ -295,7 +297,7 @@ const EN: Copy = {
   viewerCopied: 'Image copied',
   viewerLinkCopied: 'Link copied',
   viewerCopyFailed: 'Could not copy the image',
-  viewerItem: (current: number, total: number, name?: string) => `${name ? `${name}, ` : ''}${current} of ${total}`,
+  viewerItem: (current: number, total: number, name?: string) => name ? `${name}, ${current} of ${total}` : `Image ${current} of ${total}`,
   viewerDialog: (title: string, name: string) => `${title}: ${name}`,
   viewerReadout: (readout: string, label: string) => `${readout}, ${label}`,
   scriptPrompt: 'Tuff theme wallpaper: aurora night sky over snowy peaks, cool tones, space on the left for icons',
@@ -968,9 +970,11 @@ const viewerTiles = computed(() => {
   if (!set)
     return []
   const [width, height] = SIZE[set.params.ratio]
+  // The preview counts the images itself, so their name leaves the position out.
+  const name = copy.value.viewerName(copy.value.styles[set.params.style], set.params.ratio)
   return set.tiles
     .filter(tile => tile.status === 'done' && tile.shownSrc)
-    .map(tile => ({ id: tile.id, item: { url: tile.shownSrc, name: tileName(set, tile), width, height } satisfies ImagePreviewItem }))
+    .map(tile => ({ id: tile.id, item: { url: tile.shownSrc, name, alt: set.prompt, width, height } satisfies ImagePreviewItem }))
 })
 const viewerItems = computed(() => viewerTiles.value.map(entry => entry.item))
 
@@ -1529,14 +1533,62 @@ function start(): void {
 }
 
 /** Any reader input ends the script; a generation already running carries on. */
-function onReaderInput(): void {
+function onReaderInput(event: Event): void {
   touched = true
   if (!scripted)
     return
   scripted = false
   dropCues('script')
   pressing.value = false
+  if (event.type === 'pointerdown')
+    holdScript()
+  else
+    applyScript()
+}
+
+// The finished prompt grows the composer and moves the tiles below it. Filled in as a press ends
+// the script, it would bring the press up on something else and lose its click, so it waits for
+// the click and goes in just ahead of it.
+const PRESS_ENDS = ['mouseup', 'pointercancel', 'dragend', 'contextmenu'] as const
+let scriptHeld = false
+
+function watchPressEnd(): void {
+  for (const type of PRESS_ENDS)
+    window.addEventListener(type, onPressEnd, true)
+  // Not captured: an element's blur, as the press moves focus, is not the press ending.
+  window.addEventListener('blur', onPressEnd)
+}
+
+function unwatchPressEnd(): void {
+  for (const type of PRESS_ENDS)
+    window.removeEventListener(type, onPressEnd, true)
+  window.removeEventListener('blur', onPressEnd)
+}
+
+function holdScript(): void {
+  scriptHeld = true
+  watchPressEnd()
+}
+
+/** A press that clicks nothing here still ends: the script goes in after any click it makes. */
+function onPressEnd(): void {
+  unwatchPressEnd()
+  setTimeout(releaseScript)
+}
+
+/** Fills the finished script in, if a press is holding it back. */
+function releaseScript(): void {
+  if (!scriptHeld)
+    return
+  dropHeldScript()
   applyScript()
+}
+
+function dropHeldScript(): void {
+  if (!scriptHeld)
+    return
+  scriptHeld = false
+  unwatchPressEnd()
 }
 
 function onEnter(): void {
@@ -1560,6 +1612,7 @@ function resetDemo(): void {
   applied.icon = null
   touched = false
   scripted = false
+  dropHeldScript()
   if (entered)
     void nextTick(start)
 }
@@ -1615,6 +1668,7 @@ onBeforeUnmount(() => {
   visibility = null
   sizing?.disconnect()
   sizing = null
+  dropHeldScript()
   if (hasDocument())
     document.removeEventListener('visibilitychange', onVisibilityChange)
 })
@@ -1630,6 +1684,7 @@ onBeforeUnmount(() => {
         :class="[`is-${mode}`, { 'is-offscreen': !onScreen }]"
         tabindex="-1"
         @pointerdown.capture="onReaderInput"
+        @click.capture="releaseScript"
         @keydown.capture="onReaderInput"
         @focusin="onReaderInput"
         @keydown="onRootKeydown"
