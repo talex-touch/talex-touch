@@ -12,6 +12,9 @@ Account SDK provides user information, subscription status, and quota management
 ---
 code: |
   import { accountSDK, SubscriptionPlan } from '@talex-touch/utils'
+  import { useChannel } from '@talex-touch/utils/plugin/sdk'
+
+  accountSDK.setChannelSend(useChannel().send)
 
   // Check if user is logged in
   const isLoggedIn = await accountSDK.isLoggedIn()
@@ -44,25 +47,74 @@ code: |
 
 **Get SDK Instance**
 
+Account calls work only in a plugin's pages; the Prelude script (`index.js`) cannot reach them. `accountSDK` is a singleton: give it the page's channel before using it.
+
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
   import { accountSDK } from '@talex-touch/utils'
+  import { useChannel } from '@talex-touch/utils/plugin/sdk'
 
-  // Singleton, use directly
+  accountSDK.setChannelSend(useChannel().send)
   await accountSDK.getProfile()
 ---
 :::
 
 ::alert{type="warning"}
-**Note**: When using in Prelude script (`index.js`), you need to call `accountSDK.setChannelSend(send)` to inject the communication function first.
+**Note**: `accountSDK` reads a failed call as "none": `getProfile()` returns `null` and `isLoggedIn()` returns `false`. To tell signing out from a failed call, or to hear when the sign-in changes, use `usePluginAccount()` below.
 ::
+
+---
+
+**Following the Sign-in**
+
+`usePluginAccount()` is the account client for plugin pages. Its calls reject when they fail instead of reading as signed out, and `onDidChange` tells the plugin when the sign-in changes.
+
+:::TuffCodeBlock{lang="ts"}
+---
+code: |
+  import { usePluginAccount } from '@talex-touch/utils/plugin/sdk'
+
+  const account = usePluginAccount()
+
+  const stop = account.onDidChange((session) => {
+    // The stored sign-in has not been checked in this run yet, so "signed out" may still turn signed in
+    if (!session.isSettled)
+      return
+    renderUser(session.user) // null when signed out
+  })
+
+  // When the page unmounts
+  stop()
+---
+:::
+
+| Method | Return | Description |
+|--------|--------|-------------|
+| `getProfile()` | `UserProfile \| null` | The signed-in account's profile, `null` when signed out |
+| `getSubscription()` | `Subscription \| null` | Subscription |
+| `getUsage()` | `UsageStats \| null` | Usage |
+| `getFeatures()` | `FeatureFlag[]` | Feature flags |
+| `getTeams()` | `Team[]` | Teams the account belongs to |
+| `openUpgradePage(plan?)`, `openBillingPage()`, `openAccountSettings()`, `openProfileEditor()` | `void` | Opens the matching page of the account site in the browser |
+| `requestLogin()` | `boolean` | Opens the sign-in page. `true` means the sign-in has started, not that anyone is signed in |
+| `onDidChange(callback)` | `() => void` | Calls back once with the current state, then after every change; returns a function that stops it |
+
+The state `onDidChange` receives (`AccountSessionState`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `isSettled` | `boolean` | The stored sign-in has been checked in this run. While `false`, signed out does not mean the account signed out |
+| `isSignedIn` | `boolean` | Signed in |
+| `user` | `{ id: string, name?: string } \| null` | The signed-in account, `null` when signed out |
+
+The state carries no credential and no email, and a change to details it does not carry does not call back.
 
 ---
 
 **Auth Token & Device**
 
-Used by SDKs that need authenticated API access (e.g., Cloud Sync SDK).
+Used by SDKs that need authenticated API access (e.g., Cloud Sync SDK). Only Tuff itself can get them; in a plugin they return `null`.
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -615,21 +667,19 @@ code: |
 
 **`requestLogin()`**
 
-Request user login (opens login dialog).
+Opens the sign-in page. `true` means the sign-in has started, not that the user is signed in; the result arrives through `usePluginAccount().onDidChange`.
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
-  const success = await accountSDK.requestLogin()
-  if (success) {
-    // User logged in
-  }
+  await accountSDK.requestLogin()
+  // Once the user signs in in the browser, onDidChange receives isSignedIn: true
 ---
 :::
 
 **`logout()`**
 
-Logout current user.
+Logout current user. Only Tuff itself can call it; in a plugin it rejects.
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -756,6 +806,12 @@ code: |
     reason?: string
     remaining?: number
     resetAt?: number
+  }
+
+  interface AccountSessionState {
+    isSettled: boolean
+    isSignedIn: boolean
+    user: { id: string, name?: string } | null
   }
 ---
 :::

@@ -517,18 +517,21 @@ Replace the `provideTxFormHost` call above with:
 
 ```ts
 import { clearTxFormDrafts, provideTxFormHost } from '@talex-touch/tuffex/form'
-import { usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
+import { usePluginAccount, usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
 import { ref } from 'vue'
 
 const storage = usePluginDraftStorage()
 const account = ref<string | null>(null)
 provideTxFormHost({ storage, namespace: account }, app)
 
-// Call it once the account is known: at startup, and after every change.
-function switchAccount(next: string): void {
+// Called once with the current account, then after every change
+usePluginAccount().onDidChange((session) => {
+  if (!session.isSettled)
+    return
+  const next = session.user ? `user:${session.user.id}` : 'anon'
   void clearTxFormDrafts({ storage, namespace: ns => ns.startsWith('user:') && ns !== next })
   account.value = next
-}
+})
 ```
 
 ### Best Practices

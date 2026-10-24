@@ -1,4 +1,5 @@
 import {
+  AccountEvents,
   AppEvents,
   ClipboardEvents,
   CoreBoxEvents,
@@ -64,6 +65,20 @@ export const PLUGIN_FACING_INTELLIGENCE_EVENTS = [
  * `context.plugin` checks still apply.
  */
 export const PLUGIN_FACING_EVENTS = [
+  // AccountEvents — 11
+  // The token, the device id, sync bookkeeping, signing out and the device list stay host-only.
+  AccountEvents.account.getFeatures,
+  AccountEvents.account.getProfile,
+  AccountEvents.account.getSubscription,
+  AccountEvents.account.getTeams,
+  AccountEvents.account.getUsage,
+  AccountEvents.account.openBilling,
+  AccountEvents.account.openProfile,
+  AccountEvents.account.openSettings,
+  AccountEvents.account.openUpgrade,
+  AccountEvents.account.requestLogin,
+  AccountEvents.session.changed,
+
   // AppEvents — 8
   AppEvents.fileIndex.batteryLevel,
   AppEvents.power.batteryStatus,

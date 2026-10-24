@@ -193,6 +193,21 @@ export interface UserProfile {
 }
 
 /**
+ * Who is signed in, as a plugin sees it. It carries no credential.
+ */
+export interface AccountSessionState {
+  /**
+   * The stored session has been checked in this run. Until then a signed-out state may still turn
+   * signed in, so it does not mean the account signed out.
+   */
+  isSettled: boolean
+  /** Signed in */
+  isSignedIn: boolean
+  /** The signed-in account, or null when signed out */
+  user: { id: string, name?: string } | null
+}
+
+/**
  * Team/Organization info
  */
 export interface Team {

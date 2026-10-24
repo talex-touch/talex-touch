@@ -2,7 +2,13 @@ import type { AuthState, AuthUser } from '@talex-touch/utils/auth'
 import type { MaybePromise, ModuleInitContext, ModuleKey } from '@talex-touch/utils'
 import type { AppSetting } from '@talex-touch/utils/common/storage/entity/app-settings'
 import type { NetworkMethod, NetworkRetryPolicy } from '@talex-touch/utils/network'
-import type { PlanQuota, Subscription, UsageStats, UserProfile } from '@talex-touch/utils/account'
+import type {
+  AccountSessionState,
+  PlanQuota,
+  Subscription,
+  UsageStats,
+  UserProfile
+} from '@talex-touch/utils/account'
 import type {
   AuthAvatarUpdateRequest,
   AuthLoginRequest,
@@ -15,7 +21,7 @@ import type {
   NexusUploadPayload,
   AccountRecordSyncActivityRequest
 } from '@talex-touch/utils/transport/events/auth'
-import type { ITuffTransportMain } from '@talex-touch/utils/transport/main'
+import type { ITuffTransportMain, StreamContext } from '@talex-touch/utils/transport/main'
 import type { TalexEvents } from '../../core/eventbus/touch-event'
 import { StorageList } from '@talex-touch/utils'
 import {
@@ -241,6 +247,42 @@ export function subscribeAuthState(listener: AuthStateListener): () => void {
   return () => {
     authStateListeners.delete(listener)
   }
+}
+
+/** What a plugin may know about the session: whether it is decided, and who is signed in. */
+function toAccountSessionState(state: AuthState): AccountSessionState {
+  return {
+    isSettled: state.isSettled === true,
+    isSignedIn: state.isSignedIn,
+    user: state.user
+      ? {
+          id: state.user.id,
+          ...(typeof state.user.name === 'string' ? { name: state.user.name } : {})
+        }
+      : null
+  }
+}
+
+/**
+ * Sends a plugin the session now, then whenever what it can see of it changes, until the plugin
+ * cancels or the handler goes away. Profile edits it cannot see do not reach it.
+ */
+function watchAccountSession(context: StreamContext<AccountSessionState>): void {
+  if (context.signal.aborted) {
+    return
+  }
+  let sent = ''
+  const send = (state: AuthState): void => {
+    const session = toAccountSessionState(state)
+    const key = JSON.stringify(session)
+    if (key === sent || context.isCancelled()) {
+      return
+    }
+    sent = key
+    context.emit(session)
+  }
+  context.signal.addEventListener('abort', subscribeAuthState(send), { once: true })
+  send(authState)
 }
 
 export function getAuthToken(): string | null {
@@ -2642,6 +2684,13 @@ export class AuthModule extends BaseModule<TalexEvents> {
         updateAuthState(null)
       })
     )
+    if (transport) {
+      this.transportDisposers.push(
+        transport.onStream(AccountEvents.session.changed, (_payload, context) => {
+          watchAccountSession(context)
+        })
+      )
+    }
 
     void (async () => {
       await loadAuthToken()

@@ -1,6 +1,7 @@
 import type { AuthState, AuthUser } from "../../auth";
 import type {
   AccountInfo,
+  AccountSessionState,
   DeviceSession,
   FeatureFlag,
   Subscription,
@@ -253,5 +254,16 @@ export const AccountEvents = {
       .module("session")
       .event("logout")
       .define<void, void>(),
+  },
+  session: {
+    /**
+     * The session as plugins see it: sent when the stream starts, then after every change.
+     */
+    changed: defineEvent("account")
+      .module("session")
+      .event("changed")
+      .define<void, AsyncIterable<AccountSessionState>>({
+        stream: { enabled: true },
+      }),
   },
 } as const;

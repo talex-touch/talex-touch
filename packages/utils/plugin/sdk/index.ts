@@ -7,6 +7,7 @@ export interface ITouchSDK {
 
 // Note: Window.$touchSDK is declared in ../preload.ts to avoid duplicate declarations
 
+export * from "./account";
 export * from "./box-items";
 export * from "./box-sdk";
 export * from "./channel";

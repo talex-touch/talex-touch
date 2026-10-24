@@ -518,18 +518,21 @@ app.mount('#app')
 
 ```ts
 import { clearTxFormDrafts, provideTxFormHost } from '@talex-touch/tuffex/form'
-import { usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
+import { usePluginAccount, usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
 import { ref } from 'vue'
 
 const storage = usePluginDraftStorage()
 const account = ref<string | null>(null)
 provideTxFormHost({ storage, namespace: account }, app)
 
-// 知道当前账号时调用：启动时一次，之后账号每次变化时一次
-function switchAccount(next: string): void {
+// 先收到一次当前账号，之后账号每次变化再收到一次
+usePluginAccount().onDidChange((session) => {
+  if (!session.isSettled)
+    return
+  const next = session.user ? `user:${session.user.id}` : 'anon'
   void clearTxFormDrafts({ storage, namespace: ns => ns.startsWith('user:') && ns !== next })
   account.value = next
-}
+})
 ```
 
 ### 最佳实践

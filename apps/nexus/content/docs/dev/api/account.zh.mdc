@@ -12,6 +12,9 @@
 ---
 code: |
   import { accountSDK, SubscriptionPlan } from '@talex-touch/utils'
+  import { useChannel } from '@talex-touch/utils/plugin/sdk'
+
+  accountSDK.setChannelSend(useChannel().send)
 
   // 检查用户是否已登录
   const isLoggedIn = await accountSDK.isLoggedIn()
@@ -44,25 +47,74 @@ code: |
 
 **获取 SDK 实例**
 
+账户调用只能在插件页面里用，先导脚本（`index.js`）拿不到。`accountSDK` 是单例，用之前先把当前页面的通道交给它：
+
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
   import { accountSDK } from '@talex-touch/utils'
+  import { useChannel } from '@talex-touch/utils/plugin/sdk'
 
-  // 单例模式，直接使用
+  accountSDK.setChannelSend(useChannel().send)
   await accountSDK.getProfile()
 ---
 :::
 
 ::alert{type="warning"}
-**注意**：在 Prelude 脚本 (`index.js`) 中使用时，需要先调用 `accountSDK.setChannelSend(send)` 注入通信函数。
+**注意**：`accountSDK` 把调用失败当成「没有」：`getProfile()` 返回 `null`，`isLoggedIn()` 返回 `false`。要分清「已退出」和「调用失败」，或者要在登录状态变化时收到通知，用下面的 `usePluginAccount()`。
 ::
+
+---
+
+**跟随登录状态**
+
+`usePluginAccount()` 是插件页面用的账户客户端。调用失败时它会 reject，不会读成已退出；`onDidChange` 在登录状态变化时通知插件。
+
+:::TuffCodeBlock{lang="ts"}
+---
+code: |
+  import { usePluginAccount } from '@talex-touch/utils/plugin/sdk'
+
+  const account = usePluginAccount()
+
+  const stop = account.onDidChange((session) => {
+    // 本次启动还没核对完保存的登录，这时的「未登录」可能马上变成已登录
+    if (!session.isSettled)
+      return
+    renderUser(session.user) // 未登录时为 null
+  })
+
+  // 页面卸载时
+  stop()
+---
+:::
+
+| 方法 | 返回值 | 说明 |
+|------|--------|------|
+| `getProfile()` | `UserProfile \| null` | 当前账户资料，未登录时为 `null` |
+| `getSubscription()` | `Subscription \| null` | 订阅 |
+| `getUsage()` | `UsageStats \| null` | 用量 |
+| `getFeatures()` | `FeatureFlag[]` | 功能开关 |
+| `getTeams()` | `Team[]` | 所在团队 |
+| `openUpgradePage(plan?)`、`openBillingPage()`、`openAccountSettings()`、`openProfileEditor()` | `void` | 在浏览器里打开账户网站的对应页面 |
+| `requestLogin()` | `boolean` | 打开登录页。返回 `true` 只表示登录已发起，用户还没登录 |
+| `onDidChange(callback)` | `() => void` | 先回调一次当前状态，之后每次变化回调一次；返回停止订阅的函数 |
+
+`onDidChange` 收到的状态（`AccountSessionState`）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `isSettled` | `boolean` | 本次启动已核对过保存的登录。为 `false` 时的未登录不代表账户已退出 |
+| `isSignedIn` | `boolean` | 是否已登录 |
+| `user` | `{ id: string, name?: string } \| null` | 当前账户，未登录时为 `null` |
+
+状态里没有凭据和邮箱；只改了这类看不到的资料时不会回调。
 
 ---
 
 **Auth Token & 设备信息**
 
-用于需要认证访问的 SDK（例如 Cloud Sync SDK）。
+用于需要认证访问的 SDK（例如 Cloud Sync SDK）。只有 Tuff 自身拿得到，插件里调用返回 `null`。
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -615,21 +667,19 @@ code: |
 
 **`requestLogin()`**
 
-请求用户登录（打开登录对话框）。
+打开登录页。返回 `true` 只表示登录已发起，不表示用户已登录；登录结果用 `usePluginAccount().onDidChange` 接收。
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
-  const success = await accountSDK.requestLogin()
-  if (success) {
-    // 用户已登录
-  }
+  await accountSDK.requestLogin()
+  // 用户在浏览器里登录完成后，onDidChange 收到 isSignedIn: true
 ---
 :::
 
 **`logout()`**
 
-登出当前用户。
+登出当前用户。只有 Tuff 自身能调用，插件里调用会 reject。
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -756,6 +806,12 @@ code: |
     reason?: string
     remaining?: number
     resetAt?: number
+  }
+
+  interface AccountSessionState {
+    isSettled: boolean
+    isSignedIn: boolean
+    user: { id: string, name?: string } | null
   }
 ---
 :::

@@ -107,6 +107,7 @@ vi.mock('@talex-touch/utils/transport/event/builder', () => ({
 vi.mock('@talex-touch/utils/transport/main', () => ({
   getTuffTransportMain: vi.fn(() => ({
     on: transportOnMock,
+    onStream: vi.fn(() => vi.fn()),
     broadcast: transportBroadcastMock
   }))
 }))
