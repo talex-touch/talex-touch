@@ -15,6 +15,7 @@ import { registerDefaultCustomRenderers } from '~/modules/box/custom-render'
 import type { I18nInstance } from '~/modules/lang/i18n'
 import { readLanguagePreference, setupI18n, setupLanguageFollow } from '~/modules/lang'
 import { registerNotificationHub } from '~/modules/notification/notification-hub'
+import { registerAccessibilitySupport } from '~/modules/platform/accessibility-support'
 import { waitForHydrationSoftTimeout } from '~/modules/startup/hydration-timeout'
 import { announceRendererReadyAfterRouter } from '~/modules/startup/renderer-ready'
 import { createCoreAppIconConfig } from '~/modules/tuffex/icon-config'
@@ -89,6 +90,7 @@ let lifecycleEventsRegistered = false
 const DESTINATION_ROUTE_BASE = 'http://tuff.local'
 
 registerNotificationHub(transport)
+registerAccessibilitySupport(transport)
 registerMainWindowSideEffects()
 registerLifecycleEvents()
 reportContentSecurityPolicyViolations()

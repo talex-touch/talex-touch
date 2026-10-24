@@ -11,6 +11,7 @@ import { TxDrawer } from '@talex-touch/tuffex/drawer'
 import { TxTerminal } from '@talex-touch/tuffex/terminal'
 import { usePluginLogManager } from '~/modules/hooks/usePluginLogManager'
 import { usePluginLogSessions } from '~/modules/hooks/usePluginLogSessions'
+import { useAccessibilitySupport } from '~/modules/platform/accessibility-support'
 
 const props = defineProps<{
   plugin: ITouchPlugin
@@ -35,6 +36,7 @@ let liveClockTimer: number | null = null
 let unsubscribeLogStream: (() => void) | null = null
 
 const { terminalLogs, setLogs, appendLog, clearLogs, exportLogs } = usePluginLogManager()
+const screenReaderMode = useAccessibilitySupport()
 
 const {
   sessions,
@@ -341,6 +343,7 @@ defineExpose({
           class="plugin-logs-view"
           :lines="terminalLogs"
           :auto-scroll="isLiveStreaming"
+          :screen-reader-mode="screenReaderMode"
           read-only
         />
         <div v-if="isLoadingLogs" class="terminal-overlay loading">

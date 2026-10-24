@@ -1311,15 +1311,12 @@ export class CommonChannelModule extends BaseModule {
   /**
    * Refuses a handler call that arrived from a plugin.
    *
-   * Every transport handler is registered on the plugin channel as well as the main one, and
-   * inspecting context.plugin is voluntary per handler — so these were reachable from a
-   * plugin view. window.close ends the application, hide and minimize deny service to the
-   * user, and getCwd/getPath/getPackage hand over the filesystem layout that makes a path
-   * traversal or a shell sink easy to aim (#807).
-   *
-   * This is the per-handler form of the audience mechanism proposed in #688. That change
-   * would make host-only the default for every handler; until then, the handlers that can
-   * end the app or disclose its layout should not depend on it.
+   * The transport only binds a handler to the plugin channel when its event is listed in
+   * PLUGIN_FACING_EVENTS (#688), so a plugin view cannot reach these through that channel.
+   * This guard is defense in depth for that list: window.close ends the application, hide
+   * and minimize deny service to the user, and getCwd/getPath/getPackage hand over the
+   * filesystem layout that makes a path traversal or a shell sink easy to aim (#807). If one
+   * of them is ever added to the list by mistake, the call still fails here.
    */
   private assertHostOnly(context: HandlerContext | undefined, eventName: string): void {
     if (!context?.plugin) return
@@ -1485,8 +1482,34 @@ export class CommonChannelModule extends BaseModule {
     registerSafeHandler: ReturnType<CommonChannelModule['createSafeOperationHandler']>
   ): void {
     const electronApp = touchApp.app
+    let watchingAccessibilitySupport = false
+    const pushAccessibilitySupport = (_event: unknown, enabled: boolean): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        // notifyTo without a plugin context refuses plugin renderers.
+        if (!window.isDestroyed())
+          transport.notifyTo(
+            window.webContents,
+            AppEvents.system.accessibilitySupportChanged,
+            enabled
+          )
+      }
+    }
 
     this.transportDisposers.push(
+      () => {
+        if (watchingAccessibilitySupport)
+          electronApp.removeListener('accessibility-support-changed', pushAccessibilitySupport)
+      },
+      transport.on(AppEvents.system.accessibilitySupportGet, (_payload, context) => {
+        // Whether someone relies on assistive technology is personal; Chromium keeps it from web
+        // content as well.
+        this.assertHostOnly(context, 'system.accessibilitySupportGet')
+        if (!watchingAccessibilitySupport) {
+          watchingAccessibilitySupport = true
+          electronApp.on('accessibility-support-changed', pushAccessibilitySupport)
+        }
+        return electronApp.isAccessibilitySupportEnabled()
+      }),
       transport.on<StartupRequest, StartupResponse>(
         AppEvents.system.startup,
         (payload, context) => {
@@ -2348,11 +2371,11 @@ export class CommonChannelModule extends BaseModule {
         return appProvider.listManagedEntries()
       }),
       // The app index's management surface: the user's launch history, the names they gave an
-      // app, the entries themselves, and the host's own global shortcuts. Every transport handler
-      // is registered on the plugin channel as well and inspecting `context.plugin` is voluntary
-      // (#688), so the audience is asserted on every handler here rather than left to their own
-      // diligence — a plugin that reached one of these could launch an application, delete an
-      // entry, or read back what the user runs.
+      // app, the entries themselves, and the host's own global shortcuts. None of these events is
+      // on PLUGIN_FACING_EVENTS, so the transport keeps them off the plugin channel (#688); the
+      // audience is still asserted on every handler here so that adding one to that list by
+      // mistake does not hand a plugin the power to launch an application, delete an entry, or
+      // read back what the user runs.
       transport.on(AppEvents.appIndex.listSummaries, async (_payload, context) => {
         this.assertHostOnly(context, 'appIndex.listSummaries')
         // The result is passed through rather than wrapped: a failed usage read reports itself,

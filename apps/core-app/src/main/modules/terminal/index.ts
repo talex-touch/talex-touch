@@ -1,8 +1,10 @@
 import type { ModuleInitContext, ModuleKey } from '@talex-touch/utils'
 import type { PluginKeyManager, TuffEvent } from '@talex-touch/utils/transport'
 import type {
+  TerminalAckRequest,
   TerminalCloseRequest,
   TerminalCreateRequest,
+  TerminalCreateResponse,
   TerminalResizeRequest,
   TerminalWriteRequest
 } from '@talex-touch/utils/transport/events/terminal'
@@ -129,6 +131,7 @@ export class TerminalModule extends BaseModule {
     register(TerminalEvents.session.write, (payload, context) => this.write(payload, context))
     register(TerminalEvents.session.resize, (payload, context) => this.resize(payload, context))
     register(TerminalEvents.session.close, (payload, context) => this.close(payload, context))
+    register(TerminalEvents.session.ack, (payload, context) => this.acknowledge(payload, context))
   }
 
   private send<T>(context: HandlerContext, event: TuffEvent<T, void>, payload: T): void {
@@ -144,11 +147,12 @@ export class TerminalModule extends BaseModule {
     context: HandlerContext,
     signal: AbortSignal = this.lifecycle.signal,
     creation?: PtyCreationReservation
-  ): Promise<{ id: string }> {
+  ): Promise<TerminalCreateResponse> {
     const owner = resolveOwner(context, this.transport?.keyManager)
     if (!payload || typeof payload !== 'object') throw new Error('TERMINAL_COMMAND_INVALID')
     const recipient = { ...context, ...(context.plugin ? { plugin: { ...context.plugin } } : {}) }
-    return await this.core.create({
+    const flowControl = payload.flowControl === true
+    const session = await this.core.create({
       owner,
       command: payload.command,
       args: payload.args,
@@ -161,9 +165,11 @@ export class TerminalModule extends BaseModule {
       validateOwner: () => {
         resolveOwner(recipient, this.transport?.keyManager)
       },
+      flowControl,
       onData: (id, data) => this.send(recipient, TerminalEvents.session.data, { id, data }),
       onExit: (id, exit) => this.send(recipient, TerminalEvents.session.exit, { id, ...exit })
     })
+    return flowControl ? { id: session.id, flowControl } : { id: session.id }
   }
 
   private write(payload: TerminalWriteRequest, context: HandlerContext): Promise<void> {
@@ -180,6 +186,14 @@ export class TerminalModule extends BaseModule {
         payload?.cols,
         payload?.rows
       )
+    )
+  }
+
+  private acknowledge(payload: TerminalAckRequest, context: HandlerContext): void {
+    this.core.acknowledge(
+      payload?.id,
+      resolveOwner(context, this.transport?.keyManager),
+      payload?.chars
     )
   }
 

@@ -173,10 +173,14 @@ export interface LocalAiCliTerminalCreateRequest {
   sessionRef?: string
   /** SDK-issued internal cancellation correlation, never caller ownership. */
   creationToken?: string
+  /** Pauses the CLI while too much of its output awaits `terminal.ack`. */
+  flowControl?: boolean
 }
 
 export interface LocalAiCliTerminalCreateResult {
   sessionId: string
+  /** Confirms `flowControl`; without it no `ack` is expected. */
+  flowControl?: boolean
 }
 
 export interface LocalAiCliTerminalWriteRequest {
@@ -197,6 +201,12 @@ export type LocalAiCliTerminalKillRequest =
 export interface LocalAiCliTerminalData {
   sessionId: string
   data: string
+}
+
+export interface LocalAiCliTerminalAckRequest {
+  sessionId: string
+  /** Length of a data payload that has been displayed. */
+  chars: number
 }
 
 export interface LocalAiCliTerminalExit {
@@ -326,6 +336,7 @@ export function normalizeLocalAiCliTerminalCreateRequest(
     ...(projectId ? { projectId } : {}),
     ...(sessionRef ? { sessionRef } : {}),
     ...(typeof value.creationToken === 'string' ? { creationToken: value.creationToken } : {}),
+    ...(value.flowControl === true ? { flowControl: true } : {}),
   }
 }
 
@@ -395,6 +406,7 @@ export const LocalAiCliEvents = {
       .define<LocalAiCliTerminalResizeRequest, void>(),
     kill: defineEvent('local-ai-cli').module('terminal').event('kill').define<LocalAiCliTerminalKillRequest, void>(),
     data: defineEvent('local-ai-cli').module('terminal').event('data').define<LocalAiCliTerminalData, void>(),
+    ack: defineEvent('local-ai-cli').module('terminal').event('ack').define<LocalAiCliTerminalAckRequest, void>(),
     exit: defineEvent('local-ai-cli').module('terminal').event('exit').define<LocalAiCliTerminalExit, void>(),
   },
 } as const

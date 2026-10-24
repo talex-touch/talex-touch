@@ -52,6 +52,17 @@ transport.notifyTo(webContents, event, payload, plugin?): boolean
   both subscriptions before creating the PTY, preserves early events in FIFO order, and releases
   subscriptions on exit, close, failure or cancellation. Renderer loss, navigation and module
   disposal also terminate the main-owned PTY; reloading a renderer is not proof of sender destruction.
+- Main coalesces `terminal:session:data` for 5 ms. Flow control is opt-in: the SDK sends
+  `flowControl: true` with create and reports output through `terminal:session:ack` only when
+  the creation result echoes the flag, so neither an older SDK nor an older host can stall the
+  other. The SDK acknowledges output once `onData` returns; a caller that passes `awaitDisplay`
+  is acknowledged only once the promise `onData` returns settles, and owns the stall a promise
+  that never settles causes. Main counts output when it delivers it, stops reading the PTY once more than
+  100,000 UTF-16 code units are unacknowledged, and resumes below 5,000. It never pauses a closing
+  session and resumes a paused one after the kill: an owner that is closing stops acknowledging,
+  and a killed child blocked on a full PTY cannot exit. A paused PTY polls its child every 50 ms,
+  because node-pty drops unread output 200 ms after the child exits. `local-ai-cli:terminal:ack`
+  follows the same contract.
 - Cancellation does not depend on receiving a creation id. The SDK injects a private creation
   token; main reserves the concrete trusted owner before asynchronous checks, then only spawns
   after permission and business gates pass. The existing close/kill event accepts that token to

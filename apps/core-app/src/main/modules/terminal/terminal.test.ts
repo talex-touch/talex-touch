@@ -224,9 +224,11 @@ describe('terminal owner delivery', () => {
         id: string
       }
       emitOutput('private output')
-      expect(boundary.notifyTo.mock.calls).toEqual([
-        [owner.sender, TerminalEvents.session.data, { id, data: 'private output' }, owner.plugin]
-      ])
+      await vi.waitFor(() =>
+        expect(boundary.notifyTo.mock.calls).toEqual([
+          [owner.sender, TerminalEvents.session.data, { id, data: 'private output' }, owner.plugin]
+        ])
+      )
     }
   )
 })

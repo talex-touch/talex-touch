@@ -19,6 +19,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import type { OmniPanelDesktopContextCapsule } from '../../../../../shared/events/omni-panel'
+import { useAccessibilitySupport } from '../../../modules/platform/accessibility-support'
 import { createRendererLogger } from '../../../utils/renderer-log'
 
 interface OpenDraft {
@@ -42,6 +43,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const sdk = createLocalAiCliSdk(useTuffTransport())
 const log = createRendererLogger('LocalAiCliPanel')
+const screenReaderMode = useAccessibilitySupport()
 
 const visible = ref(false)
 const status = ref<LocalAiCliStatus | null>(null)
@@ -64,6 +66,8 @@ const activeView = ref<'gui' | 'terminal'>('gui')
 let terminalGeneration = 0
 let terminalCreateController: AbortController | null = null
 let terminalCreation: Promise<LocalAiCliTerminalCreateResult> | null = null
+// The session whose CLI main pauses until its output is acknowledged.
+let pacedTerminalSession: string | null = null
 type PendingTerminalEvent =
   | { kind: 'data'; sessionId: string; data: string }
   | { kind: 'exit'; exit: LocalAiCliTerminalExit }
@@ -359,11 +363,22 @@ async function openSettings(): Promise<void> {
   await sdk.openSettings()
 }
 
-function writeTerminalOutput(data: string): void {
+function displayTerminalOutput(data: string): Promise<void> {
   const view = terminalView.value
-  if (!view) return
-  void view.write(data).catch(() => {
+  if (!view) return Promise.resolve()
+  return view.write(data).catch(() => {
     if (terminalView.value === view) log.error('Failed to display local AI CLI terminal output')
+  })
+}
+
+function writeTerminalOutput(data: string): void {
+  void displayTerminalOutput(data)
+}
+
+function writeSessionOutput(sessionId: string, data: string): void {
+  void displayTerminalOutput(data).then(() => {
+    if (sessionId !== pacedTerminalSession) return
+    void sdk.terminal.ack({ sessionId, chars: data.length }).catch(() => {})
   })
 }
 
@@ -419,7 +434,8 @@ async function openTerminal(): Promise<void> {
         projectId: projectId.value,
         sessionRef: sessionRef.value,
         cols: initialSize?.cols ?? 92,
-        rows: initialSize?.rows ?? 24
+        rows: initialSize?.rows ?? 24,
+        flowControl: true
       },
       { signal: controller.signal }
     )
@@ -434,12 +450,14 @@ async function openTerminal(): Promise<void> {
       return
     }
     terminalSessionId.value = result.sessionId
+    pacedTerminalSession = result.flowControl === true ? result.sessionId : null
     terminalOpening.value = false
     const earlyEvents = pendingTerminalEvents
     pendingTerminalEvents = []
     for (const event of earlyEvents) {
       if (event.kind === 'data') {
-        if (event.sessionId === terminalSessionId.value) writeTerminalOutput(event.data)
+        if (event.sessionId === terminalSessionId.value)
+          writeSessionOutput(event.sessionId, event.data)
       } else {
         handleTerminalExit(event.exit)
       }
@@ -464,6 +482,8 @@ async function switchToTerminal(): Promise<void> {
     await openTerminal()
   } else {
     terminalVisible.value = true
+    await nextTick()
+    if (terminalSessionId.value) terminalView.value?.focus()
   }
 }
 
@@ -479,6 +499,7 @@ async function closeTerminal(): Promise<void> {
   terminalVisible.value = false
   pendingTerminalEvents = []
   terminalSessionId.value = null
+  pacedTerminalSession = null
   terminalView.value = null
   if (sessionId) {
     await sdk.terminal.kill({ sessionId }).catch(() => {
@@ -532,7 +553,8 @@ async function close(): Promise<void> {
 }
 
 const disposeTerminalData = sdk.terminal.onData((payload) => {
-  if (payload.sessionId === terminalSessionId.value) writeTerminalOutput(payload.data)
+  if (payload.sessionId === terminalSessionId.value)
+    writeSessionOutput(payload.sessionId, payload.data)
   else if (terminalOpening.value) pendingTerminalEvents.push({ kind: 'data', ...payload })
 })
 const disposeTerminalExit = sdk.terminal.onExit((payload) => {
@@ -694,12 +716,16 @@ defineExpose({ open, reset, newTask })
         <TxMarkdownView v-if="output" :content="output" theme="auto" />
       </div>
 
+      <!-- Hidden, not unmounted, behind the GUI result: output written meanwhile still lands in
+           the terminal and is acknowledged, and switching back finds the same screen. -->
       <TxTerminal
-        v-if="terminalVisible && (activeView === 'terminal' || !output)"
+        v-if="terminalVisible"
+        v-show="activeView === 'terminal' || !output"
         ref="terminalView"
         class="LocalAiCliPanel__terminal"
         :read-only="!terminalSessionId"
         :auto-focus="true"
+        :screen-reader-mode="screenReaderMode"
         @ready="handleTerminalReady"
         @data="handleTerminalInput"
         @resize="handleTerminalResize"

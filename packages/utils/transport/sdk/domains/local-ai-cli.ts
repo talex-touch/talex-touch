@@ -11,6 +11,7 @@ import type {
   LocalAiCliStatus,
   LocalAiCliStatusRequest,
   LocalAiCliTaskChunk,
+  LocalAiCliTerminalAckRequest,
   LocalAiCliTerminalCreateRequest,
   LocalAiCliTerminalCreateResult,
   LocalAiCliTerminalData,
@@ -49,6 +50,8 @@ export interface LocalAiCliSdk {
     write: (request: LocalAiCliTerminalWriteRequest) => Promise<void>
     resize: (request: LocalAiCliTerminalResizeRequest) => Promise<void>
     kill: (request: LocalAiCliTerminalKillRequest) => Promise<void>
+    /** Reports displayed output of a session created with `flowControl`. */
+    ack: (request: LocalAiCliTerminalAckRequest) => Promise<void>
     onData: (listener: (payload: LocalAiCliTerminalData) => void) => () => void
     onExit: (listener: (payload: LocalAiCliTerminalExit) => void) => () => void
   }
@@ -163,6 +166,7 @@ export function createLocalAiCliSdk(transport: ITuffTransport): LocalAiCliSdk {
       write: request => transport.send(LocalAiCliEvents.terminal.write, request),
       resize: request => transport.send(LocalAiCliEvents.terminal.resize, request),
       kill: request => transport.send(LocalAiCliEvents.terminal.kill, request),
+      ack: request => transport.send(LocalAiCliEvents.terminal.ack, request, { immediate: true }),
       onData: listener => transport.on(LocalAiCliEvents.terminal.data, listener),
       onExit: listener => transport.on(LocalAiCliEvents.terminal.exit, listener),
     },

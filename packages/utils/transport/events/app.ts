@@ -267,6 +267,18 @@ export const AppEvents = {
       .event('tray-settings.update')
       .define<TraySettingsUpdateRequest, TraySettingsUpdateResponse>(),
 
+    /** Whether assistive technology such as a screen reader is using the app. Host only. */
+    accessibilitySupportGet: defineEvent('app')
+      .module('system')
+      .event('accessibility-support.get')
+      .define<void, boolean>(),
+
+    /** Pushed to host windows once a renderer has asked `accessibilitySupportGet`. */
+    accessibilitySupportChanged: defineEvent('app')
+      .module('system')
+      .event('accessibility-support.changed')
+      .define<boolean, void>(),
+
     /** Run a safe host-owned copy, move, or system-trash operation for an indexed path. */
     fileAction: defineEvent('app').module('system').event('file-action').define<FileActionRequest, FileActionResult>(),
 

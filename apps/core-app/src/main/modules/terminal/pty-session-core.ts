@@ -13,6 +13,16 @@ import { createLogger } from '../../utils/logger'
 
 const ptyLog = createLogger('PtySessionCore')
 
+// A flood of output reaches its owner as one message per interval rather than one per read.
+const OUTPUT_FLUSH_MS = 5
+// Delivered output awaiting acknowledgement, in UTF-16 code units, at which a flow-controlled
+// PTY pauses and then resumes.
+const FLOW_HIGH_WATERMARK = 100_000
+const FLOW_LOW_WATERMARK = 5_000
+// node-pty discards output it has not read 200 ms after the child exits, so a paused PTY
+// checks this often whether its child is still there to wait for.
+const FLOW_EXIT_POLL_MS = 50
+
 export interface PtySessionOwner {
   readonly scope: string
   readonly sender: WebContents
@@ -53,6 +63,11 @@ export interface PtySessionCreateOptions {
   creationToken?: string
   creation?: PtyCreationReservation
   validateOwner?: () => void
+  /**
+   * Pause the child while more than FLOW_HIGH_WATERMARK of its output awaits
+   * `acknowledge`. Only for owners that acknowledge every data delivery.
+   */
+  flowControl?: boolean
   onData: (id: string, data: string) => void
   onExit: (id: string, exit: PtySessionExit) => void
   onDispose?: () => void
@@ -71,6 +86,14 @@ interface PtySession {
   completed: Promise<void>
   resolveCompleted: () => void
   finished: boolean
+  /** Output read and not yet delivered. */
+  output: string
+  flushTimer?: ReturnType<typeof setTimeout>
+  unacknowledged: number
+  paused: boolean
+  exitPoll?: ReturnType<typeof setInterval>
+  /** Seen by the exit poll before node-pty reports it; nothing is left to pause. */
+  childExited: boolean
 }
 
 interface PtySessionCoreOptions {
@@ -92,6 +115,15 @@ async function resolveExecutable(command: string, cwd: string): Promise<string> 
     throw new Error('TERMINAL_EXECUTABLE_NOT_FOUND')
   }
   return executable
+}
+
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function terminalSize(value: number | undefined, fallback: number): number {
@@ -284,6 +316,10 @@ export class PtySessionCore {
         subscriptions: [],
         finished: false,
         closing: false,
+        output: '',
+        unacknowledged: 0,
+        paused: false,
+        childExited: false,
         completed,
         resolveCompleted,
         watcher,
@@ -313,7 +349,7 @@ export class PtySessionCore {
       subscribe(
         child.onData((data) => {
           if (!active.finished && !watcher.signal.aborted && !owner.sender.isDestroyed())
-            options.onData(id, data)
+            this.receive(active, data)
         })
       )
       initializing = false
@@ -344,6 +380,16 @@ export class PtySessionCore {
 
   resize(id: string, owner: PtySessionOwner, cols: number, rows: number): void {
     this.requireSession(id, owner).process.resize(terminalSize(cols, 100), terminalSize(rows, 30))
+  }
+
+  /** Releases flow control for output its owner has displayed. */
+  acknowledge(id: string, owner: PtySessionOwner, chars: number): void {
+    if (!Number.isSafeInteger(chars) || chars < 0) throw new Error('TERMINAL_ACK_INVALID')
+    const session = this.sessions.get(id)
+    // Acknowledgements routinely arrive after their session has exited.
+    if (!session?.options.flowControl || !this.owns(session, owner)) return
+    session.unacknowledged = Math.max(0, session.unacknowledged - chars)
+    if (session.paused && session.unacknowledged < FLOW_LOW_WATERMARK) this.resume(session)
   }
 
   async close(id: string, owner: PtySessionOwner): Promise<boolean> {
@@ -383,6 +429,57 @@ export class PtySessionCore {
       }
     }
     await Promise.all(closing)
+  }
+
+  private receive(session: PtySession, data: string): void {
+    session.output += data
+    // Flow control also delivers a watermark's worth at once, which bounds a message, and the
+    // output in flight, however fast the child writes.
+    if (session.options.flowControl && session.output.length > FLOW_HIGH_WATERMARK)
+      this.flush(session)
+    else session.flushTimer ??= setTimeout(() => this.flush(session), OUTPUT_FLUSH_MS)
+  }
+
+  private flush(session: PtySession): void {
+    clearTimeout(session.flushTimer)
+    session.flushTimer = undefined
+    const data = session.output
+    session.output = ''
+    if (!data || session.watcher.signal.aborted || session.owner.sender.isDestroyed()) return
+    const paced = session.options.flowControl === true
+    // Counted before delivery: an owner may acknowledge from within onData.
+    if (paced) session.unacknowledged += data.length
+    try {
+      session.options.onData(session.id, data)
+    } catch {
+      ptyLog.warn('PTY output delivery failed', { meta: { id: session.id } })
+    }
+    if (
+      paced &&
+      !session.paused &&
+      !session.closing &&
+      !session.childExited &&
+      session.unacknowledged > FLOW_HIGH_WATERMARK
+    )
+      this.pause(session)
+  }
+
+  private pause(session: PtySession): void {
+    session.paused = true
+    session.process.pause()
+    const pid = session.process.pid
+    session.exitPoll = setInterval(() => {
+      if (isRunning(pid)) return
+      session.childExited = true
+      this.resume(session)
+    }, FLOW_EXIT_POLL_MS)
+  }
+
+  private resume(session: PtySession): void {
+    clearInterval(session.exitPoll)
+    session.exitPoll = undefined
+    session.paused = false
+    session.process.resume()
   }
 
   private finishCreation(record: PtyCreationRecord): void {
@@ -446,6 +543,9 @@ export class PtySessionCore {
         session.closing = false
         throw new Error('TERMINAL_CLOSE_FAILED')
       }
+      // A killed child blocked on a full PTY cannot exit until its output is read, and an
+      // owner that is closing no longer acknowledges.
+      if (session.paused) this.resume(session)
     }
     await session.completed
   }
@@ -454,11 +554,13 @@ export class PtySessionCore {
     if (session.finished) return
     session.finished = true
     this.sessions.delete(session.id)
+    clearInterval(session.exitPoll)
     for (const subscription of session.subscriptions.splice(0)) subscription.dispose()
     session.watcher.signal.removeEventListener('abort', session.aborted)
     if (!session.creation) session.watcher.dispose()
     try {
       try {
+        this.flush(session)
         session.options.onDispose?.()
       } finally {
         session.options.onExit(session.id, {

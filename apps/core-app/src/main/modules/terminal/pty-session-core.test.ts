@@ -141,7 +141,7 @@ describe('shared PTY sessions', () => {
     f.child.finish(8)
     f.child.output('late')
     f.child.finish(0)
-    expect(f.events).toEqual([large, 'last', { exitCode: 8 }])
+    expect(f.events).toEqual([large + 'last', { exitCode: 8 }])
     expect(f.releases()).toBe(1)
     expect(f.child.listenerCount()).toBe(0)
     expect(f.source.listenerCount('destroyed')).toBe(0)

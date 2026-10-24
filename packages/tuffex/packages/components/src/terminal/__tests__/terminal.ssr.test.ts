@@ -14,6 +14,11 @@ vi.mock('@xterm/addon-fit', () => ({
     constructor() { throw new Error('A server renderer cannot measure browser geometry') }
   }
 }))
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class {
+    constructor() { throw new Error('A server renderer cannot create a WebGL context') }
+  }
+}))
 
 describe('TxTerminal server rendering', () => {
   it('renders an accessible display region without browser globals or engine initialization', async () => {

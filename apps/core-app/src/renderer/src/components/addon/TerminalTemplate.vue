@@ -7,6 +7,7 @@ import { useTuffTransport } from '@talex-touch/utils/transport'
 import { createTerminalSdk } from '@talex-touch/utils/transport/sdk/domains/terminal'
 import { nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAccessibilitySupport } from '~/modules/platform/accessibility-support'
 import { createRendererLogger } from '~/utils/renderer-log'
 
 defineOptions({ name: 'TerminalTemplate' })
@@ -14,6 +15,7 @@ const props = defineProps<{ title?: string; command: string; args?: string[] }>(
 const { t } = useI18n()
 const sdk = createTerminalSdk(useTuffTransport())
 const log = createRendererLogger('TerminalTemplate')
+const screenReaderMode = useAccessibilitySupport()
 const terminal = ref<TerminalInstance | null>(null)
 const launching = ref(false)
 const running = ref(false)
@@ -22,10 +24,10 @@ let session: TerminalSessionHandle | null = null
 let controller: AbortController | null = null
 let generation = 0
 
-function writeOutput(data: string): void {
+function writeOutput(data: string): Promise<void> {
   const view = terminal.value
-  if (!view) return
-  void view.write(data).catch(() => {
+  if (!view) return Promise.resolve()
+  return view.write(data).catch(() => {
     if (terminal.value === view) log.error('Failed to display command output')
   })
 }
@@ -56,15 +58,15 @@ async function start(): Promise<void> {
       { command: props.command, args: props.args, cols: size?.cols ?? 80, rows: size?.rows ?? 24 },
       {
         signal: controller.signal,
-        onData: (data) => {
-          if (current === generation) writeOutput(data)
-        },
+        // The returned write holds back the acknowledgement that lets a fast command resume.
+        awaitDisplay: true,
+        onData: (data) => (current === generation ? writeOutput(data) : undefined),
         onExit: (exit) => {
           if (current !== generation) return
           exited = true
           running.value = false
           session = null
-          writeOutput(
+          void writeOutput(
             `\r\n${t('terminal.exit', { code: exit.exitCode ?? exit.signal ?? t('terminal.closed') })}\r\n`
           )
         }
@@ -127,6 +129,7 @@ onBeforeUnmount(() => {
       ref="terminal"
       class="TerminalTemplate-Content"
       :read-only="!running"
+      :screen-reader-mode="screenReaderMode"
       @data="input"
       @resize="resize"
     />

@@ -8,10 +8,17 @@ export interface TerminalCreateRequest {
   rows?: number
   /** SDK-issued cancellation correlation. Never an owner or authorization proof. */
   creationToken?: string
+  /**
+   * Asks the host to pause the process while too much of its output awaits `session.ack`.
+   * Set by the SDK, which acknowledges every data payload.
+   */
+  flowControl?: boolean
 }
 
 export interface TerminalCreateResponse {
   id: string
+  /** Confirms `flowControl`; hosts that predate it omit this and expect no `ack`. */
+  flowControl?: boolean
 }
 
 export interface TerminalWriteRequest {
@@ -34,6 +41,12 @@ export interface TerminalDataPayload {
   data: string
 }
 
+export interface TerminalAckRequest {
+  id: string
+  /** Length of a data payload that has been displayed. */
+  chars: number
+}
+
 export interface TerminalExitPayload {
   id: string
   exitCode: number | null
@@ -52,6 +65,8 @@ export const TerminalEvents = {
       .define<TerminalCloseRequest, void>(),
     data: defineEvent('terminal').module('session').event('data')
       .define<TerminalDataPayload, void>(),
+    ack: defineEvent('terminal').module('session').event('ack')
+      .define<TerminalAckRequest, void>(),
     exit: defineEvent('terminal').module('session').event('exit')
       .define<TerminalExitPayload, void>(),
   },

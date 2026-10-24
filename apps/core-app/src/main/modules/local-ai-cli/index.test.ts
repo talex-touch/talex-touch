@@ -2200,20 +2200,13 @@ describe('localAiCli shared terminal lifecycle', () => {
       transport.notifyTo.mock.calls
         .filter(([, event]) => event === LocalAiCliEvents.terminal.data)
         .map(([, , payload]) => payload)
-    ).toEqual([
-      { sessionId, data: large },
-      { sessionId, data: 'last' }
-    ])
+    ).toEqual([{ sessionId, data: large + 'last' }])
     expect(
       transport.notifyTo.mock.calls
         .filter(([, event]) => event === LocalAiCliEvents.terminal.exit)
         .map(([, , payload]) => payload)
     ).toEqual([{ sessionId, exitCode: 5 }])
-    expect(transport.notifyTo.mock.calls.map(([recipient]) => recipient)).toEqual([
-      sender,
-      sender,
-      sender
-    ])
+    expect(transport.notifyTo.mock.calls.map(([recipient]) => recipient)).toEqual([sender, sender])
     expect(pty.listenerCount()).toBe(0)
   })
 

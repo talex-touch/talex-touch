@@ -91,6 +91,7 @@ code: |
 | `fontSize` | `number` | `13` | Font size in px; changes trigger a fit. |
 | `fontFamily` | `string` | `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace` | Font stack; changes trigger a fit. |
 | `theme` | `ITheme` | host tokens | Partial xterm theme; overrides only the colors you set. |
+| `screenReaderMode` | `boolean` | `true` | Mirrors the screen into a DOM tree for screen readers, which halves parse throughput; a host that can detect assistive technology should pass its state. |
 | `labels` | `Partial<TerminalLabels>` | `{ ariaLabel: 'Terminal' }` | Accessible name of the terminal region and its input textarea. |
 
 ### Events
@@ -119,7 +120,7 @@ code: |
 
 ## Electron PTY Integration
 
-For trusted Electron renderers with TuffTransport only. The main process owns the PTY and checks `system.shell`; `createTerminalSdk` subscribes before creating, and an aborted `signal` closes a late session automatically.
+For trusted Electron renderers with TuffTransport only. The main process owns the PTY and checks `system.shell`; `createTerminalSdk` subscribes before creating, and an aborted `signal` closes a late session automatically. With `awaitDisplay: true`, the SDK acknowledges each output only once the write promise `onData` returns settles, so a process that outpaces the display is paused rather than queued in memory; a promise that never settles stops the process once about 100,000 characters are unacknowledged. Without it, output is acknowledged as soon as `onData` returns.
 
 ```vue
 <script setup lang="ts">
@@ -152,9 +153,10 @@ async function start() {
   try {
     session = await sdk.create({ command: 'node', args: ['-i'], cwd: props.directory, cols: size?.cols, rows: size?.rows }, {
       signal: controller.signal,
+      awaitDisplay: true,
       onData(data) {
         if (active === controller)
-          void display.value?.write(data).catch(fail)
+          return display.value?.write(data).catch(fail)
       },
       onExit(exit) {
         if (active !== controller)
@@ -187,16 +189,18 @@ onBeforeUnmount(stop)
 ## Overview
 
 - Display only: mounting never creates a shell, starts a process, or requests Electron privileges, and the component imports neither transport nor Electron.
-- xterm and the fit addon load dynamically in `onMounted`; server rendering touches no browser globals.
-- Output, `reset()`, and `clear()` share one ordered queue; binary data is decoded as UTF-8.
+- xterm, the fit addon, and the WebGL addon load dynamically in `onMounted`; server rendering touches no browser globals.
+- Output, `reset()`, and `clear()` share one ordered queue: output goes to xterm as it arrives and is parsed across frames, waiting in the queue once about 8 MB is pending; `reset()` and `clear()` run only after earlier output has been parsed. Binary data is decoded as UTF-8.
 - `lines` is watched deeply, so push, index assignment, replacement, and clearing all work; after mutating bytes inside a `Uint8Array`, trigger one reactive update.
 - Read-only mode blocks input at both xterm and the event boundary and stops the cursor blink; switching from interactive to read-only blurs the input.
 - Unmount disposes xterm, subscriptions, and observers; pending writes reject, and a late dynamic import can't recreate the terminal.
 
 ## Technologies
 
-- Built on `@xterm/xterm ^5.5.0` and `@xterm/addon-fit ^0.10.0` (both MIT); the engine stylesheet ships in `terminal/style.css`.
-- Colors come from inherited TuffEx tokens and follow theme and contrast changes; a `ResizeObserver` coalesces fits into one frame.
+- Built on `@xterm/xterm ^6.0.0`, `@xterm/addon-fit ^0.11.0`, and `@xterm/addon-webgl ^0.19.0` (all MIT); the engine stylesheet ships in `terminal/style.css`.
+- Draws with WebGL2 by default, and with xterm's DOM renderer when WebGL2 is unavailable or the renderer chunk fails to load. Chromium keeps about 16 WebGL contexts per renderer process and drops the oldest beyond that, so only a terminal on screen holds one: a hidden terminal releases its context and acquires a new one when shown again. A lost context switches to the DOM renderer at once, and WebGL is retried the next time the terminal is shown. WebGL rounds cell width to device pixels, so a container may fit a few more columns than with the DOM renderer.
+- Alt + arrow keys keep xterm 5's word-motion sequences: ⌥← / ⌥→ send Meta-b / Meta-f on macOS, and other platforms send Ctrl + arrow sequences; most shells leave xterm 6's default `ESC [1;3x` unbound.
+- Colors come from inherited TuffEx tokens and follow theme and contrast changes; a `ResizeObserver` coalesces fits into one frame. Rows and columns are fitted to the host's content box, so overriding the `padding` of `.tx-terminal` does not cut off the last row or the rightmost columns.
 - Source: `packages/tuffex/packages/components/src/terminal/`; process sessions live in `packages/utils/transport/sdk/domains/terminal.ts`.
 
 <TuffDocSourceLink />
@@ -209,5 +213,5 @@ onBeforeUnmount(stop)
 
 ## Accessibility
 
-- xterm screen-reader support is on; read-only output stays selectable and copyable.
+- xterm screen-reader support follows `screenReaderMode` and is on by default; a host that knows no assistive technology is running can turn it off to parse heavy output faster. Read-only output stays selectable and copyable.
 - Leave `autoFocus` off unless the user explicitly opens an interactive terminal; log updates never move focus.

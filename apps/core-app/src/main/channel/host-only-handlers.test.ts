@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest'
 /**
  * Handlers a plugin must not be able to call (#807).
  *
- * Every transport handler is registered on the plugin channel as well as the main one, and
- * inspecting context.plugin is voluntary per handler. window.close ends the application;
- * hide and minimize deny service to the user; getCwd/getPath/getPackage hand over the
- * filesystem layout that makes a path traversal or a shell sink easy to aim.
+ * The transport already keeps these off the plugin channel by default (#688); assertHostOnly
+ * is the second layer, for the case where one of them lands on PLUGIN_FACING_EVENTS by
+ * mistake. window.close ends the application; hide and minimize deny service to the user;
+ * getCwd/getPath/getPackage hand over the filesystem layout that makes a path traversal or
+ * a shell sink easy to aim.
  *
  * A separate file from common.test.ts on purpose: that one mocks node:fs with a readFileSync
  * returning '', so these assertions would have read an empty string there — and a
@@ -35,6 +36,7 @@ describe('host-only transport handlers', () => {
     'system.getCwd',
     'system.getPackage',
     'system.getPath',
+    'system.accessibilitySupportGet',
     // The app index's management surface: every handler below either launches an application,
     // rewrites the entries and bindings the user set up, or reads back what they run.
     'appIndex.getSettings',

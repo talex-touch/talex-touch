@@ -347,11 +347,14 @@
 | `terminal:session:resize` | `TerminalSessionHandle.resize` | `TerminalModule.resize` → PTY 行列 |
 | `terminal:session:close` | `TerminalSessionHandle.close` / SDK 取消 | `TerminalModule.close` → 共用会话清理 |
 | `terminal:session:data` | 共用 PTY 核心 → owner 定向通知 | 创建前注册的 SDK 输出订阅 |
+| `terminal:session:ack` | `TerminalSessionHandle` 内部：`onData` 返回后上报这段输出的字符数，传入 `awaitDisplay` 时等它返回的 Promise 完成 | `TerminalModule.acknowledge` → `PtySessionCore.acknowledge` 流控计数 |
 | `terminal:session:exit` | 共用 PTY 核心 → owner 定向通知 | SDK 退出订阅和订阅清理 |
 
 所有控制操作都在启动或访问 PTY 前验证 `system.shell` 和可信 transport 身份。owner 绑定真实 sender 对象与当前插件 activation，不接受请求正文指定的归属。不存在的 ID 与其他 owner 的 ID 使用相同拒绝语义。创建接收可执行文件与独立参数，不隐式交给 shell 解释。
 
 共用核心位于 `apps/core-app/src/main/modules/terminal/pty-session-core.ts`，同时管理 AI CLI 的 PTY。`local-ai-cli:terminal:*` 业务入口保留 Provider、访问等级、cwd、恢复与 lease 门禁。输出完整且有序。关闭后拒绝新输入，只发送一次终止请求，并等待原生 `onExit`，随后才释放监听和原生会话 lease。信号退出保留 `signal`；原生零退出码伴随终止信号时，`exitCode` 转为 `null`，不表示命令执行成功。
+
+主进程把输出合并 5 ms 再发送，大量输出只变成少量消息。创建请求带 `flowControl: true`、且创建结果回显该字段时启用流控：已发送但未经 `ack` 确认的输出超过 100,000 个 UTF-16 码元时暂停读取 PTY，降到 5,000 以下再恢复；流控会话攒够一个高水位就立即发送，单条消息不超过约这个大小。关闭会话时恢复已暂停的 PTY，因为被终止的子进程卡在写满的 PTY 上，没人读就退不出；暂停期间每 50 ms 检查子进程是否已退出，退出后恢复读取，因为 node-pty 在子进程退出 200 ms 后丢弃未读输出。旧版 SDK 不带该字段，主进程不会暂停它；旧版主进程不回显，SDK 不发送 `ack`。`local-ai-cli:terminal:ack` 为 AI CLI 会话提供同样的确认。
 
 SDK 自动生成内部 `creationToken`。主进程在异步权限或 Provider 检查前记录 token 的可信 owner。取消或创建回执失败、丢失时，SDK 用同一 typed close/kill 事件按 token 收尾：未启动的记录被取消，已启动的 PTY 等待真实退出。迟到回执不能重建已取消会话。token 不授予归属权限，不存在与其他 owner 的 token 使用相同拒绝语义。AI 业务 SDK 支持 `terminal.create(request, { signal })`，原有事件名和 Provider 请求字段保持。
 

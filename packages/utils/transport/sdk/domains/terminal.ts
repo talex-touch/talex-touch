@@ -6,7 +6,18 @@ import { TerminalEvents } from '../../events/terminal'
 import { createTerminalCreationToken, terminalCreationAbortError } from './terminal-creation'
 
 export interface TerminalSessionHandlers {
-  onData?: (data: string) => void
+  /**
+   * The host is told this output was displayed once this returns, or with `awaitDisplay`
+   * once the promise it returns settles.
+   */
+  onData?: (data: string) => unknown
+  /**
+   * Holds back the acknowledgement of each output until the promise `onData` returns
+   * settles, so a process that outpaces the display is paused rather than queued. A promise
+   * that never settles pauses the process for good once about 100,000 characters are
+   * unacknowledged, which is why this is opt-in.
+   */
+  awaitDisplay?: boolean
   onExit?: (exit: TerminalExitPayload) => void
   signal?: AbortSignal
 }
@@ -46,6 +57,7 @@ export function createTerminalSdk(transport: ITuffTransport): TerminalSdk {
       const creationToken = createTerminalCreationToken()
       let requested = false
       let id: string | undefined
+      let paced = false
       let closed = false
       let observedExit = false
       let closing = false
@@ -95,9 +107,21 @@ export function createTerminalSdk(transport: ITuffTransport): TerminalSdk {
         if (requested) rejectAfterClose(terminalCreationAbortError())
         else reject(terminalCreationAbortError())
       }
+      const acknowledge = (chars: number): void => {
+        if (!paced || closed || closing || id === undefined) return
+        void transport.send(TerminalEvents.session.ack, { id, chars }, { immediate: true }).catch(() => {})
+      }
       const dispatch = (event: EarlyEvent): void => {
         if (closed || event.payload.id !== id) return
-        if (event.type === 'data') handlers.onData?.(event.payload.data)
+        if (event.type === 'data') {
+          const { data } = event.payload
+          const shown = handlers.onData?.(data)
+          if (paced) {
+            const release = (): void => acknowledge(data.length)
+            if (handlers.awaitDisplay) void Promise.resolve(shown).then(release, release)
+            else release()
+          }
+        }
         else {
           observedExit = true
           closed = true
@@ -134,9 +158,14 @@ export function createTerminalSdk(transport: ITuffTransport): TerminalSdk {
           return promise
         }
         requested = true
-        const created = transport.send(TerminalEvents.session.create, { ...request, creationToken }, { immediate: true })
+        const created = transport.send(
+          TerminalEvents.session.create,
+          { ...request, creationToken, flowControl: true },
+          { immediate: true },
+        )
         void created.then(result => {
           id = result.id
+          paced = result.flowControl === true
           if (cancelled) {
             // The caller may have stopped awaiting. Reclaim its late session nonetheless.
             void close(true).catch(() => {})

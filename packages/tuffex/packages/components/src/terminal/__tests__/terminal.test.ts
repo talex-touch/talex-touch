@@ -43,6 +43,7 @@ vi.mock('@xterm/xterm', () => ({
       engine.instances.push(this)
     }
     loadAddon(addon: { dispose: () => void }) { this.addon = addon }
+    attachCustomKeyEventHandler() {}
     open(host: HTMLElement) {
       this.output = document.createElement('pre')
       this.output.dataset.engineOutput = ''
@@ -85,6 +86,13 @@ vi.mock('@xterm/xterm', () => ({
 vi.mock('@xterm/addon-fit', () => ({
   FitAddon: class {
     proposeDimensions() { return engine.dimensions }
+    dispose() {}
+  }
+}))
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class {
+    onContextLoss() { return { dispose() {} } }
+    clearTextureAtlas() {}
     dispose() {}
   }
 }))

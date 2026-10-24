@@ -12,7 +12,8 @@ import type {
   LocalAiCliStatus,
   LocalAiCliStatusRequest,
   LocalAiCliTaskChunk,
-  LocalAiCliTerminalCreateRequest
+  LocalAiCliTerminalCreateRequest,
+  LocalAiCliTerminalCreateResult
 } from '@talex-touch/utils/transport/events/local-ai-cli'
 import type {
   HandlerContext,
@@ -502,6 +503,14 @@ export class LocalAiCliModule extends BaseModule {
         return payload?.sessionId !== undefined
           ? this.killTerminal(payload.sessionId, ownerId, sender)
           : this.cancelTerminalCreation(payload?.creationToken, ownerId, sender)
+      }),
+      transport.on(LocalAiCliEvents.terminal.ack, (payload, context) => {
+        this.acknowledgeTerminal(
+          payload?.sessionId,
+          payload?.chars,
+          assertHostContext(context),
+          context.sender as WebContents
+        )
       })
     )
   }
@@ -1478,9 +1487,10 @@ export class LocalAiCliModule extends BaseModule {
     rawRequest: unknown,
     ownerId: number,
     sender: WebContents
-  ): Promise<{ sessionId: string }> {
+  ): Promise<LocalAiCliTerminalCreateResult> {
     const owner = this.terminalOwner(ownerId, sender)
     const request = normalizeLocalAiCliTerminalCreateRequest(rawRequest)
+    const flowControl = request.flowControl === true
     const creation = ptySessionCore.reserveCreate(
       owner,
       request.creationToken ?? randomUUID(),
@@ -1521,6 +1531,7 @@ export class LocalAiCliModule extends BaseModule {
         signal: watcher.signal,
         creation,
         onDispose: releaseLease,
+        flowControl,
         onData: (sessionId, data) =>
           this.sendTerminalEvent(sender, LocalAiCliEvents.terminal.data, {
             sessionId,
@@ -1533,7 +1544,7 @@ export class LocalAiCliModule extends BaseModule {
           })
       })
       if (execution.pointer) await this.touchNativeSession(execution.pointer)
-      return { sessionId: id }
+      return flowControl ? { sessionId: id, flowControl } : { sessionId: id }
     } catch (error) {
       await ptySessionCore.cancelCreation(creation.token, owner)
       releaseLease?.()
@@ -1595,6 +1606,18 @@ export class LocalAiCliModule extends BaseModule {
         terminalSize(rows, DEFAULT_ROWS, LOCAL_AI_CLI_LIMITS.terminalRows)
       )
     )
+  }
+
+  private acknowledgeTerminal(
+    sessionId: unknown,
+    chars: unknown,
+    ownerId: number,
+    sender: WebContents
+  ): void {
+    if (typeof sessionId !== 'string' || typeof chars !== 'number') {
+      throw new Error('LOCAL_AI_CLI_TERMINAL_INVALID')
+    }
+    ptySessionCore.acknowledge(sessionId, this.terminalOwner(ownerId, sender), chars)
   }
 
   private async killTerminal(

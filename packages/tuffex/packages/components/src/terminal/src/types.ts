@@ -41,6 +41,11 @@ export interface TerminalProps {
   fontFamily?: string
   /** Overrides individual host-token colors without disabling theme updates. */
   theme?: ITheme
+  /**
+   * Mirrors the screen into a DOM tree for screen readers, which halves parse
+   * throughput. A host that can detect assistive technology should pass its state.
+   */
+  screenReaderMode?: boolean
   labels?: Partial<TerminalLabels>
 }
 
