@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { accountSDK } from '../account'
 import { CloudShareError, CloudShareSDK } from '../cloud-share/cloud-share-sdk'
 import { CloudShareSDK as PluginCloudShareSDK } from '../plugin/sdk/cloud-share'
 
@@ -117,7 +116,7 @@ describe('cloud share sdk', () => {
     })).rejects.toBeInstanceOf(CloudShareError)
   })
 
-  it('plugin sdk resolves auth through accountSDK only for publish', async () => {
+  it('plugin sdk lists without auth and publishes with the token the plugin passes', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const headers = new Headers(init?.headers as HeadersInit)
@@ -128,13 +127,13 @@ describe('cloud share sdk', () => {
       expect(headers.get('authorization')).toBe('Bearer auth-plugin')
       return createJsonResponse({ package: packagePayload('pkg-plugin') })
     })
-    const authSpy = vi.spyOn(accountSDK, 'getAuthToken').mockResolvedValue('auth-plugin')
+    const getAuthToken = vi.fn(async () => 'auth-plugin')
 
     const sdk = new PluginCloudShareSDK({
       baseUrl: 'https://example.com',
       pluginId: 'touch-snippets',
       fetch: fetchMock as any,
-      channelSend: vi.fn(async () => null),
+      getAuthToken,
     })
 
     await sdk.list()
@@ -145,8 +144,28 @@ describe('cloud share sdk', () => {
       manifest: { importTarget: 'touch-snippets', format: 'tuff.snippet-pack+json' },
     })
 
-    expect(authSpy).toHaveBeenCalledTimes(1)
-    authSpy.mockRestore()
+    expect(getAuthToken).toHaveBeenCalledTimes(1)
+  })
+
+  it('plugin sdk refuses to publish without a token before sending', async () => {
+    const fetchMock = vi.fn(async () => createJsonResponse({ package: packagePayload('pkg-plugin') }))
+    const sdk = new PluginCloudShareSDK({
+      baseUrl: 'https://example.com',
+      pluginId: 'touch-snippets',
+      fetch: fetchMock as any,
+    })
+
+    await expect(sdk.publish({
+      kind: 'snippet-pack',
+      title: 'Plugin pack',
+      schemaVersion: 1,
+      manifest: { importTarget: 'touch-snippets', format: 'tuff.snippet-pack+json' },
+    })).rejects.toMatchObject({
+      name: 'CloudShareError',
+      status: 401,
+      errorCode: 'AUTH_TOKEN_UNAVAILABLE',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

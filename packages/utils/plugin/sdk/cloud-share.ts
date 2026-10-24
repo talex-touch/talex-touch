@@ -1,46 +1,30 @@
 import type { CloudShareSDKOptions as ClientOptions } from '../../cloud-share/cloud-share-sdk'
-import { accountSDK } from '../../account'
 import { CloudShareSDK as CloudShareClientSDK, CloudShareError } from '../../cloud-share/cloud-share-sdk'
-import { ensureRendererChannel } from './channel'
 
 export interface CloudShareSDKOptions {
   baseUrl?: string
   serviceBaseUrl?: string
   pluginId?: string
   fetch?: typeof fetch
+  /** @deprecated Unused. Plugins do not receive the account's credential through the channel. */
   channelSend?: (event: string, data?: any) => Promise<any>
+  /** The token `publish` sends. Listing, reading and installing shared content need none. */
   getAuthToken?: () => string | null | undefined | Promise<string | null | undefined>
 }
 
-let accountChannelBound = false
-
-function bindAccountChannel(options?: CloudShareSDKOptions) {
-  if (accountChannelBound)
-    return
-
-  if (options?.channelSend) {
-    accountSDK.setChannelSend(options.channelSend)
-    accountChannelBound = true
-    return
-  }
-
-  const channel = ensureRendererChannel('[CloudShareSDK] Channel not available. Make sure this runs in plugin renderer context.')
-  accountSDK.setChannelSend(channel.send)
-  accountChannelBound = true
-}
-
-async function resolveAuthToken(options?: CloudShareSDKOptions): Promise<string> {
-  if (options?.getAuthToken) {
-    const token = await options.getAuthToken()
-    if (typeof token === 'string' && token.trim())
-      return token
-  }
-
-  bindAccountChannel(options)
-  const token = await accountSDK.getAuthToken()
-  if (!token)
-    throw new Error('[CloudShareSDK] Auth token is not available. Ensure user is signed in and AccountSDK channel is configured.')
-  return token
+/**
+ * Plugins do not receive the account's credential, so publishing has a token only when the plugin
+ * passes `getAuthToken`, and fails before anything is sent when it does not.
+ */
+async function resolveAuthToken(options: CloudShareSDKOptions): Promise<string> {
+  const token = await options.getAuthToken?.()
+  if (typeof token === 'string' && token.trim())
+    return token
+  throw new CloudShareError(
+    '[CloudShareSDK] Publishing needs an auth token, and plugins do not receive the account\'s. Pass getAuthToken.',
+    401,
+    'AUTH_TOKEN_UNAVAILABLE',
+  )
 }
 
 export class CloudShareSDK extends CloudShareClientSDK {

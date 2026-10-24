@@ -1,8 +1,6 @@
 import type { CloudSyncSDKOptions as ClientOptions } from '../../cloud-sync/cloud-sync-sdk'
+import type { HandshakeResponse } from '../../types/cloud-sync'
 import { CloudSyncSDK as CloudSyncClientSDK, CloudSyncError } from '../../cloud-sync/cloud-sync-sdk'
-import type { HandshakeResponse, PullResponse, PushResponse, SyncItemInput } from '../../types/cloud-sync'
-import { accountSDK } from '../../account'
-import { ensureRendererChannel } from './channel'
 
 export interface CloudSyncSDKOptions {
   baseUrl?: string
@@ -14,58 +12,30 @@ export interface CloudSyncSDKOptions {
   onHandshake?: (response: HandshakeResponse) => void
   onStepUpRequired?: () => string | null | Promise<string | null>
   formDataFactory?: () => FormData
+  /** @deprecated Unused. Plugins do not receive the account's credential through the channel. */
   channelSend?: (event: string, data?: any) => Promise<any>
+  /** @deprecated Unused. Plugins cannot sync through the account. */
   ignoreSyncPreferenceCheck?: boolean
 }
 
-let accountChannelBound = false
-
-function bindAccountChannel(options?: CloudSyncSDKOptions) {
-  if (accountChannelBound)
-    return
-
-  if (options?.channelSend) {
-    accountSDK.setChannelSend(options.channelSend)
-    accountChannelBound = true
-    return
-  }
-
-  const channel = ensureRendererChannel('[CloudSyncSDK] Channel not available. Make sure this runs in plugin renderer context.')
-  accountSDK.setChannelSend(channel.send)
-  accountChannelBound = true
+/**
+ * Sync signs in as the account on this device, and plugins receive neither the account's credential
+ * nor the device id. Every call fails with `PLUGIN_SYNC_UNAVAILABLE` before anything is sent.
+ */
+function rejectPluginSync(): never {
+  throw new CloudSyncError(
+    '[CloudSyncSDK] Plugins cannot sync through the account. Keep plugin data in plugin storage, which the app syncs.',
+    403,
+    'PLUGIN_SYNC_UNAVAILABLE',
+  )
 }
 
-async function resolveAuthToken(options?: CloudSyncSDKOptions): Promise<string> {
-  bindAccountChannel(options)
-  if (!options?.ignoreSyncPreferenceCheck) {
-    const syncEnabled = await accountSDK.getSyncEnabled()
-    if (!syncEnabled) {
-      throw new CloudSyncError(
-        '[CloudSyncSDK] Sync is disabled by user preference.',
-        403,
-        'SYNC_DISABLED'
-      )
-    }
-  }
-  const token = await accountSDK.getAuthToken()
-  if (!token) {
-    throw new Error('[CloudSyncSDK] Auth token is not available. Ensure user is signed in and AccountSDK channel is configured.')
-  }
-  return token
-}
-
-async function resolveDeviceId(options?: CloudSyncSDKOptions): Promise<string> {
-  bindAccountChannel(options)
-  const deviceId = await accountSDK.getDeviceId()
-  if (!deviceId) {
-    throw new Error('[CloudSyncSDK] Device ID is not available. Ensure AccountSDK channel is configured.')
-  }
-  return deviceId
-}
-
+/**
+ * @deprecated Plugins cannot sync through the account: every call fails with
+ * `PLUGIN_SYNC_UNAVAILABLE`. Files a plugin keeps in plugin storage are synced by the app.
+ */
 export class CloudSyncSDK extends CloudSyncClientSDK {
   constructor(options: CloudSyncSDKOptions = {}) {
-    bindAccountChannel(options)
     const clientOptions: ClientOptions = {
       baseUrl: options.baseUrl ?? options.serviceBaseUrl,
       fetch: options.fetch,
@@ -75,31 +45,21 @@ export class CloudSyncSDK extends CloudSyncClientSDK {
       onHandshake: options.onHandshake,
       onStepUpRequired: options.onStepUpRequired,
       formDataFactory: options.formDataFactory,
-      getAuthToken: () => resolveAuthToken(options),
-      getDeviceId: () => resolveDeviceId(options),
+      getAuthToken: rejectPluginSync,
+      getDeviceId: rejectPluginSync,
     }
     super(clientOptions)
-  }
-
-  async push(items: SyncItemInput[]): Promise<PushResponse> {
-    const response = await super.push(items)
-    await accountSDK.recordSyncActivity('push')
-    return response
-  }
-
-  async pull(params?: { cursor?: number, limit?: number }): Promise<PullResponse> {
-    const response = await super.pull(params)
-    await accountSDK.recordSyncActivity('pull')
-    return response
   }
 }
 
 let cachedSDK: CloudSyncSDK | null = null
 
+/** @deprecated See {@link CloudSyncSDK}. */
 export function createCloudSyncSDK(options?: CloudSyncSDKOptions): CloudSyncSDK {
   return new CloudSyncSDK(options)
 }
 
+/** @deprecated See {@link CloudSyncSDK}. */
 export function useCloudSyncSDK(options?: CloudSyncSDKOptions): CloudSyncSDK {
   if (!cachedSDK)
     cachedSDK = new CloudSyncSDK(options)
