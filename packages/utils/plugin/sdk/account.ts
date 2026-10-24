@@ -17,6 +17,9 @@ import { ensureRendererChannel } from './channel'
  * The account calls a plugin view can make. The credential, the device id, sync bookkeeping,
  * signing out and the list of signed-in devices stay with the host.
  *
+ * Every call needs the `account.read` permission. Without it, calls reject with
+ * `ACCOUNT_PERMISSION_DENIED`, and `onDidChange` never calls back.
+ *
  * Failures reject rather than read as signed out, so a plugin that cannot reach the host does not
  * mistake it for a sign-out.
  */
@@ -25,16 +28,23 @@ export interface PluginAccountSDK {
   getProfile: () => Promise<UserProfile | null>
   getSubscription: () => Promise<Subscription | null>
   getUsage: () => Promise<UsageStats | null>
+  /**
+   * The plan's features: `aiRequests` and `aiTokens` carry their limit in `value` (-1 for
+   * unlimited); `customModels`, `prioritySupport` and `apiAccess` are on or off.
+   */
   getFeatures: () => Promise<FeatureFlag[]>
+  /** The organization the account belongs to, if any. The personal team is not listed. */
   getTeams: () => Promise<Team[]>
-  /** Opens the upgrade page in the browser. */
+  /** Opens the pricing page in the browser, on `plan` when one is given. */
   openUpgradePage: (plan?: SubscriptionPlan) => Promise<void>
   openBillingPage: () => Promise<void>
   openAccountSettings: () => Promise<void>
   openProfileEditor: () => Promise<void>
   /**
-   * Opens the sign-in page. Resolves true once the page is open, before anyone signs in; the
-   * sign-in itself arrives through `onDidChange`.
+   * Asks the user to sign in. When the app is already signed in, or a sign-in is already under
+   * way, nothing new is opened and that sign-in is joined; otherwise the sign-in page opens in the
+   * browser. Resolves true in all of those cases, before anyone has signed in, and false when the
+   * page could not be opened. The sign-in itself arrives through `onDidChange`.
    */
   requestLogin: () => Promise<boolean>
   /**

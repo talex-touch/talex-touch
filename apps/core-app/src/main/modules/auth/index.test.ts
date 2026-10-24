@@ -1,3 +1,4 @@
+import { SdkApi } from '@talex-touch/utils/plugin'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AUTH_TOKEN_BASE_URL_FIELD,
@@ -16,11 +17,14 @@ const {
   setSecureStoreValueMock,
   networkRequestMock,
   transportOnMock,
+  transportOnStreamMock,
   transportBroadcastMock,
   openExternalMock,
   authLoggerMock,
   resolveMainRuntimeMock,
-  runtimeBaseUrlState
+  runtimeBaseUrlState,
+  getPermissionModuleMock,
+  getPluginByNameMock
 } = vi.hoisted(() => ({
   getMainConfigMock: vi.fn(),
   saveMainConfigMock: vi.fn(),
@@ -31,6 +35,7 @@ const {
   setSecureStoreValueMock: vi.fn(),
   networkRequestMock: vi.fn(),
   transportOnMock: vi.fn(() => vi.fn()),
+  transportOnStreamMock: vi.fn(() => vi.fn()),
   transportBroadcastMock: vi.fn(),
   openExternalMock: vi.fn(),
   authLoggerMock: {
@@ -41,7 +46,9 @@ const {
   },
   resolveMainRuntimeMock: vi.fn((ctx: unknown) => ctx),
   /** Nexus origin the module resolves; mutable so a case can change it mid-flight. */
-  runtimeBaseUrlState: { baseUrl: 'https://example.test' }
+  runtimeBaseUrlState: { baseUrl: 'https://example.test' },
+  getPermissionModuleMock: vi.fn((): unknown => null),
+  getPluginByNameMock: vi.fn()
 }))
 
 vi.mock('@talex-touch/utils', () => ({
@@ -107,7 +114,7 @@ vi.mock('@talex-touch/utils/transport/event/builder', () => ({
 vi.mock('@talex-touch/utils/transport/main', () => ({
   getTuffTransportMain: vi.fn(() => ({
     on: transportOnMock,
-    onStream: vi.fn(() => vi.fn()),
+    onStream: transportOnStreamMock,
     broadcast: transportBroadcastMock
   }))
 }))
@@ -143,6 +150,18 @@ vi.mock('../network', () => ({
 vi.mock('../nexus/runtime-base', () => ({
   getRuntimeNexusBaseUrl: vi.fn(() => runtimeBaseUrlState.baseUrl),
   getRuntimeServerMode: vi.fn(() => 'production')
+}))
+
+vi.mock('../permission/permission-module-ref', () => ({
+  getPermissionModule: getPermissionModuleMock
+}))
+
+vi.mock('../plugin/plugin-module', () => ({
+  pluginModule: {
+    pluginManager: {
+      getPluginByName: getPluginByNameMock
+    }
+  }
 }))
 
 vi.mock('../storage', () => ({
@@ -1200,5 +1219,325 @@ describe('tuff://auth/callback deep link', () => {
       'Rejected auth callback with no login in flight',
       expect.anything()
     )
+  })
+})
+
+describe('plugin account access', () => {
+  type RegisteredHandler = (payload: unknown, context?: unknown) => Promise<unknown>
+  type StreamHandler = (payload: unknown, context: unknown) => Promise<void>
+
+  const DEVICE_START = {
+    status: 200,
+    data: {
+      deviceCode: 'device-code-1',
+      userCode: 'ABC123',
+      authorizeUrl: 'https://example.test/device-auth?code=ABC123',
+      expiresAt: '2026-10-24T05:00:00.000Z',
+      intervalSeconds: 3
+    }
+  }
+
+  /** Nexus by path: the device start and a pending poll unless a case answers a path itself. */
+  function answerNexus(answers: Record<string, () => unknown> = {}): void {
+    networkRequestMock.mockImplementation(async (request: { url?: string }) => {
+      const path = new URL(request?.url ?? '/', 'https://example.test').pathname
+      if (answers[path]) return await answers[path]()
+      if (path === '/api/app-auth/device/start') return DEVICE_START
+      return { status: 400, data: { status: 'pending' } }
+    })
+  }
+
+  function requestsTo(path: string): number {
+    return networkRequestMock.mock.calls.filter(([request]) =>
+      String((request as { url?: unknown })?.url ?? '').endsWith(path)
+    ).length
+  }
+
+  function allowAccountRead(allowed: boolean): ReturnType<typeof vi.fn> {
+    const checkPermission = vi.fn(() =>
+      allowed
+        ? { allowed: true }
+        : { allowed: false, reason: 'Permission not granted', showRequest: true }
+    )
+    getPermissionModuleMock.mockReturnValue({ checkPermission })
+    return checkPermission
+  }
+
+  async function startAuth() {
+    const authModule = await importAuthModule()
+    authModule.__test__.resetState()
+    authModule.__test__.setState({ appRootPath: '/tmp/tuff' })
+    const module = new authModule.AuthModule()
+    module.onInit({
+      app: { rootPath: '/tmp/tuff' },
+      channel: { keyManager: {}, sendMain: vi.fn() }
+    } as unknown as Parameters<typeof module.onInit>[0])
+
+    const find = <T>(calls: unknown, eventName: string): T => {
+      const found = (calls as Array<[{ toEventName?: () => string }, T]>).find(
+        ([event]) => event?.toEventName?.() === eventName
+      )?.[1]
+      if (!found) throw new Error(`${eventName} was not registered`)
+      return found
+    }
+    return {
+      authModule,
+      handler: (eventName: string) =>
+        find<RegisteredHandler>(transportOnMock.mock.calls, eventName),
+      stream: (eventName: string) =>
+        find<StreamHandler>(transportOnStreamMock.mock.calls, eventName),
+      settled: () => vi.waitFor(() => expect(authModule.__test__.getState().isSettled).toBe(true))
+    }
+  }
+
+  /** Issued after the auth module loads, by the same identity registry its guard checks. */
+  async function trustedPlugin(): Promise<{ plugin: unknown }> {
+    const { createTrustedTestPluginContext } =
+      await import('@talex-touch/utils/transport/security/plugin-identity')
+    return { plugin: createTrustedTestPluginContext({ name: 'plugin-a' }) }
+  }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    resolveMainRuntimeMock.mockImplementation((ctx: unknown) => ctx)
+    runtimeBaseUrlState.baseUrl = 'https://example.test'
+    appSettingState = createAppSetting()
+    getMainConfigMock.mockImplementation(() => appSettingState)
+    saveMainConfigMock.mockImplementation((_key: string, nextValue: MockAppSetting) => {
+      appSettingState = nextValue
+    })
+    subscribeMainConfigMock.mockReturnValue(vi.fn())
+    getSecureStoreHealthMock.mockResolvedValue({
+      backend: 'local-secret',
+      available: true,
+      degraded: false,
+      reason: ''
+    })
+    getSecureStoreValueStrictMock.mockResolvedValue(null)
+    setSecureStoreValueMock.mockResolvedValue(true)
+    getPermissionModuleMock.mockReturnValue(null)
+    getPluginByNameMock.mockReturnValue({ sdkapi: SdkApi.V260713 })
+    networkRequestMock.mockReset()
+    answerNexus()
+  })
+
+  afterEach(async () => {
+    const authModule = await importAuthModule()
+    authModule.__test__.resetState()
+    networkRequestMock.mockReset()
+  })
+
+  it('opens a single sign-in page for plugins that ask at the same time', async () => {
+    let releaseStart: () => void = () => {}
+    const started = new Promise<void>((resolve) => {
+      releaseStart = resolve
+    })
+    answerNexus({
+      '/api/app-auth/device/start': async () => {
+        await started
+        return DEVICE_START
+      }
+    })
+    const { handler, settled } = await startAuth()
+    await settled()
+    const requestLogin = handler('account:session:request-login')
+
+    const asked = [requestLogin(undefined), requestLogin(undefined)]
+    releaseStart()
+
+    await expect(Promise.all(asked)).resolves.toEqual([true, true])
+    expect(requestsTo('/api/app-auth/device/start')).toBe(1)
+    expect(openExternalMock).toHaveBeenCalledTimes(1)
+    expect(openExternalMock).toHaveBeenCalledWith('https://example.test/device-auth?code=ABC123')
+  })
+
+  it('joins the sign-in under way instead of voiding its code', async () => {
+    const { handler, settled } = await startAuth()
+    await settled()
+    await handler('auth:session:login')({ mode: 'sign-in' })
+
+    await expect(handler('account:session:request-login')(undefined)).resolves.toBe(true)
+
+    expect(requestsTo('/api/app-auth/device/start')).toBe(1)
+    expect(requestsTo('/api/app-auth/device/abort')).toBe(0)
+    expect(openExternalMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens nothing while the stored sign-in loads at startup, nor once it is in', async () => {
+    getSecureStoreValueStrictMock.mockResolvedValue('persisted-legacy-access-token')
+    appSettingState.auth!.cachedUser = {
+      id: 'user-1',
+      email: 'user@example.test',
+      name: 'User',
+      avatar: null,
+      role: null,
+      locale: null,
+      emailVerified: true,
+      bio: null,
+      createdAt: null,
+      updatedAt: null
+    }
+    const { authModule, handler } = await startAuth()
+    const requestLogin = handler('account:session:request-login')
+
+    await expect(requestLogin(undefined)).resolves.toBe(true)
+    await vi.waitFor(() => expect(authModule.__test__.getState().isSignedIn).toBe(true))
+    await expect(requestLogin(undefined)).resolves.toBe(true)
+
+    expect(requestsTo('/api/app-auth/device/start')).toBe(0)
+    expect(openExternalMock).not.toHaveBeenCalled()
+  })
+
+  it('answers false when the sign-in page cannot open', async () => {
+    openExternalMock.mockRejectedValueOnce(new Error('open failed'))
+    const { handler, settled } = await startAuth()
+    await settled()
+
+    await expect(handler('account:session:request-login')(undefined)).resolves.toBe(false)
+  })
+
+  it('refuses a plugin without account.read before reading the account or opening a page', async () => {
+    const checkPermission = allowAccountRead(false)
+    const { handler, settled } = await startAuth()
+    const plugin = await trustedPlugin()
+    await settled()
+    const denied = {
+      code: 'ACCOUNT_PERMISSION_DENIED',
+      permissionId: 'account.read',
+      pluginId: 'plugin-a'
+    }
+
+    await expect(handler('account:profile:get')(undefined, plugin)).rejects.toMatchObject(denied)
+    await expect(handler('account:session:request-login')(undefined, plugin)).rejects.toMatchObject(
+      denied
+    )
+    await expect(handler('account:upgrade:open')({ plan: 'pro' }, plugin)).rejects.toMatchObject(
+      denied
+    )
+
+    expect(checkPermission).toHaveBeenCalledWith('plugin-a', 'account.read', SdkApi.V260713)
+    expect(requestsTo('/api/app-auth/device/start')).toBe(0)
+    expect(openExternalMock).not.toHaveBeenCalled()
+  })
+
+  it('serves a plugin holding account.read, and the app without asking', async () => {
+    const checkPermission = allowAccountRead(true)
+    const { handler, settled } = await startAuth()
+    const plugin = await trustedPlugin()
+    await settled()
+
+    await expect(handler('account:profile:get')(undefined, plugin)).resolves.toBeNull()
+    expect(checkPermission).toHaveBeenCalledTimes(1)
+    await expect(
+      handler('account:profile:get')(undefined, { eventName: 'account:profile:get' })
+    ).resolves.toBeNull()
+    expect(checkPermission).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a plugin context the host did not issue', async () => {
+    allowAccountRead(true)
+    const { handler, settled } = await startAuth()
+    await settled()
+
+    await expect(
+      handler('account:profile:get')(undefined, {
+        plugin: { name: 'plugin-a', uniqueKey: 'forged-key' }
+      })
+    ).rejects.toMatchObject({ code: 'ACCOUNT_PERMISSION_DENIED' })
+  })
+
+  it('ends the session stream with the refusal for a plugin without account.read', async () => {
+    allowAccountRead(false)
+    const { stream } = await startAuth()
+    const plugin = await trustedPlugin()
+    const emit = vi.fn()
+    const error = vi.fn()
+
+    await stream('account:session:changed')(undefined, {
+      ...plugin,
+      emit,
+      error,
+      end: vi.fn(),
+      isCancelled: () => false,
+      signal: new AbortController().signal
+    })
+
+    expect(emit).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(error.mock.calls[0]?.[0]).toBeInstanceOf(Error)
+    expect(error.mock.calls[0]?.[0]).toMatchObject({ code: 'ACCOUNT_PERMISSION_DENIED' })
+  })
+
+  it("reads the plan's features, limits and organization from Nexus", async () => {
+    answerNexus({
+      '/api/subscription/status': () => ({
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        url: 'https://example.test/api/subscription/status',
+        ok: true,
+        data: {
+          plan: 'pro',
+          isActive: true,
+          activatedAt: null,
+          expiresAt: null,
+          features: {
+            aiRequests: { limit: 1000, used: 12 },
+            aiTokens: { limit: -1, used: 3400 },
+            customModels: true,
+            prioritySupport: false,
+            apiAccess: true
+          },
+          team: {
+            id: 'team-1',
+            name: 'Acme',
+            type: 'organization',
+            role: 'admin',
+            seats: { used: 4, total: 10 }
+          }
+        }
+      })
+    })
+    const { authModule, handler, settled } = await startAuth()
+    await settled()
+    authModule.__test__.setState({ authToken: 'access-token' })
+
+    await expect(handler('account:features:get')(undefined)).resolves.toEqual([
+      { id: 'aiRequests', enabled: true, value: 1000 },
+      { id: 'aiTokens', enabled: true, value: -1 },
+      { id: 'customModels', enabled: true },
+      { id: 'prioritySupport', enabled: false },
+      { id: 'apiAccess', enabled: true }
+    ])
+    await expect(handler('account:teams:get')(undefined)).resolves.toEqual([
+      { id: 'team-1', name: 'Acme', slug: 'team-1', role: 'admin', memberCount: 4, createdAt: 0 }
+    ])
+    await expect(handler('account:subscription:get')(undefined)).resolves.toMatchObject({
+      plan: 'pro',
+      quota: {
+        aiRequestsPerDay: 1000,
+        aiTokensPerMonth: -1,
+        customModelAccess: true,
+        prioritySupport: false,
+        apiAccess: true
+      }
+    })
+  })
+
+  it('opens the pricing page on the plan asked for, and account pages that exist', async () => {
+    const { handler } = await startAuth()
+
+    await handler('account:upgrade:open')({ plan: 'pro' })
+    await handler('account:upgrade:open')({ plan: 'gold' })
+    await handler('account:billing:open')(undefined)
+    await handler('account:settings:open')(undefined)
+
+    expect(openExternalMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://example.test/pricing?plan=pro',
+      'https://example.test/pricing',
+      'https://example.test/dashboard/team',
+      'https://example.test/dashboard/account'
+    ])
   })
 })

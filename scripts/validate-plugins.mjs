@@ -54,6 +54,7 @@ const KNOWN_PERMISSION_IDS = new Set([
   'i18n.read',
   'lexicon.read',
   'lexicon.register',
+  'account.read',
 ])
 
 function resolveSearchProviderPermissionIds(scopes = []) {

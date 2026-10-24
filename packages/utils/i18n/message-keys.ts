@@ -65,6 +65,7 @@ export const PermissionKeys = {
   CATEGORY_STORAGE: 'permission.category.storage',
   CATEGORY_WINDOW: 'permission.category.window',
   CATEGORY_SEARCH: 'permission.category.search',
+  CATEGORY_ACCOUNT: 'permission.category.account',
 
   // Risk levels
   RISK_LOW: 'permission.risk.low',
@@ -140,6 +141,10 @@ export const PermissionKeys = {
   // Search permissions
   SEARCH_ROOT_RESULTS_NAME: 'permission.search.rootResults.name',
   SEARCH_ROOT_RESULTS_DESC: 'permission.search.rootResults.desc',
+
+  // Account permissions
+  ACCOUNT_READ_NAME: 'permission.account.read.name',
+  ACCOUNT_READ_DESC: 'permission.account.read.desc',
 
   // UI messages
   GRANT: 'permission.grant',

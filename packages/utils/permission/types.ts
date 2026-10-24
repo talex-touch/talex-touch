@@ -20,6 +20,7 @@ export enum PermissionCategory {
   MEDIA = "media",
   SEARCH = "search",
   LOCALIZATION = "localization",
+  ACCOUNT = "account",
 }
 
 /**

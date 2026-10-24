@@ -4,8 +4,10 @@ import type { AppSetting } from '@talex-touch/utils/common/storage/entity/app-se
 import type { NetworkMethod, NetworkRetryPolicy } from '@talex-touch/utils/network'
 import type {
   AccountSessionState,
+  FeatureFlag,
   PlanQuota,
   Subscription,
+  Team,
   UsageStats,
   UserProfile
 } from '@talex-touch/utils/account'
@@ -21,14 +23,19 @@ import type {
   NexusUploadPayload,
   AccountRecordSyncActivityRequest
 } from '@talex-touch/utils/transport/events/auth'
-import type { ITuffTransportMain, StreamContext } from '@talex-touch/utils/transport/main'
+import type {
+  HandlerContext,
+  ITuffTransportMain,
+  StreamContext
+} from '@talex-touch/utils/transport/main'
 import type { TalexEvents } from '../../core/eventbus/touch-event'
 import { StorageList } from '@talex-touch/utils'
 import {
   BillingCycle,
   DEFAULT_PLAN_QUOTAS,
   SubscriptionPlan,
-  SubscriptionStatus
+  SubscriptionStatus,
+  TeamRole
 } from '@talex-touch/utils/account'
 import { getLogger } from '@talex-touch/utils/common/logger'
 import { getBooleanEnv } from '@talex-touch/utils/env'
@@ -55,6 +62,7 @@ import {
 } from '../storage/main-storage-registry'
 import { getRuntimeNexusBaseUrl, getRuntimeServerMode } from '../nexus/runtime-base'
 import { getMainConfig, saveMainConfig, saveMainConfigDurable } from '../storage'
+import { withPermission } from '../permission/channel-guard'
 import { openValidatedExternalUrl } from '../../utils/external-url-policy'
 
 const authLog = getLogger('auth')
@@ -165,6 +173,10 @@ let activeDeviceAuthLogin: Promise<boolean> | null = null
 let wakeDeviceAuthPoll: (() => void) | null = null
 /** Checks waiting for a poll sent after they asked; that poll resolves them unless it ends the login. */
 let deviceAuthPollWaiters: Array<() => void> = []
+/** The login page being opened, until its login is in flight or the opening fails. */
+let loginPageOpening: Promise<BrowserLoginStartResult | null> | null = null
+/** The stored credential being read at startup. */
+let authCredentialLoad: Promise<void> | null = null
 
 type AuthEventDefinition<TPayload, TResult> = Parameters<ITuffTransportMain['on']>[0] & {
   _request: TPayload
@@ -173,9 +185,45 @@ type AuthEventDefinition<TPayload, TResult> = Parameters<ITuffTransportMain['on'
 
 function registerAuthHandler<TPayload, TResult>(
   event: AuthEventDefinition<TPayload, TResult>,
-  handler: (payload: TPayload) => TResult | Promise<TResult>
+  handler: (payload: TPayload, context: HandlerContext) => TResult | Promise<TResult>
 ): Array<() => void> {
   return transport ? [transport.on(event, handler)] : []
+}
+
+const ACCOUNT_READ_PERMISSION = {
+  permissionId: 'account.read',
+  failClosedForPlugin: true,
+  requireVerifiedPlugin: true,
+  unavailableCode: 'ACCOUNT_PERMISSION_UNAVAILABLE',
+  deniedCode: 'ACCOUNT_PERMISSION_DENIED',
+  sdkMismatchCode: 'SDKAPI_MISMATCH'
+} as const
+
+/**
+ * A plugin reads the account under `account.read`. The app's own windows call the same events and
+ * are not plugins, so they pass unchecked.
+ */
+function withAccountReadPermission<TPayload, TResult>(
+  handler: (payload: TPayload, context: HandlerContext) => TResult | Promise<TResult>
+): (payload: TPayload, context: HandlerContext) => Promise<TResult> {
+  const guarded = withPermission(ACCOUNT_READ_PERMISSION, handler)
+  return async (payload, context) =>
+    context?.plugin ? await guarded(payload, context) : await handler(payload, context)
+}
+
+/** A refusal reaches a stream as an Error; keeps the code that tells the plugin why. */
+function toAccountStreamFailure(error: unknown): Error {
+  if (error instanceof Error) {
+    return error
+  }
+  const { message, code } = (error ?? {}) as { message?: unknown; code?: unknown }
+  const failure = new Error(typeof message === 'string' ? message : String(error)) as Error & {
+    code?: string
+  }
+  if (typeof code === 'string') {
+    failure.code = code
+  }
+  return failure
 }
 
 function cloneAuthState(): AuthState {
@@ -474,11 +522,19 @@ function shouldForceVisibleAuthBrowserOpenFailure(): boolean {
   return isVisibleAuthEvidenceMode() && getBooleanEnv(VISIBLE_AUTH_EVIDENCE_BROWSER_OPEN_FAIL)
 }
 
+/** Opens a page in the browser, and throws when the URL policy refuses it rather than returning quietly. */
+async function openPageExternally(url: string): Promise<void> {
+  const decision = await openValidatedExternalUrl(url, { opener: shell.openExternal })
+  if (!decision.allowed) {
+    throw new Error(`Page was not opened: ${decision.reason}`)
+  }
+}
+
 async function openAuthUrlExternally(authorizeUrl: string): Promise<void> {
   if (shouldForceVisibleAuthBrowserOpenFailure()) {
     throw new Error('Visible auth evidence forced browser open failure')
   }
-  await openValidatedExternalUrl(authorizeUrl, { opener: shell.openExternal })
+  await openPageExternally(authorizeUrl)
 }
 
 function normalizePositiveTtlSeconds(value: unknown): number | null {
@@ -1693,8 +1749,22 @@ async function settlePendingDeviceAuth(): Promise<AuthPendingLoginStatus> {
 }
 
 /** Resolves null without opening a page when the login in flight turns out to be approved. */
-async function openLoginPage(
+function openLoginPage(
   mode: 'sign-in' | 'sign-up' = 'sign-in'
+): Promise<BrowserLoginStartResult | null> {
+  const opening = startLoginPage(mode)
+  loginPageOpening = opening
+  const settle = (): void => {
+    if (loginPageOpening === opening) {
+      loginPageOpening = null
+    }
+  }
+  opening.then(settle, settle)
+  return opening
+}
+
+async function startLoginPage(
+  mode: 'sign-in' | 'sign-up'
 ): Promise<BrowserLoginStartResult | null> {
   authLog.info('Opening browser login page', { meta: { mode } })
   // The browser may have approved the login in flight since its last poll. Its code is aborted
@@ -1766,6 +1836,25 @@ async function openLoginPage(
     }
   })
   return loginStart
+}
+
+/**
+ * Signs in at a plugin's request without starting over: a new login would void the code on the
+ * page the user may already be signing in on, so a login under way is joined instead. True when
+ * the app is signed in or a login is under way, false when no login page could be opened.
+ */
+async function requestLoginForPlugin(): Promise<boolean> {
+  // A plugin can ask before the stored credential has been read at startup.
+  await authCredentialLoad?.catch(() => undefined)
+  if (authState.isSignedIn || activeDeviceAuthLogin) {
+    return true
+  }
+  // A stored credential still being checked at startup signs the app in without a page.
+  if (!authState.isSettled && authToken) {
+    return true
+  }
+  const start = await (loginPageOpening ?? openLoginPage('sign-in'))
+  return start === null || !start.browserOpenFailed
 }
 
 async function handleExternalAuthCallback(
@@ -2145,9 +2234,23 @@ interface SubscriptionStatusPayload {
   activatedAt?: string | null
   isActive?: boolean
   features?: {
-    aiRequests?: { used?: number }
-    aiTokens?: { used?: number }
+    aiRequests?: { limit?: unknown; used?: number }
+    aiTokens?: { limit?: unknown; used?: number }
+    customModels?: unknown
+    prioritySupport?: unknown
+    apiAccess?: unknown
   }
+  team?: {
+    id?: unknown
+    name?: unknown
+    type?: unknown
+    role?: unknown
+    seats?: { used?: unknown }
+  }
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }
 
 function normalizeSubscriptionPlan(raw: unknown): SubscriptionPlan {
@@ -2194,13 +2297,83 @@ async function fetchSubscriptionStatus(): Promise<SubscriptionStatusPayload | nu
   }
 }
 
+/**
+ * The plan's limits as Nexus enforces them, over the local table for those it does not report.
+ * Nexus counts AI requests and tokens per week, the same window as the usage mapped above.
+ */
+function mapSubscriptionQuota(
+  plan: SubscriptionPlan,
+  status: SubscriptionStatusPayload
+): PlanQuota {
+  const features = status.features ?? {}
+  const quota: PlanQuota = { ...DEFAULT_PLAN_QUOTAS[plan] }
+  if (isFiniteNumber(features.aiRequests?.limit)) {
+    quota.aiRequestsPerDay = features.aiRequests.limit
+  }
+  if (isFiniteNumber(features.aiTokens?.limit)) {
+    quota.aiTokensPerMonth = features.aiTokens.limit
+  }
+  if (typeof features.customModels === 'boolean') {
+    quota.customModelAccess = features.customModels
+  }
+  if (typeof features.prioritySupport === 'boolean') {
+    quota.prioritySupport = features.prioritySupport
+  }
+  if (typeof features.apiAccess === 'boolean') {
+    quota.apiAccess = features.apiAccess
+  }
+  return quota
+}
+
+/** Nexus's plan features as flags. A limit carries its number, -1 for unlimited. */
+function mapSubscriptionFeatures(status: SubscriptionStatusPayload): FeatureFlag[] {
+  const features = status.features ?? {}
+  const flags: FeatureFlag[] = []
+  for (const id of ['aiRequests', 'aiTokens'] as const) {
+    const limit = features[id]?.limit
+    if (isFiniteNumber(limit)) {
+      flags.push({ id, enabled: limit !== 0, value: limit })
+    }
+  }
+  for (const id of ['customModels', 'prioritySupport', 'apiAccess'] as const) {
+    const enabled = features[id]
+    if (typeof enabled === 'boolean') {
+      flags.push({ id, enabled })
+    }
+  }
+  return flags
+}
+
+/**
+ * The organization the account belongs to. Every account also has a personal team, which is no
+ * team in the SDK's sense and is left out. Nexus reports no slug or creation time here, so the id
+ * stands in for the slug and 0 means unknown, as for the other timestamps in this file.
+ */
+function mapSubscriptionTeams(status: SubscriptionStatusPayload): Team[] {
+  const team = status.team
+  if (!team || team.type !== 'organization' || typeof team.id !== 'string' || !team.id) {
+    return []
+  }
+  const roles = Object.values(TeamRole) as string[]
+  return [
+    {
+      id: team.id,
+      name: typeof team.name === 'string' ? team.name : '',
+      slug: team.id,
+      role: roles.includes(String(team.role)) ? (team.role as TeamRole) : TeamRole.MEMBER,
+      memberCount: isFiniteNumber(team.seats?.used) ? team.seats.used : 0,
+      createdAt: 0
+    }
+  ]
+}
+
 async function fetchAccountSubscription(): Promise<Subscription | null> {
   const status = await fetchSubscriptionStatus()
   if (!status) {
     return null
   }
   const plan = normalizeSubscriptionPlan(status.plan)
-  const quota: PlanQuota = DEFAULT_PLAN_QUOTAS[plan]
+  const quota = mapSubscriptionQuota(plan, status)
   return {
     id: `sub_${plan}`,
     plan,
@@ -2224,10 +2397,45 @@ async function fetchAccountUsage(): Promise<UsageStats | null> {
   return mapSubscriptionUsage(status)
 }
 
-async function openAccountDashboard(pathname: string): Promise<void> {
-  await openValidatedExternalUrl(new URL(pathname, resolveAuthBaseUrl()), {
-    opener: shell.openExternal
-  })
+async function fetchAccountFeatures(): Promise<FeatureFlag[]> {
+  const status = await fetchSubscriptionStatus()
+  return status ? mapSubscriptionFeatures(status) : []
+}
+
+async function fetchAccountTeams(): Promise<Team[]> {
+  const status = await fetchSubscriptionStatus()
+  return status ? mapSubscriptionTeams(status) : []
+}
+
+/**
+ * Where the account links go on Nexus. It has no billing, settings or profile page: the plan and
+ * its activation codes live on the team page, and the account page holds settings and profile.
+ */
+const ACCOUNT_PAGES = {
+  upgrade: '/pricing',
+  billing: '/dashboard/team',
+  settings: '/dashboard/account',
+  profile: '/dashboard/account'
+} as const
+
+async function openAccountDashboard(
+  pathname: string,
+  query: Record<string, string> = {}
+): Promise<void> {
+  const url = new URL(pathname, resolveAuthBaseUrl())
+  for (const [key, value] of Object.entries(query)) {
+    url.searchParams.set(key, value)
+  }
+  // The policy takes a string. Handed the URL object, it refused every page, and nothing said so.
+  await openPageExternally(url.toString())
+}
+
+/** The plan to show on the pricing page, if the caller named one. */
+function resolveUpgradePlanQuery(payload: unknown): Record<string, string> {
+  const plan = (payload as { plan?: unknown } | null | undefined)?.plan
+  return (Object.values(SubscriptionPlan) as unknown[]).includes(plan)
+    ? { plan: plan as string }
+    : {}
 }
 
 async function getOrInitMachineSeed(appSettings: AppSetting): Promise<string> {
@@ -2355,7 +2563,7 @@ async function attestCurrentDevice(): Promise<boolean> {
 
 async function requestStepUp(): Promise<void> {
   const url = `${resolveAuthBaseUrl()}/auth/stepup-callback`
-  await openValidatedExternalUrl(url, { opener: shell.openExternal })
+  await openPageExternally(url)
 }
 
 function setStepUpToken(token: string): void {
@@ -2458,6 +2666,8 @@ function resetAuthModuleTestState(): void {
   activeDeviceAuthLogin = null
   wakeDeviceAuthPoll = null
   deviceAuthPollWaiters = []
+  loginPageOpening = null
+  authCredentialLoad = null
 }
 
 function setAuthModuleTestState(nextState: AuthModuleTestState): void {
@@ -2651,33 +2861,53 @@ export class AuthModule extends BaseModule<TalexEvents> {
           return recordSyncActivity(kind)
         }
       ),
-      ...registerAuthHandler(AccountEvents.account.getProfile, async () =>
-        authState.user ? mapAuthUserToProfile(authState.user) : null
+      ...registerAuthHandler(
+        AccountEvents.account.getProfile,
+        withAccountReadPermission(async () =>
+          authState.user ? mapAuthUserToProfile(authState.user) : null
+        )
       ),
-      ...registerAuthHandler(AccountEvents.account.getSubscription, async () =>
-        fetchAccountSubscription()
+      ...registerAuthHandler(
+        AccountEvents.account.getSubscription,
+        withAccountReadPermission(async () => fetchAccountSubscription())
       ),
-      ...registerAuthHandler(AccountEvents.account.getUsage, async () => fetchAccountUsage()),
-      ...registerAuthHandler(AccountEvents.account.getFeatures, async () => []),
-      ...registerAuthHandler(AccountEvents.account.getTeams, async () => []),
+      ...registerAuthHandler(
+        AccountEvents.account.getUsage,
+        withAccountReadPermission(async () => fetchAccountUsage())
+      ),
+      ...registerAuthHandler(
+        AccountEvents.account.getFeatures,
+        withAccountReadPermission(async () => fetchAccountFeatures())
+      ),
+      ...registerAuthHandler(
+        AccountEvents.account.getTeams,
+        withAccountReadPermission(async () => fetchAccountTeams())
+      ),
       ...registerAuthHandler(AccountEvents.account.getSessions, async () => []),
       ...registerAuthHandler(AccountEvents.account.getInfo, async () => null),
-      ...registerAuthHandler(AccountEvents.account.openUpgrade, async () =>
-        openAccountDashboard('/dashboard/billing')
+      // Opening a page reveals nothing, but a plugin opens the browser only with a permission.
+      ...registerAuthHandler(
+        AccountEvents.account.openUpgrade,
+        withAccountReadPermission(async (payload) =>
+          openAccountDashboard(ACCOUNT_PAGES.upgrade, resolveUpgradePlanQuery(payload))
+        )
       ),
-      ...registerAuthHandler(AccountEvents.account.openBilling, async () =>
-        openAccountDashboard('/dashboard/billing')
+      ...registerAuthHandler(
+        AccountEvents.account.openBilling,
+        withAccountReadPermission(async () => openAccountDashboard(ACCOUNT_PAGES.billing))
       ),
-      ...registerAuthHandler(AccountEvents.account.openSettings, async () =>
-        openAccountDashboard('/dashboard/settings')
+      ...registerAuthHandler(
+        AccountEvents.account.openSettings,
+        withAccountReadPermission(async () => openAccountDashboard(ACCOUNT_PAGES.settings))
       ),
-      ...registerAuthHandler(AccountEvents.account.openProfile, async () =>
-        openAccountDashboard('/dashboard/profile')
+      ...registerAuthHandler(
+        AccountEvents.account.openProfile,
+        withAccountReadPermission(async () => openAccountDashboard(ACCOUNT_PAGES.profile))
       ),
-      ...registerAuthHandler(AccountEvents.account.requestLogin, async () => {
-        await openLoginPage('sign-in')
-        return true
-      }),
+      ...registerAuthHandler(
+        AccountEvents.account.requestLogin,
+        withAccountReadPermission(async () => requestLoginForPlugin())
+      ),
       ...registerAuthHandler(AccountEvents.account.logout, async () => {
         await cancelActiveDeviceAuth()
         await clearAuthToken()
@@ -2685,15 +2915,26 @@ export class AuthModule extends BaseModule<TalexEvents> {
       })
     )
     if (transport) {
+      const checkAccountRead = withAccountReadPermission(async () => undefined)
       this.transportDisposers.push(
-        transport.onStream(AccountEvents.session.changed, (_payload, context) => {
+        transport.onStream(AccountEvents.session.changed, async (payload, context) => {
+          try {
+            await checkAccountRead(payload, context as unknown as HandlerContext)
+          } catch (error) {
+            if (!context.isCancelled()) {
+              context.error(toAccountStreamFailure(error))
+            }
+            return
+          }
           watchAccountSession(context)
         })
       )
     }
 
+    const credentialLoad = loadAuthToken()
+    authCredentialLoad = credentialLoad
     void (async () => {
-      await loadAuthToken()
+      await credentialLoad
       ensureDeviceProfile()
       await initializeAuthState()
     })()

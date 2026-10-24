@@ -3269,7 +3269,8 @@
         "window": "Window",
         "search": "Search",
         "media": "Media",
-        "localization": "Localization & Lexicon"
+        "localization": "Localization & Lexicon",
+        "account": "Account"
       },
       "shortcuts": {
         "title": "Shortcuts",
@@ -3415,6 +3416,12 @@
           "register": {
             "name": "Register Domain Lexicon",
             "desc": "Register bounded terminology inside this plugin's isolated namespace"
+          }
+        },
+        "account": {
+          "read": {
+            "name": "Read Account",
+            "desc": "Read your profile (including email), plan and usage, see when you sign in or out, and open the sign-in and account pages"
           }
         }
       },

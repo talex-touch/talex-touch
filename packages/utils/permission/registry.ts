@@ -247,6 +247,16 @@ export const PERMISSIONS: PermissionDefinition[] = [
     icon: 'BookPlus',
   },
 
+  // Account permissions
+  {
+    id: 'account.read',
+    category: PermissionCategory.ACCOUNT,
+    risk: PermissionRiskLevel.MEDIUM,
+    nameKey: 'permission.account.read.name',
+    descKey: 'permission.account.read.desc',
+    icon: 'CircleUser',
+  },
+
   // Search permissions
   {
     id: 'search.root-results',
@@ -378,6 +388,9 @@ export const PermissionIds = {
   I18N_READ: 'i18n.read',
   LEXICON_READ: 'lexicon.read',
   LEXICON_REGISTER: 'lexicon.register',
+
+  // Account
+  ACCOUNT_READ: 'account.read',
 } as const
 
 export type PermissionId = (typeof PermissionIds)[keyof typeof PermissionIds]

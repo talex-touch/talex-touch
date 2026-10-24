@@ -35,7 +35,8 @@
       "storage": "存储",
       "window": "窗口",
       "media": "媒体",
-      "search": "搜索"
+      "search": "搜索",
+      "account": "账户"
     },
     "risk": {
       "low": "低风险",
@@ -86,6 +87,9 @@
     },
     "search": {
       "rootResults": { "name": "推送根搜索结果", "desc": "向 CoreBox 根结果列表推送或更新搜索项" }
+    },
+    "account": {
+      "read": { "name": "读取账户信息", "desc": "读取你的账户资料（含邮箱）、套餐和用量，得知你登录和退出，并可打开登录页和账户页面" }
     },
     "grant": "授予",
     "revoke": "撤销",

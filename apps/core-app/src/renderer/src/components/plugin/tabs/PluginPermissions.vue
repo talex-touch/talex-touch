@@ -217,7 +217,8 @@ const categoryInfo: Record<string, { nameKey: string; icon: string }> = {
   localization: {
     nameKey: 'plugin.permissions.categories.localization',
     icon: 'i-carbon-language'
-  }
+  },
+  account: { nameKey: 'plugin.permissions.categories.account', icon: 'i-carbon-user' }
 }
 
 // Group permissions by category
@@ -258,7 +259,8 @@ function getRisk(permissionId: string): 'low' | 'medium' | 'high' {
     'system.tray',
     'system.shortcut',
     'intelligence.basic',
-    'storage.shared'
+    'storage.shared',
+    'account.read'
   ]
   if (highRisk.includes(permissionId)) return 'high'
   if (mediumRisk.includes(permissionId)) return 'medium'
@@ -287,7 +289,8 @@ function getPermissionIcon(permissionId: string): string {
     'window.create': 'i-carbon-application',
     'window.capture': 'i-carbon-screen',
     'search.root-results': 'i-carbon-search',
-    'media.read': 'i-carbon-image'
+    'media.read': 'i-carbon-image',
+    'account.read': 'i-carbon-user-profile'
   }
   return icons[permissionId] || 'i-carbon-checkmark'
 }
