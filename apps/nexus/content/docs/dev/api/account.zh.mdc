@@ -266,8 +266,8 @@ code: |
   //   plan: 'pro',
   //   status: 'active',
   //   billingCycle: 'monthly',
-  //   quota: { aiRequestsPerDay: 500, ... },
-  //   usage: { aiRequestsToday: 123, ... },
+  //   quota: { aiRequestsPerWeek: 500, ... },
+  //   usage: { aiRequestsThisWeek: 123, ... },
   //   currentPeriodEnd: 1704067200000,
   //   autoRenew: true
   // }
@@ -371,15 +371,15 @@ code: |
 
 **`getQuota()`**
 
-获取当前计划的配额限制。
+获取当前计划的配额限制。AI 请求和 Token 按周计，和 Nexus 一样每周一 00:00（UTC）重新计数，`-1` 表示不限。`aiRequestsPerDay`、`aiTokensPerMonth` 已弃用，装的也是这两个按周的数。
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
   const quota = await accountSDK.getQuota()
   // {
-  //   aiRequestsPerDay: 500,
-  //   aiTokensPerMonth: 1000000,
+  //   aiRequestsPerWeek: 500,
+  //   aiTokensPerWeek: 100000,
   //   maxPlugins: 20,
   //   maxStorageBytes: 1073741824,
   //   customModelAccess: true,
@@ -391,16 +391,15 @@ code: |
 
 **`getUsage()`**
 
-获取当前使用量统计。
+获取当前使用量统计。AI 用量是本周的；`aiRequestsToday`、`aiRequestsThisMonth`、`aiTokensThisMonth` 已弃用，装的也是本周的数。
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
   const usage = await accountSDK.getUsage()
   // {
-  //   aiRequestsToday: 123,
-  //   aiRequestsThisMonth: 2456,
-  //   aiTokensThisMonth: 456789,
+  //   aiRequestsThisWeek: 123,
+  //   aiTokensThisWeek: 45678,
   //   storageUsedBytes: 52428800,
   //   pluginsInstalled: 8
   // }
@@ -409,14 +408,14 @@ code: |
 
 **`checkAiRequestQuota()`**
 
-检查 AI 请求配额。
+检查本周的 AI 请求配额。用完时 `resetAt` 是下周一 00:00（UTC）。
 
 :::TuffCodeBlock{lang="ts"}
 ---
 code: |
   const result = await accountSDK.checkAiRequestQuota()
   if (!result.allowed) {
-    console.log(result.reason) // 'Daily AI request limit reached'
+    console.log(result.reason) // 'Weekly AI request limit reached'
     console.log(`重置时间: ${new Date(result.resetAt)}`)
   } else {
     console.log(`剩余请求: ${result.remaining}`)
@@ -426,7 +425,7 @@ code: |
 
 **`checkAiTokenQuota(estimatedTokens)`**
 
-检查 AI Token 配额。
+检查本周的 AI Token 配额。
 
 :::TuffCodeBlock{lang="ts"}
 ---
@@ -649,7 +648,7 @@ code: |
 code: |
   const comparison = accountSDK.getPlanComparison()
   // [
-  //   { feature: 'AI Requests/Day', free: 50, pro: 500, plus: 2000, ... },
+  //   { feature: 'AI Requests/Week', free: 50, pro: 500, plus: 2000, ... },
   //   { feature: 'Custom Models', free: false, pro: true, ... }
   // ]
 ---
