@@ -69,7 +69,7 @@ function resolveSearchProviderPermissionIds(scopes = []) {
       case 'network':
         return ['network.internet']
       case 'account':
-        return ['storage.shared']
+        return ['account.read']
       case 'external-tool':
       case 'system-index':
       case 'none':

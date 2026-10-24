@@ -1111,9 +1111,10 @@ describe("search provider sdk contracts", () => {
         "root-results",
         "file-system",
         "network",
+        "account",
         "root-results",
       ]),
-    ).toEqual(["search.root-results", "fs.index", "network.internet"]);
+    ).toEqual(["search.root-results", "fs.index", "network.internet", "account.read"]);
   });
 
   it("normalizes manifest search provider declarations into runtime descriptors", () => {
@@ -1619,8 +1620,9 @@ describe("indexed source manifest sdk contracts", () => {
         "file-system",
         "browser-data",
         "network",
+        "account",
       ]),
-    ).toEqual(["fs.read", "fs.index", "network.internet"]);
+    ).toEqual(["fs.read", "fs.index", "network.internet", "account.read"]);
   });
 
   it("resolves official browser-data indexed source manifest declarations", () => {

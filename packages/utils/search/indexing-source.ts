@@ -394,7 +394,7 @@ export function resolveSearchProviderPermissionIds(scopes: SearchProviderPermiss
       case 'network':
         return ['network.internet']
       case 'account':
-        return ['storage.shared']
+        return ['account.read']
       case 'external-tool':
       case 'system-index':
       case 'none':
@@ -416,7 +416,7 @@ export function resolveIndexedSourcePermissionIds(scopes: IndexedSourcePermissio
       case 'network':
         return ['network.internet']
       case 'account':
-        return ['storage.shared']
+        return ['account.read']
       case 'external-tool':
       case 'system-index':
       case 'none':
