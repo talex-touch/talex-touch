@@ -23,12 +23,15 @@ import {
 import { AccountEvents } from '../transport/events'
 
 /**
- * Default plan quotas
+ * Default plan quotas. The AI limits are the weekly ones Nexus enforces; the deprecated
+ * day and month names carry the same numbers.
  */
 export const DEFAULT_PLAN_QUOTAS: Record<SubscriptionPlan, PlanQuota> = {
   [SubscriptionPlan.FREE]: {
+    aiRequestsPerWeek: 50,
+    aiTokensPerWeek: 10000,
     aiRequestsPerDay: 50,
-    aiTokensPerMonth: 100000,
+    aiTokensPerMonth: 10000,
     maxPlugins: 5,
     maxStorageBytes: 100 * 1024 * 1024, // 100MB
     maxWorkspaces: 1,
@@ -38,8 +41,10 @@ export const DEFAULT_PLAN_QUOTAS: Record<SubscriptionPlan, PlanQuota> = {
     advancedAnalytics: false,
   },
   [SubscriptionPlan.PRO]: {
+    aiRequestsPerWeek: 500,
+    aiTokensPerWeek: 100000,
     aiRequestsPerDay: 500,
-    aiTokensPerMonth: 1000000,
+    aiTokensPerMonth: 100000,
     maxPlugins: 20,
     maxStorageBytes: 1024 * 1024 * 1024, // 1GB
     maxWorkspaces: 5,
@@ -49,8 +54,10 @@ export const DEFAULT_PLAN_QUOTAS: Record<SubscriptionPlan, PlanQuota> = {
     advancedAnalytics: false,
   },
   [SubscriptionPlan.PLUS]: {
+    aiRequestsPerWeek: 2000,
+    aiTokensPerWeek: 500000,
     aiRequestsPerDay: 2000,
-    aiTokensPerMonth: 5000000,
+    aiTokensPerMonth: 500000,
     maxPlugins: 50,
     maxStorageBytes: 5 * 1024 * 1024 * 1024, // 5GB
     maxWorkspaces: 20,
@@ -60,8 +67,10 @@ export const DEFAULT_PLAN_QUOTAS: Record<SubscriptionPlan, PlanQuota> = {
     advancedAnalytics: true,
   },
   [SubscriptionPlan.TEAM]: {
-    aiRequestsPerDay: 10000,
-    aiTokensPerMonth: 20000000,
+    aiRequestsPerWeek: 5000,
+    aiTokensPerWeek: 1000000,
+    aiRequestsPerDay: 5000,
+    aiTokensPerMonth: 1000000,
     maxPlugins: 100,
     maxStorageBytes: 20 * 1024 * 1024 * 1024, // 20GB
     maxTeamMembers: 10,
@@ -72,6 +81,8 @@ export const DEFAULT_PLAN_QUOTAS: Record<SubscriptionPlan, PlanQuota> = {
     advancedAnalytics: true,
   },
   [SubscriptionPlan.ENTERPRISE]: {
+    aiRequestsPerWeek: -1, // Unlimited
+    aiTokensPerWeek: -1, // Unlimited
     aiRequestsPerDay: -1, // Unlimited
     aiTokensPerMonth: -1, // Unlimited
     maxPlugins: -1, // Unlimited
@@ -97,8 +108,8 @@ export const UPGRADE_OPTIONS: UpgradeOption[] = [
     priceYearly: 99.99,
     currency: 'USD',
     features: [
-      '500 AI requests/day',
-      '1M tokens/month',
+      '500 AI requests/week',
+      '100K tokens/week',
       '20 plugins',
       '1GB storage',
       'Custom model access',
@@ -113,8 +124,8 @@ export const UPGRADE_OPTIONS: UpgradeOption[] = [
     priceYearly: 199.99,
     currency: 'USD',
     features: [
-      '2000 AI requests/day',
-      '5M tokens/month',
+      '2000 AI requests/week',
+      '500K tokens/week',
       '50 plugins',
       '5GB storage',
       'Priority support',
@@ -130,8 +141,8 @@ export const UPGRADE_OPTIONS: UpgradeOption[] = [
     priceYearly: 499.99,
     currency: 'USD',
     features: [
-      '10000 AI requests/day',
-      '20M tokens/month',
+      '5000 AI requests/week',
+      '1M tokens/week',
       'Unlimited plugins',
       '20GB storage',
       'Up to 10 team members',
@@ -139,6 +150,22 @@ export const UPGRADE_OPTIONS: UpgradeOption[] = [
     ],
   },
 ]
+
+/** When Nexus starts counting a new week of AI usage: the next Monday, 00:00 UTC. */
+function nextQuotaWeekStart(now: Date = new Date()): number {
+  const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMonday)
+}
+
+/** This week's AI limits and usage. An older host sends only the deprecated names. */
+function weeklyAiQuota(quota: PlanQuota, usage: UsageStats) {
+  return {
+    requestLimit: quota.aiRequestsPerWeek ?? quota.aiRequestsPerDay,
+    tokenLimit: quota.aiTokensPerWeek ?? quota.aiTokensPerMonth,
+    requestsUsed: usage.aiRequestsThisWeek ?? usage.aiRequestsToday,
+    tokensUsed: usage.aiTokensThisWeek ?? usage.aiTokensThisMonth,
+  }
+}
 
 /**
  * Account SDK for plugins and Prelude scripts
@@ -486,6 +513,8 @@ export class AccountSDK {
       return cached
 
     const emptyUsage: UsageStats = {
+      aiRequestsThisWeek: 0,
+      aiTokensThisWeek: 0,
       aiRequestsToday: 0,
       aiRequestsThisMonth: 0,
       aiTokensThisMonth: 0,
@@ -506,24 +535,23 @@ export class AccountSDK {
   }
 
   /**
-   * Check if AI requests quota is available
+   * Check if this week's AI request quota is available
    */
   async checkAiRequestQuota(): Promise<QuotaCheckResult> {
     const [quota, usage] = await Promise.all([this.getQuota(), this.getUsage()])
+    const { requestLimit, requestsUsed } = weeklyAiQuota(quota, usage)
 
-    if (quota.aiRequestsPerDay === -1) {
+    if (requestLimit === -1) {
       return { allowed: true, remaining: -1 }
     }
 
-    const remaining = quota.aiRequestsPerDay - usage.aiRequestsToday
+    const remaining = requestLimit - requestsUsed
     if (remaining <= 0) {
-      const tomorrow = new Date()
-      tomorrow.setHours(24, 0, 0, 0)
       return {
         allowed: false,
-        reason: 'Daily AI request limit reached',
+        reason: 'Weekly AI request limit reached',
         remaining: 0,
-        resetAt: tomorrow.getTime(),
+        resetAt: nextQuotaWeekStart(),
       }
     }
 
@@ -531,25 +559,23 @@ export class AccountSDK {
   }
 
   /**
-   * Check if AI tokens quota is available
+   * Check if this week's AI token quota is available
    */
   async checkAiTokenQuota(estimatedTokens: number = 0): Promise<QuotaCheckResult> {
     const [quota, usage] = await Promise.all([this.getQuota(), this.getUsage()])
+    const { tokenLimit, tokensUsed } = weeklyAiQuota(quota, usage)
 
-    if (quota.aiTokensPerMonth === -1) {
+    if (tokenLimit === -1) {
       return { allowed: true, remaining: -1 }
     }
 
-    const remaining = quota.aiTokensPerMonth - usage.aiTokensThisMonth
+    const remaining = tokenLimit - tokensUsed
     if (remaining < estimatedTokens) {
-      const nextMonth = new Date()
-      nextMonth.setMonth(nextMonth.getMonth() + 1, 1)
-      nextMonth.setHours(0, 0, 0, 0)
       return {
         allowed: false,
-        reason: 'Monthly AI token limit reached',
+        reason: 'Weekly AI token limit reached',
         remaining: Math.max(0, remaining),
-        resetAt: nextMonth.getTime(),
+        resetAt: nextQuotaWeekStart(),
       }
     }
 
@@ -605,16 +631,17 @@ export class AccountSDK {
    */
   async getUsagePercentage(type: 'aiRequests' | 'aiTokens' | 'storage' | 'plugins'): Promise<number> {
     const [quota, usage] = await Promise.all([this.getQuota(), this.getUsage()])
+    const weekly = weeklyAiQuota(quota, usage)
 
     switch (type) {
       case 'aiRequests':
-        if (quota.aiRequestsPerDay === -1)
+        if (weekly.requestLimit === -1)
           return 0
-        return Math.min(100, (usage.aiRequestsToday / quota.aiRequestsPerDay) * 100)
+        return Math.min(100, (weekly.requestsUsed / weekly.requestLimit) * 100)
       case 'aiTokens':
-        if (quota.aiTokensPerMonth === -1)
+        if (weekly.tokenLimit === -1)
           return 0
-        return Math.min(100, (usage.aiTokensThisMonth / quota.aiTokensPerMonth) * 100)
+        return Math.min(100, (weekly.tokensUsed / weekly.tokenLimit) * 100)
       case 'storage':
         if (quota.maxStorageBytes === -1)
           return 0
@@ -828,8 +855,8 @@ export class AccountSDK {
    */
   getPlanComparison(): PlanComparisonItem[] {
     return [
-      { feature: 'AI Requests/Day', free: 50, pro: 500, plus: 2000, team: 10000, enterprise: 'Unlimited' },
-      { feature: 'AI Tokens/Month', free: '100K', pro: '1M', plus: '5M', team: '20M', enterprise: 'Unlimited' },
+      { feature: 'AI Requests/Week', free: 50, pro: 500, plus: 2000, team: 5000, enterprise: 'Unlimited' },
+      { feature: 'AI Tokens/Week', free: '10K', pro: '100K', plus: '500K', team: '1M', enterprise: 'Unlimited' },
       { feature: 'Plugins', free: 5, pro: 20, plus: 50, team: 100, enterprise: 'Unlimited' },
       { feature: 'Storage', free: '100MB', pro: '1GB', plus: '5GB', team: '20GB', enterprise: 'Unlimited' },
       { feature: 'Workspaces', free: 1, pro: 5, plus: 20, team: 50, enterprise: 'Unlimited' },

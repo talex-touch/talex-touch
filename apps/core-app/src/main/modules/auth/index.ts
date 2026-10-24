@@ -2264,6 +2264,8 @@ function mapSubscriptionUsage(status: SubscriptionStatusPayload): UsageStats {
   const aiRequestsUsed = features?.aiRequests?.used ?? 0
   const aiTokensUsed = features?.aiTokens?.used ?? 0
   return {
+    aiRequestsThisWeek: aiRequestsUsed,
+    aiTokensThisWeek: aiTokensUsed,
     aiRequestsToday: aiRequestsUsed,
     aiRequestsThisMonth: aiRequestsUsed,
     aiTokensThisMonth: aiTokensUsed,
@@ -2308,9 +2310,11 @@ function mapSubscriptionQuota(
   const features = status.features ?? {}
   const quota: PlanQuota = { ...DEFAULT_PLAN_QUOTAS[plan] }
   if (isFiniteNumber(features.aiRequests?.limit)) {
+    quota.aiRequestsPerWeek = features.aiRequests.limit
     quota.aiRequestsPerDay = features.aiRequests.limit
   }
   if (isFiniteNumber(features.aiTokens?.limit)) {
+    quota.aiTokensPerWeek = features.aiTokens.limit
     quota.aiTokensPerMonth = features.aiTokens.limit
   }
   if (typeof features.customModels === 'boolean') {

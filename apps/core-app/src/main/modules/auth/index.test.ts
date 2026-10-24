@@ -1516,11 +1516,19 @@ describe('plugin account access', () => {
     await expect(handler('account:subscription:get')(undefined)).resolves.toMatchObject({
       plan: 'pro',
       quota: {
+        aiRequestsPerWeek: 1000,
+        aiTokensPerWeek: -1,
         aiRequestsPerDay: 1000,
         aiTokensPerMonth: -1,
         customModelAccess: true,
         prioritySupport: false,
         apiAccess: true
+      },
+      usage: {
+        aiRequestsThisWeek: 12,
+        aiTokensThisWeek: 3400,
+        aiRequestsToday: 12,
+        aiTokensThisMonth: 3400
       }
     })
   })

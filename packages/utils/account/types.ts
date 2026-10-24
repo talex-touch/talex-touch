@@ -62,9 +62,19 @@ export interface FeatureFlag {
  * Plan quota limits
  */
 export interface PlanQuota {
-  /** AI requests per day */
+  /** AI requests per week. Nexus starts each week on Monday, 00:00 UTC; -1 means unlimited. */
+  aiRequestsPerWeek: number
+  /** AI tokens per week, over the same window as `aiRequestsPerWeek`; -1 means unlimited. */
+  aiTokensPerWeek: number
+  /**
+   * @deprecated Nexus counts AI requests per week, and this carries that weekly limit, not a
+   * daily one. Use `aiRequestsPerWeek`.
+   */
   aiRequestsPerDay: number
-  /** AI tokens per month */
+  /**
+   * @deprecated Nexus counts AI tokens per week, and this carries that weekly limit, not a
+   * monthly one. Use `aiTokensPerWeek`.
+   */
   aiTokensPerMonth: number
   /** Max plugins allowed */
   maxPlugins: number
@@ -88,11 +98,15 @@ export interface PlanQuota {
  * Current usage statistics
  */
 export interface UsageStats {
-  /** AI requests used today */
+  /** AI requests used since this week started, Monday 00:00 UTC */
+  aiRequestsThisWeek: number
+  /** AI tokens used since this week started, Monday 00:00 UTC */
+  aiTokensThisWeek: number
+  /** @deprecated Carries this week's count, not today's. Use `aiRequestsThisWeek`. */
   aiRequestsToday: number
-  /** AI requests used this month */
+  /** @deprecated Carries this week's count, not this month's. Use `aiRequestsThisWeek`. */
   aiRequestsThisMonth: number
-  /** AI tokens used this month */
+  /** @deprecated Carries this week's count, not this month's. Use `aiTokensThisWeek`. */
   aiTokensThisMonth: number
   /** Storage used in bytes */
   storageUsedBytes: number
