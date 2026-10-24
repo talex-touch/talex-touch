@@ -1398,6 +1398,33 @@ function removeAttachment(id: string): void {
   pendingAttachments.value = pendingAttachments.value.filter((attachment) => attachment.id !== id)
 }
 
+/**
+ * The preview's own controls and announcements in the app's language. The tray names only the
+ * buttons it has props for; everything else in the preview would stay at its English defaults.
+ */
+const attachPreviewProps = computed(() => ({
+  rotateLabel: t('home.attachViewer.rotate'),
+  copyLabel: t('home.attachViewer.copy'),
+  shareLabel: t('home.attachViewer.share'),
+  downloadLabel: t('home.attachViewer.download'),
+  menuLabel: t('home.attachViewer.menu'),
+  indicatorLabel: t('home.attachViewer.strip'),
+  copiedText: t('home.attachViewer.copied'),
+  linkCopiedText: t('home.attachViewer.linkCopied'),
+  copyFailedText: t('home.attachViewer.copyFailed'),
+  indicatorItemFormatter: (current: number, total: number, name?: string) =>
+    name
+      ? t('home.attachViewer.itemNamed', { name, current, total })
+      : t('home.attachViewer.item', { current, total }),
+  labelFormatter: (label: string, name: string) => t('home.attachViewer.named', { label, name }),
+  readoutLabelFormatter: (readout: string, label: string) =>
+    t('home.attachViewer.readout', { readout, label })
+}))
+
+function attachOpenLabel(name: string): string {
+  return t('home.attachViewer.named', { label: t('home.attachPreview'), name })
+}
+
 /** The files a paste carries — a copied picture arrives as one `image/png` file item. */
 function pastedFiles(event: ClipboardEvent): File[] {
   const files: File[] = []
@@ -2144,6 +2171,12 @@ onBeforeUnmount(() => disposeCommands?.())
                         :previous-text="t('home.attachPreviousText')"
                         :next-text="t('home.attachNextText')"
                         :close-label="t('common.close')"
+                        :zoom-in-label="t('home.attachViewer.zoomIn')"
+                        :zoom-out-label="t('home.attachViewer.zoomOut')"
+                        :reset-label="t('home.attachViewer.reset')"
+                        :failed-text="t('home.attachViewer.failed')"
+                        :open-label-formatter="attachOpenLabel"
+                        :preview-props="attachPreviewProps"
                       />
                       <div class="HomePage-UserBubble">
                         {{ message.content }}
@@ -2533,6 +2566,12 @@ onBeforeUnmount(() => disposeCommands?.())
                   :previous-text="t('home.attachPreviousText')"
                   :next-text="t('home.attachNextText')"
                   :close-label="t('common.close')"
+                  :zoom-in-label="t('home.attachViewer.zoomIn')"
+                  :zoom-out-label="t('home.attachViewer.zoomOut')"
+                  :reset-label="t('home.attachViewer.reset')"
+                  :failed-text="t('home.attachViewer.failed')"
+                  :open-label-formatter="attachOpenLabel"
+                  :preview-props="attachPreviewProps"
                   @remove="removeAttachment"
                 />
 
