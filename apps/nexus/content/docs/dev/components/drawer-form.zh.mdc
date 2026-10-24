@@ -110,7 +110,7 @@ async function edit(id) {
 | 属性名 | 类型 | 默认值 | 说明 |
 |------|------|---------|------|
 | `visible` | `boolean` | 必填 | 是否显示，用于 `v-model:visible`。 |
-| `title` | `string` | `'Drawer'` | 抽屉标题。 |
+| `title` | `string` | `''` | 抽屉标题。 |
 | `initialValues` | `FormValues` | - | 打开时的值；每次打开编辑一份副本，父级的值只在父级自己修改时变化。 |
 | `submitText` | `string` | `'Save'` | 提交按钮的文字。 |
 | `cancelText` | `string` | `'Cancel'` | 取消按钮的文字。 |

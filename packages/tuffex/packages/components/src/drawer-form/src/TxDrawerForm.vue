@@ -10,6 +10,8 @@ import { useOverlayForm } from '../../form/src/use-overlay-form'
 defineOptions({ name: 'TxDrawerForm' })
 
 const props = withDefaults(defineProps<DrawerFormProps>(), {
+  // Without one, TxDrawer would show its own English 'Drawer'.
+  title: '',
   submitText: 'Save',
   cancelText: 'Cancel',
   disabled: false,

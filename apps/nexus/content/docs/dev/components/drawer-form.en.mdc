@@ -108,7 +108,7 @@ Every `TxForm` prop except `model` and `autosave` applies too: `rules`, `layout`
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `visible` | `boolean` | required | Shows the drawer. Use with `v-model:visible`. |
-| `title` | `string` | `'Drawer'` | Drawer title. |
+| `title` | `string` | `''` | Drawer title. |
 | `initialValues` | `FormValues` | - | The values the form opens with. Each open edits a copy, so the parent's values change only when the parent changes them. |
 | `submitText` | `string` | `'Save'` | Text of the submit button. |
 | `cancelText` | `string` | `'Cancel'` | Text of the cancel button. |
