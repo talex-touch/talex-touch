@@ -82,7 +82,7 @@ export interface ImagePreviewProps {
   maskSurface?: BaseSurfaceMode
   /** The colour of that material. @default 'rgb(10, 10, 12)' */
   maskColor?: string
-  /** The opacity of that colour, 0 to 1. @default 0.6 */
+  /** The opacity of that colour, 0 to 1. @default 0.35 */
   maskOpacity?: number
   /** How far that material blurs the page behind it (px). @default 12 */
   maskBlur?: number
@@ -90,7 +90,7 @@ export interface ImagePreviewProps {
   controlSurface?: BaseSurfaceMode
   /** The colour of that material. @default 'rgb(64, 64, 70)' */
   controlColor?: string
-  /** The opacity of that colour, 0 to 1. @default 0.6 */
+  /** The opacity of that colour, 0 to 1. @default 0.35 */
   controlOpacity?: number
   /** How far that material blurs what is behind it (px). @default 16 */
   controlBlur?: number

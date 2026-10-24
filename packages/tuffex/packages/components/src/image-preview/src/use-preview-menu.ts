@@ -21,6 +21,7 @@ export interface PreviewMenuOptions {
   /** The preview is up and not leaving. */
   live: () => boolean
   overlay: Readonly<Ref<HTMLElement | null>>
+  menu: Readonly<Ref<HTMLElement | null>>
   actions: () => readonly ImagePreviewAction[]
   disabled: (action: ImagePreviewAction) => boolean
   run: (action: ImagePreviewAction, reverse: boolean) => void
@@ -43,7 +44,6 @@ export interface PreviewMenu {
   menuArmed: Readonly<Ref<boolean>>
   /** Placed, and so shown. */
   menuPlaced: Readonly<Ref<boolean>>
-  menuRef: Ref<HTMLElement | null>
   menuStyle: Readonly<Ref<CSSProperties>>
   menuLevel: Readonly<Ref<number>>
   /**
@@ -64,7 +64,7 @@ export function usePreviewMenu(options: PreviewMenuOptions): PreviewMenu {
   const menuOpen = ref(false)
   const menuArmed = ref(false)
   const menuPlaced = ref(false)
-  const menuRef = ref<HTMLElement | null>(null)
+  const menuRef = options.menu
   const menuPlace = shallowRef({ left: 0, top: 0, originX: 0, originY: 0 })
   const menuLevel = options.level(() => menuOpen.value, 150)
   let menuAnchor: PreviewPoint & { kind: PreviewMenuKind } = { x: 0, y: 0, kind: 'pointer' }
@@ -273,7 +273,6 @@ export function usePreviewMenu(options: PreviewMenuOptions): PreviewMenu {
     menuOpen,
     menuArmed,
     menuPlaced,
-    menuRef,
     menuStyle,
     menuLevel,
     openMenu,

@@ -989,7 +989,27 @@ export function usePreviewGestures(options: PreviewGestureOptions): PreviewGestu
     zoomAbout(wheelZoomFactor(Math.sign(delta) * Math.max(Math.abs(delta), NOTCH_PX)), point)
   }
 
+  /**
+   * Pans a zoom still on its way by `delta`, as far as where it lands allows. The picture moves
+   * with the pan now, and the zoom carries on to its scale.
+   */
+  function panMotion(vm: ViewMotion, delta: { x: number, y: number }): void {
+    const shift = (a: Axis, d: number, [lo, hi]: [number, number]): void => {
+      const target = Math.max(lo, Math.min(hi, a.target - d))
+      a.value += target - a.target
+      a.target = target
+    }
+    shift(vm.tx, delta.x, vm.bounds.tx)
+    shift(vm.ty, delta.y, vm.bounds.ty)
+    drawn.value = { k: vm.k.value, tx: vm.tx.value, ty: vm.ty.value }
+  }
+
   function scroll(delta: { x: number, y: number }, current: WheelStream): void {
+    // Stopping a zoom mid-way to pan would leave the picture at whatever scale it had reached.
+    if (viewMotion?.k.mode === 'spring') {
+      panMotion(viewMotion, delta)
+      return
+    }
     const shown = view.value
     if (zoomed.value && shown) {
       stopView()

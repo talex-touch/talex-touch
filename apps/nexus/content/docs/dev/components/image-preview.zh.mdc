@@ -166,7 +166,7 @@ const preview = ref<TxImagePreviewInstance | null>(null)
 | `bounce` | `number` | `0.2` | 翻页、跳转、菜单弹出与从缩略图飞出时越过终点的程度，`0` 不回弹，最大 `0.9`。 |
 | `maskSurface` | `BaseSurfaceMode` | `'refraction'` | 图片背后的 [TxBaseSurface](/docs/dev/components/base-surface) 材质。 |
 | `maskColor` | `string` | `'rgb(10, 10, 12)'` | 背景材质的颜色。 |
-| `maskOpacity` | `number` | `0.6` | 背景颜色的不透明度，`0`–`1`。 |
+| `maskOpacity` | `number` | `0.35` | 背景颜色的不透明度，`0`–`1`。 |
 | `maskBlur` | `number` | `12` | 背景对其后页面的模糊半径（px）。 |
 | `controlSurface` | `BaseSurfaceMode` | `'blur'` | 按钮、工具栏、圆点、提示与菜单的材质。 |
 | `controlColor` | `string` | `'rgb(64, 64, 70)'` | 控件材质的颜色。 |

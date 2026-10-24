@@ -161,7 +161,7 @@ const preview = ref<TxImagePreviewInstance | null>(null)
 | `bounce` | `number` | `0.2` | How far a page turn, a jump, the menu, and the flight out of the thumbnail overshoot; `0` for none, `0.9` at most. |
 | `maskSurface` | `BaseSurfaceMode` | `'refraction'` | The [TxBaseSurface](/docs/dev/components/base-surface) material behind the image. |
 | `maskColor` | `string` | `'rgb(10, 10, 12)'` | The colour of that material. |
-| `maskOpacity` | `number` | `0.6` | The opacity of that colour, `0`–`1`. |
+| `maskOpacity` | `number` | `0.35` | The opacity of that colour, `0`–`1`. |
 | `maskBlur` | `number` | `12` | How far it blurs the page behind it (px). |
 | `controlSurface` | `BaseSurfaceMode` | `'blur'` | The material of the buttons, the toolbar, the dots, the status, and the menu. |
 | `controlColor` | `string` | `'rgb(64, 64, 70)'` | The colour of that material. |

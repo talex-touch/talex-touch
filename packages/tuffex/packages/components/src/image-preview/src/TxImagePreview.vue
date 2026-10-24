@@ -40,7 +40,7 @@ const props = withDefaults(defineProps<ImagePreviewProps>(), {
   bounce: 0.2,
   maskSurface: 'refraction',
   maskColor: 'rgb(10, 10, 12)',
-  maskOpacity: 0.6,
+  maskOpacity: 0.35,
   maskBlur: 12,
   controlSurface: 'blur',
   controlColor: 'rgb(64, 64, 70)',
@@ -186,12 +186,15 @@ const {
 // -- Origins. The host says where a picture sits on the page. It flies out of there on opening
 // and back on closing, and the thumbnail it left stays hidden while it is in the air.
 
-/** Where picture `at` sits, in the stage's pixels, if the preview may fly it there: asked for, and in view. */
-function zoomOrigin(at: number): PreviewOrigin | null {
+/**
+ * Where picture `at` sits, in the stage's pixels, if the preview may fly it there: asked for, and
+ * in view. A picture already in the air follows its thumbnail out of view too (`inView: false`).
+ */
+function zoomOrigin(at: number, inView = true): PreviewOrigin | null {
   if (props.transition !== 'zoom' || reduced.value || !props.origin || !hasDocument())
     return null
   const origin = resolveOrigin(props.origin(at))
-  if (!origin || !isOriginInView(origin, { width: window.innerWidth, height: window.innerHeight }))
+  if (!origin || (inView && !isOriginInView(origin, { width: window.innerWidth, height: window.innerHeight })))
     return null
   const root = overlayRef.value?.getBoundingClientRect()
   if (root && (root.left || root.top)) {
@@ -237,7 +240,10 @@ interface Flight {
   index: number
   /** In its thumbnail: where it flies out of, and home to. */
   from: FlightPose
-  /** Where it leaves the stage from on the way home; flying out, it lands on its fit, which follows the stage. */
+  /**
+   * Where it leaves the stage from on the way home. Flying out, it lands on the picture as drawn:
+   * its fit, which follows the stage, or where a wheel has zoomed it to mid-air.
+   */
   to: FlightPose | null
   /** The size it is drawn at the whole way. */
   size: PreviewSize
@@ -285,11 +291,11 @@ const { actionList, actionLabel, actionDisabled, runAction, statusText, statusLe
   level: transition.level,
 })
 
+const menuRef = ref<HTMLElement | null>(null)
 const {
   menuOpen,
   menuArmed,
   menuPlaced,
-  menuRef,
   menuStyle,
   menuLevel,
   openMenu,
@@ -303,6 +309,7 @@ const {
   enabled: () => props.contextMenu,
   live: () => rendered.value && !closing.value,
   overlay: overlayRef,
+  menu: menuRef,
   actions: () => actionList.value,
   disabled: actionDisabled,
   run: runAction,
@@ -326,8 +333,9 @@ const gestures = usePreviewGestures({
   maxScale: () => (Number.isFinite(props.maxScale) && props.maxScale > 0 ? props.maxScale : 4),
   active: () => rendered.value && !closing.value && !menuOpen.value,
   canStep: step => current.value + step >= 0 && current.value + step < count.value,
+  // A page turned while the picture is still flying out leaves it in the air: it lands beside the
+  // one turned to (see landingPose).
   onStep: (step) => {
-    settleOpen()
     const view = gestures.view.value
     const turns = gestures.turns.value
     outgoing.value = view && gestures.moving.value && (gestures.zoomed.value || turns % 4 !== 0)
@@ -364,7 +372,10 @@ const maskLevel = computed(() => clamp01(transition.presence.value) * (1 - gestu
 // A fade carries the pictures in and out; a flight carries itself.
 const stageLevel = computed(() => (!arrived.value ? 0 : transition.kind.value === 'fade' ? clamp01(transition.presence.value) : 1))
 
-/** A hand reaching for the picture flying out lands it at once. */
+/**
+ * A hand reaching for the picture flying out lands it at once. A wheel or a key does not: the
+ * flight lands on whatever they do to it, and Escape turns it round.
+ */
 function settleOpen(): void {
   if (flight.value && !closing.value)
     transition.finish()
@@ -375,6 +386,30 @@ function landed(): void {
   flight.value = null
   showOrigin()
 }
+
+// The page can move under a picture in the air. On the way home the dialog is inert and a wheel
+// scrolls the page behind it; on the way out a scroll already under way runs on. The picture
+// flies to and from its thumbnail where it is now, not where it was when the flight began.
+function followOrigin(): void {
+  const shown = flight.value
+  const origin = shown ? zoomOrigin(shown.index, false) : null
+  if (!shown || !origin)
+    return
+  hideOrigin(origin)
+  flight.value = { ...shown, from: { ...originPose(shown.size, origin), angle: shown.from.angle } }
+}
+
+watch(() => flight.value !== null, (flying, _, onCleanup) => {
+  if (!flying || !hasDocument())
+    return
+  // Scroll events do not bubble; capturing them on the window hears every scroller's.
+  window.addEventListener('scroll', followOrigin, { capture: true, passive: true })
+  window.addEventListener('resize', followOrigin, { passive: true })
+  onCleanup(() => {
+    window.removeEventListener('scroll', followOrigin, { capture: true })
+    window.removeEventListener('resize', followOrigin)
+  })
+})
 
 /** Waits up to `ms` for the current picture to be ready to draw, so a flight never starts empty. */
 function pictureReady(ms: number): Promise<void> {
@@ -393,13 +428,15 @@ function pictureReady(ms: number): Promise<void> {
 async function startOpen(token: number): Promise<void> {
   const at = current.value
   const item = items.value[at]
-  const origin = item && !isFailed(item.url) ? zoomOrigin(at) : null
+  let origin = item && !isFailed(item.url) ? zoomOrigin(at) : null
   if (item && origin) {
     adoptOrigin(item, origin)
     if (!standIns.value.has(item.url)) {
       await pictureReady(PICTURE_WAIT_MS)
       if (token !== openToken)
         return
+      // The page may have scrolled on while the picture got ready.
+      origin = zoomOrigin(at)
     }
   }
   arrived.value = true
@@ -482,6 +519,20 @@ function drawnPose(size: PreviewSize): FlightPose {
   })
 }
 
+/**
+ * Where a picture flying out lands: as drawn now, posed for the copy that flies, `size` big. That
+ * copy can be its thumbnail's pixels standing in, while the view is measured in the picture's own,
+ * which may load mid-air. One paged away from mid-air lands where it waits beside the current one.
+ */
+function landingPose(slide: Slide, size: PreviewSize): FlightPose {
+  const own = isFailed(slide.item.url) ? undefined : sizes.value.get(slide.item.url)
+  const base = own ?? size
+  // A neighbour at rest has its place across from its slide; a flight is drawn without one.
+  const rest = slide.offset === 0 ? null : restPose(slide, base)
+  const pose = rest ? { ...rest, x: rest.x + slideX(slide) } : drawnPose(base)
+  return base.width === size.width ? pose : { ...pose, k: (pose.k * base.width) / size.width }
+}
+
 /** A throw's speed (px/s) as the flight home's (progress/s): its share along the way there. */
 function flightSpeed(velocity: [number, number] | null, from: FlightPose, to: FlightPose): number | undefined {
   if (!velocity)
@@ -501,9 +552,12 @@ type Leaving =
 
 /** How the preview would go now: back the way a flight still coming in came, home from where the picture is drawn, or a fade. */
 function leaving(): Leaving {
-  if (flight.value && transition.kind.value === 'zoom')
+  const shown = flight.value
+  // A picture paged away from mid-air lands beside at once, and the current one goes (see leave).
+  const aside = shown !== null && shown.index !== current.value
+  if (shown && !aside && transition.kind.value === 'zoom')
     return { kind: 'turn' }
-  if (transition.running.value || transition.presence.value !== 1)
+  if (!aside && (transition.running.value || transition.presence.value !== 1))
     return { kind: 'fade' }
   const item = currentItem.value
   const size = item && !isFailed(item.url) ? sizes.value.get(item.url) ?? standIns.value.get(item.url)?.size : undefined
@@ -540,6 +594,9 @@ function leave(): void {
     transition.leave('zoom', finishLeave)
     return
   }
+  // Still in the air, the picture paged away from lands beside, out of the way of this one's going.
+  if (flight.value)
+    transition.finish()
   if (plan.kind === 'home') {
     // Home from where it is drawn: zoomed, turned, paged part-way or pulled down. The gestures
     // are left as they are, so a closing drag's fade carries on from where it was let go.
@@ -631,8 +688,13 @@ function restPose(slide: Slide, size: PreviewSize): FlightPose {
   return viewPose(fitView(size, fitBox.value), size, 0, stage)
 }
 
+/** Where a slide sits across the stage: a page either side of the current one, moved by a swipe. */
+function slideX(slide: Slide): number {
+  return slide.offset * (stageSize.value.width + SLIDE_GAP) + gestures.track.value
+}
+
 function slideStyle(slide: Slide): CSSProperties {
-  const x = slide.offset * (stageSize.value.width + SLIDE_GAP) + gestures.track.value
+  const x = slideX(slide)
   if (slide.offset !== 0)
     return { transform: `translate3d(${x}px, 0, 0)` }
   const { x: dx, y: dy } = gestures.dismiss.value
@@ -651,16 +713,19 @@ const drawnSlides = computed(() => {
   return slides.value.map((slide) => {
     const flying = shown?.index === slide.index
     const size = shown && flying ? shown.size : sizeOf(slide.item)
-    // A flight lands on the fit as the stage has it now, so it follows a resize mid-air.
+    // A flight lands on the picture as drawn now, so it follows a resize mid-air, and a wheel's
+    // or a key's zoom or page turn on the way out carries it along rather than cutting it short.
     const pose = shown && flying
-      ? lerpPose(shown.from, shown.to ?? viewPose(fitView(size, fitBox.value), size, 0, stageSize.value), presence)
+      ? lerpPose(shown.from, shown.to ?? landingPose(slide, size), presence)
       : restPose(slide, size)
     const styles = poseStyles(pose, size)
     return {
       ...slide,
       key: `${slide.index}:${slide.item.url}`,
       flying,
-      hidden: shown !== null && !flying,
+      // Out of sight while a picture flies home. On the way out they wait off the stage, and a
+      // page turned mid-air slides the next one in.
+      hidden: shown !== null && !flying && closing.value,
       style: flying ? undefined : slideStyle(slide),
       frame: styles.frame,
       picture: styles.image,
@@ -823,7 +888,6 @@ function onKeydown(event: KeyboardEvent): void {
   }
   // A keyboard has nothing to tap the chrome back with.
   chromeHidden.value = false
-  settleOpen()
   if (event.key === 'Tab') {
     trapFocus(event)
     return
@@ -861,22 +925,12 @@ function onKeydown(event: KeyboardEvent): void {
     event.preventDefault()
 }
 
-function onWheel(event: WheelEvent): void {
-  settleOpen()
-  gestures.onWheel(event)
-}
-
-function onGestureStart(event: Event): void {
-  settleOpen()
-  gestures.onGestureStart(event)
-}
-
 // Safari's trackpad pinch: no template binding exists for these events.
 watch(overlayRef, (root, old) => {
-  old?.removeEventListener('gesturestart', onGestureStart)
+  old?.removeEventListener('gesturestart', gestures.onGestureStart)
   old?.removeEventListener('gesturechange', gestures.onGestureChange)
   old?.removeEventListener('gestureend', gestures.onGestureEnd)
-  root?.addEventListener('gesturestart', onGestureStart)
+  root?.addEventListener('gesturestart', gestures.onGestureStart)
   root?.addEventListener('gesturechange', gestures.onGestureChange)
   root?.addEventListener('gestureend', gestures.onGestureEnd)
 }, { flush: 'post' })
@@ -932,7 +986,7 @@ defineExpose({
       :style="overlayStyle"
       @pointerdown.capture="settleOpen"
       @mousedown="onMouseDown"
-      @wheel="onWheel"
+      @wheel="gestures.onWheel"
       @contextmenu="onContextMenu"
     >
       <TxBaseSurface class="tx-image-preview__backdrop tx-image-preview__surface" fake v-bind="maskMaterial" aria-hidden="true" />
@@ -1256,7 +1310,7 @@ defineExpose({
   inset: 0;
 }
 
-// The neighbours wait out of sight while a picture flies in or out.
+// The neighbours wait out of sight while a picture flies home.
 .tx-image-preview__slide.is-hidden {
   visibility: hidden;
 }
