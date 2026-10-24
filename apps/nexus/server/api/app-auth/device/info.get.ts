@@ -24,9 +24,9 @@ export default defineEventHandler(async (event) => {
     return { status: 'expired', expiresAt: request.expiresAt }
   }
 
-  const { userId, sessionIssuedAt } = await requireSessionAuth(event)
+  const { userId, sessionAuthenticatedAt } = await requireSessionAuth(event)
   const [policy, user] = await Promise.all([
-    evaluateDeviceAuthLongTermPolicy(event, userId, request.deviceId, { sessionIssuedAt }),
+    evaluateDeviceAuthLongTermPolicy(event, userId, request.deviceId, { sessionAuthenticatedAt }),
     getUserById(event, userId),
   ])
   const requestIp = request.requestIp

@@ -7,6 +7,7 @@ import type {
   AuthAvatarUpdateRequest,
   AuthLoginRequest,
   AuthManualTokenRequest,
+  AuthPendingLoginStatus,
   AuthProfileUpdateRequest,
   NexusRequestPayload,
   NexusResponsePayload,
@@ -148,6 +149,15 @@ type NexusMainRequestPayload = Omit<NexusRequestPayload, 'body'> & {
 let authRequestIdentity = ''
 let authRequestIdentityController = new AbortController()
 let activeDeviceAuthCode: string | null = null
+/**
+ * The browser login in flight, from its device code until its profile is applied. Settles true
+ * when the app signed in, false when the login ended any other way.
+ */
+let activeDeviceAuthLogin: Promise<boolean> | null = null
+/** Ends the poll loop's wait so its next poll goes out now. Set only while the loop waits. */
+let wakeDeviceAuthPoll: (() => void) | null = null
+/** Checks waiting for a poll sent after they asked; that poll resolves them unless it ends the login. */
+let deviceAuthPollWaiters: Array<() => void> = []
 
 type AuthEventDefinition<TPayload, TResult> = Parameters<ITuffTransportMain['on']>[0] & {
   _request: TPayload
@@ -980,6 +990,8 @@ interface DeviceAuthPollResponse {
   refreshable?: boolean
   reason?: string
   message?: string | null
+  /** Sent with an approval: the profile `/api/v1/auth/me` returns, or null when the server withholds it. */
+  user?: AuthUser | null
 }
 
 interface DeviceAuthPollResult {
@@ -988,10 +1000,34 @@ interface DeviceAuthPollResult {
   refreshToken?: string
   ttlSeconds?: number
   message?: string | null
+  user?: AuthUser
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Waits out the poll interval, or until a check wakes the loop to poll now. */
+function waitForNextDeviceAuthPoll(intervalMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const wake = (): void => {
+      clearTimeout(timer)
+      if (wakeDeviceAuthPoll === wake) {
+        wakeDeviceAuthPoll = null
+      }
+      resolve()
+    }
+    const timer = setTimeout(wake, intervalMs)
+    wakeDeviceAuthPoll = wake
+  })
+}
+
+/** The profile an approval carries, when `fetchRemoteUser` would have accepted it. */
+function readApprovedProfile(user: AuthUser | null | undefined): AuthUser | undefined {
+  if (!user || typeof user.id !== 'string' || typeof user.email !== 'string') {
+    return undefined
+  }
+  return toAuthUserProfile(user)
 }
 
 async function fetchRemoteUser(
@@ -1441,12 +1477,16 @@ async function pollDeviceAuth(
       return { status: 'cancelled' }
     }
 
-    await delay(intervalMs)
+    // A check that asked while the previous poll was out gets this one without the wait.
+    if (deviceAuthPollWaiters.length === 0) {
+      await waitForNextDeviceAuthPoll(intervalMs)
+    }
 
     if (!isCurrentAttempt()) {
       return { status: 'cancelled' }
     }
 
+    const waiters = deviceAuthPollWaiters.splice(0)
     try {
       pollCount += 1
       const response = await getNetworkService().request<DeviceAuthPollResponse>({
@@ -1474,17 +1514,14 @@ async function pollDeviceAuth(
         }
       })
 
-      if (response.status < 200 || response.status >= 300) {
-        continue
-      }
-
-      const data = response.data
+      const data = response.status >= 200 && response.status < 300 ? response.data : null
       if (data?.status === 'approved' && data.appToken) {
         return {
           status: 'approved',
           token: data.appToken,
           refreshToken: data.refreshToken,
-          ttlSeconds: normalizePositiveTtlSeconds(data.ttlSeconds) ?? undefined
+          ttlSeconds: normalizePositiveTtlSeconds(data.ttlSeconds) ?? undefined,
+          user: readApprovedProfile(data.user)
         }
       }
       if (data?.status === 'expired') return { status: 'expired' }
@@ -1494,6 +1531,12 @@ async function pollDeviceAuth(
         return { status: 'rejected', message: data.message ?? data.reason ?? null }
     } catch (error) {
       authLog.warn('Device auth poll failed', { error })
+    }
+
+    // Not approved yet, or the server could not be asked. A poll that ends the login returned
+    // above without these: they hear from the login itself.
+    for (const resolve of waiters) {
+      resolve()
     }
   }
 
@@ -1525,6 +1568,11 @@ async function cancelActiveDeviceAuth(): Promise<void> {
   deviceAuthLoginAttempt += 1
   activeDeviceAuthCode = null
   if (deviceCode) {
+    // Still polling, so nothing this login does from here on is applied. A new login need not
+    // wait for it, and its loop stops now rather than after the interval. Past polling it is
+    // applying an approval, and a new login waits until that credential has been discarded.
+    activeDeviceAuthLogin = null
+    wakeDeviceAuthPoll?.()
     await abortDeviceAuth(deviceCode)
   }
 }
@@ -1533,12 +1581,12 @@ async function completeDeviceAuthLogin(
   deviceCode: string,
   intervalSeconds: number,
   attemptId: number
-): Promise<void> {
+): Promise<boolean> {
   const isCurrentAttempt = () =>
     deviceAuthLoginAttempt === attemptId && activeDeviceAuthCode === deviceCode
   const result = await pollDeviceAuth(deviceCode, intervalSeconds, isCurrentAttempt)
   if (!isCurrentAttempt()) {
-    return
+    return false
   }
 
   activeDeviceAuthCode = null
@@ -1553,27 +1601,62 @@ async function completeDeviceAuthLogin(
     if (!authToken) {
       updateAuthState(null)
     }
-    return
+    return false
   }
 
+  // The code is spent by now, so only the attempt shows whether Cancel or logout came since.
+  const isCurrentLogin = () => deviceAuthLoginAttempt === attemptId
   const applied = await handleExternalAuthCallback(
     result.token,
     result.token,
     result.refreshToken,
-    result.ttlSeconds
+    result.ttlSeconds,
+    result.user,
+    isCurrentLogin
   )
-  if (!applied) {
+  if (!applied && isCurrentLogin()) {
     authLog.warn('Device auth token was rejected')
     if (!authToken) {
       updateAuthState(null)
     }
   }
+  return applied
 }
 
+/**
+ * Where the browser login in flight stands, asked of the server now instead of at the next poll.
+ * An approval found this way is applied before this returns.
+ */
+async function settlePendingDeviceAuth(): Promise<AuthPendingLoginStatus> {
+  const login = activeDeviceAuthLogin
+  if (!login) {
+    return 'idle'
+  }
+  const settled = login.then(
+    (signedIn): AuthPendingLoginStatus => (signedIn ? 'signed-in' : 'idle')
+  )
+  // Without a code, polling is over and an approval is being applied.
+  if (!activeDeviceAuthCode) {
+    return await settled
+  }
+  const polled = new Promise<AuthPendingLoginStatus>((resolve) => {
+    deviceAuthPollWaiters.push(() => resolve('waiting'))
+    wakeDeviceAuthPoll?.()
+  })
+  return await Promise.race([settled, polled])
+}
+
+/** Resolves null without opening a page when the login in flight turns out to be approved. */
 async function openLoginPage(
   mode: 'sign-in' | 'sign-up' = 'sign-in'
-): Promise<BrowserLoginStartResult> {
+): Promise<BrowserLoginStartResult | null> {
   authLog.info('Opening browser login page', { meta: { mode } })
+  // The browser may have approved the login in flight since its last poll. Its code is aborted
+  // below, which would throw that approval away and send the user through sign-in again.
+  if ((await settlePendingDeviceAuth()) === 'signed-in') {
+    authLog.info('Login in flight was approved; not opening another page')
+    return null
+  }
   const previousDeviceCode = activeDeviceAuthCode
   const attemptId = ++deviceAuthLoginAttempt
   activeDeviceAuthCode = null
@@ -1616,7 +1699,7 @@ async function openLoginPage(
     loginStart.browserOpenFailed = true
     authLog.warn('Failed to open browser login page', { error })
   }
-  void completeDeviceAuthLogin(
+  const login = completeDeviceAuthLogin(
     deviceCode,
     auth.intervalSeconds ?? DEVICE_AUTH_DEFAULT_INTERVAL_SECONDS,
     attemptId
@@ -1628,6 +1711,13 @@ async function openLoginPage(
       }
     }
     authLog.warn('Device auth login failed', { error })
+    return false
+  })
+  activeDeviceAuthLogin = login
+  void login.then(() => {
+    if (activeDeviceAuthLogin === login) {
+      activeDeviceAuthLogin = null
+    }
   })
   return loginStart
 }
@@ -1636,7 +1726,9 @@ async function handleExternalAuthCallback(
   token: string,
   appToken?: string,
   refreshToken?: string,
-  ttlSeconds?: number
+  ttlSeconds?: number,
+  profile?: AuthUser,
+  isCurrentLogin: () => boolean = () => true
 ): Promise<boolean> {
   const resolvedToken = appToken || token
   authLog.info('Handling auth callback token', {
@@ -1644,17 +1736,35 @@ async function handleExternalAuthCallback(
       hasToken: Boolean(token),
       hasAppToken: Boolean(appToken),
       hasRefreshToken: Boolean(refreshToken),
+      hasProfile: Boolean(profile),
       resolvedTokenLength: resolvedToken.length
     }
   })
   if (!resolvedToken) {
     return false
   }
+  // Cancel and logout can land while this awaits. They have already answered the user, so the
+  // credential set here must not outlive them.
+  const discardIfCancelled = async (): Promise<boolean> => {
+    if (isCurrentLogin()) return false
+    authLog.info('Login was cancelled while its credential was applied')
+    await clearAuthToken()
+    updateAuthState(null)
+    return true
+  }
   await setAuthToken(resolvedToken, { refreshToken, ttlSeconds })
+  if (await discardIfCancelled()) return false
+  // A device-code approval carries the profile `/me` would return; asking for it again cost the
+  // login another cross-border round trip.
+  if (profile) {
+    updateAuthState(profile, authState.sessionId)
+    return true
+  }
   const remoteResult = await fetchRemoteUserWithTimeout(resolvedToken)
   authLog.info('Auth callback profile resolution completed', {
     meta: { result: remoteResult.kind }
   })
+  if (await discardIfCancelled()) return false
   if (remoteResult.kind === 'success') {
     updateAuthState(remoteResult.user, authState.sessionId)
     return true
@@ -2298,6 +2408,9 @@ function resetAuthModuleTestState(): void {
   stepUpTokenExpiresAt = 0
   deviceAuthLoginAttempt += 1
   activeDeviceAuthCode = null
+  activeDeviceAuthLogin = null
+  wakeDeviceAuthPoll = null
+  deviceAuthPollWaiters = []
 }
 
 function setAuthModuleTestState(nextState: AuthModuleTestState): void {
@@ -2397,7 +2510,14 @@ export class AuthModule extends BaseModule<TalexEvents> {
       ...registerAuthHandler(AuthEvents.session.login, async (payload: AuthLoginRequest) => {
         const mode = payload?.mode === 'sign-up' ? 'sign-up' : 'sign-in'
         const loginStart = await openLoginPage(mode)
-        return { initiated: true, ...loginStart }
+        return loginStart ? { initiated: true, ...loginStart } : { initiated: false }
+      }),
+      ...registerAuthHandler(AuthEvents.session.checkPendingLogin, async () => ({
+        status: await settlePendingDeviceAuth()
+      })),
+      ...registerAuthHandler(AuthEvents.session.cancelLogin, async () => {
+        await cancelActiveDeviceAuth()
+        return { success: true }
       }),
       ...registerAuthHandler(AuthEvents.session.logout, async () => {
         await cancelActiveDeviceAuth()

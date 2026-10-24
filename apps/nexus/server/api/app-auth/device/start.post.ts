@@ -9,7 +9,8 @@ interface StartBody {
 }
 
 const DEVICE_AUTH_TTL_MS = 2 * 60 * 1000
-const POLL_INTERVAL_SECONDS = 3
+// A pending poll is one primary-key read. The app waits half an interval on average after approval before it sees it.
+const POLL_INTERVAL_SECONDS = 1
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<StartBody>(event)

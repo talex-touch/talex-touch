@@ -18,52 +18,32 @@ const emit = defineEmits<{
   (e: 'back'): void
 }>()
 
-const providerLabel = computed(() => {
-  if (props.provider === 'github')
-    return 'GitHub'
-  if (props.provider === 'linuxdo')
-    return 'LinuxDO'
-  return props.t('auth.oauthProvider', '第三方')
-})
-
-const isRedirect = computed(() => props.phase === 'redirect')
-const isVerifying = computed(() => props.phase === 'verifying' || props.phase === 'idle')
+// The heading already says what is happening in every phase, so the body only speaks up on error.
 const isError = computed(() => props.phase === 'error')
 
-const message = computed(() => {
-  if (isError.value)
-    return props.errorMessage || props.t('auth.oauthError', '登录失败，请重试。')
-  if (isRedirect.value) {
-    if (props.flow === 'bind')
-      return props.t('auth.oauthBindRedirect', `正在跳转到 ${providerLabel.value} 完成绑定...`)
-    return props.t('auth.oauthRedirect', `正在跳转到 ${providerLabel.value}...`)
-  }
-  return props.t('auth.callbackProcessing', '正在处理登录回调，请稍候…')
-})
-
-const showRetry = computed(() => isError.value)
+const errorText = computed(() => props.errorMessage || props.t('auth.oauthError', '登录失败，请重试。'))
 </script>
 
 <template>
   <div class="auth-step auth-oauth-step">
     <div class="auth-oauth-hero">
       <div class="auth-oauth-visual">
-        <div class="auth-oauth-icon" :class="{ 'is-hidden': isVerifying }">
+        <div class="auth-oauth-icon" :class="{ 'is-hidden': !isError }">
           <span v-if="provider === 'github'" class="i-carbon-logo-github text-2xl" />
           <LinuxdoIcon v-else-if="provider === 'linuxdo'" :size="22" />
           <span v-else class="i-carbon-user text-2xl" />
         </div>
-        <div class="auth-oauth-spinner" :class="{ 'is-visible': isVerifying }">
+        <div class="auth-oauth-spinner" :class="{ 'is-visible': !isError }">
           <TxSpinner :size="26" />
         </div>
       </div>
 
-      <p class="auth-oauth-text">
-        {{ message }}
+      <p v-if="isError" class="auth-oauth-text">
+        {{ errorText }}
       </p>
     </div>
 
-    <div v-if="showRetry" class="auth-oauth-actions">
+    <div v-if="isError" class="auth-oauth-actions">
       <TxButton variant="primary" class="auth-button auth-button--primary" size="lg" block @click="emit('retry')">
         {{ t('auth.oauthRetry', '重新尝试') }}
       </TxButton>
@@ -77,8 +57,6 @@ const showRetry = computed(() => isError.value)
 <style scoped>
 .auth-oauth-step {
   text-align: center;
-  min-height: 188px;
-  justify-content: space-between;
 }
 
 .auth-oauth-hero {
@@ -86,7 +64,6 @@ const showRetry = computed(() => isError.value)
   flex-direction: column;
   gap: 12px;
   align-items: center;
-  min-height: 92px;
 }
 
 .auth-oauth-visual {
@@ -130,7 +107,6 @@ const showRetry = computed(() => isError.value)
 .auth-oauth-text {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.65);
-  min-height: 34px;
   max-width: 320px;
   display: flex;
   align-items: center;

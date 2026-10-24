@@ -4,6 +4,7 @@ import {
   buildOauthCallbackUrl,
   clearOauthContext,
   persistOauthContext,
+  prefetchOauthCsrfToken,
   requestOauthAuthorizationUrl,
   readOauthContext,
   resolveOauthContext,
@@ -23,7 +24,6 @@ export type LoginMethod = 'passkey' | 'magic' | 'github' | 'linuxdo'
 
 const LAST_LOGIN_METHOD_KEY = 'tuff_last_login_method'
 const LOGIN_METHODS: LoginMethod[] = ['passkey', 'magic', 'github', 'linuxdo']
-const CALLBACK_FEEDBACK_MIN_MS = 800
 
 interface PasskeyRequestOptionsResponse {
   challenge: string
@@ -417,6 +417,10 @@ export function useSignIn() {
     return target.startsWith('/sign-in')
   }
 
+  function isDeviceAuthTarget(target: string) {
+    return target === '/device-auth' || target.startsWith('/device-auth?')
+  }
+
   function isProtectedTarget(target: string) {
     try {
       return router.resolve(target).matched.some(record => record.meta?.requiresAuth === true)
@@ -442,14 +446,6 @@ export function useSignIn() {
   })
 
   const safeBackTarget = computed(() => resolveSafeBackTarget(backTarget.value, '/'))
-
-  async function ensureCallbackProcessingFeedback(startedAt: number) {
-    const elapsed = Date.now() - startedAt
-    if (elapsed >= CALLBACK_FEEDBACK_MIN_MS)
-      return
-
-    await waitForCallbackFeedback(CALLBACK_FEEDBACK_MIN_MS - elapsed)
-  }
 
   const emailPreview = computed(() => email.value.trim().toLowerCase())
   const lastLoginLabel = computed(() => {
@@ -481,9 +477,10 @@ export function useSignIn() {
     if (step.value === 'passkey')
       return t('auth.passkeyTitle', 'Passkey 登录')
     if (step.value === 'oauth') {
+      const named = { provider: oauthProviderLabel.value }
       if (oauthFlow.value === 'bind')
-        return t('auth.oauthBindTitle', `正在绑定 ${oauthProviderLabel.value}`)
-      return t('auth.oauthTitle', `正在连接 ${oauthProviderLabel.value}`)
+        return t('auth.oauthBindTitle', named)
+      return t('auth.oauthTitle', named)
     }
     if (step.value === 'success')
       return t('auth.signInSuccess', '登录成功')
@@ -499,12 +496,12 @@ export function useSignIn() {
       return t('auth.passkeySubtitle', '将调用系统 Passkey 完成验证。')
     if (step.value === 'oauth') {
       if (oauthPhase.value === 'redirect')
-        return t('auth.oauthRedirectSubtitle', `即将前往 ${oauthProviderLabel.value} 完成授权。`)
+        return t('auth.oauthRedirectSubtitle', { provider: oauthProviderLabel.value })
       if (oauthPhase.value === 'error')
         return t('auth.oauthErrorSubtitle', '登录遇到问题，请重试。')
       if (oauthFlow.value === 'bind')
         return t('auth.oauthBindSubtitle', '正在验证绑定状态...')
-      return t('auth.oauthVerifyingSubtitle', '正在验证账号信息...')
+      return t('auth.oauthVerifyingSubtitle', '正在完成登录…')
     }
     if (step.value === 'success')
       return t('auth.signInSuccessSubtitle', '正在跳转...')
@@ -546,7 +543,25 @@ export function useSignIn() {
       clearOauthContext()
       storedOauthContext.value = null
     }
+
+    if (!oauthReturn.value)
+      prefetchCsrfTokenAfterSessionReads()
   })
+
+  // On a first visit every auth response sets a new CSRF cookie and the last one to arrive wins, so
+  // a token fetched next to the mount-time session reads would usually be stale by the click.
+  function prefetchCsrfTokenAfterSessionReads() {
+    if (status.value !== 'loading') {
+      prefetchOauthCsrfToken()
+      return
+    }
+    const stop = watch(status, (value) => {
+      if (value === 'loading')
+        return
+      stop()
+      prefetchOauthCsrfToken()
+    })
+  }
 
   onBeforeUnmount(() => {
     clearPasskeyTimer()
@@ -620,11 +635,16 @@ export function useSignIn() {
     step.value = 'oauth'
     oauthHandled.value = false
 
-    const callbackUrl = buildOauthCallbackUrl({
-      flow,
-      provider,
-      redirect: redirectTarget.value,
-    })
+    // A desktop sign-in returns straight to its device page instead of stopping here first. The stop
+    // cost a page load, a session read and a profile read; what it skips is the optional bind-email
+    // step, which stays on the account page. Errors still come back here, to the stored context.
+    const callbackUrl = flow === 'login' && isDeviceAuthTarget(redirectTarget.value)
+      ? redirectTarget.value
+      : buildOauthCallbackUrl({
+          flow,
+          provider,
+          redirect: redirectTarget.value,
+        })
 
     persistOauthContext({
       flow,
@@ -653,26 +673,18 @@ export function useSignIn() {
     }
   }
 
-  async function handleOauthRouteError(routeOauthError: string) {
-    const callbackStartedAt = Date.now()
-    oauthLoading.value = true
-    oauthPhase.value = 'verifying'
+  function handleOauthRouteError(routeOauthError: string) {
     step.value = 'oauth'
-
-    await ensureCallbackProcessingFeedback(callbackStartedAt)
-
     clearOauthContext()
     storedOauthContext.value = null
     oauthPhase.value = 'error'
     oauthError.value = routeOauthError
-    oauthLoading.value = false
   }
 
   async function handleOauthSessionMissing() {
     if (oauthHandled.value || oauthLoading.value)
       return
 
-    const callbackStartedAt = Date.now()
     const flow = oauthContext.value.flow
     const provider = oauthContext.value.provider
 
@@ -690,7 +702,6 @@ export function useSignIn() {
       }
 
       await clearOauthRuntime()
-      await ensureCallbackProcessingFeedback(callbackStartedAt)
       oauthHandled.value = true
       oauthPhase.value = 'error'
       oauthError.value = t('auth.oauthSessionMissing', 'OAuth returned without an active session. Please try signing in again.')
@@ -709,7 +720,6 @@ export function useSignIn() {
     if (oauthHandled.value || oauthLoading.value)
       return
 
-    const callbackStartedAt = Date.now()
     oauthHandled.value = true
     oauthLoading.value = true
     oauthError.value = ''
@@ -731,7 +741,6 @@ export function useSignIn() {
         const linked = provider ? await waitForLinkedProvider(provider) : false
         if (!linked) {
           await clearOauthRuntime()
-          await ensureCallbackProcessingFeedback(callbackStartedAt)
           oauthPhase.value = 'error'
           oauthError.value = provider === 'github'
             ? t('auth.githubBindNotDetected', 'GitHub authorization returned, but link was not detected. Please try again.')
@@ -744,7 +753,6 @@ export function useSignIn() {
         }
 
         await clearOauthRuntime()
-        await ensureCallbackProcessingFeedback(callbackStartedAt)
         await navigateTo(target)
         return
       }
@@ -753,7 +761,6 @@ export function useSignIn() {
       const profile = await fetchCurrentUserProfile({ force: true })
       if (profile?.emailState === 'missing') {
         await clearOauthRuntime()
-        await ensureCallbackProcessingFeedback(callbackStartedAt)
         step.value = 'bind-email'
         bindEmail.value = ''
         resetOauthState()
@@ -761,12 +768,10 @@ export function useSignIn() {
       }
 
       await clearOauthRuntime()
-      await ensureCallbackProcessingFeedback(callbackStartedAt)
       await navigateTo(target)
     }
     catch (error: unknown) {
       await clearOauthRuntime()
-      await ensureCallbackProcessingFeedback(callbackStartedAt)
       oauthPhase.value = 'error'
       oauthError.value = resolveErrorMessage(error, t('auth.loginFailed', 'Login failed'))
       if (provider)
@@ -790,7 +795,7 @@ export function useSignIn() {
         return
 
       oauthHandled.value = true
-      void handleOauthRouteError(routeOauthError)
+      handleOauthRouteError(routeOauthError)
       return
     }
 

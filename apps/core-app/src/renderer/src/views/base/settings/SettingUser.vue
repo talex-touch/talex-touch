@@ -172,6 +172,11 @@ async function handleLogin() {
       }, 700)
       return
     }
+    // Cancel, here or in the resume prompt, settles the login with the stage back at 'idle'.
+    if (authLoadingState.loginStage === 'idle') {
+      loginDialogVisible.value = false
+      return
+    }
     loginErrorMessage.value = resolveAuthErrorMessage(result.error, 'AUTH_ERROR', t)
   } catch (error) {
     loginErrorMessage.value = resolveAuthErrorMessage(error, 'AUTH_ERROR', t)

@@ -8,7 +8,7 @@ interface ApproveBody {
 }
 
 export default defineEventHandler(async (event) => {
-  const { userId, sessionIssuedAt } = await requireSessionAuth(event)
+  const { userId, sessionAuthenticatedAt } = await requireSessionAuth(event)
   const body = await readBody<ApproveBody>(event)
   const code = typeof body?.code === 'string' ? body.code.trim() : ''
   const requestedGrantType = body?.grantType === 'long'
@@ -113,7 +113,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (grantType === 'long') {
-    const policy = await evaluateDeviceAuthLongTermPolicy(event, userId, request.deviceId, { sessionIssuedAt })
+    const policy = await evaluateDeviceAuthLongTermPolicy(event, userId, request.deviceId, { sessionAuthenticatedAt })
     if (!policy.allowLongTerm) {
       await recordDeviceAuthAudit(event, {
         action: 'reject',

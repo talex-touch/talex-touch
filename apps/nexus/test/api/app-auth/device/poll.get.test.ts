@@ -21,6 +21,7 @@ const authMocks = vi.hoisted(() => ({
 const authStoreMocks = vi.hoisted(() => ({
   deleteDeviceAuthRequest: vi.fn(),
   getDeviceAuthByDeviceCode: vi.fn(),
+  getUserById: vi.fn(),
   isDeviceAuthExpired: vi.fn(),
   logLoginAttempt: vi.fn(),
 }))
@@ -68,6 +69,16 @@ describe('/api/app-auth/device/poll', () => {
     authStoreMocks.isDeviceAuthExpired.mockReturnValue(false)
     authStoreMocks.deleteDeviceAuthRequest.mockResolvedValue(undefined)
     authStoreMocks.logLoginAttempt.mockResolvedValue(undefined)
+    authStoreMocks.getUserById.mockResolvedValue({
+      id: 'user-1',
+      email: 'user-1@example.test',
+      name: 'User One',
+      image: null,
+      role: 'user',
+      locale: 'zh',
+      status: 'active',
+      emailVerified: '2026-08-01T00:00:00.000Z',
+    })
     authMocks.createAppTokenPair.mockImplementation(async (
       _event: unknown,
       userId: string,
@@ -110,6 +121,15 @@ describe('/api/app-auth/device/poll', () => {
       refreshTtlSeconds,
       grantType,
       refreshable: true,
+      user: {
+        id: 'user-1',
+        email: 'user-1@example.test',
+        name: 'User One',
+        image: null,
+        role: 'user',
+        locale: 'zh',
+        emailVerified: true,
+      },
     })
   })
 })

@@ -2815,14 +2815,14 @@ export async function evaluateDeviceAuthLongTermPolicy(
   event: H3Event,
   userId: string,
   deviceId: string,
-  options: { sessionIssuedAt?: number | null } = {},
+  options: { sessionAuthenticatedAt?: number | null } = {},
 ): Promise<DeviceAuthLongTermPolicy> {
   const db = requireDatabase(event)
   await ensureAuthSchema(db)
-  const sessionIssuedAtMs = typeof options.sessionIssuedAt === 'number' && Number.isFinite(options.sessionIssuedAt)
-    ? options.sessionIssuedAt * 1000
+  const sessionAuthenticatedAtMs = typeof options.sessionAuthenticatedAt === 'number' && Number.isFinite(options.sessionAuthenticatedAt)
+    ? options.sessionAuthenticatedAt * 1000
     : null
-  const sessionFresh = Boolean(sessionIssuedAtMs && Date.now() - sessionIssuedAtMs <= DEVICE_AUTH_LONG_TERM_SESSION_WINDOW_MS)
+  const sessionFresh = Boolean(sessionAuthenticatedAtMs && Date.now() - sessionAuthenticatedAtMs <= DEVICE_AUTH_LONG_TERM_SESSION_WINDOW_MS)
   const sessionWindowSeconds = Math.floor(DEVICE_AUTH_LONG_TERM_SESSION_WINDOW_MS / 1000)
   const deviceRow = await db.prepare(`
     SELECT revoked_at, trusted_at
@@ -2835,13 +2835,14 @@ export async function evaluateDeviceAuthLongTermPolicy(
   const geo = resolveRequestGeo(event)
   const hasGeo = Boolean(geo.countryCode || geo.regionCode || geo.city)
   if (!hasGeo) {
+    // An unknown location can never be trusted, so a fresh sign-in would not help: never send the user to one.
     return {
       allowLongTerm: false,
       deviceTrusted,
       locationTrusted: false,
       sessionFresh,
       sessionWindowSeconds,
-      reason: !deviceTrusted ? 'device' : !sessionFresh ? 'session_window' : 'location',
+      reason: !deviceTrusted ? 'device' : 'location',
     }
   }
 
