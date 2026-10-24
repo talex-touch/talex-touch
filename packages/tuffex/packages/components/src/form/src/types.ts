@@ -99,6 +99,10 @@ export interface FormMessages {
   draftDiscard: string
   /** Asked through `window.confirm` before leaving with changes no draft holds, when nothing else asks. */
   leaveConfirm: string
+  /** Read once an autosave went through; hidden on screen. */
+  autosaved: string
+  /** Read when an autosave failed and no message on screen says why; hidden on screen. */
+  autosaveFailed: string
 }
 
 function draftTime(date: Date): string {
@@ -128,6 +132,8 @@ export const FORM_DEFAULT_MESSAGES: FormMessages = {
   draftRestore: 'Restore',
   draftDiscard: 'Discard',
   leaveConfirm: 'You have unsaved changes. Leave anyway?',
+  autosaved: 'Changes saved.',
+  autosaveFailed: 'Your changes could not be saved.',
 }
 
 /** A Standard Schema v1 issue: what Zod, Valibot and ArkType report. */
@@ -191,6 +197,8 @@ export interface FormDraftAdapter {
   remove: (key: string) => void | Promise<void>
   /** Removes every key that starts with `prefix`. `clearTxFormDrafts()` needs it. */
   clear?: (prefix: string) => void | Promise<void>
+  /** The keys that start with `prefix`. `clearTxFormDrafts()` needs it to pick namespaces with a function. */
+  keys?: (prefix: string) => string[] | Promise<string[]>
 }
 
 /**
@@ -250,10 +258,19 @@ export interface FormLeaveContext {
 export type FormLeaveConfirm = (context: FormLeaveContext) => boolean | Promise<boolean>
 
 export interface FormClearDraftsOptions {
-  /** Only this namespace's drafts. Default: every TxForm draft. */
-  namespace?: string
+  /**
+   * Only this namespace's drafts, or those of every namespace the function
+   * accepts: at startup, every account's but the one signed in. Default: every
+   * TxForm draft.
+   */
+  namespace?: string | ((namespace: string) => boolean)
   /** The store to clear. Default: `local`, `session` and `memory`. */
   storage?: FormDraftStorage
+}
+
+export interface FormAutosaveOptions {
+  /** How long editing pauses before the changes are saved, in milliseconds. Default `1000`. */
+  delay?: number
 }
 
 export interface FormProps {
@@ -277,6 +294,12 @@ export interface FormProps {
   size?: FormSize
   /** Disables every control inside that reads the form. */
   disabled?: boolean
+  /**
+   * Shows the values as a record to read: every control inside that reads
+   * the form can be focused and copied but not changed, and no field is
+   * marked required. Submitting still works.
+   */
+  readonly?: boolean
   reconcile?: FormReconcile
   /**
    * Keeps what the user typed across reloads, under the form's `id`. `true`
@@ -297,10 +320,19 @@ export interface FormProps {
    * calling `setErrors()` / `setRootError()` on the way counts as a failure.
    */
   onSubmit?: (values: FormValues, event?: Event) => unknown
+  /**
+   * Saves through `onSubmit` once editing pauses, as a settings page does,
+   * instead of on a submit button. Only the changed fields are checked; one
+   * with an error stays unsaved until it is fixed, and the rest are saved
+   * without it. `true` waits a second.
+   */
+  autosave?: boolean | FormAutosaveOptions
 }
 
 export interface FormEmits {
   (e: 'validate', valid: boolean): void
+  /** A submit or an autosave went through: every check passed, and `onSubmit`, when given, succeeded. */
+  (e: 'submit-success', values: FormValues): void
   /** A draft could not be read or written. Writes fall back to memory until one succeeds; this fires once per run of failures. */
   (e: 'persist-error', error: unknown): void
 }

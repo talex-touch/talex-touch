@@ -9,6 +9,8 @@ interface UseRadioGroupIndicatorOptions {
   groupRef: Ref<HTMLElement | null>
   type: Ref<TxRadioType>
   disabled: Ref<boolean>
+  /** Arrows move focus without choosing, and the indicator cannot be dragged. */
+  readonly?: Ref<boolean>
   modelValue: ComputedRef<unknown>
   commitPendingModelValue: () => void
 }
@@ -20,7 +22,7 @@ function hiddenStyle(): Record<string, string> {
 }
 
 export function useRadioGroupIndicator(options: UseRadioGroupIndicatorOptions) {
-  const { props, groupRef, type, disabled, modelValue, commitPendingModelValue } = options
+  const { props, groupRef, type, disabled, readonly, modelValue, commitPendingModelValue } = options
 
   // The motion is the shared jelly indicator, which was lifted out of this
   // file; what stays here is Radio's own measuring, its layers and the drag.
@@ -360,7 +362,7 @@ export function useRadioGroupIndicator(options: UseRadioGroupIndicatorOptions) {
     if (type.value !== 'button') {
       return
     }
-    if (disabled.value) {
+    if (disabled.value || readonly?.value) {
       return
     }
     if (e.button !== 0) {
@@ -431,9 +433,13 @@ export function useRadioGroupIndicator(options: UseRadioGroupIndicatorOptions) {
 
     e.preventDefault()
     const activeElement = document.activeElement
-    const currentIndex = radios.findIndex((radio) => {
-      return radio.getAttribute('aria-checked') === 'true' || radio === activeElement
-    })
+    // Read-only, focus walks the radios while the choice stays where it is.
+    const focusedIndex = readonly?.value ? radios.findIndex(radio => radio === activeElement) : -1
+    const currentIndex = focusedIndex >= 0
+      ? focusedIndex
+      : radios.findIndex((radio) => {
+          return radio.getAttribute('aria-checked') === 'true' || radio === activeElement
+        })
     const nextIndex = resolveKeyboardTargetIndex(e.key, currentIndex, radios.length)
     const next = nextIndex >= 0 ? radios[nextIndex] : undefined
     if (!next) {
@@ -441,7 +447,9 @@ export function useRadioGroupIndicator(options: UseRadioGroupIndicatorOptions) {
     }
 
     next.focus()
-    next.click()
+    if (!readonly?.value) {
+      next.click()
+    }
   }
 
   onMounted(async () => {

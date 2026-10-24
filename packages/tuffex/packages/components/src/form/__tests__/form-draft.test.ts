@@ -295,6 +295,46 @@ describe('txForm drafts', () => {
     expect(localStorage.getItem(draftKey('user:42', 'profile'))).not.toBeNull()
   })
 
+  it('clears every namespace a function picks', async () => {
+    const { model, form } = mountForm({}, { namespace: 'user:1' })
+    await flushPromises()
+    model.value.bio = 'Hi'
+    await nextTick()
+    for (const owner of ['user:2', 'user:12', 'anon'])
+      localStorage.setItem(draftKey(owner, 'profile'), record({ name: { value: 'Cid', base: 'Ann' } }))
+    window.sessionStorage.setItem(draftKey('user:12', 'notes'), record({ bio: { value: 'Yo', base: '' } }))
+
+    // At startup: every account's drafts but the one signed in.
+    await clearTxFormDrafts({ namespace: owner => owner.startsWith('user:') && owner !== 'user:2' })
+    // The form under `user:1` drops the write it was about to make.
+    await form().flush()
+    expect([localStorage.key(0), localStorage.key(1), localStorage.key(2)])
+      .toEqual([draftKey('user:2', 'profile'), draftKey('anon', 'profile'), null])
+    expect(window.sessionStorage.length).toBe(0)
+  })
+
+  it('picks namespaces in a custom store only through its keys', async () => {
+    const items = new Map([[draftKey('user:1', 'profile'), '{}'], [draftKey('anon', 'profile'), '{}']])
+    const listed: FormDraftAdapter = {
+      get: key => items.get(key),
+      set: (key, value) => {
+        items.set(key, value)
+      },
+      remove: (key) => {
+        items.delete(key)
+      },
+      keys: prefix => [...items.keys()].filter(key => key.startsWith(prefix)),
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const accounts = (owner: string): boolean => owner !== 'anon'
+
+    await clearTxFormDrafts({ namespace: accounts, storage: { ...listed, keys: undefined } })
+    expect(items.size).toBe(2)
+    expect(warn).toHaveBeenCalledOnce()
+    await clearTxFormDrafts({ namespace: accounts, storage: listed })
+    expect([...items.keys()]).toEqual([draftKey('anon', 'profile')])
+  })
+
   it('keeps no draft until the host knows whose it is', async () => {
     const namespace = ref<string | null>(null)
     localStorage.setItem(draftKey('user:7', 'profile'), record({ name: { value: 'Cid', base: 'Ann' } }))

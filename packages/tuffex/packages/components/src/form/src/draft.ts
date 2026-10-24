@@ -21,6 +21,8 @@ export interface DraftRecord {
   savedAt: number
   expiresAt: number
   data: Record<string, StoredField>
+  /** The step a `TxStepsForm` was on. */
+  step?: number
 }
 
 /** A store as the forms use it. */
@@ -140,6 +142,7 @@ function mapAdapter(map: Map<string, string>): FormDraftAdapter {
           map.delete(key)
       }
     },
+    keys: prefix => [...map.keys()].filter(key => key.startsWith(prefix)),
   }
 }
 
@@ -187,6 +190,7 @@ function webAdapter(name: 'localStorage' | 'sessionStorage'): FormDraftAdapter {
       for (const key of keysOf(store, prefix))
         store.removeItem(key)
     },
+    keys: prefix => keysOf(storage(), prefix),
   }
 }
 
@@ -253,29 +257,60 @@ export async function flushTxForms(): Promise<void> {
   await Promise.all([...forms].map(form => form.flush().catch(() => {})))
 }
 
+/** The namespace a key was written under, or `null` for a key no draft has. */
+function namespaceOfKey(key: string): string | null {
+  const end = key.indexOf(':', PREFIX.length)
+  if (!key.startsWith(PREFIX) || end < 0)
+    return null
+  try {
+    return decodeURIComponent(key.slice(PREFIX.length, end))
+  }
+  catch {
+    return null
+  }
+}
+
+async function clearStore(adapter: FormDraftAdapter, namespace: FormClearDraftsOptions['namespace']): Promise<void> {
+  if (typeof namespace !== 'function') {
+    if (!adapter.clear) {
+      console.warn('[TxForm] clearTxFormDrafts(): this storage has no `clear(prefix)`, so its drafts stay until they expire.')
+      return
+    }
+    await adapter.clear(namespace === undefined ? PREFIX : namespacePrefix(namespace))
+    return
+  }
+  if (!adapter.keys) {
+    console.warn('[TxForm] clearTxFormDrafts(): this storage has no `keys(prefix)` to pick namespaces with, so its drafts stay until they expire.')
+    return
+  }
+  for (const key of await adapter.keys(PREFIX)) {
+    const own = namespaceOfKey(key)
+    if (own !== null && namespace(own))
+      await adapter.remove(key)
+  }
+}
+
 /**
- * Removes drafts: every TxForm draft, or one namespace's, such as the user's
- * who just signed out. Mounted forms in that namespace drop their pending
- * writes too.
+ * Removes drafts: every TxForm draft, or those of one namespace or of every
+ * namespace a function accepts — the user's who just signed out, or at startup
+ * everyone's but the user signed in. Mounted forms in those namespaces drop
+ * their pending writes too.
  */
 export async function clearTxFormDrafts(options: FormClearDraftsOptions = {}): Promise<void> {
   const { namespace } = options
-  const prefix = namespace === undefined ? PREFIX : namespacePrefix(namespace)
+  const matches = typeof namespace === 'function'
+    ? namespace
+    : (own: string) => namespace === undefined || own === namespace
   for (const form of forms) {
     const own = form.namespace()
-    if (own !== null && (namespace === undefined || own === namespace))
+    if (own !== null && matches(own))
       form.forget()
   }
-  mapAdapter(fallbackDrafts).clear!(prefix)
+  await clearStore(mapAdapter(fallbackDrafts), namespace)
   const targets: FormDraftStorage[] = options.storage === undefined ? ['local', 'session', 'memory'] : [options.storage]
   for (const target of targets) {
-    const { adapter } = resolveDraftStore(target)
-    if (!adapter.clear) {
-      console.warn('[TxForm] clearTxFormDrafts(): this storage has no `clear(prefix)`, so its drafts stay until they expire.')
-      continue
-    }
     try {
-      await adapter.clear(prefix)
+      await clearStore(resolveDraftStore(target).adapter, namespace)
     }
     catch (error) {
       console.warn('[TxForm] clearTxFormDrafts() could not clear a storage.', error)

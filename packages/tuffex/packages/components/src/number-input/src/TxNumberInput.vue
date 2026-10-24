@@ -56,6 +56,7 @@ const isFocused = ref(false)
 const rawValue = ref('')
 
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
+const isReadonly = computed(() => props.readonly || !!field?.readonly)
 
 const inputAttrs = computed(() => {
   const { class: _class, style: _style, ...rest } = attrs
@@ -73,11 +74,11 @@ const displayValue = computed(() => {
 })
 
 const canDecrease = computed(() => {
-  return !isDisabled.value && !props.readonly && (props.min === undefined || (props.modelValue ?? 0) > props.min)
+  return !isDisabled.value && !isReadonly.value && (props.min === undefined || (props.modelValue ?? 0) > props.min)
 })
 
 const canIncrease = computed(() => {
-  return !isDisabled.value && !props.readonly && (props.max === undefined || (props.modelValue ?? 0) < props.max)
+  return !isDisabled.value && !isReadonly.value && (props.max === undefined || (props.modelValue ?? 0) < props.max)
 })
 
 // Focusing eases the border, and a step that hits a bound eases that control
@@ -121,7 +122,7 @@ function handleInput(event: Event) {
 }
 
 function stepBy(direction: 1 | -1) {
-  if (isDisabled.value || props.readonly)
+  if (isDisabled.value || isReadonly.value)
     return
   const base = props.modelValue ?? 0
   commitValue(normalizeValue(base + props.step * direction), true)
@@ -165,7 +166,7 @@ defineExpose({
     :class="[
       {
         'is-disabled': isDisabled,
-        'is-readonly': readonly,
+        'is-readonly': isReadonly,
         'is-invalid': field?.invalid,
         'is-focused': isFocused,
         'has-controls': controls,
@@ -195,7 +196,7 @@ defineExpose({
       :step="step"
       :placeholder="placeholder"
       :disabled="isDisabled"
-      :readonly="readonly"
+      :readonly="isReadonly"
       v-bind="inputAttrs"
       @input="handleInput"
       @focus="handleFocus"

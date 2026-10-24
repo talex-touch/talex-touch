@@ -110,6 +110,9 @@ TAXONOMY: dict[str, list[str]] = {
     ],
     "Form": [
         "form",
+        "modal-form",
+        "drawer-form",
+        "steps-form",
         "input",
         "sensitive-input",
         "textarea",

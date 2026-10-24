@@ -149,6 +149,7 @@ export interface PluginDraftStorage {
   set: (key: string, value: string) => Promise<void>
   remove: (key: string) => Promise<void>
   clear: (prefix: string) => Promise<void>
+  keys: (prefix: string) => Promise<string[]>
 }
 
 /**
@@ -196,6 +197,10 @@ export function usePluginDraftStorage(): PluginDraftStorage {
       await Promise.all(files
         .filter(fileName => keyOf(fileName)?.startsWith(prefix))
         .map(fileName => storage.deleteFile(fileName)))
+    },
+    keys: async (prefix) => {
+      const files = await storage.listFiles()
+      return files.map(keyOf).filter((key): key is string => !!key?.startsWith(prefix))
     },
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  FormAutosaveOptions,
   FormClearDraftsOptions,
   FormControlKind,
   FormDraftAdapter,
@@ -70,6 +71,7 @@ export {
   useTxFormField,
 }
 export type {
+  FormAutosaveOptions,
   FormClearDraftsOptions,
   FormControlKind,
   FormDraftAdapter,

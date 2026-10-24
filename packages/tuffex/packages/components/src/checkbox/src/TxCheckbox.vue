@@ -82,13 +82,15 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 // Loading blocks input the same way `disabled` does, but stays a separate class
 // so the ring reads as "busy" instead of inheriting the greyed-out disabled box.
 const isBlocked = computed(() => isDisabled.value || props.loading)
+// In a readonly form the box shows its state: it keeps focus and does not change.
+const isReadonly = computed(() => !!field?.readonly)
 
 // Checking, loading or disabling eases the box's fill and border; a hover
 // repaints at once.
 const morphing = useMorphWindow(() => [isChecked.value, props.indeterminate, isDisabled.value, props.loading], 180)
 
 function toggle() {
-  if (isBlocked.value)
+  if (isBlocked.value || isReadonly.value)
     return
   isChecked.value = props.indeterminate ? true : !isChecked.value
 }
@@ -100,6 +102,7 @@ function toggle() {
     role="checkbox"
     :aria-checked="ariaChecked"
     :aria-disabled="isBlocked"
+    :aria-readonly="isReadonly || undefined"
     :aria-busy="loading || undefined"
     :aria-label="effectiveAriaLabel"
     :disabled="isBlocked"
@@ -110,6 +113,7 @@ function toggle() {
         'is-indeterminate': indeterminate,
         'is-disabled': isDisabled,
         'is-loading': loading,
+        'is-readonly': isReadonly,
         'is-morphing': morphing,
       },
       `tx-checkbox--${variant || 'checkmark'}`,
@@ -307,14 +311,18 @@ function toggle() {
     }
   }
 
-  &:hover:not(.is-disabled):not(.is-loading) {
+  &.is-readonly {
+    cursor: default;
+  }
+
+  &:hover:not(.is-disabled):not(.is-loading):not(.is-readonly) {
     .tx-checkbox__box {
       border-color: var(--tx-color-primary, #409eff);
       box-shadow: 0 0 0 3px var(--tx-color-primary-light-9, #ecf5ff);
     }
   }
 
-  &:active:not(.is-disabled):not(.is-loading) {
+  &:active:not(.is-disabled):not(.is-loading):not(.is-readonly) {
     .tx-checkbox__box {
       transform: scale(0.96);
     }

@@ -16,6 +16,11 @@ export interface AuthState {
   isSignedIn: boolean
   user: AuthUser | null
   sessionId: string | null
+  /**
+   * The stored session has been checked in this run. Until then a signed-out state may still turn
+   * signed in; once settled, signed out means there is no session. Absent where it is not known.
+   */
+  isSettled?: boolean
 }
 
 export interface LoginOptions {

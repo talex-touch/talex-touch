@@ -61,6 +61,8 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 // Loading blocks input the same way `disabled` does, but stays a separate class
 // so the ring indicator reads as "busy" instead of inheriting the dimmed look.
 const isBlocked = computed(() => isDisabled.value || props.loading)
+// In a readonly form the switch shows its state: it keeps focus and does not move.
+const isReadonly = computed(() => !!field?.readonly)
 
 const FORM_SIZES: Record<FormControlSize, 'small' | 'default' | 'large'> = { sm: 'small', md: 'default', lg: 'large' }
 // An explicit size wins; otherwise the form around it decides.
@@ -86,7 +88,7 @@ const fieldAttrs = computed(() => {
 })
 
 function toggle() {
-  if (isBlocked.value)
+  if (isBlocked.value || isReadonly.value)
     return
   const newVal = !isActive.value
   isActive.value = newVal
@@ -173,6 +175,7 @@ watch(resolvedSize, () => nextTick(() => placeThumb(false)))
     role="switch"
     :aria-checked="isActive"
     :aria-disabled="isBlocked"
+    :aria-readonly="isReadonly || undefined"
     :aria-busy="loading || undefined"
     :aria-label="effectiveAriaLabel"
     :aria-labelledby="ariaLabelledby"
@@ -183,6 +186,7 @@ watch(resolvedSize, () => nextTick(() => placeThumb(false)))
         'is-active': isActive,
         'is-disabled': isDisabled,
         'is-loading': loading,
+        'is-readonly': isReadonly,
         'has-label': hasLabel,
         [`tuff-switch--${resolvedSize}`]: resolvedSize !== 'default',
       },

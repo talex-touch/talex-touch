@@ -6783,7 +6783,9 @@
     "draftPending": "有 {time} 未保存的更改。",
     "draftRestore": "恢复",
     "draftDiscard": "丢弃",
-    "leaveConfirm": "有未保存的更改，仍要离开吗？"
+    "leaveConfirm": "有未保存的更改，仍要离开吗？",
+    "autosaved": "更改已保存。",
+    "autosaveFailed": "更改未能保存。"
   },
   "preset": {
     "import": "导入",

@@ -60,7 +60,14 @@ export interface FormContext {
   messages: ComputedRef<FormMessages>
   size: ComputedRef<FormControlSize>
   disabled: ComputedRef<boolean>
+  readonly: ComputedRef<boolean>
   register: (registration: FormFieldRegistration) => FormFieldHandle
+  /**
+   * Checks the fields inside `container`, shows their messages, and focuses
+   * the first error among them: a step is checked on its own. Resolves
+   * whether they pass.
+   */
+  validateWithin: (container: HTMLElement) => Promise<boolean>
   rootError: Ref<string>
   summary: ComputedRef<FormSummaryEntry[]>
   showSummary: ComputedRef<boolean>
@@ -74,6 +81,27 @@ export const TX_FORM_CONTEXT_KEY: InjectionKey<FormContext> = Symbol('TxFormCont
 export const TX_FORM_ROW_KEY: InjectionKey<boolean> = Symbol('TxFormRow')
 
 export const TX_FORM_HOST_KEY: InjectionKey<TxFormHost> = Symbol('TxFormHost')
+
+/**
+ * What a component built around one `TxForm` — `TxModalForm`, `TxStepsForm`
+ * — provides to it. The form takes the one its parent provides and hides it
+ * from forms further down.
+ */
+export interface FormShell {
+  /** The form inside has set up. Returns what to do when it unmounts. */
+  connect: (form: FormContext) => void | (() => void)
+  /** Shows the part of the form that holds `element`, so it can take focus: a step not shown. */
+  reveal?: (element: HTMLElement) => void | Promise<void>
+  /** A submit started. Resolve `false` to take it over, as a step that is not the last moves on. */
+  beforeSubmit?: () => boolean | Promise<boolean>
+  /** The step the user is on: kept in the draft, and gone back to when the draft fills the form in. */
+  step?: {
+    read: () => number
+    restore: (step: number) => void
+  }
+}
+
+export const TX_FORM_SHELL_KEY: InjectionKey<FormShell | null> = Symbol('TxFormShell')
 
 /**
  * Hands every form below — or in the whole app, given `app` — the host's

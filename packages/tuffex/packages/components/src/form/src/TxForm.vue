@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormEmits, FormProps } from './types'
 import { computed, provide } from 'vue'
-import { TX_FORM_CONTEXT_KEY, TX_FORM_FIELD_KEY } from './context'
+import { TX_FORM_CONTEXT_KEY, TX_FORM_FIELD_KEY, TX_FORM_SHELL_KEY } from './context'
 import { useFormStore } from './use-form'
 
 defineOptions({ name: 'TxForm' })
@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<FormProps>(), {
   validateOn: 'blur',
   size: 'medium',
   disabled: false,
+  readonly: false,
   // Its type includes `false`, so without a default Vue reads a form that leaves it out as
   // `false`: never ask.
   leaveConfirm: undefined,
@@ -23,8 +24,10 @@ const { formId, layout, labelAlign, announcement, summaryAttached, rootError, dr
 const messages = store.context.messages
 
 provide(TX_FORM_CONTEXT_KEY, store.context)
+// The shell around this form is not one around a form further down.
+provide(TX_FORM_SHELL_KEY, null)
 // A control placed in the form but outside every item is not a field, yet it
-// still takes the form's `disabled` and `size`.
+// still takes the form's `disabled`, `readonly` and `size`.
 provide(TX_FORM_FIELD_KEY, {
   controlId: undefined,
   labelId: undefined,
@@ -35,6 +38,9 @@ provide(TX_FORM_FIELD_KEY, {
   required: false,
   get disabled() {
     return store.context.disabled.value
+  },
+  get readonly() {
+    return store.context.readonly.value
   },
   get size() {
     return store.context.size.value

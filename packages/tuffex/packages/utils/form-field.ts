@@ -27,6 +27,8 @@ export interface TxFormField {
   readonly invalid: boolean
   readonly required: boolean
   readonly disabled: boolean
+  /** The form shows its values to read: the control may take focus but not change its value. */
+  readonly readonly: boolean
   readonly size: FormControlSize
   /**
    * Attributes for the control's focusable element, merged over `host` — the
@@ -51,6 +53,7 @@ export interface FormFieldSource {
   readonly invalid: boolean
   readonly required: boolean
   readonly disabled: boolean
+  readonly readonly: boolean
   readonly size: FormControlSize
   claim: (token: object) => boolean
   /** Tells the item which kind of control took the id, once it has mounted. */
@@ -73,9 +76,9 @@ export interface TxFormFieldOptions {
 
 /**
  * Connects a control to the `TxFormItem` around it: the id the label points
- * at, the description, the invalid and required state, and the form's `size`
- * and `disabled`, which also reach controls outside every item. Returns
- * `null` outside a form.
+ * at, the description, the invalid and required state, and the form's
+ * `size`, `disabled` and `readonly`, which also reach controls outside every
+ * item. Returns `null` outside a form.
  *
  * Only the first control in an item receives the id. The call also hides the
  * item from everything the control renders, so the input inside a select or
@@ -121,6 +124,9 @@ export function useTxFormField(
     },
     get disabled() {
       return source.disabled
+    },
+    get readonly() {
+      return source.readonly
     },
     get size() {
       return source.size

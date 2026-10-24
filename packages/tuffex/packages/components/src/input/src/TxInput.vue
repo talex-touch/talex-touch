@@ -57,6 +57,7 @@ const field = useTxFormField('input', {
 })
 
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
+const isReadonly = computed(() => props.readonly || !!field?.readonly)
 
 const inputAttrs = computed(() => {
   const { class: _class, style: _style, ...rest } = attrs
@@ -83,7 +84,7 @@ const capsLockOn = ref(false)
 const morphing = useMorphWindow(isFocused, 250)
 
 const showClear = computed(() => {
-  return props.clearable && inputValue.value !== '' && inputValue.value !== null && inputValue.value !== undefined && !isDisabled.value && !props.readonly
+  return props.clearable && inputValue.value !== '' && inputValue.value !== null && inputValue.value !== undefined && !isDisabled.value && !isReadonly.value
 })
 
 const showCapsLock = computed(() => {
@@ -91,7 +92,7 @@ const showCapsLock = computed(() => {
 })
 
 function handleClear() {
-  if (isDisabled.value || props.readonly)
+  if (isDisabled.value || isReadonly.value)
     return
   inputValue.value = ''
   emit('clear')
@@ -129,7 +130,7 @@ defineExpose({
     class="tx-input fake-background" :class="[
       {
         'is-disabled': isDisabled,
-        'is-readonly': readonly,
+        'is-readonly': isReadonly,
         'is-invalid': field?.invalid,
         'is-textarea': type === 'textarea',
         'is-focused': isFocused,
@@ -149,7 +150,7 @@ defineExpose({
       v-model="inputValue"
       :placeholder="placeholder"
       :disabled="isDisabled"
-      :readonly="readonly"
+      :readonly="isReadonly"
       :rows="rows"
       class="tx-input__inner tx-input__textarea"
       v-bind="inputAttrs"
@@ -164,7 +165,7 @@ defineExpose({
       :type="type"
       :placeholder="placeholder"
       :disabled="isDisabled"
-      :readonly="readonly"
+      :readonly="isReadonly"
       class="tx-input__inner"
       v-bind="inputAttrs"
       @focus="handleFocus"

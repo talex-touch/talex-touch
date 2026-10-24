@@ -90,6 +90,45 @@ code: |
 ---
 :::
 
+### Read-Only
+`readonly` shows the form as a record: the controls take focus and can be copied but not changed, and no field is marked required. Submitting still works.
+:::TuffDemoWrapper{demo="FormReadonlyDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { reactive, ref } from 'vue'
+
+  const readonly = ref(true)
+  const member = reactive({ name: 'Lin Xiao', role: 'editor', plan: 'pro', seats: 5, notify: true })
+  </script>
+
+  <template>
+    <TuffSwitch v-model="readonly" label="Read-only" />
+    <TxForm :model="member" :readonly="readonly">
+      <TxFormItem label="Member" prop="name" required>
+        <TuffInput v-model="member.name" />
+      </TxFormItem>
+      <TxFormItem label="Role" prop="role" width="md">
+        <TxSelect v-model="member.role" :options="roles" />
+      </TxFormItem>
+      <TxFormItem label="Plan" prop="plan">
+        <TxRadioGroup v-model="member.plan" type="standard" direction="row">
+          <TxRadio value="free" label="Free" />
+          <TxRadio value="pro" label="Pro" />
+          <TxRadio value="team" label="Team" />
+        </TxRadioGroup>
+      </TxFormItem>
+      <TxFormItem label="Seats" prop="seats" width="sm">
+        <TxNumberInput v-model="member.seats" :min="1" :max="50" />
+      </TxFormItem>
+      <TxFormItem label="Email notifications" prop="notify" inline>
+        <TuffSwitch v-model="member.notify" />
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
 ### Async Validation
 An `async` validator runs after the synchronous rules pass, debounces while the user types, and aborts when the value moves on.
 :::TuffDemoWrapper{demo="FormAsyncDemo" code-lang="vue"}
@@ -150,6 +189,53 @@ code: |
       </TxFormItem>
       <TxFormItem>
         <TxButton variant="primary" native-type="submit" :loading="submitting">Create account</TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### Autosave
+`autosave` saves through `@submit` a second after editing pauses. Only the changed fields are checked: one with an error is saved once it is fixed, and the rest are saved without it.
+:::TuffDemoWrapper{demo="FormAutosaveDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { reactive, ref } from 'vue'
+
+  const settings = reactive({ name: 'Lin Xiao', email: 'lin@example.com', notify: true, language: 'en' })
+  const savedAt = ref(null)
+  const rules = {
+    name: { required: true, message: 'Enter a display name' },
+    email: { type: 'email', message: 'Enter a valid email address' },
+  }
+
+  async function save(values) {
+    await updateSettings(values)
+  }
+  </script>
+
+  <template>
+    <TxForm
+      v-slot="{ submitting }"
+      :model="settings"
+      :rules="rules"
+      autosave
+      @submit="save"
+      @submit-success="savedAt = new Date()"
+    >
+      <TxFormItem label="Display name" prop="name">
+        <TuffInput v-model="settings.name" />
+      </TxFormItem>
+      <TxFormItem label="Notification email" prop="email">
+        <TuffInput v-model="settings.email" type="email" />
+      </TxFormItem>
+      <TxFormItem label="Email notifications" prop="notify" inline>
+        <TuffSwitch v-model="settings.notify" />
+      </TxFormItem>
+      <TxFormItem>
+        <!-- For the eye; the form's status region speaks to screen readers -->
+        <span>{{ submitting ? 'Saving…' : savedAt ? `Saved at ${savedAt.toLocaleTimeString()}` : '' }}</span>
       </TxFormItem>
     </TxForm>
   </template>
@@ -241,6 +327,130 @@ onBeforeRouteLeave(() => formRef.value.confirmLeave())
 </TxModal>
 ```
 
+### Query Filters
+A filter bar lines its fields up with `inline`, folds the rarely used ones behind More filters, and turns off the leave prompt with `:leave-confirm="false"`.
+:::TuffDemoWrapper{demo="FormFilterDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { reactive, ref } from 'vue'
+  import { useRoute, useRouter } from 'vue-router'
+
+  const route = useRoute()
+  const router = useRouter()
+  const expanded = ref(false)
+
+  function defaults() {
+    return { keyword: '', status: 'all', owner: 'all', priority: 'all' }
+  }
+
+  // The filters come from the address, so a reload or a shared link keeps them
+  const filters = ref(reactive({ ...defaults(), ...route.query }))
+
+  function apply(values) {
+    const query = Object.fromEntries(Object.entries(values).filter(([, value]) => value && value !== 'all'))
+    router.replace({ query })
+  }
+
+  // Back to no filter, not to the last search the form itself would reset to
+  function clear() {
+    filters.value = reactive(defaults())
+    apply(filters.value)
+  }
+  </script>
+
+  <template>
+    <TxForm :model="filters" layout="inline" :leave-confirm="false" @submit="apply">
+      <TxFormItem label="Keyword" prop="keyword" width="sm">
+        <TuffInput v-model="filters.keyword" enterkeyhint="search" />
+      </TxFormItem>
+      <TxFormItem label="Status" prop="status" width="sm">
+        <TxSelect v-model="filters.status" :options="statuses" />
+      </TxFormItem>
+      <TxFormItem label="Owner" prop="owner" width="sm">
+        <TxSelect v-model="filters.owner" :options="owners" />
+      </TxFormItem>
+      <TxFormItem v-show="expanded" label="Priority" prop="priority" width="sm">
+        <TxSelect v-model="filters.priority" :options="priorities" />
+      </TxFormItem>
+      <div class="filter-actions">
+        <TxButton variant="primary" native-type="submit">Search</TxButton>
+        <TxButton @click="clear">Reset</TxButton>
+        <TxButton variant="ghost" :aria-expanded="expanded" @click="expanded = !expanded">
+          {{ expanded ? 'Fewer filters' : 'More filters' }}
+        </TxButton>
+      </div>
+    </TxForm>
+  </template>
+---
+:::
+
+### Sign-In and Sign-Up
+Mark every field with `autocomplete`, keep no draft, and never block paste: password managers and texted codes rely on autofill and paste.
+:::TuffDemoWrapper{demo="FormLoginDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <TxForm v-slot="{ submitting }" :model="form" :rules="rules" layout="stacked" :leave-confirm="false" @submit="submit">
+      <TxFormItem label="Email" prop="email">
+        <TuffInput v-model="form.email" type="email" autocomplete="username" />
+      </TxFormItem>
+      <TxFormItem v-if="mode === 'signup'" label="Verification code" prop="code">
+        <TuffInput v-model="form.code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+      </TxFormItem>
+      <TxFormItem label="Password" prop="password">
+        <TuffInput
+          v-model="form.password"
+          type="password"
+          :autocomplete="mode === 'signin' ? 'current-password' : 'new-password'"
+        />
+      </TxFormItem>
+      <TxFormItem>
+        <TxButton variant="primary" native-type="submit" :loading="submitting">
+          {{ mode === 'signin' ? 'Sign in' : 'Sign up' }}
+        </TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### Long Questionnaires
+`validate-on="submit"` lets people answer without interruption. On submit, `TxFormErrorSummary` lists every problem, each linking to its field.
+:::TuffDemoWrapper{demo="FormSurveyDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <TxForm v-slot="{ submitting }" :model="answers" :rules="rules" validate-on="submit" @submit="submit">
+      <TxFormErrorSummary title="A few answers need another look" />
+      <TxFormItem label="Your role" prop="role" width="md">
+        <TxSelect v-model="answers.role" :options="roles" placeholder="Choose one" />
+      </TxFormItem>
+      <TxFormItem label="Years of use" prop="years" width="sm">
+        <TxNumberInput v-model="answers.years" :min="0" :max="30" />
+      </TxFormItem>
+      <TxFormItem label="Overall satisfaction" prop="satisfaction">
+        <TxRadioGroup v-model="answers.satisfaction" type="standard" direction="row">
+          <TxRadio v-for="level in levels" :key="level.value" :value="level.value" :label="level.label" />
+        </TxRadioGroup>
+      </TxFormItem>
+      <TxFormItem label="Features you use" prop="features" width="lg">
+        <TxSelect v-model="answers.features" :options="features" multiple />
+      </TxFormItem>
+      <TxFormItem label="Suggestions" prop="feedback" help="Optional, at least 10 characters">
+        <TxTextarea v-model="answers.feedback" :rows="3" />
+      </TxFormItem>
+      <TxFormItem prop="contact">
+        <TxCheckbox v-model="answers.contact" label="You may contact me about this feedback" />
+      </TxFormItem>
+      <TxFormItem>
+        <TxButton variant="primary" native-type="submit" :loading="submitting">Send answers</TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
 ### Schema Validation
 `schema` takes any Standard Schema v1 validator and hands each issue to the field at its path.
 
@@ -297,6 +507,30 @@ LifeCycle.onBeforeClose(flushTxForms)
 app.mount('#app')
 ```
 
+A plugin's drafts are its own; the host does not clear them. When a draft holds an account's data:
+
+- Use `user:<account id>` as the namespace, and `anon` when signed out; give `null` while the account is not known, and no draft is kept meanwhile.
+- When the account changes, remove every other account's drafts, then switch the namespace. Do it each time the plugin starts too: the account may have changed while it was not running.
+- Where the current account cannot be read, leave `persist` off for these forms.
+
+Replace the `provideTxFormHost` call above with:
+
+```ts
+import { clearTxFormDrafts, provideTxFormHost } from '@talex-touch/tuffex/form'
+import { usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
+import { ref } from 'vue'
+
+const storage = usePluginDraftStorage()
+const account = ref<string | null>(null)
+provideTxFormHost({ storage, namespace: account }, app)
+
+// Call it once the account is known: at startup, and after every change.
+function switchAccount(next: string): void {
+  void clearTxFormDrafts({ storage, namespace: ns => ns.startsWith('user:') && ns !== next })
+  account.value = next
+}
+```
+
 ### Best Practices
 
 - Keep `model` the same reactive object; a new object is a new record, which resets the baseline and clears every message.
@@ -326,15 +560,18 @@ app.mount('#app')
 | `messages` | `Partial<FormMessages>` | - | Overrides the built-in text. |
 | `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | Passed to the controls inside that have sizes. |
 | `disabled` | `boolean` | `false` | Disables every control inside that reads the form, and blocks submit. |
+| `readonly` | `boolean` | `false` | Shows the values as a record to read: every control inside that reads the form can be focused and copied but not changed, and no field is marked required. Submitting still works. |
 | `reconcile` | `FormReconcile` | - | Decides what `model` holds when `setBaseline()` or a draft brings values for fields the user changed. |
 | `persist` | `boolean \| FormPersistOptions` | `false` | Keeps what the user typed under `id`; `true` takes the defaults. |
 | `leaveConfirm` | `FormLeaveConfirm \| false` | host's, then `window.confirm` | Asked before leaving with changes no draft holds; `false` never asks, as for a filter. |
+| `autosave` | `boolean \| FormAutosaveOptions` | `false` | Saves through the `submit` handler once editing pauses, instead of on a submit button. Only the changed fields are checked; one with an error is saved once it is fixed. `true` waits a second. |
 
 #### Events
 
 | Event | Payload | Description |
 |------|---------|-------------|
 | `submit` | `(values: FormValues, event?: Event)` | Called once every check passes, with a copy of the values; a returned promise is awaited, and `submitting` is `true` meanwhile. |
+| `submit-success` | `(values: FormValues)` | A submit or an autosave went through: every check passed, and the `submit` handler, when given, succeeded. |
 | `validate` | `(valid: boolean)` | Fires after `validate()` has checked every field. |
 | `persist-error` | `(error: unknown)` | A draft could not be read or written; fires once per run of failures. |
 
@@ -357,7 +594,7 @@ app.mount('#app')
 | `rootError` | `string` | Read-only; the form-level error. |
 | `validate` | `() => Promise<boolean>` | Validates every field, shows the messages, and resolves to whether all passed. |
 | `validateField` | `(path: string) => Promise<boolean>` | Validates one field and shows its message. |
-| `submit` | `() => Promise<boolean>` | What a native submit does: validates, then calls the `submit` handler; resolves to whether it succeeded. |
+| `submit` | `() => Promise<boolean>` | What a native submit does: validates, then calls the `submit` handler; resolves to whether it succeeded. With `autosave`, saves the changes now. |
 | `reset` | `() => void` | Restores `model` to the baseline and clears every message. |
 | `resetFields` | `() => void` | Older name of `reset()`. |
 | `setBaseline` | `(values?: FormValues) => void` | Makes fetched values the baseline; without them, the current `model` becomes the baseline. |
@@ -366,7 +603,7 @@ app.mount('#app')
 | `clearValidate` | `(paths?: string \| string[]) => void` | Hides messages without changing `model`. |
 | `draft` | `FormDraftState` | Read-only; what the draft filled in or still offers, when it was written, whether writing fails. |
 | `flush` | `() => Promise<void>` | Writes the draft now. |
-| `confirmLeave` | `() => Promise<boolean>` | Call before leaving inside the app; resolves `true` to go. |
+| `confirmLeave` | `() => Promise<boolean>` | Call before leaving inside the app; resolves `true` to go. With `autosave`, saves pending changes first. |
 | `restoreDraft` | `() => Promise<boolean>` | Fills in the fields the draft still offers; resolves whether any were. |
 | `discardDraft` | `() => Promise<void>` | Puts the saved values back where the draft filled them in, and deletes it. |
 
@@ -431,6 +668,7 @@ app.mount('#app')
 | `describedBy` | `string \| undefined` | Read-only; the id of the message or help text. |
 | `invalid` / `required` | `boolean` | Read-only; an error is showing; the field is required. |
 | `disabled` / `size` | `boolean` / `'sm' \| 'md' \| 'lg'` | Read-only; the form's `disabled` and `size`. |
+| `readonly` | `boolean` | Read-only; the form's `readonly`: the control takes focus but keeps its value. |
 | `attrs` | `(host?: Record<string, unknown>) => Record<string, unknown>` | The control's merged attributes; those the control was given win, except `aria-describedby`, which keeps both. |
 
 ### provideTxFormHost
@@ -443,7 +681,7 @@ app.mount('#app')
 | `host.storage` | `FormDraftStorage` | Where drafts go when `persist.storage` does not say. |
 | `host.leaveConfirm` | `FormLeaveConfirm` | Asks before leaving, for the forms without their own `leaveConfirm`. |
 | `flushTxForms` | `() => Promise<void>` | Writes every mounted form's pending draft, before the page goes without warning. |
-| `clearTxFormDrafts` | `(options?: { namespace?: string, storage?: FormDraftStorage }) => Promise<void>` | Removes the drafts, or one namespace's. |
+| `clearTxFormDrafts` | `(options?: { namespace?: string \| ((namespace: string) => boolean), storage?: FormDraftStorage }) => Promise<void>` | Removes the drafts, one namespace's, or those of every namespace the function accepts. |
 
 ### Types
 
@@ -492,6 +730,13 @@ app.mount('#app')
 | `get` / `remove` | `(key: string) => string \| null` / `(key: string) => void` | Reads or deletes one draft. |
 | `set` | `(key: string, value: string) => void` | Throw when the value was not stored; the form keeps it in memory meanwhile. |
 | `clear` | `(prefix: string) => void` | Optional; removes the keys starting with `prefix`, for `clearTxFormDrafts()`. |
+| `keys` | `(prefix: string) => string[]` | Optional; lists the keys starting with `prefix`, for `clearTxFormDrafts()` to pick namespaces with a function. |
+
+`FormAutosaveOptions`, the object form of `autosave`:
+
+| Field | Type | Description |
+|------|------|-------------|
+| `delay` | `number` | How long editing pauses before the changes are saved, in milliseconds. Default `1000`. |
 
 `FormMessages`, the built-in text; the English defaults are `FORM_DEFAULT_MESSAGES`:
 
@@ -509,6 +754,7 @@ app.mount('#app')
 | `draftRestored` / `draftPending` | `(savedAt: Date) => string` | The notice once a draft has filled the form in, or while it waits. |
 | `draftRestore` / `draftDiscard` | `string` | The notice's buttons. |
 | `leaveConfirm` | `string` | Asked through `window.confirm` when nothing else asks. |
+| `autosaved` / `autosaveFailed` | `string` | Read once an autosave went through, or when one failed and no message on screen says why; hidden on screen. |
 
 ### CSS Variables
 
@@ -527,6 +773,7 @@ app.mount('#app')
 - Reloading or closing the page asks first only while a change is in no draft: without `persist`, in a secret field, or when a write has not landed.
 - A store that refuses a write leaves the draft in memory until one succeeds; a host namespace of `null`, or a form without `id`, keeps none.
 - When the namespace changes to another, as on sign-out, what the last person changed stays in the form but goes into no draft, and counts as unsaved until it is changed. `clearTxFormDrafts({ namespace })` removes that person's drafts.
+- A session can also end while the app is closed: once the current account is known, `clearTxFormDrafts({ namespace: ns => ns.startsWith('user:') && ns !== current })` removes every other account's drafts.
 
 ## Overview
 
@@ -534,8 +781,10 @@ app.mount('#app')
 - Rules run in order and stop at the first error. The built-in checks pass an empty value, which only `required` rejects; empty means `undefined`, `null`, `''`, `false` or an empty array.
 - Async rules run after the synchronous ones pass, debounced 300ms while the user types; past one second the field shows `messages.validating`. The form's single polite live region announces their progress and result.
 - Submit validates, then calls the handler; the handler resolving `false`, throwing, or calling `setErrors()` / `setRootError()` counts as a failure. On success the submitted values become the baseline, unless the handler called `setBaseline()` itself. On failure focus moves to the error summary, or to the first field in error when there is none.
+- With `autosave`, a pause in editing checks only the changed fields: one that shows an error, or whose async check has not finished, keeps its saved value, and the rest are saved; the same polite live region announces the result. Submit and `confirmLeave()` save at once, and unmounting saves the changes that have passed their checks. A `disabled` or `readonly` form does not autosave.
+- With `readonly`, the required marks and `required` go too, since the user can no longer fill anything in; the values are still sent on submit.
 - An error for a field that is not mounted is kept and shows when the field mounts, as in a multi-step form; a `schema` issue no field shows is listed in the error summary and blocks submit.
-- The first control takes the id and the label's `for`; other controls point at the label with `aria-labelledby`, as do controls a `<label for>` cannot name, such as a radio group or a multiple select, once they hold the id. Messages are linked through `aria-describedby` and carry no `role="alert"`. The form's `size` and `disabled` also reach controls outside every item.
+- The first control takes the id and the label's `for`; other controls point at the label with `aria-labelledby`, as do controls a `<label for>` cannot name, such as a radio group or a multiple select, once they hold the id. Messages are linked through `aria-describedby` and carry no `role="alert"`. The form's `size`, `disabled` and `readonly` also reach controls outside every item.
 
 ## Technologies
 

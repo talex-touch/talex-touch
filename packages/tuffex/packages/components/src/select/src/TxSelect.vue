@@ -62,6 +62,8 @@ const attrs = useAttrs()
 // A multiple select's trigger is a div, which a `<label for>` cannot name.
 const field = useTxFormField(() => (props.multiple ? 'group' : 'input'))
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
+// A readonly form shows the choice: the trigger takes focus, the list never opens.
+const isReadonly = computed(() => !!field?.readonly)
 const resolvedStatus = computed(() => (field?.invalid ? 'error' : props.status))
 
 function triggerAttrs() {
@@ -101,7 +103,7 @@ const triggerText = computed({
     if (!isEditable.value)
       return
     searchQuery.value = v
-    if (!isOpen.value && !isDisabled.value)
+    if (!isOpen.value && !isDisabled.value && !isReadonly.value)
       isOpen.value = true
   },
 })
@@ -312,7 +314,7 @@ const currentValue = computed({
 })
 
 function toggle() {
-  if (isDisabled.value)
+  if (isDisabled.value || isReadonly.value)
     return
   isOpen.value = !isOpen.value
 }
@@ -330,7 +332,7 @@ function clear() {
 }
 
 function removeSelectedValue(value: TxSelectValue) {
-  if (isDisabled.value || !props.multiple)
+  if (isDisabled.value || isReadonly.value || !props.multiple)
     return
   currentValue.value = selectedValues.value.filter(item => !isSelectValueEqual(item, value))
 }
@@ -376,7 +378,7 @@ function moveActiveOption(delta: number): void {
 }
 
 function handleTriggerKeydown(e: KeyboardEvent): void {
-  if (isDisabled.value)
+  if (isDisabled.value || isReadonly.value)
     return
 
   switch (e.key) {
@@ -460,7 +462,7 @@ function createOptionFromInput() {
 
 function handleMultiInput(v: string) {
   multiInput.value = v
-  if (!isOpen.value && !isDisabled.value)
+  if (!isOpen.value && !isDisabled.value && !isReadonly.value)
     isOpen.value = true
 }
 
@@ -535,9 +537,14 @@ function unregisterOption(id: TxSelectOptionId) {
 }
 
 function openFromFocus() {
-  if (isDisabled.value || !isEditable.value)
+  if (isDisabled.value || isReadonly.value || !isEditable.value)
     return
   isOpen.value = true
+}
+
+function openFromMultiFocus() {
+  if (!isReadonly.value)
+    isOpen.value = true
 }
 
 function scrollSelectedIntoView() {
@@ -748,7 +755,7 @@ onBeforeUnmount(() => {
   >
     <TxPopover
       v-model="isOpen"
-      :disabled="isDisabled"
+      :disabled="isDisabled || isReadonly"
       :eager="eager"
       placement="bottom-start"
       :offset="dropdownOffset"
@@ -773,11 +780,12 @@ onBeforeUnmount(() => {
             ref="multiTriggerRef"
             v-bind="triggerAttrs()"
             class="tuff-select__multi-trigger"
-            :class="{ 'is-disabled': isDisabled }"
+            :class="{ 'is-disabled': isDisabled, 'is-readonly': isReadonly }"
             :style="multiTriggerHeight != null ? { height: `${multiTriggerHeight}px` } : undefined"
             role="combobox"
             aria-haspopup="listbox"
             :aria-expanded="isOpen"
+            :aria-readonly="isReadonly || undefined"
           >
             <TransitionGroup
               v-if="selectedOptions.length"
@@ -796,7 +804,7 @@ onBeforeUnmount(() => {
                   <span class="tuff-select__tag-label">{{ resolveTagLabel(opt.label) }}</span>
                 </slot>
                 <button
-                  v-if="!isDisabled"
+                  v-if="!isDisabled && !isReadonly"
                   type="button"
                   class="tuff-select__tag-remove"
                   aria-label="Remove selected option"
@@ -818,7 +826,8 @@ onBeforeUnmount(() => {
                 :value="multiInput"
                 :placeholder="selectedOptions.length ? '' : searchPlaceholder"
                 :disabled="isDisabled"
-                @focus="isOpen = true"
+                :readonly="isReadonly"
+                @focus="openFromMultiFocus"
                 @input="handleMultiInput(($event.target as HTMLInputElement).value)"
                 @keydown="handleMultiInputKeydown"
               >
@@ -831,7 +840,8 @@ onBeforeUnmount(() => {
                 :value="multiInput"
                 :placeholder="placeholder"
                 :disabled="isDisabled"
-                @focus="isOpen = true"
+                :readonly="isReadonly"
+                @focus="openFromMultiFocus"
                 @input="handleMultiInput(($event.target as HTMLInputElement).value)"
                 @keydown="handleMultiInputKeydown"
               >
@@ -849,7 +859,7 @@ onBeforeUnmount(() => {
             v-model="triggerText"
             v-bind="triggerAttrs()"
             :placeholder="placeholder"
-            :readonly="!isEditable"
+            :readonly="!isEditable || isReadonly"
             :disabled="isDisabled"
             role="combobox"
             aria-haspopup="listbox"
@@ -1006,13 +1016,17 @@ onBeforeUnmount(() => {
       height 0.18s cubic-bezier(0.22, 1, 0.36, 1);
     cursor: pointer;
 
-    &:hover:not(.is-disabled) {
+    &:hover:not(.is-disabled):not(.is-readonly) {
       border-color: var(--tx-color-primary-light-3, #79bbff);
     }
 
     &.is-disabled {
       background-color: var(--tx-disabled-bg-color, #f5f7fa);
       cursor: not-allowed;
+    }
+
+    &.is-readonly {
+      cursor: default;
     }
   }
 

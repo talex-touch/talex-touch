@@ -90,6 +90,45 @@ code: |
 ---
 :::
 
+### 只读
+`readonly` 把表单当作记录来展示：控件可以聚焦、复制，但不能修改，也不标必填；提交照常可用。
+:::TuffDemoWrapper{demo="FormReadonlyDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { reactive, ref } from 'vue'
+
+  const readonly = ref(true)
+  const member = reactive({ name: '林晓', role: 'editor', plan: 'pro', seats: 5, notify: true })
+  </script>
+
+  <template>
+    <TuffSwitch v-model="readonly" label="只读" />
+    <TxForm :model="member" :readonly="readonly">
+      <TxFormItem label="成员" prop="name" required>
+        <TuffInput v-model="member.name" />
+      </TxFormItem>
+      <TxFormItem label="角色" prop="role" width="md">
+        <TxSelect v-model="member.role" :options="roles" />
+      </TxFormItem>
+      <TxFormItem label="套餐" prop="plan">
+        <TxRadioGroup v-model="member.plan" type="standard" direction="row">
+          <TxRadio value="free" label="免费版" />
+          <TxRadio value="pro" label="专业版" />
+          <TxRadio value="team" label="团队版" />
+        </TxRadioGroup>
+      </TxFormItem>
+      <TxFormItem label="席位" prop="seats" width="sm">
+        <TxNumberInput v-model="member.seats" :min="1" :max="50" />
+      </TxFormItem>
+      <TxFormItem label="邮件通知" prop="notify" inline>
+        <TuffSwitch v-model="member.notify" />
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
 ### 异步校验
 声明为 `async` 的 validator 在同步规则通过后运行，输入时防抖，值变化时中止。
 :::TuffDemoWrapper{demo="FormAsyncDemo" code-lang="vue"}
@@ -150,6 +189,54 @@ code: |
       </TxFormItem>
       <TxFormItem>
         <TxButton variant="primary" native-type="submit" :loading="submitting">创建账号</TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### 自动保存
+`autosave` 在停止编辑一秒后经 `@submit` 保存：只校验改过的字段，出错的字段改对后再存，其余照常保存。
+:::TuffDemoWrapper{demo="FormAutosaveDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { reactive, ref } from 'vue'
+
+  const settings = reactive({ name: '林晓', email: 'lin@example.com', notify: true, language: 'zh' })
+  const savedAt = ref(null)
+  const rules = {
+    name: { required: true, message: '请输入显示名称' },
+    email: { type: 'email', message: '邮箱格式不正确' },
+  }
+
+  async function save(values) {
+    await updateSettings(values)
+  }
+  </script>
+
+  <template>
+    <TxForm
+      v-slot="{ submitting }"
+      :model="settings"
+      :rules="rules"
+      :messages="{ autosaved: '更改已保存。', autosaveFailed: '更改未能保存。' }"
+      autosave
+      @submit="save"
+      @submit-success="savedAt = new Date()"
+    >
+      <TxFormItem label="显示名称" prop="name">
+        <TuffInput v-model="settings.name" />
+      </TxFormItem>
+      <TxFormItem label="通知邮箱" prop="email">
+        <TuffInput v-model="settings.email" type="email" />
+      </TxFormItem>
+      <TxFormItem label="邮件通知" prop="notify" inline>
+        <TuffSwitch v-model="settings.notify" />
+      </TxFormItem>
+      <TxFormItem>
+        <!-- 只给眼睛看；读屏由表单的状态区域播报 -->
+        <span>{{ submitting ? '正在保存…' : savedAt ? `已保存 ${savedAt.toLocaleTimeString()}` : '' }}</span>
       </TxFormItem>
     </TxForm>
   </template>
@@ -241,6 +328,130 @@ onBeforeRouteLeave(() => formRef.value.confirmLeave())
 </TxModal>
 ```
 
+### 查询筛选
+筛选栏用 `inline` 布局排成一行，不常用的条件收进「更多筛选」，并用 `:leave-confirm="false"` 关掉离开前的询问。
+:::TuffDemoWrapper{demo="FormFilterDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { reactive, ref } from 'vue'
+  import { useRoute, useRouter } from 'vue-router'
+
+  const route = useRoute()
+  const router = useRouter()
+  const expanded = ref(false)
+
+  function defaults() {
+    return { keyword: '', status: 'all', owner: 'all', priority: 'all' }
+  }
+
+  // 条件来自地址栏：刷新或分享链接后筛选不变
+  const filters = ref(reactive({ ...defaults(), ...route.query }))
+
+  function apply(values) {
+    const query = Object.fromEntries(Object.entries(values).filter(([, value]) => value && value !== 'all'))
+    router.replace({ query })
+  }
+
+  // 回到不筛选，而不是表单自己会退回的上一次查询
+  function clear() {
+    filters.value = reactive(defaults())
+    apply(filters.value)
+  }
+  </script>
+
+  <template>
+    <TxForm :model="filters" layout="inline" :leave-confirm="false" @submit="apply">
+      <TxFormItem label="关键词" prop="keyword" width="sm">
+        <TuffInput v-model="filters.keyword" enterkeyhint="search" />
+      </TxFormItem>
+      <TxFormItem label="状态" prop="status" width="sm">
+        <TxSelect v-model="filters.status" :options="statuses" />
+      </TxFormItem>
+      <TxFormItem label="负责人" prop="owner" width="sm">
+        <TxSelect v-model="filters.owner" :options="owners" />
+      </TxFormItem>
+      <TxFormItem v-show="expanded" label="优先级" prop="priority" width="sm">
+        <TxSelect v-model="filters.priority" :options="priorities" />
+      </TxFormItem>
+      <div class="filter-actions">
+        <TxButton variant="primary" native-type="submit">查询</TxButton>
+        <TxButton @click="clear">重置</TxButton>
+        <TxButton variant="ghost" :aria-expanded="expanded" @click="expanded = !expanded">
+          {{ expanded ? '收起' : '更多筛选' }}
+        </TxButton>
+      </div>
+    </TxForm>
+  </template>
+---
+:::
+
+### 登录与注册
+用 `autocomplete` 标明每个字段，不开草稿，也不拦截粘贴：密码管理器与短信验证码都靠自动填充和粘贴。
+:::TuffDemoWrapper{demo="FormLoginDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <TxForm v-slot="{ submitting }" :model="form" :rules="rules" layout="stacked" :leave-confirm="false" @submit="submit">
+      <TxFormItem label="邮箱" prop="email">
+        <TuffInput v-model="form.email" type="email" autocomplete="username" />
+      </TxFormItem>
+      <TxFormItem v-if="mode === 'signup'" label="验证码" prop="code">
+        <TuffInput v-model="form.code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+      </TxFormItem>
+      <TxFormItem label="密码" prop="password">
+        <TuffInput
+          v-model="form.password"
+          type="password"
+          :autocomplete="mode === 'signin' ? 'current-password' : 'new-password'"
+        />
+      </TxFormItem>
+      <TxFormItem>
+        <TxButton variant="primary" native-type="submit" :loading="submitting">
+          {{ mode === 'signin' ? '登录' : '注册' }}
+        </TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### 长问卷
+`validate-on="submit"` 让用户填写时不被打断，提交时由 `TxFormErrorSummary` 列出所有问题，点击即跳到对应字段。
+:::TuffDemoWrapper{demo="FormSurveyDemo" code-lang="vue"}
+---
+code: |
+  <template>
+    <TxForm v-slot="{ submitting }" :model="answers" :rules="rules" validate-on="submit" @submit="submit">
+      <TxFormErrorSummary title="提交前还有几处要处理" />
+      <TxFormItem label="你的角色" prop="role" width="md">
+        <TxSelect v-model="answers.role" :options="roles" placeholder="请选择" />
+      </TxFormItem>
+      <TxFormItem label="使用年数" prop="years" width="sm">
+        <TxNumberInput v-model="answers.years" :min="0" :max="30" />
+      </TxFormItem>
+      <TxFormItem label="整体满意度" prop="satisfaction">
+        <TxRadioGroup v-model="answers.satisfaction" type="standard" direction="row">
+          <TxRadio v-for="level in levels" :key="level.value" :value="level.value" :label="level.label" />
+        </TxRadioGroup>
+      </TxFormItem>
+      <TxFormItem label="常用功能" prop="features" width="lg">
+        <TxSelect v-model="answers.features" :options="features" multiple />
+      </TxFormItem>
+      <TxFormItem label="建议" prop="feedback" help="选填，至少 10 个字">
+        <TxTextarea v-model="answers.feedback" :rows="3" />
+      </TxFormItem>
+      <TxFormItem prop="contact">
+        <TxCheckbox v-model="answers.contact" label="可以就这份反馈联系我" />
+      </TxFormItem>
+      <TxFormItem>
+        <TxButton variant="primary" native-type="submit" :loading="submitting">提交问卷</TxButton>
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
 ### Schema 校验
 `schema` 接受任意 Standard Schema v1 校验器，并按路径把每条问题交给对应字段。
 
@@ -297,6 +508,30 @@ LifeCycle.onBeforeClose(flushTxForms)
 app.mount('#app')
 ```
 
+插件的草稿归插件自己管，宿主不会替它清。草稿里有账号的数据时，按以下约定处理：
+
+- namespace 用 `user:<账号 id>`，未登录用 `anon`；还不知道是谁时给 `null`，期间不保存草稿。
+- 账号变化时，先删掉其他账号的草稿，再切换 namespace。插件每次启动也要删一次，因为账号可能在插件没运行时变了。
+- 读不到当前账号时，这类表单不开 `persist`。
+
+上面的 `provideTxFormHost` 换成：
+
+```ts
+import { clearTxFormDrafts, provideTxFormHost } from '@talex-touch/tuffex/form'
+import { usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
+import { ref } from 'vue'
+
+const storage = usePluginDraftStorage()
+const account = ref<string | null>(null)
+provideTxFormHost({ storage, namespace: account }, app)
+
+// 知道当前账号时调用：启动时一次，之后账号每次变化时一次
+function switchAccount(next: string): void {
+  void clearTxFormDrafts({ storage, namespace: ns => ns.startsWith('user:') && ns !== next })
+  account.value = next
+}
+```
+
 ### 最佳实践
 
 - `model` 保持为同一个响应式对象；换成新对象即视为新记录：基线重置，消息清空。
@@ -326,15 +561,18 @@ app.mount('#app')
 | `messages` | `Partial<FormMessages>` | - | 覆盖内置文案。 |
 | `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | 传给表单内有尺寸的控件。 |
 | `disabled` | `boolean` | `false` | 禁用表单内所有读取表单状态的控件，并阻止提交。 |
+| `readonly` | `boolean` | `false` | 把值当作记录展示：表单内读取表单状态的控件可以聚焦、复制，但不能修改，也不标必填；提交照常可用。 |
 | `reconcile` | `FormReconcile` | - | `setBaseline()` 或草稿带来的值覆盖用户改过的字段时，决定 `model` 的取值。 |
 | `persist` | `boolean \| FormPersistOptions` | `false` | 以 `id` 保存用户输入；`true` 采用默认设置。 |
 | `leaveConfirm` | `FormLeaveConfirm \| false` | 宿主的，其次 `window.confirm` | 带着草稿存不下的修改离开前询问；`false` 从不询问，适合筛选栏。 |
+| `autosave` | `boolean \| FormAutosaveOptions` | `false` | 停止编辑后经 `submit` 处理函数保存，不用提交按钮；只校验改过的字段，出错的字段改对后再存。`true` 等待 1 秒。 |
 
 #### 事件
 
 | 事件名 | 参数 | 说明 |
 |------|------|------|
 | `submit` | `(values: FormValues, event?: Event)` | 全部校验通过后调用，`values` 为副本；返回的 Promise 会被等待，期间 `submitting` 为 `true`。 |
+| `submit-success` | `(values: FormValues)` | 提交或自动保存成功：全部校验通过，且 `submit` 处理函数（如有）成功。 |
 | `validate` | `(valid: boolean)` | `validate()` 校验完全部字段后触发。 |
 | `persist-error` | `(error: unknown)` | 草稿读写失败；连续失败只触发一次。 |
 
@@ -357,7 +595,7 @@ app.mount('#app')
 | `rootError` | `string` | 只读，表单级错误。 |
 | `validate` | `() => Promise<boolean>` | 校验全部字段并显示消息，返回是否全部通过。 |
 | `validateField` | `(path: string) => Promise<boolean>` | 校验并显示单个字段。 |
-| `submit` | `() => Promise<boolean>` | 与原生提交相同：校验，再调用 `submit` 处理函数；返回是否成功。 |
+| `submit` | `() => Promise<boolean>` | 与原生提交相同：校验，再调用 `submit` 处理函数；返回是否成功。开启 `autosave` 时立即保存改动。 |
 | `reset` | `() => void` | 把 `model` 恢复为基线，并清空消息。 |
 | `resetFields` | `() => void` | `reset()` 的旧名。 |
 | `setBaseline` | `(values?: FormValues) => void` | 把取回的数据设为基线；省略参数时，以当前 `model` 为基线。 |
@@ -366,7 +604,7 @@ app.mount('#app')
 | `clearValidate` | `(paths?: string \| string[]) => void` | 隐藏消息，不修改 `model`。 |
 | `draft` | `FormDraftState` | 只读，草稿填入了哪些字段、还有哪些待恢复、写入时间、是否写入失败。 |
 | `flush` | `() => Promise<void>` | 立即写入草稿。 |
-| `confirmLeave` | `() => Promise<boolean>` | 应用内离开前调用；返回 `true` 即可离开。 |
+| `confirmLeave` | `() => Promise<boolean>` | 应用内离开前调用；返回 `true` 即可离开。开启 `autosave` 时先保存待存的改动。 |
 | `restoreDraft` | `() => Promise<boolean>` | 填入草稿中待恢复的字段，返回是否填入了。 |
 | `discardDraft` | `() => Promise<void>` | 把草稿填过的字段改回已保存的值，并删除草稿。 |
 
@@ -431,6 +669,7 @@ app.mount('#app')
 | `describedBy` | `string \| undefined` | 只读，消息或帮助文字的 id。 |
 | `invalid` / `required` | `boolean` | 只读，正在显示错误；必填。 |
 | `disabled` / `size` | `boolean` / `'sm' \| 'md' \| 'lg'` | 只读，表单的 `disabled` 与 `size`。 |
+| `readonly` | `boolean` | 只读，表单的 `readonly`：控件可以聚焦，但不能修改值。 |
 | `attrs` | `(host?: Record<string, unknown>) => Record<string, unknown>` | 合并后的控件属性；控件自身收到的属性优先，`aria-describedby` 两者都保留。 |
 
 ### provideTxFormHost
@@ -443,7 +682,7 @@ app.mount('#app')
 | `host.storage` | `FormDraftStorage` | `persist.storage` 未指定时草稿的存放处。 |
 | `host.leaveConfirm` | `FormLeaveConfirm` | 为没有自己 `leaveConfirm` 的表单询问是否离开。 |
 | `flushTxForms` | `() => Promise<void>` | 立即写入所有已挂载表单待写的草稿，用于页面会被直接关掉的场合。 |
-| `clearTxFormDrafts` | `(options?: { namespace?: string, storage?: FormDraftStorage }) => Promise<void>` | 删除全部草稿，或某个 namespace 的草稿。 |
+| `clearTxFormDrafts` | `(options?: { namespace?: string \| ((namespace: string) => boolean), storage?: FormDraftStorage }) => Promise<void>` | 删除全部草稿、某个 namespace 的草稿，或函数选中的每个 namespace 的草稿。 |
 
 ### 类型
 
@@ -492,6 +731,13 @@ app.mount('#app')
 | `get` / `remove` | `(key: string) => string \| null` / `(key: string) => void` | 读取或删除一份草稿。 |
 | `set` | `(key: string, value: string) => void` | 没存下时抛出异常，表单会先把草稿留在内存中。 |
 | `clear` | `(prefix: string) => void` | 可选；删除以 `prefix` 开头的键，供 `clearTxFormDrafts()` 使用。 |
+| `keys` | `(prefix: string) => string[]` | 可选；列出以 `prefix` 开头的键，`clearTxFormDrafts()` 用函数挑选 namespace 时需要。 |
+
+`FormAutosaveOptions`，`autosave` 的对象写法：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `delay` | `number` | 停止编辑多久后保存，单位毫秒。默认 `1000`。 |
 
 `FormMessages`，内置文案；默认值为英文，见 `FORM_DEFAULT_MESSAGES`：
 
@@ -509,6 +755,7 @@ app.mount('#app')
 | `draftRestored` / `draftPending` | `(savedAt: Date) => string` | 草稿已填入，或等待恢复时的提示。 |
 | `draftRestore` / `draftDiscard` | `string` | 提示中的按钮。 |
 | `leaveConfirm` | `string` | 没有其他询问方式时，经 `window.confirm` 询问的文字。 |
+| `autosaved` / `autosaveFailed` | `string` | 自动保存成功时，或失败且页面上没有说明原因时播报；屏幕上隐藏。 |
 
 ### CSS 变量
 
@@ -527,6 +774,7 @@ app.mount('#app')
 - 只有存在草稿存不下的修改时，刷新或关闭页面才会先询问：未开启 `persist`、改在敏感字段里，或写入还没落地。
 - 存储拒绝写入时草稿留在内存中，直到写入成功；宿主 namespace 为 `null`，或表单没有 `id`，都不保存草稿。
 - namespace 换成另一个时（如退出登录），上一个人改的内容仍留在表单里，但不写进任何草稿，再次修改前都算未保存。`clearTxFormDrafts({ namespace })` 删除那个人的草稿。
+- 会话也可能在应用关闭期间结束：确认当前账号后，`clearTxFormDrafts({ namespace: ns => ns.startsWith('user:') && ns !== current })` 删除其余账号的草稿。
 
 ## 概述
 
@@ -534,8 +782,10 @@ app.mount('#app')
 - 规则按顺序执行，遇到第一条错误即停止。内置检查对空值放行，只有 `required` 拒绝空值；空值指 `undefined`、`null`、`''`、`false` 与空数组。
 - 异步规则在同步规则通过后运行，输入时防抖 300ms，超过 1 秒显示 `messages.validating`；进度与结果由表单唯一的礼貌级 live region 播报。
 - 提交依次校验、调用处理函数；处理函数返回 `false`、抛出异常，或调用 `setErrors()` / `setRootError()` 均视为失败。成功时提交的值成为新基线，除非处理函数自己调用了 `setBaseline()`。失败时焦点移到错误摘要，没有摘要时移到第一个出错的字段。
+- 开启 `autosave` 后，停止编辑时只校验改过的字段：出错或异步校验未完成的字段沿用已保存的值，其余照常保存，结果由同一个礼貌级 live region 播报。提交与 `confirmLeave()` 立即保存，卸载时保存已通过校验的改动；`disabled` 或 `readonly` 的表单不自动保存。
+- `readonly` 时必填标记与 `required` 一并撤下，因为用户已经不能再填；值仍随提交送出。
 - 指向未挂载字段的错误会保留，字段挂载时显示，用于分步表单；`schema` 中没有对应字段的问题列在错误摘要中，并阻止提交。
-- 第一个控件拿到 id 与 label 的 `for`，其余控件用 `aria-labelledby` 指向 label；单选组、多选等无法用 `<label for>` 命名的控件拿到 id 后也改用 `aria-labelledby`。消息经 `aria-describedby` 关联，不设 `role="alert"`。表单的 `size` 与 `disabled` 也作用于表单项之外的控件。
+- 第一个控件拿到 id 与 label 的 `for`，其余控件用 `aria-labelledby` 指向 label；单选组、多选等无法用 `<label for>` 命名的控件拿到 id 后也改用 `aria-labelledby`。消息经 `aria-describedby` 关联，不设 `role="alert"`。表单的 `size`、`disabled` 与 `readonly` 也作用于表单项之外的控件。
 
 ## 技术实现
 

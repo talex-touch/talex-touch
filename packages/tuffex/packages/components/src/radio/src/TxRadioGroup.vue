@@ -30,6 +30,8 @@ const { type } = toRefs(props)
 
 const field = useTxFormField('group')
 const disabled = computed(() => props.disabled || !!field?.disabled)
+// In a readonly form the group shows its choice: arrows move focus, nothing is chosen.
+const readonly = computed(() => !!field?.readonly)
 const fieldAttrs = computed(() => field?.attrs() ?? {})
 
 const resolvedIndicatorVariant = computed<TxRadioIndicatorVariant>(() => {
@@ -90,6 +92,7 @@ const {
   groupRef,
   type,
   disabled,
+  readonly,
   modelValue: model,
   commitPendingModelValue,
 })
@@ -124,6 +127,7 @@ const tabStopValue = computed<TxRadioValue | undefined>(() => {
 const ctx = {
   model,
   disabled: computed(() => disabled.value),
+  readonly,
   type: computed(() => type.value),
   tabStopValue,
   registerRadio,
@@ -138,6 +142,7 @@ provide('tx-radio-group', ctx)
     class="tx-radio-group"
     role="radiogroup"
     :aria-disabled="disabled"
+    :aria-readonly="readonly || undefined"
     v-bind="fieldAttrs"
     :class="[
       `tx-radio-group--${type}`,

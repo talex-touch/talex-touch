@@ -6783,7 +6783,9 @@
     "draftPending": "You have unsaved changes from {time}.",
     "draftRestore": "Restore",
     "draftDiscard": "Discard",
-    "leaveConfirm": "You have unsaved changes. Leave anyway?"
+    "leaveConfirm": "You have unsaved changes. Leave anyway?",
+    "autosaved": "Changes saved.",
+    "autosaveFailed": "Your changes could not be saved."
   },
   "preset": {
     "import": "Import",

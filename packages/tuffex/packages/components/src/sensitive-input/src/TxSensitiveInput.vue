@@ -64,6 +64,7 @@ const copied = ref(false)
 let copiedTimer: ReturnType<typeof setTimeout> | undefined
 
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
+const isReadonly = computed(() => props.readonly || !!field?.readonly)
 // An explicit size wins; otherwise the form around it decides.
 const resolvedSize = computed(() => (props.size === 'md' && field ? field.size : props.size))
 
@@ -112,7 +113,7 @@ function reveal(): void {
 
   // A read-only secret is revealed but never edited, so it keeps the container
   // focused instead of moving into an input the user cannot change.
-  if (!props.readonly)
+  if (!isReadonly.value)
     nextTick(() => inputRef.value?.focus())
 }
 
@@ -306,7 +307,7 @@ defineExpose({
           :value="modelValue"
           :placeholder="placeholder"
           :disabled="isDisabled"
-          :readonly="readonly || isMasked"
+          :readonly="isReadonly || isMasked"
           :tabindex="isMasked ? -1 : 0"
           :aria-hidden="isMasked ? 'true' : undefined"
           :aria-invalid="resolvedStatus === 'error' ? 'true' : undefined"

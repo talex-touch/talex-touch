@@ -286,7 +286,14 @@ const LIMITS = {
   // buttons, grows `form/style.css` 7,202 -> 7,733 B; no other sheet moved, and the full entry
   // went 885,593 -> 886,124 B, exactly that growth. Checked for inlining: the new rules are
   // `.tx-form__draft*` alone. Actuals plus minimal headroom, growth from here fails.
-  fullCssBytes: 865.5 * 1024,
+  // 865.5 -> 866.5 the same day for TuffForm's templates and read-only state: two new sheets,
+  // TxDrawerForm's footer (`drawer-form/style.css`, 104 B) and TxStepsForm's step grid and footer
+  // (`steps-form/style.css`, 289 B), and checkbox, radio, select and switch dropping their hover
+  // and press feedback while read-only (+439 B across the four). The full entry went 886,124 ->
+  // 886,956 B, exactly that growth. Checked for inlining: the new sheets carry only
+  // `.tx-drawer-form*`, `.tx-steps-form*` and `.tx-form-step` rules, and the read-only rules sit
+  // on each control's own selectors. Actuals plus minimal headroom, growth from here fails.
+  fullCssBytes: 866.5 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus

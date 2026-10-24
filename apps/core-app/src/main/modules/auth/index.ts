@@ -110,7 +110,8 @@ const authState: AuthState = {
   isLoaded: false,
   isSignedIn: false,
   user: null,
-  sessionId: null
+  sessionId: null,
+  isSettled: false
 }
 
 const authStateListeners = new Set<AuthStateListener>()
@@ -176,7 +177,8 @@ function cloneAuthState(): AuthState {
     isLoaded: authState.isLoaded,
     isSignedIn: authState.isSignedIn,
     user: authState.user ? { ...authState.user } : null,
-    sessionId: authState.sessionId
+    sessionId: authState.sessionId,
+    isSettled: authState.isSettled
   }
 }
 
@@ -570,6 +572,8 @@ function updateAuthState(nextUser: AuthUser | null, sessionId?: string | null): 
   authState.isSignedIn = Boolean(nextUser)
   authState.user = nextUser
   authState.sessionId = sessionId ?? null
+  // Every call decides the session: signed in as this user, or signed out.
+  authState.isSettled = true
   setCachedAuthUser(nextUser)
   authLog.info('Auth state updated', {
     meta: {
@@ -2393,6 +2397,7 @@ function resetAuthModuleTestState(): void {
   authState.isSignedIn = false
   authState.user = null
   authState.sessionId = null
+  authState.isSettled = false
   authStateListeners.clear()
   appRootPath = ''
   transport = null

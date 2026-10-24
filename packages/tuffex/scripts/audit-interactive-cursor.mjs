@@ -60,6 +60,10 @@ const REVIEWED = {
   'select': 'TxSelectItem renders TxCardItem :clickable',
   'switch': 'root <button> gets pointer from switch/style/index.scss',
   'tabs': 'matches are a comment and a querySelector string; items are TxTabItem',
+  'drawer-form': 'footer renders TxButton; the fields are slot content',
+  'form': 'TxFormErrorSummary links are <a href="#field"> — UA supplies the pointer; tabindex="-1" only lets the summary take focus',
+  'modal-form': 'footer renders TxButton; the fields are slot content',
+  'steps-form': 'TxFormStep is a role="group" with tabindex="-1" so focus can land on the step that opens; not a control',
 }
 
 function walk(dir, out = []) {

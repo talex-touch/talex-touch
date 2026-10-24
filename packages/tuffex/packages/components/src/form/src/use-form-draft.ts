@@ -75,6 +75,11 @@ export interface FormDraftBridge {
   focus: (paths: string[]) => void
   announce: (text: string) => void
   onError: (error: unknown) => void
+  /** The step the user is on, from the `TxStepsForm` around the form. */
+  step?: {
+    read: () => number
+    restore: (step: number) => void
+  }
 }
 
 /**
@@ -161,6 +166,8 @@ export function useFormDraft(bridge: FormDraftBridge) {
   const restored = shallowRef(new Map<string, unknown>())
   const pending = shallowRef(new Map<string, StoredField>())
   const savedAt = ref<number | null>(null)
+  /** The step the draft that was found had been on. */
+  let savedStep: number | null = null
   const failed = ref(false)
   const queued = ref(false)
   const inFlight = ref(0)
@@ -281,9 +288,10 @@ export function useFormDraft(bridge: FormDraftBridge) {
         delete data[path]
     }
     const now = Date.now()
-    const text = Object.keys(data).length
-      ? JSON.stringify({ v: target.version, savedAt: now, expiresAt: now + target.ttl, data })
-      : null
+    const record: DraftRecord = { v: target.version, savedAt: now, expiresAt: now + target.ttl, data }
+    if (bridge.step)
+      record.step = bridge.step.read()
+    const text = Object.keys(data).length ? JSON.stringify(record) : null
     return enqueue(() => (text === null ? drop(target) : put(target, text)))
   }
 
@@ -323,7 +331,7 @@ export function useFormDraft(bridge: FormDraftBridge) {
       await enqueue(async () => {})
   }
 
-  watch([changedPaths, excluded], () => queueWrite())
+  watch([changedPaths, excluded, () => bridge.step?.read()], () => queueWrite())
 
   // --- Reading ---
   /** Restored fields still holding a change: a save, a reset or an edit back to the saved value ends the notice. */
@@ -399,10 +407,19 @@ export function useFormDraft(bridge: FormDraftBridge) {
     restored.value = filled
     pending.value = waiting
     savedAt.value = record.savedAt
-    if (filled.size)
+    savedStep = typeof record.step === 'number' ? record.step : null
+    if (filled.size) {
+      restoreStep()
       bridge.settle([...filled.keys()])
+    }
     if (notice.value)
       bridge.announce(notice.value)
+  }
+
+  /** The user goes back to the step the draft was written on. */
+  function restoreStep(): void {
+    if (savedStep !== null)
+      bridge.step?.restore(savedStep)
   }
 
   /** Reads the draft for the current key and lays it over the model. */
@@ -419,6 +436,7 @@ export function useFormDraft(bridge: FormDraftBridge) {
     restored.value = new Map()
     pending.value = new Map()
     savedAt.value = null
+    savedStep = null
     const id = ++readId
     reading = null
     if (!target || !mounted.value)
@@ -465,6 +483,7 @@ export function useFormDraft(bridge: FormDraftBridge) {
     restored.value = new Map()
     pending.value = new Map()
     savedAt.value = null
+    savedStep = null
     leftBehind.value = null
     void writeNow()
   }
@@ -474,6 +493,7 @@ export function useFormDraft(bridge: FormDraftBridge) {
     restored.value = new Map()
     pending.value = new Map()
     savedAt.value = null
+    savedStep = null
   }
 
   async function restoreDraft(moveFocus = false): Promise<boolean> {
@@ -493,6 +513,7 @@ export function useFormDraft(bridge: FormDraftBridge) {
     restored.value = next
     queueWrite()
     if (paths.length) {
+      restoreStep()
       bridge.settle(paths)
       bridge.announce(notice.value)
     }
@@ -516,6 +537,7 @@ export function useFormDraft(bridge: FormDraftBridge) {
     restored.value = new Map()
     pending.value = new Map()
     savedAt.value = null
+    savedStep = null
     if (reverted.length)
       bridge.forget(reverted)
     const written = writeNow()

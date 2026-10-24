@@ -1,9 +1,11 @@
 import type { FormRules } from '../src/types'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { defineComponent, nextTick, reactive, ref } from 'vue'
+import TxCheckbox from '../../checkbox/src/TxCheckbox.vue'
 import TxBlockInput from '../../group-block/src/TxBlockInput.vue'
 import TuffInput from '../../input/src/TxInput.vue'
+import TxNumberInput from '../../number-input/src/TxNumberInput.vue'
 import TxRadio from '../../radio/src/TxRadio.vue'
 import TxRadioGroup from '../../radio/src/TxRadioGroup.vue'
 import TxSelect from '../../select/src/TxSelect.vue'
@@ -20,7 +22,7 @@ const PopoverStub = defineComponent({
   template: '<div><slot name="reference" /><div v-if="modelValue"><slot /></div></div>',
 })
 
-const components = { TxForm, TxFormItem, TxFormRow, TuffInput, TxSwitch, TxRadio, TxRadioGroup, TxSelect, TxSelectItem, TxBlockInput }
+const components = { TxForm, TxFormItem, TxFormRow, TuffInput, TxSwitch, TxRadio, TxRadioGroup, TxSelect, TxSelectItem, TxBlockInput, TxCheckbox, TxNumberInput }
 
 function mountForm(template: string, state: Record<string, unknown> = {}) {
   return mount({
@@ -115,6 +117,85 @@ describe('txForm field contract', () => {
     await nextTick()
     expect(loose.attributes('disabled')).toBeDefined()
     expect(field.attributes('disabled')).toBeDefined()
+  })
+
+  it('shows the values of a readonly form to read, and still submits them', async () => {
+    const onSubmit = vi.fn()
+    const values = { name: 'Ann', agree: true, notify: false, plan: 'free', seats: 3, lang: 'en', tags: ['en', 'fr'] }
+    const wrapper = mount({
+      components,
+      setup() {
+        const model = reactive({ ...values, tags: [...values.tags] })
+        const rules: FormRules = { name: { required: true } }
+        const options = [{ value: 'en', label: 'English' }, { value: 'fr', label: 'French' }]
+        const formRef = ref<any>(null)
+        return { model, rules, options, formRef, onSubmit }
+      },
+      template: `
+        <TxForm id="f" ref="formRef" :model="model" :rules="rules" readonly @submit="onSubmit">
+          <TxFormItem prop="name" label="Name"><TuffInput v-model="model.name" /></TxFormItem>
+          <TxFormItem prop="agree" label="Terms"><TxCheckbox v-model="model.agree" label="I agree" /></TxFormItem>
+          <TxFormItem prop="notify" label="Notifications"><TxSwitch v-model="model.notify" /></TxFormItem>
+          <TxFormItem prop="plan" label="Plan">
+            <TxRadioGroup v-model="model.plan" type="standard">
+              <TxRadio value="free" label="Free" />
+              <TxRadio value="pro" label="Pro" />
+              <TxRadio value="team" label="Team" />
+            </TxRadioGroup>
+          </TxFormItem>
+          <TxFormItem prop="seats" label="Seats"><TxNumberInput v-model="model.seats" /></TxFormItem>
+          <TxFormItem prop="lang" label="Language"><TxSelect v-model="model.lang" :options="options" editable /></TxFormItem>
+          <TxFormItem prop="tags" label="Languages"><TxSelect v-model="model.tags" :options="options" multiple searchable /></TxFormItem>
+        </TxForm>
+      `,
+    }, { attachTo: document.body, global: { stubs: { TxPopover: PopoverStub } } })
+    await nextTick()
+
+    // A value only shown is not asked for.
+    expect(wrapper.find('.tx-form-item__required').exists()).toBe(false)
+    expect(wrapper.find('#f-name').attributes('readonly')).toBeDefined()
+    expect(wrapper.find('#f-name').attributes('required')).toBeUndefined()
+    expect(wrapper.find('.tx-number-input__field').attributes('readonly')).toBeDefined()
+    expect(wrapper.findAll('.tx-number-input__control').every(control => control.attributes('disabled') !== undefined)).toBe(true)
+
+    const checkbox = wrapper.find('.tx-checkbox')
+    const toggle = wrapper.find('.tuff-switch')
+    expect(checkbox.attributes('aria-readonly')).toBe('true')
+    expect(toggle.attributes('aria-readonly')).toBe('true')
+    await checkbox.trigger('click')
+    await toggle.trigger('click')
+
+    // Arrows still walk the radios, so each one can be read; none is chosen.
+    const group = wrapper.find('[role="radiogroup"]')
+    const radios = wrapper.findAll<HTMLButtonElement>('.tx-radio')
+    expect(group.attributes('aria-readonly')).toBe('true')
+    radios[0]!.element.focus()
+    await group.trigger('keydown', { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(radios[1]!.element)
+    await group.trigger('keydown', { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(radios[2]!.element)
+    await radios[1]!.trigger('click')
+
+    // Even a select that takes typing only shows its choice.
+    const select = wrapper.find('#f-lang')
+    expect(select.attributes('readonly')).toBeDefined()
+    await select.trigger('focus')
+    await select.trigger('keydown', { key: 'ArrowDown' })
+    expect(select.attributes('aria-expanded')).toBe('false')
+
+    const multiple = wrapper.find('.tuff-select__multi-trigger')
+    const search = wrapper.find('.tuff-select__multi-input')
+    expect(multiple.attributes('aria-readonly')).toBe('true')
+    expect(search.attributes('readonly')).toBeDefined()
+    await search.trigger('focus')
+    expect(multiple.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('.tuff-select__tag-remove').exists()).toBe(false)
+
+    await nextTick()
+    expect((wrapper.vm as any).model).toEqual(values)
+    expect(await (wrapper.vm as any).formRef.submit()).toBe(true)
+    expect(onSubmit).toHaveBeenCalledWith(values, undefined)
+    wrapper.unmount()
   })
 
   it('names a switch and a radio group the way each can be named', async () => {

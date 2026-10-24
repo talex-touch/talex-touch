@@ -43,27 +43,36 @@ function createFormMessages(i18n: I18nInstance): () => FormMessages {
     draftPending: (savedAt) => t('draftPending', { time: time(savedAt) }),
     draftRestore: t('draftRestore'),
     draftDiscard: t('draftDiscard'),
-    leaveConfirm: t('leaveConfirm')
+    leaveConfirm: t('leaveConfirm'),
+    autosaved: t('autosaved'),
+    autosaveFailed: t('autosaveFailed')
   })
 }
 
-type SessionState = Pick<AuthState, 'isLoaded' | 'isSignedIn' | 'user'>
+type SessionState = Pick<AuthState, 'isLoaded' | 'isSignedIn' | 'user' | 'isSettled'>
 
-function namespaceOf(state: SessionState): string {
-  return state.isSignedIn && state.user ? `user:${state.user.id}` : 'anon'
+/** `null` while it is not known: main has not loaded the session, or not checked it yet. */
+function namespaceOf(state: SessionState | null | undefined): string | null {
+  if (!state?.isLoaded) return null
+  if (state.isSignedIn && state.user) return `user:${state.user.id}`
+  // Signed out before the stored session was checked may still turn signed in.
+  return state.isSettled ? 'anon' : null
+}
+
+function isAccount(namespace: string): boolean {
+  return namespace.startsWith('user:')
 }
 
 /**
  * Whose drafts these are, so one account never finds what another typed, and what an account typed
- * goes when it signs out. `null` until main has read the session: the forms keep no draft before
+ * goes with its session. `null` until main has checked the session: the forms keep no draft before
  * then.
  *
- * Main tells only the main window of a sign-in change. The main window listens from the start, so a
- * sign-out also clears drafts left from an earlier run. Any other window starts once a form asks,
- * and asks main again whenever it comes back to the front.
- *
- * Drafts of a session that ended while the app was closed stay until they expire: at startup main
- * reads as signed out for a moment before the account has loaded, so a read alone cannot tell.
+ * Main tells only the main window of a sign-in change. The main window listens from the start, and
+ * each time the namespace is set it clears the drafts of every other account: at startup those of a
+ * session that ended while the app was closed, later those of an account that signed out. Any other
+ * window starts once a form asks, asks main again whenever it comes back to the front, and clears
+ * the account it leaves.
  */
 function createDraftNamespace(): () => string | null {
   const transport = useTuffTransport()
@@ -75,13 +84,18 @@ function createDraftNamespace(): () => string | null {
   let asked = 0
 
   function settle(state: SessionState | null | undefined): void {
-    // Main has not read the session yet.
-    if (!state?.isLoaded) return
     const next = namespaceOf(state)
     const previous = current.value
-    if (next === previous) return
-    // Before the switch, so the forms still in that namespace drop the write they were about to make.
-    if (previous?.startsWith('user:')) void clearTxFormDrafts({ namespace: previous })
+    if (next === null || next === previous) return
+    // Before the switch, so the forms still in a cleared namespace drop the write they were about to
+    // make. Only main hears every change in order; another window clears no more than it leaves.
+    if (main) {
+      void clearTxFormDrafts({
+        namespace: (namespace) => isAccount(namespace) && namespace !== next
+      })
+    } else if (previous !== null && isAccount(previous)) {
+      void clearTxFormDrafts({ namespace: previous })
+    }
     current.value = next
   }
 

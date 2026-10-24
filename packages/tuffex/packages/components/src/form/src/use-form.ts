@@ -30,6 +30,7 @@ import {
   inject,
   nextTick,
   onBeforeUnmount,
+  onMounted,
   reactive,
   ref,
   shallowRef,
@@ -38,7 +39,7 @@ import {
   useId,
   watch,
 } from 'vue'
-import { TX_FORM_HOST_KEY } from './context'
+import { TX_FORM_HOST_KEY, TX_FORM_SHELL_KEY } from './context'
 import {
   assignInto,
   cloneValue,
@@ -64,6 +65,10 @@ const SLOW_AFTER = 1000
 const NONE = Symbol('none')
 /** Synchronous validators get a signal too; nothing ever aborts it. */
 const idleSignal = new AbortController().signal
+/** Editing pauses this long before an autosave, unless `autosave.delay` says otherwise. */
+const AUTOSAVE_DELAY = 1000
+/** A press ends at `mouseup`, or without one when it becomes a drag, opens a context menu or a pen cancels it. */
+const PRESS_ENDS = ['mouseup', 'dragend', 'contextmenu', 'pointercancel'] as const
 
 const FOCUSABLE = [
   'input:not([type="hidden"]):not([disabled])',
@@ -119,6 +124,7 @@ interface FieldEntry {
 
 interface FormEmit {
   (event: 'validate', valid: boolean): void
+  (event: 'submit-success', values: FormValues): void
   (event: 'persist-error', error: unknown): void
 }
 
@@ -171,6 +177,7 @@ function byDocumentOrder(entries: FieldEntry[]): FieldEntry[] {
 export function useFormStore(props: FormProps, emit: FormEmit) {
   const instance = getCurrentInstance()
   const host = inject(TX_FORM_HOST_KEY, null)
+  const shell = inject(TX_FORM_SHELL_KEY, null)
   const autoId = useId()
 
   const fallbackModel = reactive<FormValues>({})
@@ -185,7 +192,9 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     return props.labelPosition ? 'side' : 'auto'
   })
   const labelAlign = computed<FormLabelAlign>(() => props.labelAlign ?? (props.labelPosition === 'left' ? 'start' : 'end'))
-  const requiredMark = computed<FormRequiredMark>(() => props.requiredMark ?? 'asterisk')
+  const readonly = computed(() => !!props.readonly)
+  // A form only shown asks for nothing, so it marks nothing either.
+  const requiredMark = computed<FormRequiredMark>(() => (readonly.value ? 'none' : props.requiredMark ?? 'asterisk'))
   const messages = computed<FormMessages>(() => ({
     ...FORM_DEFAULT_MESSAGES,
     ...toValue(host?.messages),
@@ -198,6 +207,8 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
   const baseline = shallowRef<FormValues>(cloneValue(model.value))
   /** Moves on every `setBaseline()`, so a submit knows whether the host set one meanwhile. */
   let baselineRevision = 0
+  /** Moves when a new model object arrives: a save that outlives its record leaves the next one alone. */
+  let modelRevision = 0
   /** Moves whenever `setErrors()` or `setRootError()` reports a problem, so a submit knows its handler did. */
   let failureReports = 0
 
@@ -234,10 +245,11 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
       const ordered = byDocumentOrder(entries.value)
       const entry = ordered.find(item => paths.some(path => pathsOverlap(item.path, path))) ?? ordered[0]
       if (entry)
-        focusEntry(entry)
+        void focusEntry(entry)
     },
     announce,
     onError: error => emit('persist-error', error),
+    step: shell?.step,
   })
 
   const formRules = computed(() => {
@@ -570,14 +582,67 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     return {
       message: entry.message,
       required: entry.required,
-      commit: () => commit(entry),
+      commit: () => leave(entry),
       dispose: () => {
+        heldBack.delete(entry)
         cancelAsync(entry)
         scope.stop()
         entries.value = entries.value.filter(item => item !== entry)
       },
     }
   }
+
+  // --- Presses ---
+  // A message that opens while the mouse is down moves what is under it. A
+  // field left by pressing the button below it would push the button away,
+  // the release would land elsewhere, and the click would reach neither. Such
+  // a field commits once the press is over and its click has run.
+  let pressing = false
+  const heldBack = new Set<FieldEntry>()
+
+  function onPress(event: MouseEvent): void {
+    if (event.button === 0)
+      pressing = true
+  }
+
+  function onRelease(): void {
+    if (!pressing)
+      return
+    pressing = false
+    if (heldBack.size)
+      setTimeout(commitHeldBack)
+  }
+
+  function commitHeldBack(): void {
+    if (pressing)
+      return
+    const fields = [...heldBack]
+    heldBack.clear()
+    fields.forEach(commit)
+  }
+
+  /** The user left the field. */
+  function leave(entry: FieldEntry): void {
+    if (pressing)
+      heldBack.add(entry)
+    else
+      commit(entry)
+  }
+
+  onMounted(() => {
+    window.addEventListener('mousedown', onPress, true)
+    for (const type of PRESS_ENDS)
+      window.addEventListener(type, onRelease, true)
+    window.addEventListener('blur', onRelease)
+  })
+
+  onBeforeUnmount(() => {
+    window.removeEventListener('mousedown', onPress, true)
+    for (const type of PRESS_ENDS)
+      window.removeEventListener(type, onRelease, true)
+    window.removeEventListener('blur', onRelease)
+    heldBack.clear()
+  })
 
   function commit(entry: FieldEntry): void {
     const value = entry.value.value
@@ -646,10 +711,15 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
   const showSummary = computed(() => !!rootError.value || (shownAll.value && summary.value.length > 0))
   const summaryAttached = computed(() => summaries.value.length > 0)
 
-  function focusEntry(entry: FieldEntry): void {
+  async function focusEntry(entry: FieldEntry): Promise<void> {
     const root = entry.reg.root()
     if (!root)
       return
+    // A step not shown has nothing that can take focus until it is.
+    if (shell?.reveal) {
+      await shell.reveal(root)
+      await nextTick()
+    }
     const doc = root.ownerDocument
     let control = doc.getElementById(entry.reg.controlId())
     // A control may hide the element holding the id (a masked secret) and
@@ -678,25 +748,12 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     }
     const first = byDocumentOrder(entries.value).find(entry => entry.message.value?.kind === 'error')
     if (first)
-      focusEntry(first)
+      await focusEntry(first)
   }
 
   // --- API ---
-  async function validate(): Promise<boolean> {
-    shownAll.value = true
-    for (const entry of entries.value)
-      entry.shown.value = true
-    await Promise.all([...entries.value.map(settleField), settleSchema()])
-    for (const entry of entries.value)
-      entry.reg.validated?.(!entry.blocking.value)
-    const result = valid.value
-    emit('validate', result)
-    return result
-  }
-
-  async function validateField(path: string): Promise<boolean> {
-    const key = toPathKey(path)
-    const matches = entries.value.filter(entry => entry.path === key)
+  /** Shows the messages of `matches` and brings their checks up to date. Resolves whether they pass. */
+  async function check(matches: FieldEntry[]): Promise<boolean> {
     for (const entry of matches)
       entry.shown.value = true
     await Promise.all([...matches.map(settleField), settleSchema()])
@@ -705,32 +762,57 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     return matches.every(entry => !entry.blocking.value)
   }
 
-  async function submit(event?: Event): Promise<boolean> {
-    if (submitting.value || disabled.value)
-      return false
-    submitted.value = true
-    rootError.value = ''
+  async function validate(): Promise<boolean> {
+    shownAll.value = true
+    await check(entries.value)
+    const result = valid.value
+    emit('validate', result)
+    return result
+  }
 
-    if (!await validate()) {
-      for (const orphan of schemaAttribution.value.orphans)
-        console.warn(`[TxForm] The schema reports "${orphan.message}" at "${orphan.key || '(root)'}", which no TxFormItem shows.`)
-      await focusFirstError()
-      return false
+  function validateField(path: string): Promise<boolean> {
+    const key = toPathKey(path)
+    return check(entries.value.filter(entry => entry.path === key))
+  }
+
+  async function validateWithin(container: HTMLElement): Promise<boolean> {
+    const inside = entries.value.filter((entry) => {
+      const root = entry.reg.root()
+      return !!root && container.contains(root)
+    })
+    if (await check(inside))
+      return true
+    await nextTick()
+    const first = byDocumentOrder(inside).find(entry => entry.message.value?.kind === 'error')
+    if (first)
+      await focusEntry(first)
+    return false
+  }
+
+  /**
+   * Hands `snapshot` to `onSubmit` and, once it succeeds, makes it the
+   * baseline. A submit and an autosave both end here.
+   */
+  async function save(snapshot: FormValues, event: Event | undefined, moveFocus: boolean): Promise<boolean> {
+    const handler = props.onSubmit
+    if (!handler) {
+      emit('submit-success', cloneValue(snapshot))
+      return true
     }
 
-    const handler = props.onSubmit
-    if (!handler)
-      return true
-
-    // The handler gets its own copy: it may trim or rename fields for the request.
-    const snapshot = cloneValue(model.value)
     const revision = baselineRevision
+    const record = modelRevision
     const reported = failureReports
     submitting.value = true
     try {
+      // The handler gets its own copy: it may trim or rename fields for the request.
       const result = await handler(cloneValue(snapshot), event)
+      // The form moved on to another record meanwhile: nothing here is that one's.
+      if (record !== modelRevision)
+        return result !== false
       if (result === false || failureReports !== reported) {
-        await focusFirstError()
+        if (moveFocus)
+          await focusFirstError()
         return false
       }
       // What was sent is what is saved now, unless the handler loaded the
@@ -743,17 +825,166 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
       }
       strays.value = new Map()
       drafts.afterSave()
+      emit('submit-success', cloneValue(snapshot))
       return true
     }
     catch (error) {
       handleError(error, instance, ErrorCodes.COMPONENT_EVENT_HANDLER, false)
-      if (failureReports !== reported)
+      if (moveFocus && failureReports !== reported)
         await focusFirstError()
       return false
     }
     finally {
       submitting.value = false
     }
+  }
+
+  async function submit(event?: Event): Promise<boolean> {
+    if (submitting.value || disabled.value)
+      return false
+    // A step that is not the last moves on instead.
+    if (shell?.beforeSubmit && !await shell.beforeSubmit())
+      return false
+    // A form saves one way: a submit in an autosaving form saves the changes now.
+    if (autosaveDelay.value !== null)
+      return saveChanges()
+    submitted.value = true
+    rootError.value = ''
+
+    if (!await validate()) {
+      for (const orphan of schemaAttribution.value.orphans)
+        console.warn(`[TxForm] The schema reports "${orphan.message}" at "${orphan.key || '(root)'}", which no TxFormItem shows.`)
+      await focusFirstError()
+      return false
+    }
+    return save(cloneValue(model.value), event, true)
+  }
+
+  // --- Autosave ---
+  const autosaveDelay = computed<number | null>(() => {
+    const option = props.autosave
+    if (!option)
+      return null
+    const delay = option === true ? undefined : option.delay
+    return typeof delay === 'number' && delay >= 0 ? delay : AUTOSAVE_DELAY
+  })
+  let autosaveTimer: ReturnType<typeof setTimeout> | undefined
+  /** The saves running now, so leaving can wait for them. */
+  let autosaving: Promise<boolean> | null = null
+  /** Asked for while a save ran: it runs once more for the edits made meanwhile. */
+  let autosaveAgain = false
+
+  watch(() => !!props.autosave && !props.onSubmit, (missing) => {
+    if (missing)
+      console.warn('[TxForm] `autosave` saves through `onSubmit`; this form has none, so it saves nothing.')
+  }, { immediate: true })
+
+  function cancelAutosave(): void {
+    clearTimeout(autosaveTimer)
+    autosaveTimer = undefined
+  }
+
+  function scheduleAutosave(): void {
+    cancelAutosave()
+    const delay = autosaveDelay.value
+    if (delay === null || !props.onSubmit || disabled.value || readonly.value || !changedPaths.value.length)
+      return
+    autosaveTimer = setTimeout(() => {
+      autosaveTimer = undefined
+      void saveChanges()
+    }, delay)
+  }
+
+  /** The asynchronous rules have a result for the value the field holds now. */
+  function asyncSettled(entry: FieldEntry): boolean {
+    if (!entry.asyncRules.value.length || entry.sync.value.error)
+      return true
+    return entry.run === null && entry.async.value !== null && isEqualValue(entry.value.value, entry.checked)
+  }
+
+  /**
+   * The model as it may be saved now: a changed field that shows an error,
+   * or whose asynchronous check has not finished, keeps its saved value, and
+   * the first of them is `held`. `values` is `null` when that leaves nothing
+   * to save.
+   */
+  function savableChanges(): { values: FormValues | null, held: FieldEntry | undefined } {
+    const values = cloneValue(model.value)
+    let held: FieldEntry | undefined
+    for (const path of changedPaths.value) {
+      const blocked = entriesAt([path]).find(entry => !!entry.blocking.value || !asyncSettled(entry))
+      if (!blocked)
+        continue
+      held ??= blocked
+      setPath(values, path, cloneValue(getPath(baseline.value, path)))
+    }
+    return { values: collectChangedPaths(values, baseline.value).length ? values : null, held }
+  }
+
+  /** One autosave: checks the changed fields, then saves those that pass. Resolves whether it saved. */
+  async function saveOnce(): Promise<boolean> {
+    if (!changedPaths.value.length || disabled.value || readonly.value)
+      return false
+    const before = cloneValue(model.value)
+    await check(entriesAt(changedPaths.value))
+    // Editing went on while the checks ran: the pause after it saves.
+    if (!isEqualValue(model.value, before))
+      return false
+    const { values, held } = savableChanges()
+    if (!values) {
+      if (held?.blocking.value)
+        announce(`${messages.value.errorPrefix}${held.blocking.value}`)
+      return false
+    }
+    rootError.value = ''
+    const saved = await save(values, undefined, false)
+    if (saved)
+      announce(messages.value.autosaved)
+    // A form-level error is an alert of its own.
+    else if (!rootError.value)
+      announce(messages.value.autosaveFailed)
+    return saved
+  }
+
+  /** Saves the changes now instead of after the pause. Resolves whether the last save went through. */
+  function saveChanges(): Promise<boolean> {
+    cancelAutosave()
+    if (autosaving) {
+      autosaveAgain = true
+      return autosaving
+    }
+    const run = (async () => {
+      let saved: boolean
+      do {
+        autosaveAgain = false
+        saved = await saveOnce()
+      } while (autosaveAgain)
+      return saved
+    })()
+    autosaving = run.finally(() => {
+      autosaving = null
+    })
+    return autosaving
+  }
+
+  /** Saves what has passed its checks, without waiting for any: the form is going away. */
+  function saveSettled(): void {
+    if (!props.onSubmit || disabled.value || readonly.value)
+      return
+    const { values } = savableChanges()
+    if (values)
+      void save(values, undefined, false)
+  }
+
+  // Edits only: a save moving the baseline is not one.
+  watch(() => model.value, scheduleAutosave, { deep: true })
+
+  async function confirmLeave(): Promise<boolean> {
+    if (autosaveTimer !== undefined)
+      await saveChanges()
+    else if (autosaving)
+      await autosaving
+    return drafts.confirmLeave()
   }
 
   function forgetDisplay(entry: FieldEntry): void {
@@ -872,6 +1103,10 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
   watch([() => props.model, drafts.key], ([next], [previous, previousKey]) => {
     drafts.capture(previous ?? fallbackModel, previousKey ?? null)
     if (next !== previous) {
+      // A save still waiting belongs to the record that is going: call `confirmLeave()` first to keep it.
+      cancelAutosave()
+      autosaveAgain = false
+      modelRevision++
       baselineRevision++
       baseline.value = cloneValue(model.value)
       rootError.value = ''
@@ -887,6 +1122,15 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
   })
 
   onBeforeUnmount(() => {
+    // Leaving inside the pause, without `confirmLeave()`: what has passed its
+    // checks is saved, after the save already running.
+    if (autosaveTimer !== undefined) {
+      cancelAutosave()
+      if (autosaving)
+        void autosaving.then(saveSettled)
+      else
+        saveSettled()
+    }
     for (const entry of entries.value) {
       cancelAsync(entry)
       entry.scope.stop()
@@ -901,7 +1145,9 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     messages,
     size,
     disabled,
+    readonly,
     register,
+    validateWithin,
     rootError,
     summary,
     showSummary,
@@ -912,6 +1158,10 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
       }
     },
   }
+
+  const disconnect = shell?.connect(context)
+  if (disconnect)
+    onBeforeUnmount(disconnect)
 
   return {
     context,
@@ -937,7 +1187,7 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     draft: drafts.draft,
     notice: drafts.notice,
     flush: drafts.flush,
-    confirmLeave: drafts.confirmLeave,
+    confirmLeave,
     restoreDraft: drafts.restoreDraft,
     discardDraft: drafts.discardDraft,
   }

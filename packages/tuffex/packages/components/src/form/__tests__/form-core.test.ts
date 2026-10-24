@@ -96,6 +96,83 @@ describe('txForm validation', () => {
     wrapper.unmount()
   })
 
+  it('holds the message back while the press that left the field is down', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount({
+      components,
+      setup() {
+        const model = reactive({ name: '' })
+        const rules: FormRules = { name: { minLength: 3 } }
+        return { model, rules }
+      },
+      template: `
+        <TxForm :model="model" :rules="rules">
+          <TxFormItem prop="name" label="Name">
+            <TuffInput v-model="model.name" />
+          </TxFormItem>
+          <button type="button" class="below">Below</button>
+        </TxForm>
+      `,
+    }, { attachTo: document.body })
+
+    const input = wrapper.find('input')
+    const below = wrapper.find('.below').element as HTMLElement
+    input.element.focus()
+    await input.setValue('ab')
+
+    // A message opening now would move the button out from under the release.
+    below.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+    below.focus()
+    await nextTick()
+    expect(messageText(wrapper)).toBeNull()
+
+    // The click comes after the release, in the same task.
+    below.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    await nextTick()
+    expect(messageText(wrapper)).toBeNull()
+
+    vi.runAllTimers()
+    await nextTick()
+    expect(messageText(wrapper)).toBe('Name needs at least 3 characters')
+    wrapper.unmount()
+  })
+
+  it('shows nothing held back once the click it waited for resets the form', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount({
+      components,
+      setup() {
+        const model = reactive({ name: '' })
+        const rules: FormRules = { name: { minLength: 3 } }
+        const formRef = ref<any>(null)
+        return { model, rules, formRef }
+      },
+      template: `
+        <TxForm ref="formRef" :model="model" :rules="rules">
+          <TxFormItem prop="name" label="Name">
+            <TuffInput v-model="model.name" />
+          </TxFormItem>
+          <button type="button" class="reset" @click="formRef.reset()">Reset</button>
+        </TxForm>
+      `,
+    }, { attachTo: document.body })
+
+    const input = wrapper.find('input')
+    const reset = wrapper.find('.reset').element as HTMLElement
+    input.element.focus()
+    await input.setValue('ab')
+
+    reset.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+    reset.focus()
+    reset.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    reset.click()
+    vi.runAllTimers()
+    await nextTick()
+    expect((wrapper.vm as any).model.name).toBe('')
+    expect(messageText(wrapper)).toBeNull()
+    wrapper.unmount()
+  })
+
   it('does not count switching to another window as leaving the field', async () => {
     const wrapper = mount({
       components,

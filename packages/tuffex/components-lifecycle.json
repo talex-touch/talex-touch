@@ -1,7 +1,7 @@
 {
   "$schema": "./components-lifecycle.schema.json",
   "currentVersion": "0.9.1",
-  "totalComponents": 186,
+  "totalComponents": 189,
   "versions": [
     {
       "version": "0.9.1",
@@ -645,6 +645,11 @@
       "since": "0.3.4",
       "suite": "base"
     },
+    "drawer-form": {
+      "slug": "drawer-form",
+      "since": "0.9.1",
+      "suite": "base"
+    },
     "dropdown-menu": {
       "slug": "dropdown-menu",
       "since": "0.3.4",
@@ -893,6 +898,11 @@
     "modal": {
       "slug": "modal",
       "since": "0.3.4",
+      "suite": "base"
+    },
+    "modal-form": {
+      "slug": "modal-form",
+      "since": "0.9.1",
       "suite": "base"
     },
     "mode-chip": {
@@ -1178,6 +1188,11 @@
     "steps": {
       "slug": "steps",
       "since": "0.3.4",
+      "suite": "base"
+    },
+    "steps-form": {
+      "slug": "steps-form",
+      "since": "0.9.1",
       "suite": "base"
     },
     "stream-element": {

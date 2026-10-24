@@ -280,6 +280,9 @@ const SECTION_ORDER: Record<string, string[]> = {
     '/docs/dev/components/divider',
     // base — Form
     '/docs/dev/components/form',
+    '/docs/dev/components/modal-form',
+    '/docs/dev/components/drawer-form',
+    '/docs/dev/components/steps-form',
     '/docs/dev/components/input',
     '/docs/dev/components/sensitive-input',
     '/docs/dev/components/textarea',

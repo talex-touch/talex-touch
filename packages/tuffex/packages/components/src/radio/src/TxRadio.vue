@@ -20,6 +20,7 @@ const emit = defineEmits<{
 interface RadioGroupContext {
   model: { value: TxRadioValue | undefined }
   disabled: { value: boolean }
+  readonly?: { value: boolean }
   type: { value: TxRadioType }
   tabStopValue?: { value: TxRadioValue | undefined }
   registerRadio?: (registration: { value: TxRadioValue, isDisabled: () => boolean }) => () => void
@@ -33,6 +34,7 @@ const { label, type: propType } = toRefs(props)
 const uncontrolledChecked = ref(false)
 
 const isDisabled = computed(() => (group?.disabled.value ?? false) || props.disabled)
+const isReadonly = computed(() => group?.readonly?.value ?? false)
 const isChecked = computed(() => {
   if (group)
     return group.model.value === props.value
@@ -66,7 +68,7 @@ const rovingTabindex = computed<number | undefined>(() => {
 })
 
 function select() {
-  if (isDisabled.value)
+  if (isDisabled.value || isReadonly.value)
     return
 
   // Group-controlled: selection flows through the shared group model (unchanged).
@@ -98,7 +100,7 @@ function select() {
     :tabindex="rovingTabindex"
     :disabled="isDisabled"
     :class="[
-      { 'is-checked': isChecked, 'is-disabled': isDisabled, 'is-morphing': morphing },
+      { 'is-checked': isChecked, 'is-disabled': isDisabled, 'is-readonly': isReadonly, 'is-morphing': morphing },
       `tx-radio--${radioType}`,
     ]"
     @click="select"
@@ -148,12 +150,12 @@ function select() {
       color: color-mix(in srgb, var(--tx-color-primary, #409eff) 92%, var(--tx-text-color-regular, #606266));
     }
 
-    &:hover:not(.is-disabled):not(.is-checked) {
+    &:hover:not(.is-disabled):not(.is-readonly):not(.is-checked) {
       background: color-mix(in srgb, var(--tx-bg-color-overlay, #fff) 18%, transparent);
       border-color: color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 60%, transparent);
     }
 
-    &:active:not(.is-disabled) {
+    &:active:not(.is-disabled):not(.is-readonly) {
       transform: scale(0.98);
     }
 
@@ -184,12 +186,12 @@ function select() {
       }
     }
 
-    &:hover:not(.is-disabled) {
+    &:hover:not(.is-disabled):not(.is-readonly) {
       border-color: color-mix(in srgb, var(--tx-border-color-light, #e4e7ed) 90%, transparent);
       background: color-mix(in srgb, var(--tx-bg-color-overlay, #fff) 34%, transparent);
     }
 
-    &:active:not(.is-disabled) {
+    &:active:not(.is-disabled):not(.is-readonly) {
       transform: scale(0.995);
     }
 
@@ -216,17 +218,21 @@ function select() {
       }
     }
 
-    &:hover:not(.is-disabled) {
+    &:hover:not(.is-disabled):not(.is-readonly) {
       background: color-mix(in srgb, var(--tx-bg-color-overlay, #fff) 14%, transparent);
     }
 
-    &:active:not(.is-disabled) {
+    &:active:not(.is-disabled):not(.is-readonly) {
       transform: scale(0.99);
     }
 
     &:focus-visible {
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--tx-color-primary, #409eff) 22%, transparent);
     }
+  }
+
+  &.is-readonly {
+    cursor: default;
   }
 
   &.is-disabled {

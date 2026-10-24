@@ -209,15 +209,19 @@
     pointer-events: none;
   }
 
-  &:hover:not(.is-disabled):not(.is-loading) .tuff-switch__track {
+  &.is-readonly {
+    cursor: default;
+  }
+
+  &:hover:not(.is-disabled):not(.is-loading):not(.is-readonly) .tuff-switch__track {
     box-shadow: 0 0 12px 1px var(--tuff-switch-track-color);
   }
 
-  &.is-active:hover:not(.is-disabled):not(.is-loading) .tuff-switch__track {
+  &.is-active:hover:not(.is-disabled):not(.is-loading):not(.is-readonly) .tuff-switch__track {
     box-shadow: 0 0 16px 1px color-mix(in srgb, var(--tuff-switch-active-color) 55%, white);
   }
 
-  &:active:not(.is-disabled):not(.is-loading) .tuff-switch__thumb {
+  &:active:not(.is-disabled):not(.is-loading):not(.is-readonly) .tuff-switch__thumb {
     transform: scale(0.85);
   }
 

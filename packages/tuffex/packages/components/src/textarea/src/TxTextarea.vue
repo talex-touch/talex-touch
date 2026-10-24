@@ -47,6 +47,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const isFocused = ref(false)
 
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
+const isReadonly = computed(() => props.readonly || !!field?.readonly)
 // A TxFormItem showing an error for this field turns it to the error status.
 const resolvedStatus = computed(() => (field?.invalid ? 'error' : props.status))
 
@@ -99,7 +100,7 @@ defineExpose({
       `tx-textarea--resize-${resize}`,
       {
         'is-disabled': isDisabled,
-        'is-readonly': readonly,
+        'is-readonly': isReadonly,
         'is-focused': isFocused,
         'has-counter': showCount,
         'is-morphing': morphing,
@@ -115,7 +116,7 @@ defineExpose({
       :placeholder="placeholder"
       :rows="rows"
       :disabled="isDisabled"
-      :readonly="readonly"
+      :readonly="isReadonly"
       :maxlength="maxLength"
       v-bind="textareaAttrs"
       @focus="handleFocus"

@@ -86,7 +86,9 @@ export function useFormItem(options: FormItemOptions) {
   const message = computed(() => (options.showMessage() ? handle.value?.message.value ?? null : null))
   /** An error is showing. It stays true with `showMessage` off, where the host shows the error itself. */
   const invalid = computed(() => handle.value?.message.value?.kind === 'error')
-  const required = computed(() => handle.value?.required.value ?? options.required())
+  const readonly = computed(() => form?.readonly.value ?? false)
+  // A value only shown is not asked for: no mark, no `required` on the control.
+  const required = computed(() => !readonly.value && (handle.value?.required.value ?? options.required()))
   const note = computed<FormItemNote | null>(() => {
     if (message.value)
       return message.value
@@ -138,6 +140,9 @@ export function useFormItem(options: FormItemOptions) {
     },
     get disabled() {
       return form?.disabled.value ?? false
+    },
+    get readonly() {
+      return readonly.value
     },
     get size() {
       return form?.size.value ?? 'md'
