@@ -675,7 +675,7 @@ function switchAccount(next: string): void {
 
 | Name | Type | Description |
 |------|-----------|-------------|
-| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | Gives the forms below — or, with `app`, in the whole app — what the host decides. Call it in a component's `setup`. |
+| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | Gives the forms below — or, with `app`, in the whole app — what the host decides. Call it in a component's `setup`. Also exported from `@talex-touch/tuffex/utils`, which does not load the form. |
 | `host.messages` | `MaybeRefOrGetter<Partial<FormMessages>>` | Text in the host's language; a ref or getter follows locale switches. |
 | `host.namespace` | `MaybeRefOrGetter<string \| null>` | Whose drafts these are, as `user:42`; `null` until that is known, and no draft is kept meanwhile. |
 | `host.storage` | `FormDraftStorage` | Where drafts go when `persist.storage` does not say. |
@@ -790,6 +790,6 @@ function switchAccount(next: string): void {
 
 - `auto` reads the form's own width through a container query; side layout shares the label column across items with CSS subgrid.
 - `schema` depends only on the Standard Schema v1 interface, not on a validation library.
-- Source: `packages/tuffex/packages/components/src/form/`; `useTxFormField`, which the controls read, lives in `packages/tuffex/packages/utils/form-field.ts`, so an on-demand import of a control does not pull the form in.
+- Source: `packages/tuffex/packages/components/src/form/`; `useTxFormField`, which the controls read, lives in `packages/tuffex/packages/utils/form-field.ts`, so an on-demand import of a control does not pull the form in, and `provideTxFormHost` in `packages/tuffex/packages/utils/form-host.ts`, so an app can provide it at startup without loading the form.
 
 <TuffDocSourceLink />

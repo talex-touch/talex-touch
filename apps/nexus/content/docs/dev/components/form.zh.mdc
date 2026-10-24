@@ -676,7 +676,7 @@ function switchAccount(next: string): void {
 
 | 名称 | 类型 | 说明 |
 |------|------|------|
-| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | 在组件 `setup` 中，或传入 `app` 时在整个应用中，为下层表单提供宿主的设置。 |
+| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | 在组件 `setup` 中，或传入 `app` 时在整个应用中，为下层表单提供宿主的设置。也从 `@talex-touch/tuffex/utils` 导出，从那里引入不会加载表单。 |
 | `host.messages` | `MaybeRefOrGetter<Partial<FormMessages>>` | 当前语言的文案；传 ref 或 getter 时随语言切换。 |
 | `host.namespace` | `MaybeRefOrGetter<string \| null>` | 草稿归属，如 `user:42`；尚不知道时传 `null`，期间不保存草稿。 |
 | `host.storage` | `FormDraftStorage` | `persist.storage` 未指定时草稿的存放处。 |
@@ -791,6 +791,6 @@ function switchAccount(next: string): void {
 
 - `auto` 布局用容器查询判断表单自身的宽度；侧边布局用 CSS subgrid 让各项共享 label 列。
 - `schema` 只依赖 Standard Schema v1 接口，不引入校验库。
-- 源码：`packages/tuffex/packages/components/src/form/`；控件读取的 `useTxFormField` 在 `packages/tuffex/packages/utils/form-field.ts`，按需引入控件时不会带上表单。
+- 源码：`packages/tuffex/packages/components/src/form/`；控件读取的 `useTxFormField` 在 `packages/tuffex/packages/utils/form-field.ts`，按需引入控件时不会带上表单；`provideTxFormHost` 在 `packages/tuffex/packages/utils/form-host.ts`，应用启动时提供它不会加载表单。
 
 <TuffDocSourceLink />

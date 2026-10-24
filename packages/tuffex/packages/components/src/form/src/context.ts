@@ -1,4 +1,4 @@
-import type { App, ComputedRef, InjectionKey, Ref } from 'vue'
+import type { ComputedRef, InjectionKey, Ref } from 'vue'
 import type { FormControlSize } from '../../../../utils/form-field'
 import type {
   FormLabelAlign,
@@ -6,12 +6,11 @@ import type {
   FormMessages,
   FormRequiredMark,
   FormRule,
-  TxFormHost,
 } from './types'
-import { provide } from 'vue'
 
 export type { FormControlSize, FormFieldSource } from '../../../../utils/form-field'
 export { TX_FORM_FIELD_KEY, useTxFormField } from '../../../../utils/form-field'
+export { provideTxFormHost, TX_FORM_HOST_KEY } from '../../../../utils/form-host'
 
 export interface FieldMessage {
   kind: 'error' | 'warning' | 'validating'
@@ -80,8 +79,6 @@ export const TX_FORM_CONTEXT_KEY: InjectionKey<FormContext> = Symbol('TxFormCont
 /** Items inside a `TxFormRow` stack their labels, whatever the form's layout. */
 export const TX_FORM_ROW_KEY: InjectionKey<boolean> = Symbol('TxFormRow')
 
-export const TX_FORM_HOST_KEY: InjectionKey<TxFormHost> = Symbol('TxFormHost')
-
 /**
  * What a component built around one `TxForm` — `TxModalForm`, `TxStepsForm`
  * — provides to it. The form takes the one its parent provides and hides it
@@ -102,14 +99,3 @@ export interface FormShell {
 }
 
 export const TX_FORM_SHELL_KEY: InjectionKey<FormShell | null> = Symbol('TxFormShell')
-
-/**
- * Hands every form below — or in the whole app, given `app` — the host's
- * language for built-in messages. Call it in a component's `setup`.
- */
-export function provideTxFormHost(host: TxFormHost, app?: App): void {
-  if (app)
-    app.provide(TX_FORM_HOST_KEY, host)
-  else
-    provide(TX_FORM_HOST_KEY, host)
-}
