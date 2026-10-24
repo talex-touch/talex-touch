@@ -111,7 +111,11 @@ switch). The catalog reloads from the database (still the source of truth) on in
 commits naming `app-provider`, alias edits (`AppUserAliasService.onChanged`),
 icon-pointer repairs, and staleness. A write path that changes an app row without
 ending in an index commit must call `searchCatalog.scheduleReload(reason)`; a reload
-failure keeps the previous snapshot. The recall funnel mirrors the SQL one
+failure keeps the previous snapshot. A successful reload calls `onSnapshotReplaced`, which
+`AppProvider` wires to `searchIndexCommitHub.markCommitted()` with no provider ids: the app commit
+moved the revision ~250ms before the snapshot landed, and a search in that gap is cached under the
+new revision with the old apps. Naming `app-provider` there would schedule another reload. The recall
+funnel mirrors the SQL one
 (precise/phrase/prefix → FTS-shaped → n-gram → subsequence, same thresholds) and
 `isFuzzySearch` keeps its meaning: no exact/phrase/prefix keyword hit.
 

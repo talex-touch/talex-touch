@@ -95,6 +95,12 @@ private readonly indexCommitStreams: Map<
   refuses a result whose revision the hub has passed, and a lookup against an older revision
   classifies as `revision-mismatch`. The coalescer sits after all of that, inside `emitIndexCommit`.
   Pacing the hub or `publishCommit` instead would serve cached results a commit made stale.
+- **A cached hit re-checks index-owned files on disk.** The cache-hit branch drops any
+  `file-provider` item whose `meta.file.path` no longer exists (`dropMissingIndexedFiles`, the same
+  `normalizeResultFilePath` test the provider applies on a fresh search). A deleted directory tree
+  leaves the index through a subtree reconcile that yields to foreground search, so its commit can
+  trail the deletion by seconds; the revision alone would serve the deleted files until the 5s TTL.
+  Other sources (Spotlight, Everything) are returned as cached.
 - **The window opens on the first commit and is not extended.** `push` merges into the pending
   payload and arms a timer only when none is open. A steady stream yields one notification per
   window; a debounce would starve a scan that commits for hours.
