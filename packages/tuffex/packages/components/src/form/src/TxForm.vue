@@ -11,12 +11,16 @@ const props = withDefaults(defineProps<FormProps>(), {
   validateOn: 'blur',
   size: 'medium',
   disabled: false,
+  // Its type includes `false`, so without a default Vue reads a form that leaves it out as
+  // `false`: never ask.
+  leaveConfirm: undefined,
 })
 
 const emit = defineEmits<FormEmits>()
 
 const store = useFormStore(props, emit)
-const { formId, layout, labelAlign, announcement, summaryAttached, rootError } = store
+const { formId, layout, labelAlign, announcement, summaryAttached, rootError, draft, notice } = store
+const messages = store.context.messages
 
 provide(TX_FORM_CONTEXT_KEY, store.context)
 // A control placed in the form but outside every item is not a field, yet it
@@ -38,6 +42,7 @@ provide(TX_FORM_FIELD_KEY, {
   claim: () => false,
   adopt: () => {},
   release: () => {},
+  protect: () => () => {},
 })
 
 const formStyle = computed(() => {
@@ -60,6 +65,15 @@ function onSubmit(event: Event) {
   void store.submit(event)
 }
 
+// The notice goes away with its buttons, so focus moves to the fields they changed.
+function restoreFromNotice() {
+  void store.restoreDraft(true)
+}
+
+function discardFromNotice() {
+  void store.discardDraft(true)
+}
+
 defineExpose({
   dirty: store.dirty,
   valid: store.valid,
@@ -77,6 +91,16 @@ defineExpose({
   setErrors: store.setErrors,
   setRootError: store.setRootError,
   clearValidate: store.clearValidate,
+  /** What the draft holds: the fields it filled in or still offers, when it was written, whether writing fails. */
+  draft: store.draft,
+  /** Writes the draft now; resolves once the store has it. */
+  flush: store.flush,
+  /** Call before leaving inside the app — a route change, a closing dialog. Resolves `true` to go. */
+  confirmLeave: store.confirmLeave,
+  /** Fills in the fields the draft still offers. Resolves whether any were. */
+  restoreDraft: () => store.restoreDraft(),
+  /** Puts the saved values back where the draft filled them in, and deletes the draft. */
+  discardDraft: () => store.discardDraft(),
 })
 </script>
 
@@ -90,6 +114,17 @@ defineExpose({
     @submit.prevent="onSubmit"
     @reset.prevent="store.reset()"
   >
+    <slot v-if="notice" name="draft" :draft="draft" :notice="notice" :restore="restoreFromNotice" :discard="discardFromNotice">
+      <div class="tx-form__draft">
+        <span>{{ notice }}</span>
+        <button v-if="draft.pending.length" type="button" class="tx-form__draft-action" @click="restoreFromNotice">
+          {{ messages.draftRestore }}
+        </button>
+        <button type="button" class="tx-form__draft-action" @click="discardFromNotice">
+          {{ messages.draftDiscard }}
+        </button>
+      </div>
+    </slot>
     <div class="tx-form__body">
       <slot v-bind="slotProps" />
     </div>
@@ -145,6 +180,34 @@ defineExpose({
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 12px 16px;
+}
+
+.tx-form__draft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--tx-text-color-regular, #606266);
+}
+
+.tx-form__draft-action {
+  padding: 0;
+  font: inherit;
+  color: var(--tx-text-color-primary, #303133);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+
+  &:focus-visible {
+    outline: 2px solid var(--tx-color-primary, #409eff);
+    outline-offset: 2px;
+  }
 }
 
 .tx-form__root-error {

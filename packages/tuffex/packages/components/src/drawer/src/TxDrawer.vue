@@ -5,6 +5,7 @@ import type { DrawerDirection, DrawerEmits, DrawerProps } from './types'
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, useSlots, watch } from 'vue'
 import TxBaseSurface from '../../base-surface/src/TxBaseSurface.vue'
 import TxDivider from '../../divider/src/TxDivider.vue'
+import { useGuardedClose } from '../../../../utils/guarded-close'
 import { isTopmostModalDialog, useZIndexAllocator } from '../../../../utils/z-index-manager'
 
 // Resolved in setup: inject is only valid here, while allocation happens later.
@@ -155,9 +156,16 @@ function handleClose(): void {
   emit('close')
 }
 
+const requestClose = useGuardedClose(() => props.beforeClose, () => display.value, handleClose)
+
+/** The `close` the slots receive: it may be bound straight to `@click`, so the event is ignored. */
+function closeFromSlot(): void {
+  requestClose('close')
+}
+
 function handleMaskClick(): void {
   if (props.closeOnClickMask) {
-    handleClose()
+    requestClose('mask')
   }
 }
 
@@ -210,7 +218,7 @@ function handleKeydown(event: KeyboardEvent): void {
     return
   }
   if (event.key === 'Escape' && props.closeOnPressEscape) {
-    handleClose()
+    requestClose('escape')
   }
 }
 
@@ -306,7 +314,7 @@ onUnmounted(() => {
         />
         <header v-if="shouldRenderHeader" class="tx-drawer__header">
           <div v-if="$slots.header" :id="titleId" class="tx-drawer__header-content">
-            <slot name="header" :close="handleClose" :title="title" :title-id="titleId" />
+            <slot name="header" :close="closeFromSlot" :title="title" :title-id="titleId" />
           </div>
           <template v-else>
             <h2 :id="titleId" class="tx-drawer__title">
@@ -317,7 +325,7 @@ onUnmounted(() => {
               type="button"
               class="tx-drawer__close"
               :aria-label="closeLabel"
-              @click="handleClose"
+              @click="closeFromSlot"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -343,7 +351,7 @@ onUnmounted(() => {
         <TxDivider v-if="shouldRenderFooter" class="tx-drawer__divider" />
 
         <footer v-if="shouldRenderFooter" class="tx-drawer__footer">
-          <slot name="footer" :close="handleClose" />
+          <slot name="footer" :close="closeFromSlot" />
         </footer>
       </div>
     </div>

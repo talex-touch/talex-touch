@@ -19,6 +19,7 @@ import {
   COREBOX_TRANSFER_SHORTCUT_ID
 } from '../../../../shared/corebox-shortcut'
 import { shortcutModule } from '../../global-shortcon'
+import { closePluginWebContents } from '../../plugin/runtime/plugin-view-close'
 import { buildPluginViewWebPreferences } from '../../plugin/runtime/plugin-view-host'
 import { resolvePluginViewSecurityProfile } from '../../plugin/runtime/plugin-view-security-profile'
 import {
@@ -538,7 +539,7 @@ export class PluginViewController {
 
       if (!cacheEnabled || !this.attachedPlugin) {
         try {
-          webContents?.close()
+          closePluginWebContents(webContents)
         } catch (error) {
           pluginViewLog.warn('Failed to close UI view', { error })
         }

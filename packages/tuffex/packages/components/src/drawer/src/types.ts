@@ -23,6 +23,14 @@ export type DrawerSize = number | string | 'full'
 export type DrawerMaskEffect = 'blur' | 'opacity' | 'transparent'
 
 /**
+ * How the user asked to close: `escape`, a click on the `mask`, or `close` —
+ * the close button, or the `close` the header and footer slots receive.
+ *
+ * @public
+ */
+export type DrawerCloseReason = 'escape' | 'mask' | 'close'
+
+/**
  * Props interface for the TxDrawer component.
  *
  * @public
@@ -101,6 +109,12 @@ export interface DrawerProps {
    * @default true
    */
   closeOnPressEscape?: boolean
+
+  /**
+   * Asked before the drawer closes at the user's request. Return `false`, or
+   * a promise of it, to keep it open. Setting `visible` to `false` is not asked.
+   */
+  beforeClose?: (reason: DrawerCloseReason) => boolean | void | Promise<boolean | void>
 
   /**
    * The mask visual effect.

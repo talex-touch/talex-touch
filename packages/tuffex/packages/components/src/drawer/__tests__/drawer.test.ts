@@ -340,6 +340,27 @@ describe('txDrawer', () => {
     expect(wrapper.emitted('update:visible')?.[2]).toEqual([false])
   })
 
+  it('asks beforeClose for every way the user closes it, the slots\' close included', () => {
+    const beforeClose = vi.fn((_reason: string) => false)
+    const wrapper = mount(TxDrawer, {
+      props: { visible: true, title: 'Settings', beforeClose },
+      slots: { footer: `<template #footer="{ close }"><button class="cancel" @click="close">Cancel</button></template>` },
+      attachTo: document.body,
+    })
+
+    document.body.querySelector<HTMLButtonElement>('.tx-drawer__close')!.click()
+    document.body.querySelector<HTMLElement>('.tx-drawer__mask')!.click()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    document.body.querySelector<HTMLButtonElement>('.cancel')!.click()
+    expect(beforeClose.mock.calls.map(([reason]) => reason)).toEqual(['close', 'mask', 'escape', 'close'])
+    expect(wrapper.emitted('update:visible')).toBeUndefined()
+
+    beforeClose.mockReturnValue(true)
+    document.body.querySelector<HTMLButtonElement>('.cancel')!.click()
+    expect(wrapper.emitted('update:visible')).toEqual([[false]])
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
   it('respects disabled mask and Escape close options', () => {
     const wrapper = mount(TxDrawer, {
       props: {

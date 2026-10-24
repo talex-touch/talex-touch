@@ -195,6 +195,52 @@ code: |
 ---
 :::
 
+### 草稿
+`persist` 以表单的 `id` 保存用户输入，刷新页面或关掉标签页后再打开都能找回。
+:::TuffDemoWrapper{demo="FormDraftDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { onMounted, reactive, ref } from 'vue'
+
+  const props = defineProps<{ postId: number }>()
+  const formRef = ref()
+  const post = reactive({ title: '', body: '' })
+  const loaded = ref(false)
+
+  onMounted(async () => {
+    formRef.value.setBaseline(await fetch(`/api/posts/${props.postId}`).then(res => res.json()))
+    loaded.value = true
+  })
+  </script>
+
+  <template>
+    <TxForm id="post-editor" ref="formRef" :model="post" :persist="loaded && { recordId: postId }" @submit="save">
+      <TxFormItem label="标题" prop="title">
+        <TuffInput v-model="post.title" />
+      </TxFormItem>
+      <TxFormItem label="正文" prop="body">
+        <TxTextarea v-model="post.body" />
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### 离开前确认
+`confirmLeave()` 返回能否离开，只就草稿存不下的修改询问用户。
+
+```ts
+onBeforeRouteLeave(() => formRef.value.confirmLeave())
+```
+
+```vue
+<!-- Escape、遮罩与关闭按钮都会先询问 -->
+<TxModal v-model="open" :before-close="() => formRef?.confirmLeave()">
+  <TxForm ref="formRef" :model="form">…</TxForm>
+</TxModal>
+```
+
 ### Schema 校验
 `schema` 接受任意 Standard Schema v1 校验器，并按路径把每条问题交给对应字段。
 
@@ -238,13 +284,26 @@ const controlAttrs = computed(() => field?.attrs(attrs) ?? attrs)
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
 ```
 
+### 在插件中
+插件视图的 `localStorage` 随视图销毁，草稿要存进插件自己的存储，并在视图关闭前写入。
+
+```ts
+import { flushTxForms, provideTxFormHost } from '@talex-touch/tuffex/form'
+import { LifeCycle, usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
+
+const app = createApp(App)
+provideTxFormHost({ storage: usePluginDraftStorage() }, app)
+LifeCycle.onBeforeClose(flushTxForms)
+app.mount('#app')
+```
+
 ### 最佳实践
 
 - `model` 保持为同一个响应式对象；换成新对象即视为新记录：基线重置，消息清空。
 - 取回的数据交给 `setBaseline()`，不要直接写入 `model`，`dirty` 与 `reset()` 才会以它为准。
 - 通用规则放在表单级 `rules`；表单项的 `rules` 替换同一路径的表单级规则，而不是追加。
 - 返回 Promise 的 validator 声明为 `async`，并把 `signal` 传给请求。
-- 操作按钮放进不带 `label` 的 `TxFormItem`，侧边布局时与字段列对齐。
+- 记录加载完再开启 `persist`，草稿才会叠在已保存的值上，而不是空值上。
 
 ## API 参考
 
@@ -267,7 +326,9 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `messages` | `Partial<FormMessages>` | - | 覆盖内置文案。 |
 | `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | 传给表单内有尺寸的控件。 |
 | `disabled` | `boolean` | `false` | 禁用表单内所有读取表单状态的控件，并阻止提交。 |
-| `reconcile` | `FormReconcile` | - | `setBaseline()` 传入的数据覆盖用户改过的字段时，决定 `model` 的取值。 |
+| `reconcile` | `FormReconcile` | - | `setBaseline()` 或草稿带来的值覆盖用户改过的字段时，决定 `model` 的取值。 |
+| `persist` | `boolean \| FormPersistOptions` | `false` | 以 `id` 保存用户输入；`true` 采用默认设置。 |
+| `leaveConfirm` | `FormLeaveConfirm \| false` | 宿主的，其次 `window.confirm` | 带着草稿存不下的修改离开前询问；`false` 从不询问，适合筛选栏。 |
 
 #### 事件
 
@@ -275,12 +336,14 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 |------|------|------|
 | `submit` | `(values: FormValues, event?: Event)` | 全部校验通过后调用，`values` 为副本；返回的 Promise 会被等待，期间 `submitting` 为 `true`。 |
 | `validate` | `(valid: boolean)` | `validate()` 校验完全部字段后触发。 |
+| `persist-error` | `(error: unknown)` | 草稿读写失败；连续失败只触发一次。 |
 
 #### 插槽
 
 | 插槽名 | 参数 | 说明 |
 |------|------|------|
 | `default` | `{ dirty, valid, submitting, submitted, errors, rootError }` | 表单项与操作。 |
+| `draft` | `{ draft, notice, restore, discard }` | 草稿已填入或待恢复时，替换字段上方的提示。 |
 
 #### 暴露方法
 
@@ -301,6 +364,11 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `setErrors` | `(errors: Record<string, string \| null \| undefined>, options?: { source?: 'server' \| 'client' }) => void` | 显示外部错误，用户修改该字段后消失；`client` 错误还会阻止提交。 |
 | `setRootError` | `(message?: string \| null) => void` | 设置或清除表单级错误。 |
 | `clearValidate` | `(paths?: string \| string[]) => void` | 隐藏消息，不修改 `model`。 |
+| `draft` | `FormDraftState` | 只读，草稿填入了哪些字段、还有哪些待恢复、写入时间、是否写入失败。 |
+| `flush` | `() => Promise<void>` | 立即写入草稿。 |
+| `confirmLeave` | `() => Promise<boolean>` | 应用内离开前调用；返回 `true` 即可离开。 |
+| `restoreDraft` | `() => Promise<boolean>` | 填入草稿中待恢复的字段，返回是否填入了。 |
+| `discardDraft` | `() => Promise<void>` | 把草稿填过的字段改回已保存的值，并删除草稿。 |
 
 ### TxFormItem
 
@@ -316,6 +384,7 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `width` | `'xs' \| 'sm' \| 'md' \| 'lg' \| 'full'` | - | 控件宽度：80、160、240、360px 或整列。 |
 | `showMessage` | `boolean` | `true` | 在控件下方显示消息；关闭后控件仍标记为无效。 |
 | `inline` | `boolean` | `false` | label 与控件垂直居中；上下布局时改为并排。 |
+| `persist` | `boolean` | `true` | 设为 `false` 时该字段不进草稿，与密码一样。 |
 
 #### 事件
 
@@ -368,8 +437,13 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 
 | 名称 | 类型 | 说明 |
 |------|------|------|
-| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | 在组件 `setup` 中，或传入 `app` 时在整个应用中，为下层表单提供内置文案。 |
+| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | 在组件 `setup` 中，或传入 `app` 时在整个应用中，为下层表单提供宿主的设置。 |
 | `host.messages` | `MaybeRefOrGetter<Partial<FormMessages>>` | 当前语言的文案；传 ref 或 getter 时随语言切换。 |
+| `host.namespace` | `MaybeRefOrGetter<string \| null>` | 草稿归属，如 `user:42`；尚不知道时传 `null`，期间不保存草稿。 |
+| `host.storage` | `FormDraftStorage` | `persist.storage` 未指定时草稿的存放处。 |
+| `host.leaveConfirm` | `FormLeaveConfirm` | 为没有自己 `leaveConfirm` 的表单询问是否离开。 |
+| `flushTxForms` | `() => Promise<void>` | 立即写入所有已挂载表单待写的草稿，用于页面会被直接关掉的场合。 |
+| `clearTxFormDrafts` | `(options?: { namespace?: string, storage?: FormDraftStorage }) => Promise<void>` | 删除全部草稿，或某个 namespace 的草稿。 |
 
 ### 类型
 
@@ -391,12 +465,33 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `source` | `'baseline'` | 数据来源；`baseline` 即 `setBaseline()`。 |
+| `source` | `'baseline' \| 'draft'` | `baseline` 即 `setBaseline()`；`draft` 是写入后字段又被保存过的草稿。 |
 | `incoming` | `FormValues` | 传入的数据，无论 `model` 最终取什么，都会成为新基线。 |
 | `current` | `FormValues` | 用户留下的 `model`。 |
 | `baseline` | `FormValues` | 用户修改时所依据的基线。 |
 | `dirtyPaths` | `string[]` | 用户改过、且 `incoming` 也带有的字段路径。 |
-| `merged` | `FormValues` | 默认结果：`incoming`，其中 `dirtyPaths` 保留用户的值。返回空值即采用它。 |
+| `merged` | `FormValues` | 默认结果，返回空值即采用：`incoming` 中保留 `dirtyPaths` 的用户值；草稿则为 `model` 原样。 |
+| `origin` | `FormValues` | 仅草稿：其修改所依据的已保存值，用于三方合并。 |
+
+`FormPersistOptions`，`persist` 的对象写法：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `recordId` | `string \| number` | 区分不同记录的草稿，如 `/posts/42/edit` 的 `42`。 |
+| `namespace` | `string` | 草稿归属；默认取宿主的，其次为 `default`。 |
+| `version` | `number` | `model` 结构变化时递增，其他版本的草稿会被丢弃。默认 `1`。 |
+| `ttl` | `number \| '7d' \| '12h' \| '30m'` | 草稿自最后一次写入起的有效期，毫秒数或带单位。默认 `'7d'`。 |
+| `storage` | `'local' \| 'session' \| 'memory' \| FormDraftAdapter` | 默认取宿主的，其次为 `local`；`memory` 只保留到页面刷新。 |
+| `exclude` | `string[]` | 除密码类字段外，另外不写入的路径。 |
+| `restore` | `'auto' \| 'manual'` | `manual` 等用户在提示中恢复，或调用 `restoreDraft()`。默认 `auto`。 |
+
+`FormDraftAdapter`，自定义存储；每个方法都可以返回 Promise：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `get` / `remove` | `(key: string) => string \| null` / `(key: string) => void` | 读取或删除一份草稿。 |
+| `set` | `(key: string, value: string) => void` | 没存下时抛出异常，表单会先把草稿留在内存中。 |
+| `clear` | `(prefix: string) => void` | 可选；删除以 `prefix` 开头的键，供 `clearTxFormDrafts()` 使用。 |
 
 `FormMessages`，内置文案；默认值为英文，见 `FORM_DEFAULT_MESSAGES`：
 
@@ -411,6 +506,9 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `validating` | `string` | 异步校验超过 1 秒时显示。 |
 | `optional` | `string` | `requiredMark="optional"` 时标在选填项后。 |
 | `summaryTitle` | `string` | `TxFormErrorSummary` 的默认标题。 |
+| `draftRestored` / `draftPending` | `(savedAt: Date) => string` | 草稿已填入，或等待恢复时的提示。 |
+| `draftRestore` / `draftDiscard` | `string` | 提示中的按钮。 |
+| `leaveConfirm` | `string` | 没有其他询问方式时，经 `window.confirm` 询问的文字。 |
 
 ### CSS 变量
 
@@ -420,6 +518,15 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `--tx-form-label-max` | `16em` | 侧边 label 列的最大宽度，`labelWidth` 写入它。 |
 | `--tx-form-control-height` | `32px` | 单行控件的高度，用于让 label 对齐控件的第一行。 |
 | `--tx-form-item-min` | `220px` | `TxFormRow` 中每项换行前的最小宽度；`condensed` 时为 `110px`。 |
+
+## 草稿与离开
+
+- 草稿只填入用户没动过的字段；草稿写入后又被保存过的字段留在提示中，或以 `source: 'draft'` 交给 `reconcile`。
+- 停止输入 300ms 后写入，持续输入时至少每 2 秒写一次，页面隐藏时也会写；提交成功或 `reset()` 后删除。
+- 敏感内容不进草稿：密码输入框、`TxSensitiveInput`、`autocomplete` 要求密码、一次性验证码或银行卡信息的输入框、关闭 `persist` 的表单项与 `exclude` 路径。字段一旦装过这类内容，就一直不写入。
+- 只有存在草稿存不下的修改时，刷新或关闭页面才会先询问：未开启 `persist`、改在敏感字段里，或写入还没落地。
+- 存储拒绝写入时草稿留在内存中，直到写入成功；宿主 namespace 为 `null`，或表单没有 `id`，都不保存草稿。
+- namespace 换成另一个时（如退出登录），上一个人改的内容仍留在表单里，但不写进任何草稿，再次修改前都算未保存。`clearTxFormDrafts({ namespace })` 删除那个人的草稿。
 
 ## 概述
 

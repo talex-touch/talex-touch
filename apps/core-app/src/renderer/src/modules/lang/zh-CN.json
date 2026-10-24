@@ -4188,7 +4188,13 @@
     "closed": "已关闭"
   },
   "app": {
-    "title": "Tuff"
+    "title": "Tuff",
+    "leaveGuard": {
+      "message": "此页面有未保存的更改",
+      "detail": "现在离开，这些更改可能会丢失。",
+      "leave": "离开",
+      "stay": "留下"
+    }
   },
   "router": {
     "home": "首页",
@@ -6746,6 +6752,38 @@
     "import": "导入",
     "comingSoon": "即将推出",
     "clearShortcut": "清除快捷键"
+  },
+  "form": {
+    "field": "字段",
+    "required": "{label}为必填项",
+    "type": {
+      "email": "{label}需要是邮箱地址",
+      "url": "{label}需要是网址",
+      "number": "{label}需要是数字",
+      "integer": "{label}需要是整数"
+    },
+    "min": "{label}不能小于 {min}",
+    "max": "{label}不能大于 {max}",
+    "minLength": {
+      "characters": "{label}至少需要 {min} 个字符",
+      "items": "{label}至少需要 {min} 项"
+    },
+    "maxLength": {
+      "characters": "{label}最多 {max} 个字符",
+      "items": "{label}最多 {max} 项"
+    },
+    "pattern": "{label}格式不正确",
+    "invalid": "{label}无效",
+    "errorPrefix": "错误：",
+    "warningPrefix": "警告：",
+    "validating": "正在校验…",
+    "optional": "（选填）",
+    "summaryTitle": "请修改以下问题",
+    "draftRestored": "已恢复 {time} 未保存的更改。",
+    "draftPending": "有 {time} 未保存的更改。",
+    "draftRestore": "恢复",
+    "draftDiscard": "丢弃",
+    "leaveConfirm": "有未保存的更改，仍要离开吗？"
   },
   "preset": {
     "import": "导入",

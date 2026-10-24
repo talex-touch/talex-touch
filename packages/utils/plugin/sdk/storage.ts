@@ -143,6 +143,63 @@ export function usePluginStorage() {
   }
 }
 
+/** A key-value store in the shape TuffEx's `TxForm` takes for its drafts. */
+export interface PluginDraftStorage {
+  get: (key: string) => Promise<string | null>
+  set: (key: string, value: string) => Promise<void>
+  remove: (key: string) => Promise<void>
+  clear: (prefix: string) => Promise<void>
+}
+
+/**
+ * Form drafts kept in the plugin's own storage, one file per draft. They stay with the plugin
+ * rather than the page's origin - the dev server and the packaged plugin see the same drafts -
+ * and go when it is uninstalled. Hand it to the forms through the TuffEx form host:
+ * `provideTxFormHost({ storage: usePluginDraftStorage() }, app)`.
+ */
+export function usePluginDraftStorage(): PluginDraftStorage {
+  const storage = usePluginStorage()
+  const fileOf = (key: string): string => `${encodeURIComponent(key)}.json`
+  const keyOf = (fileName: string): string | null => {
+    try {
+      return decodeURIComponent(fileName.slice(0, -'.json'.length))
+    }
+    catch {
+      return null
+    }
+  }
+
+  return {
+    get: async (key) => {
+      const content: unknown = await storage.getFile(fileOf(key))
+      if (typeof content === 'string')
+        return content
+      const error = content && typeof content === 'object' ? (content as { error?: unknown }).error : undefined
+      if (typeof error === 'string')
+        throw new Error(error)
+      // A file that does not exist reads as `{}`.
+      return null
+    },
+    set: async (key, value) => {
+      const result = await storage.setFile(fileOf(key), value)
+      if (!result?.success)
+        throw new Error(result?.error ?? `Cannot store "${key}".`)
+    },
+    remove: async (key) => {
+      const result = await storage.deleteFile(fileOf(key))
+      // Most drafts removed were never written: that is not a failure.
+      if (!result?.success && result?.error !== 'File not found')
+        throw new Error(result?.error ?? `Cannot remove "${key}".`)
+    },
+    clear: async (prefix) => {
+      const files = await storage.listFiles()
+      await Promise.all(files
+        .filter(fileName => keyOf(fileName)?.startsWith(prefix))
+        .map(fileName => storage.deleteFile(fileName)))
+    },
+  }
+}
+
 /**
  * Round-trips content through JSON to drop the non-cloneables that would break structured clone
  * on the way to the main process.

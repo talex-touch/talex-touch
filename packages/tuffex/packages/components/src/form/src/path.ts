@@ -138,6 +138,11 @@ export function assignInto(target: Container, source: Container): void {
   }
 }
 
+/** One path is the other, or lies inside it: `meta` and `meta.homepage` overlap. */
+export function pathsOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}.`) || right.startsWith(`${left}.`)
+}
+
 /** `links.0.url` becomes `links-0-url`: a path as it can sit inside an element id. */
 export function toIdSegment(pathKey: string): string {
   return pathKey.replace(/[^\w-]+/g, '-')

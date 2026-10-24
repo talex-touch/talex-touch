@@ -70,6 +70,7 @@ code: |
 | `width` | `string` | `'480px'` | Panel width; prefer responsive values such as `min(92vw, 520px)`. Ignored with `fullscreen`. |
 | `fullscreen` | `boolean` | `false` | Fills the visible viewport and drops the panel radius and shadow. |
 | `closeLabel` | `string` | `'Close'` | Accessible name of the header's close button. |
+| `beforeClose` | `(reason: 'escape' \| 'mask' \| 'close') => boolean \| void \| Promise<boolean \| void>` | - | Asked before a close the user requests; `false`, or a promise of it, keeps the dialog open. |
 | `surface` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction' \| 'acrylic' \| 'mica' \| 'flat' \| 'plain'` | `'refraction'` | Material of the panel. |
 | `surfaceColor` | `string` | `''` | Colour laid under the material; follows the theme by default. |
 | `surfaceOpacity` | `number` | `0.96` for `mask`, `0.5` otherwise | Opacity of that colour, used by `mask`, `blur`, `acrylic`, `glass` and `refraction`; always opaque under `pure` and `flat`, and `mica` and `plain` lay no base colour. |
@@ -94,7 +95,7 @@ code: |
 - The overlay teleports to `body`, takes a fresh layer from the shared z-index manager on open, and is removed with `v-if` on close.
 - The overlay is `role="dialog"` with `aria-modal="true"`; it takes focus on open and returns it to the previous element on close or unmount.
 - Tab and Shift+Tab cycle inside the topmost modal; even with focus on `body`, a drawer underneath doesn't react to Escape.
-- A backdrop click, Escape, and the close button emit `update:modelValue(false)`, then `close`.
+- A backdrop click, Escape, and the close button ask `beforeClose`, then emit `update:modelValue(false)` and `close`; setting `modelValue` asks nothing.
 - `fullscreen` changes only the layout, not the dialog semantics or focus handling; it leaves no backdrop to click, so keep a visible close control in the header or footer.
 - The panel background is a card-preset `TxBaseSurface` (`fake`) under the header, body and footer, `refraction` by default: a 50% base colour keeps text legible while the page behind still shows through to be blurred and refracted.
 - The overlay's dim and blur are painted on a pseudo-element of the overlay rather than on its own background and opacity, so the panel's material samples the page, not only the dim.

@@ -1,6 +1,6 @@
 import type { MaybeRefOrGetter } from 'vue'
 
-export type { FormControlKind, TxFormField } from '../../../../utils/form-field'
+export type { FormControlKind, TxFormField, TxFormFieldOptions } from '../../../../utils/form-field'
 
 export type FormValues = Record<string, any>
 
@@ -91,6 +91,18 @@ export interface FormMessages {
   optional: string
   /** Heading of `TxFormErrorSummary`. */
   summaryTitle: string
+  /** Above the form once a draft has filled it in. */
+  draftRestored: (savedAt: Date) => string
+  /** Above the form while a draft waits for the user to restore or discard it. */
+  draftPending: (savedAt: Date) => string
+  draftRestore: string
+  draftDiscard: string
+  /** Asked through `window.confirm` before leaving with changes no draft holds, when nothing else asks. */
+  leaveConfirm: string
+}
+
+function draftTime(date: Date): string {
+  return date.toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 export const FORM_DEFAULT_MESSAGES: FormMessages = {
@@ -111,6 +123,11 @@ export const FORM_DEFAULT_MESSAGES: FormMessages = {
   validating: 'Validating…',
   optional: '(optional)',
   summaryTitle: 'There is a problem',
+  draftRestored: savedAt => `Restored unsaved changes from ${draftTime(savedAt)}.`,
+  draftPending: savedAt => `You have unsaved changes from ${draftTime(savedAt)}.`,
+  draftRestore: 'Restore',
+  draftDiscard: 'Discard',
+  leaveConfirm: 'You have unsaved changes. Leave anyway?',
 }
 
 /** A Standard Schema v1 issue: what Zod, Valibot and ArkType report. */
@@ -132,8 +149,12 @@ export interface FormStandardSchema {
   }
 }
 
-/** Where incoming values came from. `baseline` is `setBaseline()`: data the host fetched. */
-export type FormReconcileSource = 'baseline'
+/**
+ * Where incoming values came from. `baseline` is `setBaseline()`: data the
+ * host fetched. `draft` is a stored draft whose fields were saved again after
+ * it was written, so its edits were made against older values.
+ */
+export type FormReconcileSource = 'baseline' | 'draft'
 
 export interface FormReconcileContext {
   source: FormReconcileSource
@@ -145,8 +166,14 @@ export interface FormReconcileContext {
   baseline: FormValues
   /** Fields the user changed that `incoming` also carries, as dotted paths. */
   dirtyPaths: string[]
-  /** TxForm's default: `incoming`, with every field in `dirtyPaths` kept as the user left it. */
+  /**
+   * TxForm's default. For `baseline`: `incoming`, with every field in
+   * `dirtyPaths` kept as the user left it. For `draft`: the model as it is,
+   * so the saved values stay and the draft waits in the notice.
+   */
   merged: FormValues
+  /** For `draft`: the saved values its edits were made against, for a three-way merge. */
+  origin?: FormValues
 }
 
 /**
@@ -155,6 +182,79 @@ export interface FormReconcileContext {
  * argument is a copy, free to change. It is not called when nothing conflicts.
  */
 export type FormReconcile = (context: FormReconcileContext) => FormValues | void
+
+/** A store for drafts. Any method may return a promise. */
+export interface FormDraftAdapter {
+  get: (key: string) => string | null | undefined | Promise<string | null | undefined>
+  /** Throw or reject when the value was not stored, so the form can keep it in memory instead. */
+  set: (key: string, value: string) => void | Promise<void>
+  remove: (key: string) => void | Promise<void>
+  /** Removes every key that starts with `prefix`. `clearTxFormDrafts()` needs it. */
+  clear?: (prefix: string) => void | Promise<void>
+}
+
+/**
+ * Where drafts are kept. `local` survives restarts, `session` lasts as long
+ * as the tab, and `memory` as long as the page: it outlives a closed dialog
+ * or a route change, not a reload.
+ */
+export type FormDraftStorage = 'local' | 'session' | 'memory' | FormDraftAdapter
+
+/** Milliseconds, or days, hours or minutes: `'7d'`, `'12h'`, `'30m'`. */
+export type FormDraftTtl = number | `${number}${'d' | 'h' | 'm'}`
+
+export interface FormPersistOptions {
+  /** Keeps the drafts of different records apart: `42` for `/posts/42/edit`. */
+  recordId?: string | number
+  /** Whose drafts these are. Defaults to the host's namespace, then `default`. */
+  namespace?: string
+  /** Bump it when the model's shape changes: a draft written under another version is dropped. Default `1`. */
+  version?: number
+  /** How long a draft lasts after its last write. Default `'7d'`. */
+  ttl?: FormDraftTtl
+  /** Defaults to the host's storage, then `local`. */
+  storage?: FormDraftStorage
+  /** Paths never written, on top of the fields whose controls hold secrets. */
+  exclude?: string[]
+  /**
+   * `auto` fills in the fields the user has not touched as soon as the draft
+   * is read. `manual` waits for the notice or `restoreDraft()`. Default `auto`.
+   */
+  restore?: 'auto' | 'manual'
+}
+
+export interface FormDraftState {
+  /** Fields the draft filled in. */
+  restored: string[]
+  /** Fields the draft holds but did not fill in: they were saved again since, or `restore` is `manual`. */
+  pending: string[]
+  /** When the draft that was found had been written, in epoch milliseconds; `null` without one. */
+  savedAt: number | null
+  /** The last write failed: the draft lives in memory until a write succeeds. */
+  failed: boolean
+}
+
+export interface FormLeaveField {
+  path: string
+  label: string
+}
+
+export interface FormLeaveContext {
+  /** Changed fields no draft holds: secrets and excluded paths, or every change when the form keeps no draft. */
+  unsaved: FormLeaveField[]
+  /** The other changes are in the draft and come back with the form. */
+  persisted: boolean
+}
+
+/** Resolve `true` to leave. */
+export type FormLeaveConfirm = (context: FormLeaveContext) => boolean | Promise<boolean>
+
+export interface FormClearDraftsOptions {
+  /** Only this namespace's drafts. Default: every TxForm draft. */
+  namespace?: string
+  /** The store to clear. Default: `local`, `session` and `memory`. */
+  storage?: FormDraftStorage
+}
 
 export interface FormProps {
   /** One id, used for the `<form>` element and as the prefix of every field id (`<id>-<prop>`). */
@@ -179,6 +279,18 @@ export interface FormProps {
   disabled?: boolean
   reconcile?: FormReconcile
   /**
+   * Keeps what the user typed across reloads, under the form's `id`. `true`
+   * takes the defaults. Turn it on once the record has loaded —
+   * `:persist="loaded && { recordId }"` — so the draft is laid over the saved
+   * values rather than empty ones.
+   */
+  persist?: boolean | FormPersistOptions
+  /**
+   * Asked before leaving with changes no draft holds. Defaults to the host's,
+   * then `window.confirm`. `false` never asks: a filter has nothing to lose.
+   */
+  leaveConfirm?: FormLeaveConfirm | false
+  /**
    * Called with a copy of the values once every check passes. A returned
    * promise is awaited, and while it runs `submitting` is true. Resolving
    * makes the submitted values the baseline; resolving `false`, rejecting, or
@@ -189,6 +301,8 @@ export interface FormProps {
 
 export interface FormEmits {
   (e: 'validate', valid: boolean): void
+  /** A draft could not be read or written. Writes fall back to memory until one succeeds; this fires once per run of failures. */
+  (e: 'persist-error', error: unknown): void
 }
 
 export interface FormSetErrorsOptions {
@@ -206,6 +320,8 @@ export interface FormItemProps {
   width?: FormItemWidth
   showMessage?: boolean
   inline?: boolean
+  /** `false` keeps the field out of the form's draft, as a secret would be. */
+  persist?: boolean
 }
 
 export interface FormItemEmits {
@@ -227,4 +343,14 @@ export interface FormErrorSummaryProps {
 export interface TxFormHost {
   /** Built-in text in the host's language. A ref or getter follows locale switches. */
   messages?: MaybeRefOrGetter<Partial<FormMessages> | undefined>
+  /**
+   * Whose drafts these are: `user:42`. A ref or getter follows sign-in changes.
+   * `null` while that is not known yet, as before the session has loaded: the
+   * forms keep no draft until it is.
+   */
+  namespace?: MaybeRefOrGetter<string | null | undefined>
+  /** Where drafts go when `persist.storage` does not say. */
+  storage?: FormDraftStorage
+  /** Asks before leaving, for every form below that has no `leaveConfirm` of its own. */
+  leaveConfirm?: FormLeaveConfirm
 }

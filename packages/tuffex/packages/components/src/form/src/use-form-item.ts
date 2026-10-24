@@ -27,6 +27,8 @@ export interface FormItemOptions {
   offersField?: () => boolean
   /** A check of the field finished: focus left it changed, or the form validated. */
   onValidated?: (valid: boolean) => void
+  /** `false` keeps the field out of the form's draft. Default: kept. */
+  persist?: () => boolean
 }
 
 /** What sits under the control: the field's message while one shows, its help text otherwise. */
@@ -57,6 +59,8 @@ export function useFormItem(options: FormItemOptions) {
   const label = computed(() => options.label() ?? '')
   const messages = computed<FormMessages>(() => form?.messages.value ?? FORM_DEFAULT_MESSAGES)
 
+  /** One getter per control inside that may hold a secret. */
+  const secrets = shallowRef<Array<() => boolean>>([])
   const handle = shallowRef<FormFieldHandle | null>(null)
   watch(path, (key) => {
     handle.value?.dispose()
@@ -70,6 +74,7 @@ export function useFormItem(options: FormItemOptions) {
           controlId: () => controlId.value,
           labelId: () => (label.value ? labelId.value : undefined),
           validated: valid => options.onValidated?.(valid),
+          sensitive: () => options.persist?.() === false || secrets.value.some(holdsSecret => holdsSecret()),
         })
       : null
   }, { immediate: true })
@@ -152,6 +157,12 @@ export function useFormItem(options: FormItemOptions) {
         return
       owner = null
       ownerKind.value = null
+    },
+    protect(holdsSecret) {
+      secrets.value = [...secrets.value, holdsSecret]
+      return () => {
+        secrets.value = secrets.value.filter(item => item !== holdsSecret)
+      }
     },
   }
   provide(TX_FORM_FIELD_KEY, source)

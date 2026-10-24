@@ -10,6 +10,7 @@ import { AppEvents } from '@talex-touch/utils/transport/events'
 import { createPinia } from 'pinia'
 import type { RouteLocationRaw, Router } from 'vue-router'
 import { createApp } from 'vue'
+import { flushTxForms, provideTxFormHost } from '@talex-touch/tuffex/form'
 import { TX_ICON_CONFIG_KEY } from '@talex-touch/tuffex/icon'
 import { registerDefaultCustomRenderers } from '~/modules/box/custom-render'
 import type { I18nInstance } from '~/modules/lang/i18n'
@@ -18,6 +19,7 @@ import { registerNotificationHub } from '~/modules/notification/notification-hub
 import { registerAccessibilitySupport } from '~/modules/platform/accessibility-support'
 import { waitForHydrationSoftTimeout } from '~/modules/startup/hydration-timeout'
 import { announceRendererReadyAfterRouter } from '~/modules/startup/renderer-ready'
+import { createCoreAppFormHost } from '~/modules/tuffex/form-host'
 import { createCoreAppIconConfig } from '~/modules/tuffex/icon-config'
 
 import { createRendererLogger } from '~/utils/renderer-log'
@@ -183,6 +185,8 @@ function registerLifecycleEvents(): void {
 
   transport.on(AppEvents.lifecycle.beforeQuit, async () => {
     try {
+      // The forms' pending drafts first: a draft store may write through the transport.
+      await flushTxForms()
       await transport.flush()
     } catch {
       // ignore flush failures during shutdown
@@ -231,6 +235,7 @@ async function bootstrap() {
 
   const app = await runBootStep('Creating Vue application instance', 0.05, () => createApp(App))
   app.provide(TX_ICON_CONFIG_KEY, createCoreAppIconConfig())
+  provideTxFormHost(createCoreAppFormHost(i18n), app)
   installComponentErrorHandler(app)
 
   await runBootStep('Registering plugins and global modules', 0.05, () => {

@@ -59,6 +59,7 @@ const SIGNAL_FRAGMENT: Record<LifecycleHooks, string> = {
   [LifecycleHooks.ACTIVE]: 'active',
   [LifecycleHooks.INACTIVE]: 'inactive',
   [LifecycleHooks.CRASH]: 'crash',
+  [LifecycleHooks.BEFORE_CLOSE]: 'before-close',
 }
 
 function listenerCount(type: LifecycleHooks): number {

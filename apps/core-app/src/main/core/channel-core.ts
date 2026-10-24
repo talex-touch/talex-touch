@@ -755,12 +755,17 @@ class TouchChannel {
     return true
   }
 
+  /**
+   * @param options.timeoutMs How long to wait for the reply before resolving with a `timeout`
+   *   error. Defaults to a minute.
+   */
   _sendTo(
     win: Electron.BrowserWindow | WebContentsView | undefined,
     type: ChannelType,
     eventName: string,
     arg: unknown,
-    header: Record<string, unknown> = {}
+    header: Record<string, unknown> = {},
+    options: { timeoutMs?: number } = {}
   ): Promise<unknown> {
     const startedAt = performance.now()
     const webContents = getWebContents(win)
@@ -781,7 +786,7 @@ class TouchChannel {
       data: arg,
       sync: {
         timeStamp: new Date().getTime(),
-        timeout: CHANNEL_DEFAULT_TIMEOUT,
+        timeout: options.timeoutMs ?? CHANNEL_DEFAULT_TIMEOUT,
         id: uniqueId
       },
       name: eventName,

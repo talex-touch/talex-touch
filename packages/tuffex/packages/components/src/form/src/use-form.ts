@@ -48,11 +48,13 @@ import {
   isEqualValue,
   isPlainObject,
   parsePath,
+  pathsOverlap,
   setPath,
   toPathKey,
 } from './path'
 import { asyncRulesOf, isThenable, readValidatorResult, record, runSyncRules } from './rules'
 import { FORM_DEFAULT_MESSAGES } from './types'
+import { useFormDraft } from './use-form-draft'
 
 /** Typing pauses this long before an asynchronous rule runs. */
 const ASYNC_DEBOUNCE = 300
@@ -115,7 +117,10 @@ interface FieldEntry {
   slowTimer: ReturnType<typeof setTimeout> | undefined
 }
 
-type FormEmit = (event: 'validate', valid: boolean) => void
+interface FormEmit {
+  (event: 'validate', valid: boolean): void
+  (event: 'persist-error', error: unknown): void
+}
 
 function toRuleList(rules: FormRule | FormRule[] | undefined): FormRule[] {
   if (rules === undefined)
@@ -204,6 +209,36 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
   const strays = shallowRef(new Map<string, StrayError>())
   const announcement = ref('')
   const summaries = shallowRef<Array<() => HTMLElement | null>>([])
+  /** Fields that differ from the baseline, as dotted paths. */
+  const changedPaths = computed(() => collectChangedPaths(model.value, baseline.value))
+
+  // --- Drafts ---
+  function entriesAt(paths: string[]): FieldEntry[] {
+    return entries.value.filter(entry => paths.some(path => pathsOverlap(entry.path, path)))
+  }
+
+  const drafts = useFormDraft({
+    props,
+    host,
+    model,
+    baseline,
+    changedPaths,
+    messages,
+    labelOf(path) {
+      const entry = entries.value.find(item => item.path === path) ?? entriesAt([path])[0]
+      return entry?.reg.label() || path
+    },
+    settle: paths => entriesAt(paths).forEach(commit),
+    forget: paths => entriesAt(paths).forEach(forgetDisplay),
+    focus(paths) {
+      const ordered = byDocumentOrder(entries.value)
+      const entry = ordered.find(item => paths.some(path => pathsOverlap(item.path, path))) ?? ordered[0]
+      if (entry)
+        focusEntry(entry)
+    },
+    announce,
+    onError: error => emit('persist-error', error),
+  })
 
   const formRules = computed(() => {
     const map = new Map<string, FormRule[]>()
@@ -470,6 +505,12 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
         scheduleAsync(entry)
     }, { deep: true })
 
+    // A control that holds a secret keeps its path out of the draft for good.
+    watch(() => !!reg.sensitive?.(), (sensitive) => {
+      if (sensitive)
+        drafts.protect(path)
+    }, { immediate: true })
+
     const deps = computed(() => [...new Set(rules.value.flatMap(rule => rule.deps ?? []).map(dep => toPathKey(dep)))])
     watch(() => deps.value.map(dep => getPath(model.value, dep)), () => {
       depsTick.value++
@@ -560,7 +601,7 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     return entries.value.every(entry => !entry.blocking.value)
   })
 
-  const dirty = computed(() => collectChangedPaths(model.value, baseline.value).length > 0)
+  const dirty = computed(() => changedPaths.value.length > 0)
 
   /** What the user sees, by path. */
   const errors = computed<Record<string, string>>(() => {
@@ -701,6 +742,7 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
           entry.external.value = null
       }
       strays.value = new Map()
+      drafts.afterSave()
       return true
     }
     catch (error) {
@@ -730,6 +772,7 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     submitted.value = false
     shownAll.value = false
     entries.value.forEach(forgetDisplay)
+    drafts.afterSave()
   }
 
   function clearValidate(paths?: string | string[]): void {
@@ -823,20 +866,24 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
   }
 
   // A new model object is a new record: it becomes the baseline, and nothing
-  // shown for the old one carries over.
-  watch(() => props.model, (next, previous) => {
-    if (next === previous)
-      return
-    baselineRevision++
-    baseline.value = cloneValue(model.value)
-    rootError.value = ''
-    strays.value = new Map()
-    submitted.value = false
-    shownAll.value = false
-    entries.value.forEach((entry) => {
-      coverInBaseline(entry)
-      forgetDisplay(entry)
-    })
+  // shown for the old one carries over. The draft is read again, for a new
+  // key or over the new values: edits kept under the same key come back on
+  // top of a record fetched again.
+  watch([() => props.model, drafts.key], ([next], [previous, previousKey]) => {
+    drafts.capture(previous ?? fallbackModel, previousKey ?? null)
+    if (next !== previous) {
+      baselineRevision++
+      baseline.value = cloneValue(model.value)
+      rootError.value = ''
+      strays.value = new Map()
+      submitted.value = false
+      shownAll.value = false
+      entries.value.forEach((entry) => {
+        coverInBaseline(entry)
+        forgetDisplay(entry)
+      })
+    }
+    drafts.load()
   })
 
   onBeforeUnmount(() => {
@@ -887,5 +934,11 @@ export function useFormStore(props: FormProps, emit: FormEmit) {
     setBaseline,
     setErrors,
     setRootError,
+    draft: drafts.draft,
+    notice: drafts.notice,
+    flush: drafts.flush,
+    confirmLeave: drafts.confirmLeave,
+    restoreDraft: drafts.restoreDraft,
+    discardDraft: drafts.discardDraft,
   }
 }

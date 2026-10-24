@@ -70,6 +70,7 @@ code: |
 | `width` | `string` | `'480px'` | 面板宽度，推荐 `min(92vw, 520px)` 这类响应式值；`fullscreen` 时忽略。 |
 | `fullscreen` | `boolean` | `false` | 面板撑满可见视口，去掉圆角与阴影。 |
 | `closeLabel` | `string` | `'Close'` | 头部关闭按钮的可访问名称。 |
+| `beforeClose` | `(reason: 'escape' \| 'mask' \| 'close') => boolean \| void \| Promise<boolean \| void>` | - | 用户请求关闭前询问；返回 `false` 或解析为 `false` 的 Promise 时保持打开。 |
 | `surface` | `'pure' \| 'mask' \| 'blur' \| 'glass' \| 'refraction' \| 'acrylic' \| 'mica' \| 'flat' \| 'plain'` | `'refraction'` | 面板材质。 |
 | `surfaceColor` | `string` | `''` | 材质下垫的底色；默认跟随主题。 |
 | `surfaceOpacity` | `number` | `mask` 为 `0.96`，其余为 `0.5` | 底色的不透明度，作用于 `mask`、`blur`、`acrylic`、`glass`、`refraction`；`pure`、`flat` 下恒为不透明，`mica`、`plain` 不垫底色。 |
@@ -94,7 +95,7 @@ code: |
 - 遮罩 teleport 到 `body`，打开时从共享 z-index manager 取得新层级，关闭时由 `v-if` 移除。
 - 遮罩为 `role="dialog"`、`aria-modal="true"`；打开时获得焦点，关闭或卸载时焦点回到打开前的元素。
 - Tab 与 Shift+Tab 在最上层的模态框内循环；即使焦点落到 `body`，底层抽屉也不会响应 Escape。
-- 点击遮罩空白、Escape 与关闭按钮依次派发 `update:modelValue(false)` 与 `close`。
+- 点击遮罩空白、Escape 与关闭按钮先询问 `beforeClose`，再依次派发 `update:modelValue(false)` 与 `close`；直接修改 `modelValue` 不询问。
 - `fullscreen` 只改变布局，对话框语义与焦点管理不变；没有可点击的遮罩空白，因此头部或底栏必须保留可见的关闭入口。
 - 面板背景是一层卡片预设的 `TxBaseSurface`（`fake`），垫在头部、正文与底栏之下，默认 `refraction`：50% 的底色既保住文字可读，又让后面的页面透上来被模糊、折射。
 - 遮罩的变暗与模糊画在遮罩的一层伪元素上，而不是遮罩自身的背景与透明度，所以面板材质采到的是页面，而不只是遮罩的暗色。

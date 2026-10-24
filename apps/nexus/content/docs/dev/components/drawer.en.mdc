@@ -124,6 +124,11 @@ code: |
     <TxDrawer v-model:visible="visible2" title="No Escape" :close-on-press-escape="false">
       <p>Escape does not close this drawer</p>
     </TxDrawer>
+
+    <!-- Every close asks first; returning false keeps it open -->
+    <TxDrawer v-model:visible="visible3" title="Edit" :before-close="() => formRef?.confirmLeave()">
+      <TxForm ref="formRef" :model="form">…</TxForm>
+    </TxDrawer>
   </template>
 ---
 :::
@@ -235,6 +240,10 @@ rows:
     description: 'Closes when Escape is pressed.'
     type: 'boolean'
     default: 'true'
+  - name: beforeClose
+    description: 'Asked before a close the user requests; `false`, or a promise of it, keeps the drawer open.'
+    type: "(reason: 'escape' | 'mask' | 'close') => boolean | void | Promise<boolean | void>"
+    default: '-'
   - name: maskEffect
     description: 'Mask look: blurred, dimmed only, or transparent.'
     type: "'blur' | 'opacity' | 'transparent'"
@@ -314,7 +323,7 @@ rows:
 
 - The root is `role="dialog"` with `aria-modal="true"`; with a header it uses `aria-labelledby`, otherwise `title` becomes the `aria-label`.
 - Opening focuses the drawer and Tab cycles inside it; closing or unmounting returns focus to the previously focused element.
-- The close button, the mask, and Escape all emit `update:visible(false)` and `close`; `closeOnClickMask` and `closeOnPressEscape` turn off the last two.
+- The close button, the mask, and Escape ask `beforeClose`, then emit `update:visible(false)` and `close`; `closeOnClickMask` and `closeOnPressEscape` turn off the last two.
 - Only the topmost modal dialog handles Tab and Escape, and keys another control already handled are ignored, so a confirmation on top owns them.
 - When closed, the root stays in the DOM with `inert` and `aria-hidden`.
 - The panel background is a card-preset `TxBaseSurface` (`fake`) under the header, body and footer, `refraction` by default. A sliding panel's filter samples where the panel was a frame earlier, so the material takes its motion fallback during the slide and recovers once it ends.

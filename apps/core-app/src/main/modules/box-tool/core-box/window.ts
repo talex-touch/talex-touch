@@ -34,6 +34,7 @@ import { createLogger } from '../../../utils/logger'
 
 import { DivisionBoxManager } from '../../division-box/manager'
 import { getPermissionModule } from '../../permission'
+import { closePluginWebContents } from '../../plugin/runtime/plugin-view-close'
 import { getMainConfig, subscribeMainConfig } from '../../storage'
 import {
   captureForegroundAppSnapshot,
@@ -1182,8 +1183,8 @@ export class WindowManager {
         coreBoxManager.exitUIMode()
       }
       const cacheRestored = !cacheEntry || (restored && viewCacheManager.restore(cacheEntry))
-      if (!restored && !extracted.view.webContents.isDestroyed()) {
-        extracted.view.webContents.close()
+      if (!restored) {
+        closePluginWebContents(extracted.view.webContents)
       }
 
       coreBoxWindowLog.error('Failed to detach plugin view into DivisionBox', {

@@ -1,6 +1,6 @@
 // The Electron sandbox exposes a restricted preload `process`, so it is read directly here
 // rather than through a global import.
-import { installTransportPortHandoff } from '@talex-touch/utils/transport'
+import { installTransportPortHandoff, PluginEvents } from '@talex-touch/utils/transport'
 import { contextBridge } from 'electron'
 import { PLUGIN_VIEW_NONCE_CHANNEL } from '../shared/ipc/raw-channel'
 import { pluginViewRendererIpcAdapter } from '../shared/ipc/plugin-view-renderer-adapter'
@@ -68,7 +68,10 @@ if (typeof channelAlias !== 'string' || !channelAlias) {
 }
 
 const channel = createPluginViewChannel(pluginViewRendererIpcAdapter, {
-  uniqueKey: channelAlias
+  uniqueKey: channelAlias,
+  // Closing the view waits for this answer, and a page that never asked to hear it has nothing
+  // to write first.
+  answerUnhandled: [PluginEvents.lifecycleSignal.beforeClose.toEventName()]
 })
 
 const publicChannel = Object.freeze({
@@ -88,8 +91,10 @@ contextBridge.exposeInMainWorld(
 contextBridge.exposeInMainWorld('$channel', publicChannel)
 
 applyTheme(bootstrap.config.themeStyle)
+// `pagehide`, not `beforeunload`: a page can cancel the unload - a form with unsaved changes asks
+// first - and must keep a working channel when it stays.
 window.addEventListener(
-  'beforeunload',
+  'pagehide',
   () => {
     disposeTransportPortHandoff()
     channel.destroy()

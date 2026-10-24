@@ -56,9 +56,20 @@ export interface FormFieldSource {
   /** Tells the item which kind of control took the id, once it has mounted. */
   adopt: (token: object, kind: () => FormControlKind) => void
   release: (token: object) => void
+  /** Keeps the field out of the form's draft while `holdsSecret` returns true. Returns the release. */
+  protect: (holdsSecret: () => boolean) => () => void
 }
 
 export const TX_FORM_FIELD_KEY: InjectionKey<FormFieldSource | null> = Symbol('TxFormField')
+
+export interface TxFormFieldOptions {
+  /**
+   * The control holds a secret: a credential, a one-time code, a card
+   * number. Its field never goes into the form's draft, and stays out for the
+   * form's life once this has been true.
+   */
+  sensitive?: MaybeRefOrGetter<boolean>
+}
 
 /**
  * Connects a control to the `TxFormItem` around it: the id the label points
@@ -70,7 +81,10 @@ export const TX_FORM_FIELD_KEY: InjectionKey<FormFieldSource | null> = Symbol('T
  * item from everything the control renders, so the input inside a select or
  * the radios inside a group never claim the field a second time.
  */
-export function useTxFormField(kind: MaybeRefOrGetter<FormControlKind> = 'input'): TxFormField | null {
+export function useTxFormField(
+  kind: MaybeRefOrGetter<FormControlKind> = 'input',
+  options: TxFormFieldOptions = {},
+): TxFormField | null {
   const source = inject(TX_FORM_FIELD_KEY, null)
   provide(TX_FORM_FIELD_KEY, null)
   if (!source)
@@ -83,6 +97,8 @@ export function useTxFormField(kind: MaybeRefOrGetter<FormControlKind> = 'input'
     onMounted(() => source.adopt(token, () => toValue(kind)))
     onBeforeUnmount(() => source.release(token))
   }
+  if (options.sensitive !== undefined)
+    onBeforeUnmount(source.protect(() => !!toValue(options.sensitive)))
 
   return {
     get id() {

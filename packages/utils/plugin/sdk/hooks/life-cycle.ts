@@ -13,12 +13,13 @@ export enum LifecycleHooks {
   INACTIVE = 'in',
   // FORE_PAUSED = 'fp',
   CRASH = 'cr',
+  BEFORE_CLOSE = 'bc',
 }
 
-type LifecycleHook = (data: unknown) => void
+type LifecycleHook = (data: unknown) => unknown
 interface HookContext { data: unknown, reply: (result: boolean) => void }
-type HookProcessor = (context: HookContext) => void
-type LifecycleSignalListener = (data: unknown) => boolean
+type HookProcessor = (context: HookContext) => void | Promise<void>
+type LifecycleSignalListener = (data: unknown) => boolean | Promise<boolean>
 
 const lifecycleSignalEvents = {
   [LifecycleHooks.ENABLE]: PluginEvents.lifecycleSignal.enabled,
@@ -26,6 +27,7 @@ const lifecycleSignalEvents = {
   [LifecycleHooks.ACTIVE]: PluginEvents.lifecycleSignal.active,
   [LifecycleHooks.INACTIVE]: PluginEvents.lifecycleSignal.inactive,
   [LifecycleHooks.CRASH]: PluginEvents.lifecycleSignal.crashed,
+  [LifecycleHooks.BEFORE_CLOSE]: PluginEvents.lifecycleSignal.beforeClose,
 } as const
 
 type SignalRegistry = Partial<Record<LifecycleHooks, () => void>>
@@ -74,7 +76,7 @@ export function injectHook(
     const transport = createPluginTuffTransport(channel as any)
     const listener: LifecycleSignalListener = (data) => {
       let replyResult = true
-      processFunc({
+      const processing = processFunc({
         data,
         reply: (result) => {
           replyResult = result
@@ -86,21 +88,20 @@ export function injectHook(
       // The hooks used to be deleted here, which made every lifecycle hook one-shot: the next
       // signal of the same type found an empty array and silently did nothing. Hooks live as long
       // as the plugin renderer does.
-      return replyResult
+      return processing instanceof Promise ? processing.then(() => replyResult) : replyResult
     }
 
-    registered[type] = transport.on(
-      lifecycleSignalEvents[type],
-      listener as (data: unknown) => void,
-    ) ?? (() => {})
+    registered[type] = transport.on<unknown, unknown>(lifecycleSignalEvents[type], listener) ?? (() => {})
   }
 
+  // What the hook returns is passed on, so a processor that waits for its hooks can.
   const wrappedHook = (data: any) => {
     try {
-      hook(data)
+      return hook(data)
     }
     catch (e) {
       sdkLog.error(`[TouchSDK] ${type} hook error`, { error: e })
+      return undefined
     }
   }
 
@@ -165,3 +166,25 @@ export const onPluginInactive = createHook(LifecycleHooks.INACTIVE)
  * @returns void
  */
 export const onCrash = createHook(LifecycleHooks.CRASH)
+
+/**
+ * The view is about to close. Write what the page holds now: closing a view does not run its
+ * `beforeunload`, and its unload handlers may not finish. A returned promise is waited for, but
+ * only briefly - the view closes regardless once the host stops waiting.
+ *
+ * TuffEx forms that keep drafts: `onBeforeClose(flushTxForms)`.
+ *
+ * @returns The registered hook
+ */
+export function onBeforeClose(hook: (data: unknown) => unknown) {
+  return injectHook(LifecycleHooks.BEFORE_CLOSE, hook, async ({ data, reply }) => {
+    const sdk = useTouchSDK('[Lifecycle Hook] TouchSDK not available. Make sure hooks run in plugin renderer context.')
+    const hooks = (sdk.__hooks as Record<LifecycleHooks, LifecycleHook[]> | undefined)?.[LifecycleHooks.BEFORE_CLOSE] ?? []
+    const results = await Promise.allSettled(hooks.map(async hookItem => hookItem(data)))
+    for (const result of results) {
+      if (result.status === 'rejected')
+        sdkLog.error(`[TouchSDK] ${LifecycleHooks.BEFORE_CLOSE} hook error`, { error: result.reason })
+    }
+    reply(true)
+  })
+}

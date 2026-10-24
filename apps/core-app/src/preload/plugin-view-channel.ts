@@ -56,6 +56,11 @@ export interface PluginViewChannelOptions {
   uniqueKey: string
   timeoutMs?: number
   createRequestId?: (eventName: string) => string
+  /**
+   * Requests answered with `true` at once while nothing is registered for them, instead of being
+   * held for a handler that may never come: their sender is waiting to tear the page down.
+   */
+  answerUnhandled?: readonly string[]
 }
 
 interface PendingRequest {
@@ -116,6 +121,7 @@ export function createPluginViewChannel(
   const handlers = new Map<string, Set<PluginViewChannelHandler>>()
   const pending = new Map<string, PendingRequest>()
   const earlyMessages = new Map<string, RawPluginChannelMessage[]>()
+  const answerUnhandled = new Set(options.answerUnhandled)
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   let destroyed = false
 
@@ -142,6 +148,10 @@ export function createPluginViewChannel(
   const dispatch = (message: RawPluginChannelMessage): void => {
     const eventHandlers = handlers.get(message.name)
     if (!eventHandlers?.size) {
+      if (answerUnhandled.has(message.name)) {
+        sendReply(message, DATA_CODE_SUCCESS, true)
+        return
+      }
       const queue = earlyMessages.get(message.name) ?? []
       if (queue.length < MAX_EARLY_MESSAGES_PER_EVENT) queue.push(message)
       earlyMessages.set(message.name, queue)

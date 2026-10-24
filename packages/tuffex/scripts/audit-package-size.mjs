@@ -282,7 +282,11 @@ const LIMITS = {
   // other sheet moved: HEAD measures 878,315 B here and this 885,593 B, exactly that growth.
   // Checked for inlining: the new rules sit on `.tx-form*`, `.tx-block-slot*`, `.tx-input` and
   // `.tx-number-input` selectors alone. Actuals plus minimal headroom, growth from here fails.
-  fullCssBytes: 865 * 1024,
+  // 865 -> 865.5 the same day: TxForm's draft notice, a line of text with Restore and Discard
+  // buttons, grows `form/style.css` 7,202 -> 7,733 B; no other sheet moved, and the full entry
+  // went 885,593 -> 886,124 B, exactly that growth. Checked for inlining: the new rules are
+  // `.tx-form__draft*` alone. Actuals plus minimal headroom, growth from here fails.
+  fullCssBytes: 865.5 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus
@@ -331,7 +335,9 @@ const pageStyleBudgets = [
     // 7,202 B), and the danger border and focus ring an input takes while its item shows an
     // error (`input/style.css` 2,892 -> 3,217 B). HEAD measured 88,753 B against the 90,112 B
     // limit; this measures 95,233 B. Actuals plus minimal headroom, growth from here fails.
-    limit: 93.5 * 1024,
+    // 93.5 -> 94 the same day for the draft notice (`form/style.css` 7,202 -> 7,733 B), the
+    // only sheet of the 21 that moved: 95,764 B.
+    limit: 94 * 1024,
   },
   { label: 'admin list', components: ['data-table', 'pagination', 'tabs', 'input', 'select', 'button', 'drawer'], limit: 135 * 1024 },
   {

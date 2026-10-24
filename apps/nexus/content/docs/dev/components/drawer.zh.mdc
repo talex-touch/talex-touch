@@ -124,6 +124,11 @@ code: |
     <TxDrawer v-model:visible="visible2" title="禁用 Escape" :close-on-press-escape="false">
       <p>Escape 键不会关闭此抽屉</p>
     </TxDrawer>
+
+    <!-- 每次关闭先询问，返回 false 时保持打开 -->
+    <TxDrawer v-model:visible="visible3" title="编辑" :before-close="() => formRef?.confirmLeave()">
+      <TxForm ref="formRef" :model="form">…</TxForm>
+    </TxDrawer>
   </template>
 ---
 :::
@@ -235,6 +240,10 @@ rows:
     description: '按 Escape 时关闭。'
     type: 'boolean'
     default: 'true'
+  - name: beforeClose
+    description: '用户请求关闭前询问；返回 `false` 或解析为 `false` 的 Promise 时保持打开。'
+    type: "(reason: 'escape' | 'mask' | 'close') => boolean | void | Promise<boolean | void>"
+    default: '-'
   - name: maskEffect
     description: '遮罩效果：模糊、仅变暗或透明。'
     type: "'blur' | 'opacity' | 'transparent'"
@@ -314,7 +323,7 @@ rows:
 
 - 根节点为 `role="dialog"`、`aria-modal="true"`；渲染 Header 时用 `aria-labelledby` 关联标题，否则以 `title` 作为 `aria-label`。
 - 打开时聚焦抽屉，Tab 在抽屉内循环；关闭或卸载时焦点回到打开前的元素。
-- 关闭按钮、遮罩与 Escape 都派发 `update:visible(false)` 与 `close`；`closeOnClickMask`、`closeOnPressEscape` 分别关闭后两条路径。
+- 关闭按钮、遮罩与 Escape 先询问 `beforeClose`，再派发 `update:visible(false)` 与 `close`；`closeOnClickMask`、`closeOnPressEscape` 分别关闭后两条路径。
 - 只有最上层的模态对话框响应 Tab 与 Escape，已被其他控件处理的按键会被忽略，因此上层确认框独占这些按键。
 - 关闭后根节点仍留在 DOM 中，并设置 `inert` 与 `aria-hidden`。
 - 面板背景是一层卡片预设的 `TxBaseSurface`（`fake`），垫在头部、正文与底栏之下，默认 `refraction`。面板滑入滑出时滤镜采到的是它上一帧所在位置的背景，所以滑动期间材质走运动降级，滑动结束后恢复。

@@ -31,6 +31,8 @@ export interface FormFieldRegistration {
   labelId: () => string | undefined
   /** A check finished: focus left the field changed, or the form validated it. */
   validated?: (valid: boolean) => void
+  /** The value stays out of drafts: the item opted out, or a control inside holds a secret. */
+  sensitive?: () => boolean
 }
 
 export interface FormFieldHandle {

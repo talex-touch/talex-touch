@@ -1,5 +1,10 @@
 import type {
+  FormClearDraftsOptions,
   FormControlKind,
+  FormDraftAdapter,
+  FormDraftState,
+  FormDraftStorage,
+  FormDraftTtl,
   FormEmits,
   FormErrorSource,
   FormErrorSummaryProps,
@@ -9,7 +14,11 @@ import type {
   FormLabelAlign,
   FormLabelPosition,
   FormLayout,
+  FormLeaveConfirm,
+  FormLeaveContext,
+  FormLeaveField,
   FormMessages,
+  FormPersistOptions,
   FormProps,
   FormReconcile,
   FormReconcileContext,
@@ -29,10 +38,12 @@ import type {
   FormValidatorContext,
   FormValues,
   TxFormField,
+  TxFormFieldOptions,
   TxFormHost,
 } from './src/types'
 import { withInstall } from '../../../utils/withInstall'
 import { provideTxFormHost, useTxFormField } from './src/context'
+import { clearTxFormDrafts, flushTxForms } from './src/draft'
 import TxForm from './src/TxForm.vue'
 import TxFormErrorSummary from './src/TxFormErrorSummary.vue'
 import TxFormItem from './src/TxFormItem.vue'
@@ -45,6 +56,8 @@ const FormErrorSummary = withInstall(TxFormErrorSummary)
 
 export { FORM_DEFAULT_MESSAGES } from './src/types'
 export {
+  clearTxFormDrafts,
+  flushTxForms,
   Form,
   FormErrorSummary,
   FormItem,
@@ -57,7 +70,12 @@ export {
   useTxFormField,
 }
 export type {
+  FormClearDraftsOptions,
   FormControlKind,
+  FormDraftAdapter,
+  FormDraftState,
+  FormDraftStorage,
+  FormDraftTtl,
   FormEmits,
   FormErrorSource,
   FormErrorSummaryProps,
@@ -67,7 +85,11 @@ export type {
   FormLabelAlign,
   FormLabelPosition,
   FormLayout,
+  FormLeaveConfirm,
+  FormLeaveContext,
+  FormLeaveField,
   FormMessages,
+  FormPersistOptions,
   FormProps,
   FormReconcile,
   FormReconcileContext,
@@ -87,6 +109,7 @@ export type {
   FormValidatorContext,
   FormValues,
   TxFormField,
+  TxFormFieldOptions,
   TxFormHost,
 }
 export type TxFormInstance = InstanceType<typeof TxForm>

@@ -27,6 +27,7 @@ import { pluginModule } from '../plugin/plugin-module'
 import { usePluginInjections } from '../plugin/runtime/plugin-injections'
 import { resolvePluginViewSecurityProfile } from '../plugin/runtime/plugin-view-security-profile'
 import { buildPluginViewWebPreferences } from '../plugin/runtime/plugin-view-host'
+import { closePluginWebContents } from '../plugin/runtime/plugin-view-close'
 import {
   registerPluginWebContents,
   unregisterPluginWebContents
@@ -704,7 +705,7 @@ export class DivisionBoxSession {
           this.uiViewThemeCssKey.delete(this.uiView)
         }
         this.touchWindow?.window.contentView.removeChildView(this.uiView)
-        this.uiView.webContents.close()
+        closePluginWebContents(this.uiView.webContents)
       } catch (error) {
         divisionBoxSessionLog.error('Error detaching UI view', { error })
       }

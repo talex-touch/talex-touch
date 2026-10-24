@@ -225,6 +225,7 @@ export const demoLoaders: Record<string, DemoLoader> = {
   FlowchartFlowchartDemo: () => import('./demos/FlowchartFlowchartDemo.vue'),
   FormAsyncDemo: () => import('./demos/FormAsyncDemo.vue'),
   FormBaselineDemo: () => import('./demos/FormBaselineDemo.vue'),
+  FormDraftDemo: () => import('./demos/FormDraftDemo.vue'),
   FormFormDemo: () => import('./demos/FormFormDemo.vue'),
   FormLayoutDemo: () => import('./demos/FormLayoutDemo.vue'),
   FormSubmitDemo: () => import('./demos/FormSubmitDemo.vue'),

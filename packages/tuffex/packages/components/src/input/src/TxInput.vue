@@ -44,8 +44,17 @@ const emit = defineEmits<{
   'clear': []
 }>()
 
+/** Autofill tokens of values never written to a draft: credentials, one-time codes, payment cards. */
+const SECRET_AUTOCOMPLETE = /^(?:current-password|new-password|one-time-code|cc-.+)$/
+
+function isSecretAutocomplete(value: unknown): boolean {
+  return typeof value === 'string' && value.split(/\s+/).some(token => SECRET_AUTOCOMPLETE.test(token))
+}
+
 const attrs = useAttrs()
-const field = useTxFormField('input')
+const field = useTxFormField('input', {
+  sensitive: () => props.type === 'password' || isSecretAutocomplete(attrs.autocomplete),
+})
 
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
 

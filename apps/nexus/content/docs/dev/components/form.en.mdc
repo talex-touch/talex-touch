@@ -195,6 +195,52 @@ code: |
 ---
 :::
 
+### Drafts
+`persist` keeps what the user typed under the form's `id`, so a reload or a closed tab brings it back.
+:::TuffDemoWrapper{demo="FormDraftDemo" code-lang="vue"}
+---
+code: |
+  <script setup lang="ts">
+  import { onMounted, reactive, ref } from 'vue'
+
+  const props = defineProps<{ postId: number }>()
+  const formRef = ref()
+  const post = reactive({ title: '', body: '' })
+  const loaded = ref(false)
+
+  onMounted(async () => {
+    formRef.value.setBaseline(await fetch(`/api/posts/${props.postId}`).then(res => res.json()))
+    loaded.value = true
+  })
+  </script>
+
+  <template>
+    <TxForm id="post-editor" ref="formRef" :model="post" :persist="loaded && { recordId: postId }" @submit="save">
+      <TxFormItem label="Title" prop="title">
+        <TuffInput v-model="post.title" />
+      </TxFormItem>
+      <TxFormItem label="Body" prop="body">
+        <TxTextarea v-model="post.body" />
+      </TxFormItem>
+    </TxForm>
+  </template>
+---
+:::
+
+### Leave Confirmation
+`confirmLeave()` resolves whether to go, and asks only about changes no draft holds.
+
+```ts
+onBeforeRouteLeave(() => formRef.value.confirmLeave())
+```
+
+```vue
+<!-- Escape, the mask and the close button all ask first -->
+<TxModal v-model="open" :before-close="() => formRef?.confirmLeave()">
+  <TxForm ref="formRef" :model="form">…</TxForm>
+</TxModal>
+```
+
 ### Schema Validation
 `schema` takes any Standard Schema v1 validator and hands each issue to the field at its path.
 
@@ -238,13 +284,26 @@ const controlAttrs = computed(() => field?.attrs(attrs) ?? attrs)
 const isDisabled = computed(() => props.disabled || !!field?.disabled)
 ```
 
+### In a Plugin
+A plugin view's `localStorage` goes with the view, so keep the drafts in the plugin's storage and write them before the view closes.
+
+```ts
+import { flushTxForms, provideTxFormHost } from '@talex-touch/tuffex/form'
+import { LifeCycle, usePluginDraftStorage } from '@talex-touch/utils/plugin/sdk'
+
+const app = createApp(App)
+provideTxFormHost({ storage: usePluginDraftStorage() }, app)
+LifeCycle.onBeforeClose(flushTxForms)
+app.mount('#app')
+```
+
 ### Best Practices
 
 - Keep `model` the same reactive object; a new object is a new record, which resets the baseline and clears every message.
 - Pass fetched data to `setBaseline()` instead of writing it into `model`, so `dirty` and `reset()` measure against it.
 - Put shared rules in form-level `rules`; an item's `rules` replace the form-level rules for the same path rather than adding to them.
 - Declare a validator that returns a promise `async`, and pass `signal` to its request.
-- Put the action buttons in a `TxFormItem` without a `label`, so they line up with the field column in side layout.
+- Turn `persist` on once the record has loaded, so the draft is laid over the saved values rather than empty ones.
 
 ## API Reference
 
@@ -267,7 +326,9 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `messages` | `Partial<FormMessages>` | - | Overrides the built-in text. |
 | `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | Passed to the controls inside that have sizes. |
 | `disabled` | `boolean` | `false` | Disables every control inside that reads the form, and blocks submit. |
-| `reconcile` | `FormReconcile` | - | Decides what `model` holds when `setBaseline()` brings values for fields the user changed. |
+| `reconcile` | `FormReconcile` | - | Decides what `model` holds when `setBaseline()` or a draft brings values for fields the user changed. |
+| `persist` | `boolean \| FormPersistOptions` | `false` | Keeps what the user typed under `id`; `true` takes the defaults. |
+| `leaveConfirm` | `FormLeaveConfirm \| false` | host's, then `window.confirm` | Asked before leaving with changes no draft holds; `false` never asks, as for a filter. |
 
 #### Events
 
@@ -275,12 +336,14 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 |------|---------|-------------|
 | `submit` | `(values: FormValues, event?: Event)` | Called once every check passes, with a copy of the values; a returned promise is awaited, and `submitting` is `true` meanwhile. |
 | `validate` | `(valid: boolean)` | Fires after `validate()` has checked every field. |
+| `persist-error` | `(error: unknown)` | A draft could not be read or written; fires once per run of failures. |
 
 #### Slots
 
 | Slot | Props | Description |
 |------|------|-------------|
 | `default` | `{ dirty, valid, submitting, submitted, errors, rootError }` | Form items and actions. |
+| `draft` | `{ draft, notice, restore, discard }` | Replaces the notice above the fields while a draft has filled them in or waits. |
 
 #### Exposed Methods
 
@@ -301,6 +364,11 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `setErrors` | `(errors: Record<string, string \| null \| undefined>, options?: { source?: 'server' \| 'client' }) => void` | Shows outside errors until the user edits the field; a `client` error also blocks submit. |
 | `setRootError` | `(message?: string \| null) => void` | Sets or clears the form-level error. |
 | `clearValidate` | `(paths?: string \| string[]) => void` | Hides messages without changing `model`. |
+| `draft` | `FormDraftState` | Read-only; what the draft filled in or still offers, when it was written, whether writing fails. |
+| `flush` | `() => Promise<void>` | Writes the draft now. |
+| `confirmLeave` | `() => Promise<boolean>` | Call before leaving inside the app; resolves `true` to go. |
+| `restoreDraft` | `() => Promise<boolean>` | Fills in the fields the draft still offers; resolves whether any were. |
+| `discardDraft` | `() => Promise<void>` | Puts the saved values back where the draft filled them in, and deletes it. |
 
 ### TxFormItem
 
@@ -316,6 +384,7 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `width` | `'xs' \| 'sm' \| 'md' \| 'lg' \| 'full'` | - | Control width: 80, 160, 240 or 360px, or the whole column. |
 | `showMessage` | `boolean` | `true` | Shows the message under the control; with it off, the control is still marked invalid. |
 | `inline` | `boolean` | `false` | Centres the label on the control; in a stacked layout, puts it beside the control. |
+| `persist` | `boolean` | `true` | `false` keeps the field out of the draft, as a secret is. |
 
 #### Events
 
@@ -368,8 +437,13 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 
 | Name | Type | Description |
 |------|-----------|-------------|
-| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | Gives the forms below — or, with `app`, in the whole app — the built-in text. Call it in a component's `setup`. |
+| `provideTxFormHost` | `(host: TxFormHost, app?: App) => void` | Gives the forms below — or, with `app`, in the whole app — what the host decides. Call it in a component's `setup`. |
 | `host.messages` | `MaybeRefOrGetter<Partial<FormMessages>>` | Text in the host's language; a ref or getter follows locale switches. |
+| `host.namespace` | `MaybeRefOrGetter<string \| null>` | Whose drafts these are, as `user:42`; `null` until that is known, and no draft is kept meanwhile. |
+| `host.storage` | `FormDraftStorage` | Where drafts go when `persist.storage` does not say. |
+| `host.leaveConfirm` | `FormLeaveConfirm` | Asks before leaving, for the forms without their own `leaveConfirm`. |
+| `flushTxForms` | `() => Promise<void>` | Writes every mounted form's pending draft, before the page goes without warning. |
+| `clearTxFormDrafts` | `(options?: { namespace?: string, storage?: FormDraftStorage }) => Promise<void>` | Removes the drafts, or one namespace's. |
 
 ### Types
 
@@ -391,12 +465,33 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 
 | Field | Type | Description |
 |------|------|-------------|
-| `source` | `'baseline'` | Where the values came from; `baseline` is `setBaseline()`. |
+| `source` | `'baseline' \| 'draft'` | `baseline` is `setBaseline()`; `draft` is a stored draft whose fields were saved again since. |
 | `incoming` | `FormValues` | The values arriving; they become the new baseline whatever `model` ends up holding. |
 | `current` | `FormValues` | `model` as the user left it. |
 | `baseline` | `FormValues` | The baseline the user's edits were made against. |
 | `dirtyPaths` | `string[]` | Paths the user changed that `incoming` also carries. |
-| `merged` | `FormValues` | The default: `incoming`, with every path in `dirtyPaths` kept as the user left it. Returning nothing takes it. |
+| `merged` | `FormValues` | The default, taken when nothing is returned: `incoming` with `dirtyPaths` kept, or for a draft, `model` as it is. |
+| `origin` | `FormValues` | For a draft: the saved values its edits were made against, for a three-way merge. |
+
+`FormPersistOptions`, the object form of `persist`:
+
+| Field | Type | Description |
+|------|------|-------------|
+| `recordId` | `string \| number` | Keeps each record's draft apart: `42` for `/posts/42/edit`. |
+| `namespace` | `string` | Whose drafts these are; defaults to the host's, then `default`. |
+| `version` | `number` | Bump it when the model's shape changes; a draft from another version is dropped. Default `1`. |
+| `ttl` | `number \| '7d' \| '12h' \| '30m'` | How long a draft lasts after its last write, in milliseconds or units. Default `'7d'`. |
+| `storage` | `'local' \| 'session' \| 'memory' \| FormDraftAdapter` | Defaults to the host's, then `local`; `memory` lasts until the page reloads. |
+| `exclude` | `string[]` | Paths never written, on top of the secret fields. |
+| `restore` | `'auto' \| 'manual'` | `manual` waits for the notice or `restoreDraft()`. Default `auto`. |
+
+`FormDraftAdapter`, a store of your own; every method may return a promise:
+
+| Field | Type | Description |
+|------|------|-------------|
+| `get` / `remove` | `(key: string) => string \| null` / `(key: string) => void` | Reads or deletes one draft. |
+| `set` | `(key: string, value: string) => void` | Throw when the value was not stored; the form keeps it in memory meanwhile. |
+| `clear` | `(prefix: string) => void` | Optional; removes the keys starting with `prefix`, for `clearTxFormDrafts()`. |
 
 `FormMessages`, the built-in text; the English defaults are `FORM_DEFAULT_MESSAGES`:
 
@@ -411,6 +506,9 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `validating` | `string` | Shown when an async check runs past one second. |
 | `optional` | `string` | After optional labels when `requiredMark="optional"`. |
 | `summaryTitle` | `string` | Default heading of `TxFormErrorSummary`. |
+| `draftRestored` / `draftPending` | `(savedAt: Date) => string` | The notice once a draft has filled the form in, or while it waits. |
+| `draftRestore` / `draftDiscard` | `string` | The notice's buttons. |
+| `leaveConfirm` | `string` | Asked through `window.confirm` when nothing else asks. |
 
 ### CSS Variables
 
@@ -420,6 +518,15 @@ const isDisabled = computed(() => props.disabled || !!field?.disabled)
 | `--tx-form-label-max` | `16em` | Widest the side label column may grow; `labelWidth` writes it. |
 | `--tx-form-control-height` | `32px` | Height of a one-line control, which labels line up with. |
 | `--tx-form-item-min` | `220px` | Narrowest an item in a `TxFormRow` gets before the row wraps; `110px` with `condensed`. |
+
+## Drafts and Leaving
+
+- A draft fills in only the fields the user has not touched; a field saved again since waits in the notice, or goes to `reconcile` with `source: 'draft'`.
+- It is written 300ms after typing pauses, at least every 2 seconds while it goes on, and as the page hides; a successful submit or `reset()` deletes it.
+- Secrets stay out: password inputs, `TxSensitiveInput`, inputs whose `autocomplete` asks for a password, a one-time code or card details, items with `persist` off, and `exclude` paths. A field that once held one stays out.
+- Reloading or closing the page asks first only while a change is in no draft: without `persist`, in a secret field, or when a write has not landed.
+- A store that refuses a write leaves the draft in memory until one succeeds; a host namespace of `null`, or a form without `id`, keeps none.
+- When the namespace changes to another, as on sign-out, what the last person changed stays in the form but goes into no draft, and counts as unsaved until it is changed. `clearTxFormDrafts({ namespace })` removes that person's drafts.
 
 ## Overview
 

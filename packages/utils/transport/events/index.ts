@@ -1679,6 +1679,13 @@ export const PluginEvents = {
     disabled: defineEvent('plugin').module('lifecycle').event('disabled').define<unknown, void>(),
 
     crashed: defineEvent('plugin').module('lifecycle').event('crashed').define<unknown, void>(),
+
+    /**
+     * The view is about to close, and its page's `beforeunload` will not run: the last moment to
+     * write what it holds. Answered once the plugin's hooks have finished; closing waits for the
+     * answer only briefly.
+     */
+    beforeClose: defineEvent('plugin').module('lifecycle').event('before-close').define<void, boolean>(),
   },
 
   /**

@@ -1,5 +1,5 @@
-import { mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import TModal from '../src/TModal.vue'
 import TxModal from '../src/TxModal.vue'
@@ -105,6 +105,51 @@ describe('txModal', () => {
 
     document.body.querySelector<HTMLButtonElement>('.tx-modal__close')?.click()
     expect(wrapper.emitted('update:modelValue')?.[2]).toEqual([false])
+  })
+
+  it('asks beforeClose why it is closing, and closes only when it agrees', async () => {
+    const beforeClose = vi.fn((_reason: string): boolean | Promise<boolean> => false)
+    const wrapper = mount(TxModal, {
+      props: { modelValue: true, title: 'Edit', beforeClose },
+      attachTo: document.body,
+    })
+    const overlay = document.body.querySelector<HTMLElement>('.tx-modal__overlay')!
+
+    overlay.click()
+    overlay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    document.body.querySelector<HTMLButtonElement>('.tx-modal__close')!.click()
+    expect(beforeClose.mock.calls.map(([reason]) => reason)).toEqual(['mask', 'escape', 'close'])
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+
+    // While an answer is pending, further attempts are dropped.
+    let agree!: (value: boolean) => void
+    beforeClose.mockImplementation(() => new Promise(resolve => (agree = resolve)))
+    overlay.click()
+    overlay.click()
+    expect(beforeClose).toHaveBeenCalledTimes(4)
+    agree(true)
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  it('stays open when beforeClose throws', () => {
+    const errorHandler = vi.fn()
+    const wrapper = mount(TxModal, {
+      props: {
+        modelValue: true,
+        title: 'Edit',
+        beforeClose: () => {
+          throw new Error('broken')
+        },
+      },
+      attachTo: document.body,
+      global: { config: { errorHandler } },
+    })
+
+    document.body.querySelector<HTMLButtonElement>('.tx-modal__close')!.click()
+    expect(errorHandler).toHaveBeenCalledWith(expect.objectContaining({ message: 'broken' }), expect.anything(), expect.any(String))
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
   it('traps Tab focus within the dialog', async () => {

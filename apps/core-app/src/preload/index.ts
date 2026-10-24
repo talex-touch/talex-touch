@@ -46,7 +46,9 @@ interface CoreAppPreloadAPI {
 }
 
 const disposeTransportPortHandoff = installTransportPortHandoff(ipcRenderer, window)
-window.addEventListener('beforeunload', disposeTransportPortHandoff, { once: true })
+// `pagehide`, not `beforeunload`: a page can cancel the unload - a form with unsaved changes asks
+// first - and must keep receiving ports when it stays.
+window.addEventListener('pagehide', disposeTransportPortHandoff, { once: true })
 
 /**
  * Request startup information from the main process before the renderer runs.

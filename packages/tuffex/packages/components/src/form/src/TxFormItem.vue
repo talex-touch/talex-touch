@@ -10,6 +10,7 @@ const props = withDefaults(defineProps<FormItemProps>(), {
   required: false,
   showMessage: true,
   inline: false,
+  persist: true,
 })
 
 const emit = defineEmits<FormItemEmits>()
@@ -41,6 +42,7 @@ const {
   root: rootRef,
   labelledBy: 'for',
   onValidated: valid => emit('validate', valid),
+  persist: () => props.persist,
 })
 </script>
 

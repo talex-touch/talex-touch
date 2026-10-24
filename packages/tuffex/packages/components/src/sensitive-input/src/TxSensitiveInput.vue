@@ -33,7 +33,7 @@ const props = withDefaults(defineProps<SensitiveInputProps>(), {
 const emit = defineEmits<SensitiveInputEmits>()
 
 const attrs = useAttrs()
-const field = useTxFormField('input')
+const field = useTxFormField('input', { sensitive: true })
 
 // Wrapper takes class/style; everything else lands on the field, matching
 // TxInput. `v-bind="inputAttrs"` is bound *before* the explicit attributes so a

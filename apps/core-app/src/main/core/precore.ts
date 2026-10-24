@@ -6,7 +6,7 @@ import process from 'node:process'
  * This file describes the pre-core of the touch app.
  * Running necessary settings or environment params before startup the touch app.
  */
-import { app, BrowserWindow, crashReporter, powerMonitor, session } from 'electron'
+import { app, BrowserWindow, crashReporter, powerMonitor, session, webContents } from 'electron'
 import * as log4js from 'log4js'
 import { AppEvents, getTuffTransportMain } from '@talex-touch/utils/transport/main'
 import packageJson from '../../../package.json'
@@ -15,6 +15,8 @@ import { checkDirWithCreate } from '../utils/common-util'
 import { devProcessManager } from '../utils/dev-process-manager'
 import { mainLog } from '../utils/logger'
 import { operationalErrorService } from '../modules/observability'
+import { notifyPluginBeforeClose } from '../modules/plugin/runtime/plugin-view-close'
+import { resolvePluginRegistrationByWebContents } from '../modules/plugin/runtime/plugin-view-registry'
 import {
   AppReadyEvent,
   AppQuitEvent,
@@ -26,6 +28,7 @@ import {
 } from './eventbus/touch-event'
 import { installDefaultSessionPermissionPolicy } from './default-session-permissions'
 import { installReportOnlyCspPolicy } from './report-only-csp'
+import { installLeaveGuard } from './leave-guard'
 import { getCurrentTouchApp } from './main-runtime-state'
 import { DEFAULT_BEFORE_QUIT_TIMEOUT_MS, runWithBeforeQuitTimeout } from './before-quit-guard'
 import { stopWatchersBeforeQuit } from './before-quit-stop-watchers'
@@ -89,21 +92,36 @@ async function quiesceRenderersBeforeQuit(): Promise<void> {
     if (window.isDestroyed() || window.webContents.isDestroyed()) return false
     return !window.webContents.getURL().startsWith('devtools://')
   })
-  if (windows.length === 0) return
+  // Plugin pages are told on their own: they sit in views, which no window list holds - a cached
+  // one in no window at all - and closing them runs no `beforeunload` for them to save in.
+  const pluginPages = webContents
+    .getAllWebContents()
+    .filter((contents) => resolvePluginRegistrationByWebContents(contents.id))
+  if (windows.length === 0 && pluginPages.length === 0) return
 
   rendererQuitNotified = true
   const transport = getTuffTransportMain(channel, resolveKeyManager(channel))
   const drain = await runWithBeforeQuitTimeout(async () => {
-    await Promise.allSettled(
-      windows.map((window) =>
-        transport.sendTo(window.webContents, AppEvents.lifecycle.beforeQuit, undefined)
-      )
+    const acknowledgements: Array<Promise<unknown>> = windows.map((window) =>
+      transport.sendTo(window.webContents, AppEvents.lifecycle.beforeQuit, undefined)
     )
+    for (const contents of pluginPages) {
+      const notified = notifyPluginBeforeClose(contents)
+      if (notified) acknowledgements.push(notified)
+    }
+    await Promise.allSettled(acknowledgements)
   }, 1_500)
   if (drain.timedOut) {
     mainLog.warn('Renderer shutdown acknowledgement timed out; continuing shutdown', {
-      meta: { timeoutMs: 1_500, windowCount: windows.length }
+      meta: { timeoutMs: 1_500, windowCount: windows.length, pluginPageCount: pluginPages.length }
     })
+  }
+
+  // What the pages just wrote to their storage has to reach the disk before the process goes.
+  try {
+    session.defaultSession.flushStorageData()
+  } catch (error) {
+    mainLog.warn('Failed to flush renderer storage before quit', { error })
   }
 }
 
@@ -368,6 +386,9 @@ void app.whenReady().then(() => {
     markAppQuitting('power-monitor-shutdown')
   })
 })
+
+// Before any page exists, so that none is left without someone to ask for it.
+installLeaveGuard(app)
 
 app.on('window-all-closed', () => {
   mainLog.info('All windows closed, preparing shutdown')

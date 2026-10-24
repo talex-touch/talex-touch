@@ -3,6 +3,7 @@ import type { CSSProperties } from 'vue'
 import type { BaseSurfaceMode } from '../../base-surface/src/types'
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
 import { hasDocument } from '../../../../utils/env'
+import { useGuardedClose } from '../../../../utils/guarded-close'
 import { isTopmostModalDialog, useZIndexAllocator } from '../../../../utils/z-index-manager'
 import TxBaseSurface from '../../base-surface/src/TxBaseSurface.vue'
 
@@ -32,6 +33,12 @@ const props = withDefaults(
     surfaceColor?: string
     /** Opacity of that colour (0–1): 0.96 under `mask`, 0.5 under the other materials. */
     surfaceOpacity?: number
+    /**
+     * Asked before the user closes the dialog: Escape, a click on the mask,
+     * the close button. Return `false`, or a promise of it, to keep it open.
+     * Setting `modelValue` to `false` is not asked.
+     */
+    beforeClose?: (reason: 'escape' | 'mask' | 'close') => boolean | void | Promise<boolean | void>
   }>(),
   {
     title: '',
@@ -111,6 +118,8 @@ function close() {
   emit('close')
 }
 
+const requestClose = useGuardedClose(() => props.beforeClose, () => visible.value, close)
+
 // Focus trap: aria-modal="true" promises the background is inert, so Tab must cycle
 // within the dialog instead of walking into the page behind it.
 function trapFocus(event: KeyboardEvent) {
@@ -153,7 +162,7 @@ function handleKeydown(event: KeyboardEvent) {
     return
   }
   event.preventDefault()
-  close()
+  requestClose('escape')
 }
 
 onMounted(() => {
@@ -189,7 +198,7 @@ onUnmounted(() => {
         tabindex="-1"
         :aria-labelledby="title ? titleId : undefined"
         :style="{ zIndex }"
-        @click.self="close"
+        @click.self="requestClose('mask')"
       >
         <div class="tx-modal__content" :class="{ 'tx-modal__content--fullscreen': fullscreen }" :style="contentStyle">
           <TxBaseSurface
@@ -206,7 +215,7 @@ onUnmounted(() => {
                 {{ title }}
               </h3>
             </slot>
-            <button type="button" class="tx-modal__close" :aria-label="closeLabel" @click="close">
+            <button type="button" class="tx-modal__close" :aria-label="closeLabel" @click="requestClose('close')">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
