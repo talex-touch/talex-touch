@@ -1,5 +1,21 @@
 # TouchX UI 更新日志
 
+## [Unreleased]
+
+### 📦 组件变动 (Components)
+
+- **新增组件**: `image-preview`
+- **更新组件**: `attachment-tray`, `base-surface`, `image-gallery`
+
+### ✨ 组件增强
+
+- 新增 `TxImagePreview` 全窗口图片预览，一次看一张，左右相邻的图片候在两侧。滚轮以指针为中心缩放，触控板捏合与 ⌘/Ctrl + 滚轮跟手缩放，放大后拖动平移、松手滑行；未放大时横向拖动或一划翻页，上下拖走关闭。触屏双指捏合、双击放大或恢复、单击隐藏或显示控件，长按 480 ms 弹出操作菜单。传 `origin` 时图片按缩略图的裁切与圆角飞出、关闭时飞回，越过终点的程度由 `bounce` 控制（默认 `0.2`）。`actions` 逐项开关旋转、复制、分享与下载，右键或菜单键打开同一组操作的菜单（`contextMenu`），`action` 事件在执行前触发，`preventDefault()` 后由宿主处理。底部条用缩略图或圆点（`indicator`）。遮罩默认 `refraction` 材质、控件默认 `blur` 材质，各有颜色、不透明度与模糊半径可调。宽度不超过 640px 或高度不超过 480px 时改用手机版式。所有文字与可访问名称都是 props，另有 `counterFormatter`、`scaleFormatter`、`indicatorItemFormatter`、`labelFormatter` 与 `readoutLabelFormatter`。
+- `TxImageGallery` 与 `TxAttachmentTray` 改用 `TxImagePreview`：图片从点开的缩略图飞出、关闭时飞回。两者新增 `previewProps`，把预览的其余选项（操作、底部条、动效与材质）原样传入，新增 `action` 事件转发预览的操作；`TxAttachmentTray` 另新增 `openLabelFormatter`，由图片名生成缩略图的 `aria-label`（默认 `` (name) => `${previewTitle}: ${name}` ``）。原内部预览器 `ImageGalleryViewer` 移除，它不在包的导出中。预览的样式在 `image-preview` 的样式表里：按需样式插件会一并加载，手动引入样式时需另引 `@talex-touch/tuffex/image-preview/style.css`，以及它依赖的 `base-surface`、`flow-light` 与 `glass-surface` 的样式表。
+
+### 🐛 组件修复
+
+- `TxBaseSurface` 在强制颜色模式（如 Windows 高对比度主题）下改为实色 `Canvas` 填充，并加一圈 `CanvasText` 描边，模糊、着色与描边各层不再绘制。此前系统调色板保留了材质的半透明与背景模糊，文字底下透出被模糊的页面，阴影去掉后浮层也没有边界。
+
 ## [0.9.1] - 2026-10-21
 
 ### 📦 组件变动 (Components)

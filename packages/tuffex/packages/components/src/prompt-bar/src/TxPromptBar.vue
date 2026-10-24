@@ -28,6 +28,7 @@ const props = withDefaults(defineProps<PromptBarProps>(), {
   maxHeight: 100,
   sendOnEnter: true,
   allowEmptySend: false,
+  clearOnSend: true,
   dictatable: false,
   sourcesHintText: 'Type to search sources & files',
   commandsHintText: 'Type to search commands',
@@ -72,6 +73,7 @@ const measureRef = ref<HTMLElement | null>(null)
 const controlsRef = ref<HTMLElement | null>(null)
 const leadRef = ref<HTMLElement | null>(null)
 const trailRef = ref<HTMLElement | null>(null)
+const sendRef = ref<HTMLButtonElement | null>(null)
 
 const uid = useId()
 const tokenListboxId = `${uid}-sources`
@@ -232,7 +234,8 @@ function send(): void {
     return
 
   emit('send', { text: draft.value, attachments: attachments.value })
-  updateDraft('')
+  if (props.clearOnSend)
+    updateDraft('')
   closeMenus()
 }
 
@@ -410,6 +413,26 @@ watch(modelOpen, (open) => {
     modelActive.value = null
 })
 
+// A focused control that turns disabled drops focus to `<body>`, where a host's
+// Escape handler never hears another key. Pre-flush, so this runs while the
+// control still holds focus: the textarea takes over from the send button, its
+// caret intact, since a textarea keeps its selection through a blur. When the
+// whole bar disables the textarea goes too, and the root takes focus instead.
+watch([canSend, () => props.disabled], ([sendable, disabled]) => {
+  const root = rootRef.value
+  const active = root?.ownerDocument.activeElement
+  if (!root || !active || active === root || !root.contains(active))
+    return
+
+  if (disabled) {
+    if (active.matches('.tx-bui-prompt-bar__input, .tx-bui-prompt-bar__control, .tx-bui-prompt-bar__model'))
+      root.focus({ preventScroll: true })
+  }
+  else if (!sendable && active === sendRef.value) {
+    inputRef.value?.focus({ preventScroll: true })
+  }
+})
+
 onBeforeUnmount(() => {
   if (typeof document !== 'undefined')
     document.removeEventListener('pointerdown', onDocumentPointerDown, true)
@@ -434,6 +457,7 @@ defineExpose({
     ref="rootRef"
     class="tx-bui-prompt-bar"
     :class="[`is-${variant}`, { 'is-disabled': disabled, 'is-morphing': morphing }]"
+    tabindex="-1"
   >
     <TxPromptBarMenu
       v-if="menuOpen"
@@ -625,6 +649,7 @@ defineExpose({
           <slot name="actions" :send="send" :can-send="canSend" />
 
           <button
+            ref="sendRef"
             type="button"
             class="tx-bui-prompt-bar__control tx-bui-prompt-bar__send"
             :class="{ 'is-ready': canSend }"
@@ -653,6 +678,10 @@ defineExpose({
 
   position: relative;
   width: 100%;
+  // `tabindex="-1"` makes the root the fallback when the bar disables under a
+  // focused control (a click on bare chrome lands here too, not on <body>). It
+  // is never a tab stop and draws no ring of its own.
+  outline: none;
 
   .tx-bui-prompt-bar__composer {
     // The card edge is a spread ring, not a border: it costs no layout, and

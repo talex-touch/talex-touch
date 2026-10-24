@@ -58,7 +58,7 @@ const spring = computed<Required<Spring>>(() => {
   const scale = natural > 0 && props.duration > 0 ? natural / props.duration : 1
   return { stiffness: config.stiffness * scale * scale, damping: config.damping * scale, mass: config.mass }
 })
-/** Pixels of pointer travel per card, along the axis the variant moves on. */
+/** Pixels of pointer travel per card in the stage's own px, along the axis the variant moves on. */
 const pitch = computed(() => (mode.value === 'time-machine' ? 300 : mode.value === 'cover-flow' ? 32 : 160) * ratio.value)
 /** Where the deck is drawn, in cards: `current` at rest, fractional in flight or under the pointer. */
 const position = ref(current.value)
@@ -71,7 +71,7 @@ let release: { target: number, spring: Spring } | undefined
 let raf: number | undefined
 let lastFrame: number | undefined
 let suppressClick = false
-let drag: { pointerId: number, x: number, y: number, from: number, size: number, moved: boolean, tracker: VelocityTracker } | undefined
+let drag: { pointerId: number, x: number, y: number, from: number, size: number, scale: number, moved: boolean, tracker: VelocityTracker } | undefined
 const transition = computed(() => `transform ${active.value ? props.duration : 0}ms ${motion.value.easing}, opacity ${active.value ? props.duration : 0}ms ${motion.value.easing}`)
 const nodes = computed(() => {
   const result: { position: number, index: number, main: boolean }[] = []
@@ -176,10 +176,15 @@ function onDragKeydown(event: KeyboardEvent) {
 function pointerDown(event: PointerEvent) {
   if (!props.draggable || props.disabled || drag?.moved || event.button !== 0 || !event.isPrimary) return
   suppressClick = false
+  const vertical = mode.value === 'time-machine'
   const bounds = stage.value?.getBoundingClientRect()
+  const drawn = (vertical ? bounds?.height : bounds?.width) ?? 0
+  const laid = (vertical ? stage.value?.offsetHeight : stage.value?.offsetWidth) ?? 0
+  // Under CSS zoom or a scaling transform the pointer moves in viewport px, the deck in the stage's own.
+  const scale = drawn > 0 && laid > 0 ? drawn / laid : 1
   drag = {
     pointerId: event.pointerId, x: event.clientX, y: event.clientY, from: position.value,
-    size: (mode.value === 'time-machine' ? bounds?.height : bounds?.width) ?? 0, moved: false, tracker: createVelocityTracker(),
+    size: drawn / scale, scale, moved: false, tracker: createVelocityTracker(),
   }
 }
 function pointerMove(event: PointerEvent) {
@@ -202,7 +207,7 @@ function pointerMove(event: PointerEvent) {
     window.addEventListener('keydown', onDragKeydown, true)
   }
   event.preventDefault()
-  position.value = follow(state.from + travel(event.clientX - state.x, event.clientY - state.y) / pitch.value, state.size)
+  position.value = follow(state.from + travel(event.clientX - state.x, event.clientY - state.y) / state.scale / pitch.value, state.size)
   // Track the deck rather than the pointer, so a release past an end carries only the speed it is drawn at.
   if (begins) state.tracker.reset(event.timeStamp, position.value * pitch.value)
   else state.tracker.push(event.timeStamp, position.value * pitch.value)

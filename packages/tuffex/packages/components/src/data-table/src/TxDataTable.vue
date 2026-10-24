@@ -37,6 +37,9 @@ const props = withDefaults(defineProps<DataTableProps<any>>(), {
   interactiveRows: false,
   selectable: false,
   selectedKeys: () => [],
+  selectAllLabel: 'Select all',
+  selectRowLabel: 'Select row',
+  selectRowLabelFormatter: undefined,
   expandable: false,
   defaultExpandedKeys: () => [],
   expandLabel: 'Expand row',
@@ -603,7 +606,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
             <TxCheckbox
               :model-value="allSelected"
               :indeterminate="someSelected"
-              aria-label="Select all"
+              :aria-label="selectAllLabel"
               @update:model-value="toggleAll"
             />
           </th>
@@ -749,7 +752,7 @@ function handleRowKeydown(event: KeyboardEvent, row: any, index: number) {
             >
               <TxCheckbox
                 :model-value="selectedSet.has(getRowKey(row, index))"
-                aria-label="Select row"
+                :aria-label="selectRowLabelFormatter ? selectRowLabelFormatter(row, index) : selectRowLabel"
                 @update:model-value="() => toggleRow(getRowKey(row, index))"
               />
             </td>

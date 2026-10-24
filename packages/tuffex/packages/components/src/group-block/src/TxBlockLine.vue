@@ -75,6 +75,12 @@ function handleClick(event: MouseEvent): void {
     background-color 0.2s ease,
     transform 0.15s ease;
 
+  // The 0 is for the line's own fake background; content in its slots keeps
+  // its own corners (see TxBlockSlot).
+  > * {
+    --fake-radius: initial;
+  }
+
   .tx-block-line__title {
     width: 120px;
     flex: 0 0 120px;

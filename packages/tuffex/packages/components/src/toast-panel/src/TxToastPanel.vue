@@ -19,7 +19,7 @@ import type { ToastPanelProps } from './types'
  *
  * @component
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 defineOptions({ name: 'TxToastPanel' })
 
@@ -52,16 +52,71 @@ const stackLayers = computed(() => {
 const rootStyle = computed(() => ({
   '--tx-toast-panel-tether': `${Math.max(0, props.tetherLength)}px`,
 }))
+
+const rootRef = ref<HTMLElement | null>(null)
+
+/**
+ * Where focus was before it came into the panel; null when it came from
+ * nowhere, as when nothing on the page had it.
+ */
+let focusOrigin: HTMLElement | null = null
+
+function onFocusIn(event: FocusEvent): void {
+  const from = event.relatedTarget
+  if (from instanceof Node && rootRef.value?.contains(from))
+    return
+  focusOrigin = from instanceof HTMLElement ? from : null
+}
+
+/** The nearest container above the panel that takes focus from script. */
+function focusableAncestor(root: HTMLElement): HTMLElement | null {
+  for (let el = root.parentElement; el && el !== document.body; el = el.parentElement) {
+    if (el.hasAttribute('tabindex') && !el.closest('[inert]'))
+      return el
+  }
+  return null
+}
+
+function moveFocusTo(root: HTMLElement, target: HTMLElement | null): boolean {
+  if (!target?.isConnected || root.contains(target) || target.closest('[inert]'))
+    return false
+  target.focus({ preventScroll: true })
+  return document.activeElement === target
+}
+
+/**
+ * A closed panel is invisible, and hosts usually make it inert as well. Focus
+ * left inside then drops to `<body>` at the next rendering update, where the
+ * host's key handlers no longer hear it, Escape included. Handing it back in
+ * the same task wins that race: to where it came from, or else to the nearest
+ * container that takes focus.
+ */
+function releaseFocus(): void {
+  const root = rootRef.value
+  if (!root || typeof document === 'undefined' || !root.contains(document.activeElement))
+    return
+  if (!moveFocusTo(root, focusOrigin))
+    moveFocusTo(root, focusableAncestor(root))
+}
+
+watch(() => props.open, (open, wasOpen) => {
+  if (wasOpen && !open)
+    releaseFocus()
+}, { flush: 'post' })
+
+onBeforeUnmount(releaseFocus)
 </script>
 
 <template>
   <div
+    ref="rootRef"
     class="tx-toast-panel"
     :class="[`is-${side}`, { 'is-open': open }]"
     :style="rootStyle"
     role="status"
     :aria-live="live === 'off' ? undefined : 'polite'"
     :aria-label="ariaLabel"
+    @focusin="onFocusIn"
   >
     <slot name="tether">
       <span v-if="tether" class="tx-toast-panel__tether" aria-hidden="true" />

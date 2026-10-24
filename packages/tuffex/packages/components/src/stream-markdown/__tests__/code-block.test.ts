@@ -161,6 +161,9 @@ describe('txCodeBlock', () => {
       const wrapper = mount(TxCodeBlock, { props })
       await flushPromises()
       expect(wrapper.find('.tx-code-block__toggle').exists()).toBe(false)
+      // The open fence leaves its live-highlight timer pending on real timers. Unmounting clears
+      // it; left mounted, it fires after the file has finished, on a mock that may be reset.
+      wrapper.unmount()
     }
   })
 

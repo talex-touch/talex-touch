@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ObjectDirective, VNode } from 'vue'
+import type { FunctionalComponent, ObjectDirective, VNode } from 'vue'
 import type { ButtonEmits, ButtonProps } from './types'
 import { resolveButtonSize } from './size'
-import { computed, nextTick, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue'
+import { computed, Fragment, h, nextTick, onBeforeUnmount, ref, Text, useAttrs, useSlots, watch } from 'vue'
 import { useFlip } from '../../../../utils/animation/flip'
 import { useVibrate, type VibrateType } from '../../../../utils/vibrate'
 import Spinner from '../../spinner'
@@ -241,6 +241,27 @@ const isIconOnly = computed(() => {
   return props.circle || (props.icon && !slotHasContent)
 })
 
+/**
+ * Raw slot text lays out as an anonymous flex item, which can neither shrink
+ * below its text nor carry an ellipsis. A block button takes its row's width,
+ * so there each text run goes into a span that can; elsewhere the button is as
+ * wide as its content and the slot renders untouched.
+ */
+function wrapTextRuns(nodes: VNode[]): VNode[] {
+  return nodes.map((node) => {
+    if (node.type === Text && typeof node.children === 'string' && node.children.trim())
+      return h('span', { class: 'tx-button__label' }, [node])
+    if (node.type === Fragment && Array.isArray(node.children))
+      return h(Fragment, { key: node.key ?? undefined }, wrapTextRuns(node.children as VNode[]))
+    return node
+  })
+}
+
+// Block buttons only. The rest keep the template's `<slot />`, which is also what types the
+// default slot in the emitted declarations: without one there, `$slots` declares nothing.
+const ButtonContent: FunctionalComponent<{ nodes?: VNode[] }> = ({ nodes }) => nodes && wrapTextRuns(nodes)
+ButtonContent.props = ['nodes']
+
 const toneClass = computed(() => {
   if (!props.type)
     return undefined
@@ -397,7 +418,8 @@ if (props.autofocus) {
       </span>
 
       <i v-if="icon && (!hasStatus || !isIconOnly)" class="tx-button__icon" :class="icon" />
-      <slot />
+      <ButtonContent v-if="block" :nodes="$slots.default?.({})" />
+      <slot v-else />
 
       <span v-if="showProgressValue" class="tx-button__progress-value">
         {{ formattedProgress }}

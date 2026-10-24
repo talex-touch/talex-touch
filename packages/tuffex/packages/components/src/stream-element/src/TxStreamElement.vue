@@ -231,6 +231,9 @@ function renderLeaf(node: Exclude<PlanNode, { kind: 'list' | 'quote' }>, ctx: Re
         lang: node.part.lang,
         langLabel: node.part.lang,
         filename: node.part.filename,
+        // Unset stays undefined, which leaves TxCodeStream on its own default.
+        copyLabel: props.copyLabel,
+        copiedLabel: props.copiedLabel,
       }, ctx.slots.code)
     }
     case 'markdown': {

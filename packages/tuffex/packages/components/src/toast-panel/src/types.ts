@@ -27,6 +27,9 @@ export interface ToastPanelProps {
    * cut the leave transition and the panel would vanish instead of settling
    * back.
    *
+   * Closing with focus inside hands it back to where it came from, or else to
+   * the nearest container above with a `tabindex`.
+   *
    * @default true
    */
   open?: boolean

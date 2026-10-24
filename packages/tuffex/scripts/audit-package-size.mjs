@@ -256,7 +256,23 @@ const LIMITS = {
   // `skeleton-keyframes` mixin as in agent-screen and layout-skeleton, and the tray reaches
   // the viewer's rules through style-deps (`attachment-tray -> image-gallery, modal`).
   // Measured 768,050 B (750.05 KiB). Actuals plus minimal headroom, growth from here fails.
-  fullCssBytes: 850 * 1024,
+  // 850 -> 858 on 2026-10-23. The limit had gone 750.5 -> 835 -> 850 without notes
+  // (b463002ab, da5eb243f); HEAD measures 864,126 B (843.87 KiB) against it. TxImagePreview
+  // ships its own stylesheet, 13,758 B, and TxImageGallery's viewer moves into it
+  // (`image-gallery/style.css` 2,240 -> 447 B, 9 B of it so its thumbnails ignore the margins
+  // host typography gives pictures). The rest is fixes in sheets that already existed:
+  // progress-bar +835 B (label rows above or below the track, where an inside label goes when
+  // the track is too thin for it), tree +207 (long labels truncate), button +218 (so does a
+  // block button's), group-block +183 (controls in a group keep their own corners),
+  // segmented-slider +159 (the end stops stay on the track), flat-radio +105 (a group wider
+  // than its row shrinks its items), attachment-tray +24, spinner +22, prompt-bar +13; and
+  // terminal +29 from other work in the same checkout. Checked for inlining:
+  // `image-preview/style.css` is unscoped and carries only `.tx-image-preview*` rules, its
+  // shimmer keyframes come from the shared `skeleton-keyframes` mixin, the tray and the gallery
+  // reach it through style-deps (`attachment-tray, image-gallery -> image-preview`, which no
+  // longer pulls in modal), and no rule repeats across sheets. Measured 877,887 B (857.31 KiB).
+  // Actuals plus minimal headroom, growth from here fails.
+  fullCssBytes: 858 * 1024,
   // 96 -> 56 on 2026-09-12: the largest stylesheet was `stream-markdown` at
   // 103.3 KiB carrying a duplicated copy of the markdown sheet; at 50.1 KiB it
   // is back under, and the next largest is `markdown-view` at 40.8. Actuals plus
@@ -307,7 +323,18 @@ const pageStyleBudgets = [
     // glass layer takes its strength from a variable the layer fade zeroes (`base-surface/style.css`
     // +73 B). 0.9.0 measured 158,569 B against the 158,720 B limit; this measures 158,910 B.
     // Actuals plus minimal headroom, growth from here fails.
-    limit: 155.5 * 1024,
+    // 155.5 -> 167.5 on 2026-10-23: the tray and the gallery open TxImagePreview, which they
+    // import statically, so its sheet joins the page (+13,758 B, 26 -> 27 sheets) as the
+    // gallery's viewer leaves `image-gallery/style.css` (-1,793 B); button +218 (block labels
+    // truncate), attachment-tray +24, spinner +22 and prompt-bar +13 make up the rest. Measured
+    // 171,152 B, gzip 26,132 B, against HEAD's 158,910 B. Loading the preview lazily would keep its
+    // sheet off the page until a picture opens, at the cost of the first opening waiting for a
+    // chunk before it can fly out. Actuals plus minimal headroom, growth from here fails.
+    // 167.5 -> 168 later the same day: TxBaseSurface paints solid under forced colours, a Canvas
+    // fill with a CanvasText edge and no layers, in a sheet every page here reaches through the
+    // surface stack (`base-surface/style.css` +380 B). Measured 171,532 B against 171,520.
+    // Actuals plus minimal headroom, growth from here fails.
+    limit: 168 * 1024,
   },
 ]
 

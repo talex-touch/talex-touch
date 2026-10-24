@@ -9,6 +9,15 @@ const items = [
   { id: 'c', url: '/c.png' },
 ]
 
+// TxImagePreview's parts. Its neighbouring slides are drawn too, aria-hidden, so the picture
+// shown is the current slide's; a closed preview stays in the DOM while it fades.
+const overlay = () => document.body.querySelector<HTMLElement>('.tx-image-preview')
+const openOverlay = () => document.body.querySelector<HTMLElement>('.tx-image-preview:not(.is-closing)')
+const shownSrc = () =>
+  document.body.querySelector<HTMLImageElement>('.tx-image-preview__slide:not([aria-hidden]) .tx-image-preview__image')?.getAttribute('src')
+const counter = () => document.body.querySelector('.tx-image-preview__counter')?.textContent?.trim()
+const nav = (label: string) => document.body.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+
 describe('txImageGallery', () => {
   afterEach(() => {
     document.body.innerHTML = ''
@@ -26,7 +35,7 @@ describe('txImageGallery', () => {
     expect(wrapper.findAll('img').map(img => img.attributes('alt'))).toEqual(['Alpha', 'Beta', ''])
   })
 
-  it('opens a modal at the clicked item and emits the selected item', async () => {
+  it('opens the preview at the clicked item and emits the selected item', async () => {
     const wrapper = mount(TxImageGallery, {
       props: { items },
       attachTo: document.body,
@@ -36,9 +45,11 @@ describe('txImageGallery', () => {
     await nextTick()
 
     expect(wrapper.emitted('open')?.[0]).toEqual([{ index: 1, item: items[1] }])
-    expect(document.body.querySelector('.tx-modal__title')?.textContent).toBe('Beta')
-    expect(document.body.querySelector<HTMLImageElement>('.tx-image-gallery__viewer img')?.getAttribute('src')).toBe('/b.png')
-    expect(document.body.querySelector('.tx-image-gallery__count')?.textContent?.trim()).toBe('2 / 3')
+    expect(overlay()?.getAttribute('aria-label')).toBe('Preview: Beta')
+    expect(document.body.querySelector('.tx-image-preview__name')?.textContent).toBe('Beta')
+    expect(shownSrc()).toBe('/b.png')
+    expect(counter()).toBe('2 / 3')
+    wrapper.unmount()
   })
 
   it('navigates with boundary-disabled previous and next controls', async () => {
@@ -50,29 +61,30 @@ describe('txImageGallery', () => {
     await wrapper.findAll('.tx-image-gallery__thumb')[0].trigger('click')
     await nextTick()
 
-    const previous = () => document.body.querySelector<HTMLButtonElement>('[aria-label="Previous image"]')
-    const next = () => document.body.querySelector<HTMLButtonElement>('[aria-label="Next image"]')
-    const viewer = () => document.body.querySelector<HTMLImageElement>('.tx-image-gallery__viewer img')
-    const count = () => document.body.querySelector('.tx-image-gallery__count')?.textContent?.trim()
+    expect(nav('Previous image').getAttribute('aria-disabled')).toBe('true')
+    expect(nav('Next image').hasAttribute('aria-disabled')).toBe(false)
 
-    expect(previous()?.disabled).toBe(true)
-    expect(next()?.disabled).toBe(false)
-
-    next()?.click()
+    nav('Next image').click()
     await nextTick()
-    expect(viewer()?.getAttribute('src')).toBe('/b.png')
-    expect(count()).toBe('2 / 3')
+    expect(shownSrc()).toBe('/b.png')
+    expect(counter()).toBe('2 / 3')
 
-    next()?.click()
+    nav('Next image').click()
     await nextTick()
-    expect(viewer()?.getAttribute('src')).toBe('/c.png')
-    expect(count()).toBe('3 / 3')
-    expect(next()?.disabled).toBe(true)
+    expect(shownSrc()).toBe('/c.png')
+    expect(counter()).toBe('3 / 3')
+    expect(nav('Next image').getAttribute('aria-disabled')).toBe('true')
 
-    previous()?.click()
+    // An unavailable button does nothing.
+    nav('Next image').click()
     await nextTick()
-    expect(viewer()?.getAttribute('src')).toBe('/b.png')
-    expect(count()).toBe('2 / 3')
+    expect(shownSrc()).toBe('/c.png')
+
+    nav('Previous image').click()
+    await nextTick()
+    expect(shownSrc()).toBe('/b.png')
+    expect(counter()).toBe('2 / 3')
+    wrapper.unmount()
   })
 
   it('keeps focus in the dialog when navigation reaches either end', async () => {
@@ -82,36 +94,38 @@ describe('txImageGallery', () => {
     })
 
     const thumb = (i: number) => wrapper.findAll('.tx-image-gallery__thumb')[i]!
-    const nav = (label: string) => document.body.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
-    const overlay = () => document.body.querySelector<HTMLElement>('.tx-modal__overlay')!
 
     await thumb(0).trigger('click')
     await nextTick()
 
-    // Walking to the last image disables Next under the pointer: the control the
-    // user was using disappears from the tab order, and focus must move to the
-    // other nav rather than falling out of the dialog.
+    // Walking to the last image makes Next unavailable under the pointer. It says so with
+    // aria-disabled and stays focusable, so focus stays on the control the user was using
+    // rather than falling out of the dialog.
+    nav('Next image').focus()
     nav('Next image').click()
     nav('Next image').click()
     await flushPromises()
-    expect(document.activeElement).toBe(nav('Previous image'))
+    expect(nav('Next image').getAttribute('aria-disabled')).toBe('true')
+    expect(document.activeElement).toBe(nav('Next image'))
 
     // The dialog is still Escape-able, and closing puts focus back on the
     // thumbnail the preview was opened from.
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await nextTick()
     expect(wrapper.emitted('close')).toHaveLength(1)
-    expect(document.body.querySelector('.tx-modal__overlay')).toBeNull()
+    expect(openOverlay()).toBeNull()
     expect(document.activeElement).toBe(thumb(0).element)
 
     // The opposite end, same rule with the controls the other way round.
     await thumb(items.length - 1).trigger('click')
     await nextTick()
+    nav('Previous image').focus()
     nav('Previous image').click()
     nav('Previous image').click()
     await flushPromises()
-    expect(document.activeElement).toBe(nav('Next image'))
-    expect(overlay().contains(document.activeElement)).toBe(true)
+    expect(nav('Previous image').getAttribute('aria-disabled')).toBe('true')
+    expect(document.activeElement).toBe(nav('Previous image'))
+    expect(overlay()!.contains(document.activeElement)).toBe(true)
 
     wrapper.unmount()
   })
@@ -123,7 +137,7 @@ describe('txImageGallery', () => {
     })
 
     expect(wrapper.findAll('.tx-image-gallery__thumb')).toHaveLength(0)
-    expect(document.body.querySelector('.tx-modal__overlay')).toBeNull()
+    expect(overlay()).toBeNull()
     expect(wrapper.emitted('open')).toBeUndefined()
   })
 
@@ -138,19 +152,22 @@ describe('txImageGallery', () => {
 
     await wrapper.findAll('.tx-image-gallery__thumb')[0].trigger('click')
     await nextTick()
-    expect(document.body.querySelector('.tx-image-gallery__count')?.textContent?.trim()).toBe('1 / 3')
+    expect(counter()).toBe('1 / 3')
 
     await wrapper.setProps({ startIndex: 9 })
     await nextTick()
-    expect(document.body.querySelector('.tx-image-gallery__count')?.textContent?.trim()).toBe('3 / 3')
+    expect(counter()).toBe('3 / 3')
 
+    // One image left: it is shown, and a single image has no counter.
     await wrapper.setProps({ items: [items[0]] })
     await nextTick()
-    expect(document.body.querySelector('.tx-image-gallery__count')?.textContent?.trim()).toBe('1 / 1')
+    expect(shownSrc()).toBe('/a.png')
+    expect(counter()).toBeUndefined()
 
     await wrapper.setProps({ items: [] })
     await nextTick()
-    expect(document.body.querySelector('.tx-modal__overlay')).toBeNull()
+    expect(openOverlay()).toBeNull()
+    wrapper.unmount()
   })
 
   it('localizes the thumbnail open-label and fallback item-label formatters', () => {

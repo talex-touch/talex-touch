@@ -306,6 +306,12 @@ export interface MarkdownEditorProps {
   uploadImage?: MarkdownEditorUploadImage
   /** Comment threads; leave undefined to hide the comments UI. */
   comments?: MarkdownEditorComment[]
+  /**
+   * Whether the comment sidebar is open, for `v-model:comments-open`; leave
+   * undefined and the editor keeps it. The toolbar's comments button, a new
+   * comment and a click on commented text open it either way.
+   */
+  commentsOpen?: boolean
   /** The local user: comment author and the identity peers see. */
   user?: MarkdownEditorUser
   collaboration?: MarkdownEditorCollaboration
@@ -322,6 +328,7 @@ export interface MarkdownEditorEmits {
   (e: 'focus'): void
   (e: 'blur'): void
   (e: 'update:comments', comments: MarkdownEditorComment[]): void
+  (e: 'update:commentsOpen', open: boolean): void
   (e: 'comment-create', comment: MarkdownEditorComment): void
   (e: 'comment-reply', comment: MarkdownEditorComment, reply: MarkdownEditorCommentReply): void
   (e: 'comment-resolve', comment: MarkdownEditorComment): void

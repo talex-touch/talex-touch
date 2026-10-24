@@ -82,14 +82,25 @@ export function useAutosize(options: UseAutosizeOptions): UseAutosizeReturn {
   })
 
   let observer: ResizeObserver | null = null
+  let frame = 0
 
   onMounted(() => {
     const controls = options.controls.value
     if (!controls || typeof ResizeObserver === 'undefined')
       return
 
+    // The new width waits for the next frame. Written inside the callback, it
+    // re-measures within the observer's own delivery, and the row it reshapes
+    // is the observed element, which the browser reports as a ResizeObserver
+    // loop. Several sizes in one frame land as the last of them.
     observer = new ResizeObserver((entries) => {
-      containerWidth.value = entries[0]?.contentRect.width ?? 0
+      const width = entries[0]?.contentRect.width ?? 0
+      if (frame)
+        cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        containerWidth.value = width
+      })
     })
     observer.observe(controls)
   })
@@ -97,6 +108,9 @@ export function useAutosize(options: UseAutosizeOptions): UseAutosizeReturn {
   onBeforeUnmount(() => {
     observer?.disconnect()
     observer = null
+    if (frame)
+      cancelAnimationFrame(frame)
+    frame = 0
   })
 
   return { expanded, remeasure }

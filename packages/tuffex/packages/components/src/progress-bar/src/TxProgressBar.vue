@@ -12,11 +12,12 @@ import type { ProgressBarEmits, ProgressBarProps, ProgressFlowEffect } from './t
  * <TxProgressBar :percentage="75" show-text />
  * <TxProgressBar success message="Complete!" />
  * <TxProgressBar :percentage="65" show-text text-placement="top" detail="1.4 MB of 2.3 MB" />
+ * <TxProgressBar :percentage="65" show-text text-placement="bottom" detail="report.pdf" />
  * ```
  *
  * @component
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { TxTooltip } from '../../tooltip'
 
 defineOptions({
@@ -147,13 +148,97 @@ const classList = computed(() => ({
   'tx-progress-bar--segmented': hasSegments.value,
 }))
 
+const hasText = computed(() => {
+  if (props.loading || props.indeterminate)
+    return !!props.message
+  return !!props.message || !!props.showText
+})
+
+/**
+ * Inside text is one 16px line (`.tx-progress-bar__text`). A shorter track
+ * clips it to a smear — the default 5px one did — and a track narrower than the
+ * label cuts its ends off, so `inside` then renders as `bottom`, which leaves
+ * the bar where it was and puts the text under it.
+ */
+const INSIDE_LINE_BOX = 16
+
+/**
+ * The `height` prop in px, or `null` when only layout can tell (`%`, `calc()`,
+ * `var()`), which counts as fitting. `rem` and `em` assume a 16px font. This is
+ * the whole answer during SSR and on first paint; the observer refines it.
+ */
+function heightToPx(height: string): number | null {
+  const match = /^(\d*\.?\d+)(px|r?em)?$/.exec(height.trim())
+  if (!match)
+    return null
+  return Number(match[1]) * (match[2]?.endsWith('em') ? 16 : 1)
+}
+
+const trackRef = ref<HTMLElement | null>(null)
+const insideLabelRef = ref<HTMLElement | null>(null)
+/** The observed answer; `null` defers to the `height` prop. */
+const measuredFit = ref<boolean | null>(null)
+
+const insideFits = computed(() => {
+  if (measuredFit.value !== null)
+    return measuredFit.value
+  const px = heightToPx(props.height)
+  return px === null || px >= INSIDE_LINE_BOX
+})
+
+const resolvedPlacement = computed(() =>
+  props.textPlacement === 'inside' && !insideFits.value ? 'bottom' : props.textPlacement,
+)
+
+/**
+ * The inside label stays mounted while `inside` is asked for, hidden while the
+ * text shows in the bottom row instead: it is what measures whether the text
+ * fits, so a track that grows wide enough again gets it back.
+ */
+const insideWanted = computed(() => hasText.value && props.textPlacement === 'inside')
+const showOutsideText = computed(() => hasText.value && resolvedPlacement.value === 'outside')
+const showTopText = computed(() => hasText.value && resolvedPlacement.value === 'top')
+const showBottomText = computed(() => hasText.value && resolvedPlacement.value === 'bottom')
+
+let fitObserver: ResizeObserver | undefined
+
+function stopFitObserver(): void {
+  fitObserver?.disconnect()
+  fitObserver = undefined
+  measuredFit.value = null
+}
+
+// The track's real size against the label's: its line box, which a caller's
+// CSS may have changed, and its width, padding included. Both are observed —
+// the label resizes with its text and its font, not only with the track.
+watch(
+  [trackRef, insideLabelRef],
+  ([track, label]) => {
+    stopFitObserver()
+    if (!track || !label || typeof ResizeObserver === 'undefined')
+      return
+    fitObserver = new ResizeObserver(() => {
+      const lineBox = Number.parseFloat(getComputedStyle(label).lineHeight) || INSIDE_LINE_BOX
+      measuredFit.value = track.clientHeight >= lineBox && label.offsetWidth <= track.clientWidth
+    })
+    fitObserver.observe(track)
+    fitObserver.observe(label)
+  },
+  { flush: 'post' },
+)
+
+onBeforeUnmount(stopFitObserver)
+
 const showMask = computed(() => props.maskBackground !== 'none')
 
 const wrapperClassList = computed(() => ({
   [`tx-progress-bar-wrapper--mask-${props.maskVariant}`]: true,
   [`tx-progress-bar-wrapper--bg-${props.maskBackground}`]: showMask.value,
-  'tx-progress-bar-wrapper--text-outside': props.textPlacement === 'outside',
-  'tx-progress-bar-wrapper--text-top': props.textPlacement === 'top',
+  'tx-progress-bar-wrapper--text-outside': resolvedPlacement.value === 'outside',
+  'tx-progress-bar-wrapper--text-top': resolvedPlacement.value === 'top',
+  // Only with a row to show: every text-less bar resolves to `bottom`, and the
+  // column layout would drop the inline-block line box it has always sat in.
+  'tx-progress-bar-wrapper--text-bottom': showBottomText.value,
   [`tx-progress-bar-wrapper--hover-${props.hoverEffect}`]: props.hoverEffect !== 'none',
   'tx-progress-bar-wrapper--segmented': hasSegments.value,
 }))
@@ -193,35 +278,18 @@ const tooltipContentResolved = computed(() => {
   return props.tooltipContent || displayText.value
 })
 
+/**
+ * A tooltip's reference is a shrink-to-fit box, where a `width: 100%` bar has
+ * nothing to fill and shrinks to its text. This is the tooltip the bar renders
+ * itself; a host's, which it cannot pass props to, is widened by a rule in the
+ * style block.
+ */
 const tooltipBoundProps = computed(() => {
   return {
     content: tooltipContentResolved.value,
+    referenceFullWidth: true,
     ...(props.tooltipProps || {}),
   }
-})
-
-const showInsideText = computed(() => {
-  if (props.textPlacement !== 'inside')
-    return false
-  if (props.loading || props.indeterminate)
-    return !!props.message
-  return !!props.message || !!props.showText
-})
-
-const showOutsideText = computed(() => {
-  if (props.textPlacement !== 'outside')
-    return false
-  if (props.loading || props.indeterminate)
-    return !!props.message
-  return !!props.message || !!props.showText
-})
-
-const showTopText = computed(() => {
-  if (props.textPlacement !== 'top')
-    return false
-  if (props.loading || props.indeterminate)
-    return !!props.message
-  return !!props.message || !!props.showText
 })
 
 /**
@@ -302,6 +370,7 @@ watch(
 
       <span class="tx-progress-bar__body">
         <span
+          ref="trackRef"
           class="tx-progress-bar__track"
           role="progressbar"
           :aria-valuenow="loading || indeterminate ? undefined : resolvedPercentage"
@@ -335,11 +404,21 @@ watch(
             aria-hidden="true"
           />
 
-          <span v-if="showInsideText" class="tx-progress-bar__text">
-            {{ displayText }}
-          </span>
+          <template v-if="insideWanted">
+            <span class="tx-progress-bar__text">
+              <span ref="insideLabelRef" class="tx-progress-bar__label">{{ displayText }}</span>
+            </span>
+            <span class="tx-progress-bar__text tx-progress-bar__text--fill">
+              <span class="tx-progress-bar__label">{{ displayText }}</span>
+            </span>
+          </template>
         </span>
 
+      </span>
+
+      <span v-if="showBottomText" class="tx-progress-bar__head">
+        <span class="tx-progress-bar__head-label">{{ displayText }}</span>
+        <span v-if="detail" class="tx-progress-bar__head-detail">{{ detail }}</span>
       </span>
 
       <span v-if="showOutsideText" class="tx-progress-bar__outside-text">{{ displayText }}</span>
@@ -354,6 +433,7 @@ watch(
 
     <span class="tx-progress-bar__body">
       <span
+        ref="trackRef"
         class="tx-progress-bar__track"
         role="progressbar"
         :aria-valuenow="loading || indeterminate ? undefined : resolvedPercentage"
@@ -387,11 +467,21 @@ watch(
           aria-hidden="true"
         />
 
-        <span v-if="showInsideText" class="tx-progress-bar__text">
-          {{ displayText }}
-        </span>
+        <template v-if="insideWanted">
+          <span class="tx-progress-bar__text">
+            <span ref="insideLabelRef" class="tx-progress-bar__label">{{ displayText }}</span>
+          </span>
+          <span class="tx-progress-bar__text tx-progress-bar__text--fill">
+            <span class="tx-progress-bar__label">{{ displayText }}</span>
+          </span>
+        </template>
       </span>
 
+    </span>
+
+    <span v-if="showBottomText" class="tx-progress-bar__head">
+      <span class="tx-progress-bar__head-label">{{ displayText }}</span>
+      <span v-if="detail" class="tx-progress-bar__head-detail">{{ detail }}</span>
     </span>
 
     <span v-if="showOutsideText" class="tx-progress-bar__outside-text">{{ displayText }}</span>
@@ -563,13 +653,27 @@ watch(
   overflow: visible;
 }
 
+// A host's TxTooltip around the bar: the same two widths its
+// `reference-full-width` sets, which the bar's own tooltip passes as a prop.
+// Without them both reference boxes shrink to the bar's text and take the bar
+// with them.
+.tx-base-anchor__reference:has(> .tx-tooltip__reference > .tx-progress-bar-wrapper) {
+  display: flex;
+  width: 100%;
+}
+
+.tx-tooltip__reference:has(> .tx-progress-bar-wrapper) {
+  width: 100%;
+}
+
 .tx-progress-bar-wrapper--text-outside {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.tx-progress-bar-wrapper--text-top {
+.tx-progress-bar-wrapper--text-top,
+.tx-progress-bar-wrapper--text-bottom {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -980,24 +1084,28 @@ watch(
   opacity: 1;
 }
 
+// The text row above (`top`) or below (`bottom`) the track. A long label wraps
+// and stops at two lines; the detail keeps one line and at most 60% of the row,
+// so the label is what gives way.
 .tx-progress-bar__head {
   display: flex;
   align-items: baseline;
   min-width: 0;
   font-size: 12px;
   line-height: 1.4;
-  white-space: nowrap;
 }
 
 .tx-progress-bar__head-label {
+  @include ellipsis(2);
+  overflow-wrap: anywhere;
   font-weight: var(--tx-font-weight-medium, 500);
   color: var(--tx-progress-accent, var(--tx-progress-color, var(--tx-color-primary, #409eff)));
 }
 
 .tx-progress-bar__head-detail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: none;
+  max-width: 60%;
+  @include ellipsis;
   color: var(--tx-text-color-secondary, #909399);
 }
 
@@ -1006,11 +1114,16 @@ watch(
   margin: 0 6px;
 }
 
-// Known defect, deliberately left in place: at the default 5px height a 12px
-// label does not fit inside the track, so `textPlacement: 'inside'` (the
-// default) plus `showText` renders as a white smear on a hairline. The fix is a
-// different default placement (`top` or `outside`), an API default change and
-// out of scope for the redesign.
+// One 16px line: `INSIDE_LINE_BOX` in the script. A track shorter than this line,
+// or narrower than the label, gets the text in the bottom row instead, so a 12px
+// label never smears across a hairline or loses its ends. Change the two together.
+//
+// The label is drawn twice and each copy is clipped to one side of the fill's
+// edge: ink over the track, white over the fill. No one colour reads on both —
+// white disappears into the light track beside a short fill — and a label that
+// moved out of a narrow fill would make the bar change height as it progressed.
+// The clips ease on the fill's own curve, so the split stays on its edge
+// mid-transition. While indeterminate the width is 0: all ink, over the sweep.
 .tx-progress-bar__text {
   position: absolute;
   display: flex;
@@ -1018,12 +1131,33 @@ watch(
   align-items: center;
   justify-content: center;
   font-size: 12px;
+  line-height: 16px;
   font-weight: var(--tx-font-weight-semibold, 600);
-  color: color-mix(in srgb, var(--tx-color-white, #fff) 92%, transparent);
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.24);
+  white-space: nowrap;
+  color: var(--tx-text-color-primary, #303133);
+  clip-path: inset(0 0 0 var(--tx-progress-width, 0%));
+  transition: clip-path 480ms var(--tx-ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
   pointer-events: none;
   user-select: none;
   z-index: 3;
+}
+
+.tx-progress-bar__text--fill {
+  color: color-mix(in srgb, var(--tx-color-white, #fff) 92%, transparent);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.24);
+  clip-path: inset(0 calc(100% - var(--tx-progress-width, 0%)) 0 0);
+}
+
+// Kept in place, unseen, while the text shows in the bottom row: the script
+// measures the label here to know when it fits again.
+.tx-progress-bar-wrapper--text-bottom .tx-progress-bar__text {
+  visibility: hidden;
+}
+
+// The padding keeps the label off the track's rounded ends, and counts in the
+// width the script checks against the track.
+.tx-progress-bar__label {
+  padding: 0 8px;
 }
 
 /*
@@ -1077,12 +1211,16 @@ watch(
   filter: saturate(1.35) drop-shadow(0 0 10px color-mix(in srgb, var(--tx-progress-color, var(--tx-color-primary, #409eff)) 45%, transparent));
 }
 
+// Beside the track. A long label wraps and stops at two lines, within half the
+// row, so the bar keeps room to be read; the clamp's `overflow: hidden` is also
+// what lets the flex item shrink below its text.
 .tx-progress-bar__outside-text {
-  display: inline-block;
+  @include ellipsis(2);
+  max-width: 50%;
+  overflow-wrap: anywhere;
   font-size: 12px;
   font-weight: var(--tx-font-weight-semibold, 600);
   color: var(--tx-text-color-regular, #606266);
-  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

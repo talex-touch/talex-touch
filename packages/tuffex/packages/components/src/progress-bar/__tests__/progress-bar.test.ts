@@ -359,7 +359,7 @@ describe('txProgressBar top text row', () => {
   })
 
   it('ignores detail under inside and outside placements', () => {
-    const inside = mount(TxProgressBar, { props: { percentage: 40, showText: true, detail: 'hidden' } })
+    const inside = mount(TxProgressBar, { props: { percentage: 40, showText: true, detail: 'hidden', height: '20px' } })
     expect(inside.find('.tx-progress-bar__text').text()).toBe('40%')
     expect(inside.find('.tx-progress-bar__head').exists()).toBe(false)
     expect(inside.text()).not.toContain('hidden')

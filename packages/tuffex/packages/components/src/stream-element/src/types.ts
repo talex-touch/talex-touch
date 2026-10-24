@@ -52,6 +52,14 @@ export interface StreamElementProps {
   reserve?: boolean
   /** Components for custom parts, by name; the `part-<name>` slot wins over them. */
   renderers?: Record<string, Component>
+  /**
+   * Wording of the copy button on code parts, handed to `TxCodeStream`. Fences
+   * inside delegated parts take `markdownProps.copyCodeText` instead.
+   * @default 'Copy'
+   */
+  copyLabel?: string
+  /** @default 'Copied' */
+  copiedLabel?: string
   /** Forwarded to the `TxStreamMarkdown` blocks that render delegated parts. */
   markdownProps?: Partial<StreamMarkdownProps>
   /** Word segmentation locale for `Intl.Segmenter`. @default 'zh' */

@@ -54,9 +54,15 @@ const styleVars = computed(() => ({
 </template>
 
 <style lang="scss">
+// `size` is the ring's outer diameter, so the border is drawn inside it. As a
+// content box the ring was `size + 2 × stroke` wide in a `size`-wide flex parent,
+// which shrank only its width: an ellipse (16×20 by default) that the rotation
+// then swung through both axes, clipped by the button's spinner slot. Pages with a
+// global `border-box` reset (Nexus's UnoCSS preflight) never showed it.
 .tx-spinner-container {
   position: relative;
   display: block;
+  box-sizing: border-box;
   width: var(--tx-spinner-size, 16px);
   height: var(--tx-spinner-size, 16px);
   border: calc(var(--tx-spinner-stroke, 2) * 1px) solid currentColor;

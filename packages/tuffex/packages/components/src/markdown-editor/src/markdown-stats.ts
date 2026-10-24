@@ -34,6 +34,7 @@ export function readableMarkdownText(doc: string): string {
     .replace(/[*_~`|$]+/g, ' ')
 }
 
+/** The counts the status bar shows for the Markdown source `doc`. */
 export function markdownStats(doc: string): MarkdownStats {
   if (!doc.trim())
     return { words: 0, characters: 0 }

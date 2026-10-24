@@ -267,7 +267,6 @@ onMounted(() => {
   overflow: hidden;
   border-radius: 12px;
   border: 1px solid var(--tx-border-color-lighter, #ebeef5);
-  --fake-radius: 0 !important;
   transition: border-color 0.25s ease;
 
   &--expanded,
@@ -293,6 +292,13 @@ onMounted(() => {
     transition:
       background-color 0.25s ease,
       border-color 0.25s ease;
+
+    // The rounded top is for the header's own fake background. Custom
+    // properties inherit, so it stops here: a control in `header-extra` or the
+    // icon slot keeps its own corners.
+    > * {
+      --fake-radius: initial;
+    }
 
     &--static,
     &.is-static {
@@ -398,7 +404,9 @@ onMounted(() => {
     // pseudo-class. That silently un-did every reset below — rows kept the 12px
     // `--fake-radius` they set on themselves, which showed up as stray rounded
     // corners inside a group. `.tx-block-slot` covers switch/input/select too,
-    // since each of those renders a TxBlockSlot carrying both class names.
+    // since each of those renders a TxBlockSlot carrying both class names. The
+    // 0 squares the row itself; TxBlockSlot keeps it from reaching the controls
+    // in the row.
     .tx-block-slot,
     .tx-block-switch {
       margin: 0;

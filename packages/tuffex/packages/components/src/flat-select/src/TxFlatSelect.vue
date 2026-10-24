@@ -11,11 +11,20 @@ const props = withDefaults(
     modelValue?: TxFlatSelectValue
     placeholder?: string
     disabled?: boolean
+    /**
+     * Names the combobox. The root is a wrapper `<div>`, so a fallthrough
+     * `aria-label` would land there and leave the control unnamed.
+     */
+    ariaLabel?: string
+    /** Id(s) of visible element(s) that name the combobox. */
+    ariaLabelledby?: string
   }>(),
   {
     modelValue: '',
     placeholder: '',
     disabled: false,
+    ariaLabel: undefined,
+    ariaLabelledby: undefined,
   },
 )
 
@@ -286,6 +295,8 @@ onBeforeUnmount(() => {
       type="button"
       class="tx-flat-select__trigger"
       role="combobox"
+      :aria-label="ariaLabel"
+      :aria-labelledby="ariaLabelledby"
       :aria-expanded="isOpen"
       :aria-controls="dropdownId"
       :aria-activedescendant="activeDescendantId"
@@ -311,7 +322,8 @@ onBeforeUnmount(() => {
       ref="dropdownRef"
       class="tx-flat-select__dropdown"
       role="listbox"
-      :aria-label="placeholder || undefined"
+      :aria-label="ariaLabel || placeholder || undefined"
+      :aria-labelledby="ariaLabelledby"
       :class="{
         'is-visible': isOpen,
         'is-animating': isAnimating,

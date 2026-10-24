@@ -1,13 +1,17 @@
 import type { IconPickerEntry, IconPickerLabels } from '../src/types'
 import type { VueWrapper } from '@vue/test-utils'
-import { mount } from '@vue/test-utils'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import TxIcon from '../../icon/src/TxIcon.vue'
 import { TX_ICON_CONFIG_KEY } from '../../icon/src/types'
 import { formatIconIdentifier, parseIconIdentifier } from '../src/identifier'
 import TxIconPicker from '../src/TxIconPicker.vue'
 import TxIconPickerPanel from '../src/TxIconPickerPanel.vue'
+
+// A panel left mounted can still re-render once jsdom is torn down, and its scroller ref then finds
+// no HTMLElement: an unhandled error that fails the run with every test passing.
+enableAutoUnmount(afterEach)
 
 describe('icon identifier', () => {
   it('round-trips every type, including values that contain colons', () => {

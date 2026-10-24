@@ -122,6 +122,10 @@ function onAction(): void {
 
 .tx-attachment-tray__thumb {
   display: grid;
+  // One cell the size of the tile. An auto row would grow to a portrait's own height, which the
+  // picture's 100% height then resolves against, and the tile would show the picture's top two
+  // thirds instead of its middle; the preview, flying from the picture's box, would start below it.
+  grid-template: 100% / 100%;
   place-items: center;
   width: var(--tx-attachment-tray-thumb-size, 72px);
   height: var(--tx-attachment-tray-thumb-size, 72px);

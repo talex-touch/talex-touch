@@ -32,6 +32,10 @@ const props = defineProps({
   indent: { type: Number, default: 16 },
   filterText: { type: String, default: undefined },
   filterMethod: { type: Function as PropType<(node: TreeNode, query: string) => boolean>, default: undefined },
+  emptyText: { type: String, default: 'No results' },
+  expandLabel: { type: String, default: 'Expand' },
+  collapseLabel: { type: String, default: 'Collapse' },
+  selectLabel: { type: String, default: 'Select' },
 })
 
 const emit = defineEmits<TreeEmits>()
@@ -257,12 +261,52 @@ function handleItemClick(item: FlatItem): void {
   toggleSelect(item.node)
 }
 
+/** The tree's own scroller: the nearest ancestor that scrolls vertically, else the page. */
+function scrollParent(element: HTMLElement): HTMLElement {
+  for (let current = element.parentElement; current && current !== document.body && current !== document.documentElement; current = current.parentElement) {
+    const { overflowY } = getComputedStyle(current)
+    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') && current.scrollHeight > current.clientHeight)
+      return current
+  }
+  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement
+}
+
+/**
+ * Brings a row into its scroller's view by the least distance. A plain
+ * `focus()` or `scrollIntoView()` also scrolls every scroller around that one —
+ * the page included — and centres the row rather than nudging it.
+ */
+function revealItem(element: HTMLElement): void {
+  const scroller = scrollParent(element)
+  const isPage = scroller === document.scrollingElement || scroller === document.documentElement
+  const top = isPage ? 0 : scroller.getBoundingClientRect().top + scroller.clientTop
+  const bottom = top + (isPage ? document.documentElement.clientHeight : scroller.clientHeight)
+  const row = element.getBoundingClientRect()
+  if (row.top < top)
+    scroller.scrollTop -= top - row.top
+  else if (row.bottom > bottom)
+    scroller.scrollTop += Math.min(row.bottom - bottom, row.top - top)
+}
+
 async function focusItem(item: FlatItem | undefined): Promise<void> {
   if (!item || isItemDisabled(item))
     return
   focusedKey.value = item.node.key
   await nextTick()
-  itemRefs.get(item.node.key)?.focus()
+  const element = itemRefs.get(item.node.key)
+  if (!element)
+    return
+  element.focus({ preventScroll: true })
+  revealItem(element)
+}
+
+/** A cut-off label shows its full text on hover; one that fits gets no tooltip. */
+function syncLabelTitle(event: PointerEvent, label: string): void {
+  const element = event.currentTarget as HTMLElement
+  if (element.scrollWidth > element.clientWidth)
+    element.title = label
+  else
+    element.removeAttribute('title')
 }
 
 function findChildItem(item: FlatItem, index: number): FlatItem | undefined {
@@ -351,7 +395,7 @@ function itemPadding(level: number): string {
   <div class="tx-tree" :class="{ 'is-morphing': morphing }" role="tree" :aria-multiselectable="multiple || undefined">
     <div v-if="empty" class="tx-tree__empty">
       <slot name="empty">
-        No results
+        {{ emptyText }}
       </slot>
     </div>
     <div v-else class="tx-tree__list" role="presentation">
@@ -393,7 +437,7 @@ function itemPadding(level: number): string {
               type="button"
               class="tx-tree__caret"
               tabindex="-1"
-              :aria-label="item.expanded ? 'Collapse' : 'Expand'"
+              :aria-label="item.expanded ? collapseLabel : expandLabel"
               @click.stop="toggleExpand(item.node)"
             >
               <svg viewBox="0 0 24 24" width="14" height="14" :style="{ transform: item.expanded ? 'rotate(90deg)' : 'rotate(0deg)' }">
@@ -406,7 +450,7 @@ function itemPadding(level: number): string {
               v-if="checkable"
               :model-value="selectedSet.has(item.node.key)"
               :disabled="props.disabled || item.node.disabled"
-              aria-label="Select"
+              :aria-label="selectLabel"
               tabindex="-1"
               @click.stop
               @update:model-value="() => toggleSelect(item.node)"
@@ -414,7 +458,7 @@ function itemPadding(level: number): string {
 
             <TxIcon v-if="item.node.icon" :icon="resolveIcon(item.node.icon)" :size="16" />
 
-            <span class="tx-tree__label">{{ item.node.label }}</span>
+            <span class="tx-tree__label" @pointerenter="syncLabelTitle($event, item.node.label)">{{ item.node.label }}</span>
           </div>
         </slot>
       </div>
@@ -423,21 +467,28 @@ function itemPadding(level: number): string {
 </template>
 
 <style scoped lang="scss">
+/* `min-width: 0` runs from the root down to the label: a long label is cut off
+   with an ellipsis at the tree's edge instead of widening the tree past its
+   container. The full text stays in the DOM for assistive technology. */
 .tx-tree {
   display: flex;
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  min-width: 0;
 }
 
 .tx-tree__list {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .tx-tree__item {
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   border-radius: 10px;
   outline: none;
 }
@@ -450,10 +501,15 @@ function itemPadding(level: number): string {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   padding: 6px 10px;
   border-radius: 10px;
   cursor: pointer;
   color: var(--tx-text-color-primary, #303133);
+}
+
+.tx-tree__row > :not(.tx-tree__label) {
+  flex-shrink: 0;
 }
 
 .tx-tree.is-morphing .tx-tree__row {
@@ -504,7 +560,11 @@ function itemPadding(level: number): string {
 }
 
 .tx-tree__label {
+  min-width: 0;
+  overflow: hidden;
   font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tx-tree__empty {

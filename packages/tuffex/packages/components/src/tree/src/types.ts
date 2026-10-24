@@ -30,6 +30,26 @@ export interface TreeProps {
   indent?: number
   filterText?: string
   filterMethod?: (node: TreeNode, query: string) => boolean
+  /**
+   * Shown when no node is left to render; the `empty` slot replaces it.
+   * @default 'No results'
+   */
+  emptyText?: string
+  /**
+   * Accessible name of a collapsed node's caret.
+   * @default 'Expand'
+   */
+  expandLabel?: string
+  /**
+   * Accessible name of an expanded node's caret.
+   * @default 'Collapse'
+   */
+  collapseLabel?: string
+  /**
+   * Accessible name of each node's checkbox under `checkable`.
+   * @default 'Select'
+   */
+  selectLabel?: string
 }
 
 export interface TreeEmits {

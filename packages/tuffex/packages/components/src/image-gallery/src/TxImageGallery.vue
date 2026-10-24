@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ImageGalleryEmits, ImageGalleryItem, ImageGalleryProps } from './types'
 import { computed, ref, watch } from 'vue'
-import ImageGalleryViewer from './ImageGalleryViewer.vue'
+import TxImagePreview from '../../image-preview/src/TxImagePreview.vue'
 
 defineOptions({
   name: 'TxImageGallery',
@@ -11,10 +11,12 @@ const props = withDefaults(defineProps<ImageGalleryProps>(), {
   startIndex: 0,
   previousLabel: 'Previous image',
   nextLabel: 'Next image',
-  previousText: 'Prev',
-  nextText: 'Next',
   previewTitle: 'Preview',
   closeLabel: 'Close',
+  zoomInLabel: 'Zoom in',
+  zoomOutLabel: 'Zoom out',
+  resetLabel: 'Fit to screen',
+  failedText: 'This image could not be loaded',
   itemLabelFormatter: (index: number) => `Image ${index + 1}`,
   openLabelFormatter: (label: string) => `Open ${label} preview`,
 })
@@ -23,6 +25,7 @@ const emit = defineEmits<ImageGalleryEmits>()
 
 const visible = ref(false)
 const index = ref(0)
+const gridRef = ref<HTMLElement | null>(null)
 
 const list = computed(() => props.items ?? [])
 
@@ -38,6 +41,11 @@ watch(
   { immediate: true },
 )
 
+// The preview flies each picture out of its thumbnail and back into it.
+function thumbOf(i: number): Element | null {
+  return gridRef.value?.children[i] ?? null
+}
+
 function getItemLabel(item: ImageGalleryItem, i: number): string {
   return item.name || props.itemLabelFormatter(i)
 }
@@ -47,7 +55,7 @@ function openAt(i: number, event: MouseEvent): void {
     return
 
   index.value = clampIndex(i)
-  // The dialog returns focus to whatever had it when it opened; WebKit does not focus a
+  // The preview returns focus to whatever had it when it opened; WebKit does not focus a
   // clicked button, so give it the thumbnail explicitly.
   ;(event.currentTarget as HTMLButtonElement | null)?.focus()
   visible.value = true
@@ -59,7 +67,7 @@ function openAt(i: number, event: MouseEvent): void {
 
 <template>
   <div class="tx-image-gallery">
-    <div class="tx-image-gallery__grid">
+    <div ref="gridRef" class="tx-image-gallery__grid">
       <button
         v-for="(item, i) in list"
         :key="item.id"
@@ -72,18 +80,22 @@ function openAt(i: number, event: MouseEvent): void {
       </button>
     </div>
 
-    <ImageGalleryViewer
+    <TxImagePreview
+      v-bind="previewProps"
       v-model:open="visible"
       v-model:index="index"
-      :items="list"
-      fullscreen
-      :preview-title="previewTitle"
+      :images="list"
+      :origin="thumbOf"
+      :label="previewTitle"
       :previous-label="previousLabel"
       :next-label="nextLabel"
-      :previous-text="previousText"
-      :next-text="nextText"
       :close-label="closeLabel"
+      :zoom-in-label="zoomInLabel"
+      :zoom-out-label="zoomOutLabel"
+      :reset-label="resetLabel"
+      :failed-text="failedText"
       @close="emit('close')"
+      @action="emit('action', $event)"
     />
   </div>
 </template>
@@ -105,9 +117,12 @@ function openAt(i: number, event: MouseEvent): void {
   aspect-ratio: 1;
 }
 
+// Scoped, this is (0,2,1), which outranks host typography such as `.prose img` margins whatever
+// order the sheets load in; a margin there pushes the picture down inside the clipped square.
 .tx-image-gallery__thumb img {
   width: 100%;
   height: 100%;
+  margin: 0;
   object-fit: cover;
   display: block;
 }

@@ -77,6 +77,11 @@ export interface PromptBarProps {
   sendOnEnter?: boolean
   /** Allows sending with neither text nor attachments. @default false */
   allowEmptySend?: boolean
+  /**
+   * Empties the draft once `send` is emitted. Off, the text stays until the
+   * host clears it, e.g. after the turn is accepted. @default true
+   */
+  clearOnSend?: boolean
 
   // Text — no i18n system here, so every string is a prop with an English default.
   /** @default 'Type to search sources & files' */

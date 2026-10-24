@@ -6,6 +6,13 @@ export interface TxFlatSelectProps {
   modelValue?: TxFlatSelectValue
   placeholder?: string
   disabled?: boolean
+  /**
+   * Names the combobox. The root is a wrapper `<div>`, so a fallthrough
+   * `aria-label` would land there and leave the control unnamed.
+   */
+  ariaLabel?: string
+  /** Id(s) of visible element(s) that name the combobox. */
+  ariaLabelledby?: string
 }
 
 export interface TxFlatSelectItemProps {

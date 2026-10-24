@@ -181,7 +181,12 @@ onMounted(() => {
     // themes: a fill token reads as a hole in the page on a dark surface.
     background: color-mix(in srgb, var(--tx-text-color-primary, #303133) 12%, transparent);
     border-radius: 999px;
-    margin: calc((var(--tx-segmented-slider-dot-size) - var(--tx-segmented-slider-track-height)) / 2) 0;
+    // The end stops are centred on the track's ends, so the track stops half
+    // the active stop short of the box: run edge to edge, it left half of each
+    // end stop hanging out. Stops and fill are placed along the track, so they
+    // stay on one another.
+    margin: calc((var(--tx-segmented-slider-dot-size) - var(--tx-segmented-slider-track-height)) / 2)
+      calc(var(--tx-segmented-slider-dot-active-size) / 2);
   }
 
   &__progress {
@@ -336,9 +341,13 @@ onMounted(() => {
     min-height: 200px;
     padding: 0 8px;
 
+    // The same inset, on the vertical axis. It is an offset, not a margin:
+    // nothing pads the box above the track, so a top margin would collapse
+    // through it and push the box down instead.
     .tx-segmented-slider__track {
+      top: calc(var(--tx-segmented-slider-dot-active-size) / 2);
       width: var(--tx-segmented-slider-track-height);
-      height: 100%;
+      height: calc(100% - var(--tx-segmented-slider-dot-active-size));
       margin: 0 calc((var(--tx-segmented-slider-dot-size) - var(--tx-segmented-slider-track-height)) / 2);
     }
 

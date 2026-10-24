@@ -1,7 +1,7 @@
 {
   "$schema": "./components-lifecycle.schema.json",
   "currentVersion": "0.9.1",
-  "totalComponents": 185,
+  "totalComponents": 186,
   "versions": [
     {
       "version": "0.9.1",
@@ -814,6 +814,11 @@
       "slug": "image-generation",
       "since": "0.6.2",
       "suite": "pro"
+    },
+    "image-preview": {
+      "slug": "image-preview",
+      "since": "0.9.1",
+      "suite": "base"
     },
     "image-uploader": {
       "slug": "image-uploader",

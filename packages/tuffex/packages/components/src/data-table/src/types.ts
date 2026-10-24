@@ -180,6 +180,23 @@ export interface DataTableProps<T = any> {
   selectable?: boolean
   selectedKeys?: DataTableKey[]
   /**
+   * Accessible name of the header checkbox that selects every row.
+   * @default 'Select all'
+   */
+  selectAllLabel?: string
+  /**
+   * Accessible name of each row's checkbox. Every row gets the same name; use
+   * `selectRowLabelFormatter` to tell the rows apart.
+   * @default 'Select row'
+   */
+  selectRowLabel?: string
+  /**
+   * Names one row's checkbox, e.g. ``row => `Select ${row.name}` ``, so a screen
+   * reader tabbing down the column hears which row each box selects. Takes
+   * precedence over `selectRowLabel`.
+   */
+  selectRowLabelFormatter?: (row: T, index: number) => string
+  /**
    * Initial sort for the uncontrolled mode. The component then owns the sort.
    *
    * Mutually exclusive with {@link DataTableProps.sort}: pass one or the other,

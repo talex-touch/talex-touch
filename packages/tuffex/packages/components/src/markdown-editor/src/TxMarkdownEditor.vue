@@ -83,6 +83,7 @@ const props = withDefaults(defineProps<MarkdownEditorProps>(), {
   ai: undefined,
   uploadImage: undefined,
   comments: undefined,
+  commentsOpen: undefined,
   user: undefined,
   collaboration: undefined,
   statusBar: true,
@@ -249,6 +250,19 @@ const overlay = useMarkdownOverlay({
 })
 const { under, carets } = overlay
 
+// The sidebar is the host's once bound with `v-model:comments-open`, as the mode is with `v-model:mode`.
+const internalSidebarOpen = ref(false)
+const sidebarOpen = computed({
+  get: () => props.commentsOpen ?? internalSidebarOpen.value,
+  set: (open: boolean) => {
+    if (open === sidebarOpen.value)
+      return
+    if (props.commentsOpen === undefined)
+      internalSidebarOpen.value = open
+    emit('update:commentsOpen', open)
+  },
+})
+
 const comments = useMarkdownComments({
   enabled: () => commentsEnabled.value,
   locked: () => props.disabled,
@@ -257,6 +271,7 @@ const comments = useMarkdownComments({
   setThreads: documentState.setThreads,
   doc: documentState.doc,
   pending: () => (prompt.value?.kind === 'comment' ? promptRange : null),
+  sidebarOpen,
   reveal,
   events: {
     create: comment => emit('comment-create', comment),
@@ -265,7 +280,7 @@ const comments = useMarkdownComments({
     delete: comment => emit('comment-delete', comment),
   },
 })
-const { activeThread, sidebarOpen, openCount } = comments
+const { activeThread, openCount } = comments
 
 const {
   suggest,
@@ -1172,6 +1187,15 @@ defineExpose({
   },
   setMode,
   getMode: () => currentMode.value,
+  /** Opens the comment sidebar; given an `id`, on that thread, as a click on it in the sidebar does. */
+  openComments: (id?: string) => {
+    if (!commentsEnabled.value)
+      return
+    sidebarOpen.value = true
+    // Once the sidebar has mounted, so that it scrolls to the thread.
+    if (id && threads.value.some(thread => thread.id === id))
+      void nextTick(() => comments.activate(id))
+  },
   getValue: () => documentState.doc(),
   /** Replaces the document as an edit: emitted, and sent to peers. */
   setValue: (value: string) => {

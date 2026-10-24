@@ -208,6 +208,27 @@
     transition: width var(--tx-transition-duration-fast) var(--tx-transition-function);
   }
 
+  // A block button takes its row's width, so a label longer than the row has
+  // to give way: the inner box may shrink, and the slot text, which only a block
+  // button wraps in `__label`, ellipsizes on its one line. Everything else
+  // holds its size; an empty `<i>` with a set width would otherwise shrink to
+  // nothing, and the spinner slot clips. `:where()` leaves a host's own sizing
+  // of the elements it slots in to win.
+  &.block .tx-button__inner {
+    min-width: 0;
+  }
+
+  :where(&.block .tx-button__inner) > * {
+    flex-shrink: 0;
+  }
+
+  .tx-button__label {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .tx-button__spinner-slot {
     display: inline-flex;
     align-items: center;
@@ -382,7 +403,9 @@
   }
 
   &.loading {
-    .tx-button__inner > :not(.tx-button__spinner) {
+    // `__label` is slot text, which this never reached as a bare text node; a
+    // block button's label stays as bright as an inline button's.
+    .tx-button__inner > :not(.tx-button__spinner, .tx-button__label) {
       opacity: 0.92;
     }
 

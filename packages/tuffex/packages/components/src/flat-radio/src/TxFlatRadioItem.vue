@@ -100,7 +100,13 @@ onBeforeUnmount(() => {
   color: var(--tx-text-color-secondary, #606266);
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
+  // A group wider than its row shrinks its items, and a label that no longer
+  // fits ends in an ellipsis. An item stops at about three characters' room,
+  // or at its own width where that is less, so a short label or a lone icon is
+  // never stretched to the floor. Where calc-size() is missing the floor is 0:
+  // the group still fits its row, it just keeps nothing back.
+  min-width: 0;
+  min-width: calc-size(max-content, min(size, 3em));
   font-family: inherit;
   // The weight is on every item, not on `.is-selected`. Selecting used to take
   // that item from 400 to 500, which reflowed it, shoved its siblings, and moved
@@ -192,9 +198,15 @@ onBeforeUnmount(() => {
     transition: transform 0.18s cubic-bezier(0.34, 1.4, 0.64, 1);
   }
 
+  // A block rather than a flex box, so slot text runs inline and can take the
+  // ellipsis. `overflow: hidden` clips at the line box, which the item's
+  // `line-height: 1` makes shorter than the glyphs; `normal` gives them room.
   &__label {
-    display: inline-flex;
-    align-items: center;
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: normal;
     transition: transform 0.18s cubic-bezier(0.34, 1.4, 0.64, 1);
   }
 }

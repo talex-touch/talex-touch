@@ -75,15 +75,16 @@ export interface ProgressBarProps {
   status?: 'success' | 'error' | 'warning' | ''
 
   /**
-   * Message text to display inside the progress bar.
+   * Message text, shown wherever `textPlacement` puts the text.
    * @default ''
    */
   message?: string
 
   /**
-   * Secondary copy shown after the label in the top text row, e.g.
-   * "1.4 MB of 2.3 MB". Rendered only under `textPlacement: 'top'` and ignored
-   * for the other placements. It is visible text, never part of the
+   * Secondary copy shown after the label in the top or bottom text row, e.g.
+   * "1.4 MB of 2.3 MB". Rendered only when the text sits in one of those rows —
+   * `textPlacement: 'top' | 'bottom'`, or `'inside'` on a track too thin to hold
+   * it — and ignored otherwise. It is visible text, never part of the
    * progressbar's accessible name.
    * @default ''
    */
@@ -133,10 +134,13 @@ export interface ProgressBarProps {
 
   /**
    * Where to render the text when `showText` or `message` is provided.
-   * `'top'` places a label row (plus optional `detail`) above the track.
+   * `'top'` and `'bottom'` place a label row (plus optional `detail`) above or
+   * below the track; a long label wraps to two lines. `'inside'` draws the label
+   * in the track only while the track is at least one 16px line tall, and
+   * renders it as `'bottom'` otherwise — which includes the default 5px height.
    * @default 'inside'
    */
-  textPlacement?: 'inside' | 'outside' | 'top'
+  textPlacement?: 'inside' | 'outside' | 'top' | 'bottom'
 
   /**
    * Custom text formatter.

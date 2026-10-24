@@ -44,11 +44,15 @@ function rebuildOrder() {
 
 function registerItem(value: TxFlatRadioValue, el: HTMLElement) {
   itemMap.set(value, el)
+  resizeObserver?.observe(el)
   rebuildOrder()
   updateIndicatorNoTransition()
 }
 
 function unregisterItem(value: TxFlatRadioValue) {
+  const el = itemMap.get(value)
+  if (el)
+    resizeObserver?.unobserve(el)
   itemMap.delete(value)
   rebuildOrder()
   updateIndicatorNoTransition()
@@ -207,7 +211,10 @@ function updateIndicatorNoTransition() {
   nextTick(() => updateIndicator(false))
 }
 
-// ResizeObserver for layout shifts
+// ResizeObserver for layout shifts. The items are watched as well as the
+// track: items that shrink to fit can change width while the track keeps its
+// own, as when a group filling its row gets a longer label, and the thumb
+// would stay on the old geometry.
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(async () => {
@@ -219,6 +226,9 @@ onMounted(async () => {
       updateIndicator(false)
     })
     resizeObserver.observe(containerRef.value)
+    // Items mount before the group does, so they registered before this ran.
+    for (const el of itemMap.values())
+      resizeObserver.observe(el)
   }
 })
 
@@ -379,6 +389,9 @@ const activeDescendantId = computed(() =>
   position: relative;
   display: inline-flex;
   align-items: center;
+  // An inline group sizes to its labels; capped at its row, it shrinks its
+  // items instead of running out of the row.
+  max-width: 100%;
   height: var(--tx-flat-radio-height, 30px);
   padding: var(--tx-flat-radio-padding, 3px);
   gap: var(--tx-flat-radio-gap, 4px);

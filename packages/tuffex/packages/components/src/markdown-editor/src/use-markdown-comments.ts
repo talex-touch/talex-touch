@@ -20,6 +20,8 @@ export interface MarkdownCommentsOptions {
   doc: () => string
   /** The text a new comment is being written about. */
   pending: () => MarkdownEditorSelection | null
+  /** Whether the sidebar shows: the editor's own, or the host's through `v-model:comments-open`. */
+  sidebarOpen: Ref<boolean>
   reveal: (pos: number) => void
   events: {
     create: (comment: MarkdownEditorComment) => void
@@ -34,9 +36,8 @@ function newId(): string {
 }
 
 export function useMarkdownComments(options: MarkdownCommentsOptions) {
-  const { threads } = options
+  const { threads, sidebarOpen } = options
   const activeThread = ref<string | null>(null)
-  const sidebarOpen = ref(false)
   const openCount = computed(() => threads.value.filter(thread => !thread.resolved).length)
 
   function marks(): EditorCommentMark[] {
@@ -140,5 +141,5 @@ export function useMarkdownComments(options: MarkdownCommentsOptions) {
       sidebarOpen.value = true
   }
 
-  return { activeThread, sidebarOpen, openCount, marks, create, reply, resolve, remove, activate, followCaret, openAt }
+  return { activeThread, openCount, marks, create, reply, resolve, remove, activate, followCaret, openAt }
 }

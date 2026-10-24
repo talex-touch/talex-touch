@@ -10,6 +10,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   separatorIcon: 'i-carbon-chevron-right',
+  ariaLabel: 'Breadcrumb',
 })
 
 const emit = defineEmits<Emits>()
@@ -38,7 +39,7 @@ function handleClick(item: BreadcrumbItem, index: number) {
 </script>
 
 <template>
-  <nav class="tx-breadcrumb" aria-label="Breadcrumb">
+  <nav class="tx-breadcrumb" :aria-label="ariaLabel">
     <ol class="tx-breadcrumb__list">
       <li
         v-for="(item, index) in items"

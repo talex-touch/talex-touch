@@ -353,6 +353,28 @@ $grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width=
       animation: none;
     }
   }
+
+  // ---- Forced colours ----
+  // The system palette keeps the translucency and the blur, so every material would still let
+  // the page through: the fill goes solid Canvas, and with shadows gone it takes a CanvasText
+  // edge. Both go on whatever paints the fill, the fake backdrop or the root, so a host that
+  // fades the backdrop fades its edge with it.
+  @media (forced-colors: active) {
+    &:not(.tx-base-surface--plain, .tx-base-surface--fake),
+    &.tx-base-surface--fake:not(.tx-base-surface--plain)::before {
+      background: Canvas;
+      outline: 1px solid CanvasText;
+      outline-offset: -1px;
+    }
+
+    &.tx-base-surface--fake:not(.tx-base-surface--plain)::before {
+      opacity: 1;
+    }
+
+    .tx-base-surface__layer {
+      display: none;
+    }
+  }
 }
 
 .tx-surface-layer-fade-enter-active,

@@ -137,6 +137,15 @@ const currentIcon = computed(() => {
     transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.25s ease;
 
+  // `--fake-radius` is for this row's own fake background (and the 0 a group
+  // gives it). Custom properties inherit, so it stops at the row's wrappers: a
+  // control in the slot — a TxSelect's input, say — keeps its own corners
+  // instead of drawing its fake background square inside a group.
+  > .tx-block-slot__content,
+  > .tx-block-slot__slot {
+    --fake-radius: initial;
+  }
+
   &.disabled,
   &--disabled {
     opacity: 0.5;

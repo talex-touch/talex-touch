@@ -15,6 +15,13 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+// TxImagePreview's parts. Its neighbouring slides are drawn too, aria-hidden, so the picture
+// shown is the current slide's; a closed preview stays in the DOM while it fades.
+const viewerSrc = () =>
+  document.body.querySelector<HTMLImageElement>('.tx-image-preview__slide:not([aria-hidden]) .tx-image-preview__image')?.getAttribute('src')
+const openViewer = () => document.body.querySelector('.tx-image-preview:not(.is-closing)')
+const nav = (label: string) => document.body.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+
 describe('txAttachmentTray', () => {
   it('splits images into thumbs and files into chips', () => {
     const wrapper = mount(TxAttachmentTray, {
@@ -71,15 +78,12 @@ describe('txAttachmentTray', () => {
 
     await wrapper.findAll('.tx-attachment-tray__thumb')[1]!.trigger('click')
     await nextTick()
+    expect(viewerSrc()).toBe('/two.png')
 
-    const viewerImg = () =>
-      document.body.querySelector<HTMLImageElement>('.tx-image-gallery__viewer img')
-    expect(viewerImg()?.getAttribute('src')).toBe('/two.png')
-
-    const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.tx-image-gallery__nav'))
-    buttons[0]!.click()
+    nav('Previous image').click()
     await nextTick()
-    expect(viewerImg()?.getAttribute('src')).toBe('/one.png')
+    expect(viewerSrc()).toBe('/one.png')
+    wrapper.unmount()
   })
 
   it('emits open for file chips and leaves the viewer closed', async () => {
@@ -90,7 +94,7 @@ describe('txAttachmentTray', () => {
     await wrapper.find('.tx-attachment-chip__body').trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
     expect((wrapper.emitted('open')![0]![0] as { id: string }).id).toBe('file1')
-    expect(document.body.querySelector('.tx-image-gallery__viewer')).toBeNull()
+    expect(document.body.querySelector('.tx-image-preview')).toBeNull()
   })
 
   it('falls back to a placeholder when a thumbnail fails to load', async () => {
@@ -105,11 +109,6 @@ describe('txAttachmentTray', () => {
 })
 
 describe('txAttachmentTray viewer keyboard and focus', () => {
-  const viewerSrc = () =>
-    document.body.querySelector<HTMLImageElement>('.tx-image-gallery__viewer img')?.getAttribute('src')
-  const navButtons = () =>
-    Array.from(document.body.querySelectorAll<HTMLButtonElement>('.tx-image-gallery__nav'))
-
   function press(key: string, init: KeyboardEventInit = {}): void {
     const target = document.activeElement ?? document.body
     target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }))
@@ -155,20 +154,22 @@ describe('txAttachmentTray viewer keyboard and focus', () => {
     wrapper.unmount()
   })
 
-  it('hands focus to the opposite button when paging disables the focused one', async () => {
+  it('keeps focus on a page button that paging makes unavailable', async () => {
     const wrapper = await openAt(0)
-    const [previous, next] = navButtons()
+    const next = nav('Next image')
 
-    next!.focus()
-    next!.click()
+    next.focus()
+    next.click()
     await flushPromises()
     expect(viewerSrc()).toBe('/two.png')
-    expect(next!.disabled).toBe(true)
-    expect(document.activeElement).toBe(previous)
+    // aria-disabled, not disabled: the button stays focusable, so focus stays in the dialog.
+    expect(next.getAttribute('aria-disabled')).toBe('true')
+    expect(document.activeElement).toBe(next)
 
     press('ArrowLeft')
     await flushPromises()
     expect(viewerSrc()).toBe('/one.png')
+    expect(next.hasAttribute('aria-disabled')).toBe(false)
     expect(document.activeElement).toBe(next)
     wrapper.unmount()
   })
@@ -179,10 +180,11 @@ describe('txAttachmentTray viewer keyboard and focus', () => {
 
     await wrapper.setProps({ attachments: [mixed[0]!, mixed[2]!] })
     expect(viewerSrc()).toBe('/one.png')
-    expect(document.body.querySelector('.tx-image-gallery__count')?.textContent?.trim()).toBe('1 / 1')
+    // A single image has no counter.
+    expect(document.body.querySelector('.tx-image-preview__counter')).toBeNull()
 
     await wrapper.setProps({ attachments: [mixed[2]!] })
-    expect(document.body.querySelector('.tx-image-gallery__viewer')).toBeNull()
+    expect(openViewer()).toBeNull()
     wrapper.unmount()
   })
 })
@@ -196,12 +198,12 @@ describe('txAttachmentTray failure and upload states', () => {
     await wrapper.find('.tx-attachment-tray__thumb img').trigger('error')
     await wrapper.find('.tx-attachment-tray__thumb').trigger('click')
     await flushPromises()
-    expect(document.body.querySelector('.tx-image-gallery__viewer .tx-image-gallery__broken')).not.toBeNull()
-    expect(document.body.querySelector('.tx-image-gallery__viewer img')).toBeNull()
+    expect(document.body.querySelector('.tx-image-preview .tx-image-preview__failed')).not.toBeNull()
+    expect(document.body.querySelector('.tx-image-preview img')).toBeNull()
 
     await wrapper.setProps({ attachments: [{ kind: 'image', id: 'bad', url: '/fixed.png', name: 'Bad' }] })
     expect(wrapper.find('.tx-attachment-tray__thumb img').attributes('src')).toBe('/fixed.png')
-    expect(document.body.querySelector('.tx-image-gallery__viewer img')?.getAttribute('src')).toBe('/fixed.png')
+    expect(viewerSrc()).toBe('/fixed.png')
     wrapper.unmount()
   })
 

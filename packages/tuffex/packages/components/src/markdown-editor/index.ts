@@ -4,6 +4,9 @@ import TxMarkdownEditor from './src/TxMarkdownEditor.vue'
 const MarkdownEditor = withInstall(TxMarkdownEditor)
 
 export { MarkdownEditor, TxMarkdownEditor }
+// The status bar's counts, for showing the same numbers elsewhere.
+export { markdownStats } from './src/markdown-stats'
+export type { MarkdownStats } from './src/markdown-stats'
 // The change-set algebra a collaboration adapter rebases concurrent edits with.
 export {
   applyMarkdownChanges,

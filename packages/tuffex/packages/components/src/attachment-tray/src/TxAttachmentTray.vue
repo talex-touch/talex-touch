@@ -2,7 +2,7 @@
 import type { AiAttachmentFile, AiAttachmentImage } from '../../ai-elements/src/types'
 import type { AttachmentTrayEmits, AttachmentTrayProps } from './types'
 import { computed, ref } from 'vue'
-import ImageGalleryViewer from '../../image-gallery/src/ImageGalleryViewer.vue'
+import TxImagePreview from '../../image-preview/src/TxImagePreview.vue'
 import AttachmentThumb from './AttachmentThumb.vue'
 import TxAttachmentChip from './TxAttachmentChip.vue'
 
@@ -13,9 +13,11 @@ const props = withDefaults(defineProps<AttachmentTrayProps>(), {
   previewTitle: 'Preview',
   previousLabel: 'Previous image',
   nextLabel: 'Next image',
-  previousText: 'Prev',
-  nextText: 'Next',
   closeLabel: 'Close',
+  zoomInLabel: 'Zoom in',
+  zoomOutLabel: 'Zoom out',
+  resetLabel: 'Fit to screen',
+  failedText: 'This image could not be loaded',
   removeLabel: 'Remove attachment',
   cancelLabel: 'Cancel upload',
 })
@@ -40,11 +42,28 @@ function markFailed(url: string): void {
   failedUrls.value = new Set(failedUrls.value).add(url)
 }
 
-// -- Preview: TxImageGallery's dialog, which keeps the index on a real image as the list
-// changes and closes when no image is left.
+// -- Preview: TxImagePreview, which keeps the index on a real image as the list changes and
+// closes when no image is left.
 
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
+const rootRef = ref<HTMLElement | null>(null)
+
+// The preview flies each picture out of its thumbnail and back into it.
+function thumbOf(index: number): Element | null {
+  const id = images.value[index]?.id
+  const cells = rootRef.value?.querySelectorAll<HTMLElement>('.tx-attachment-tray__cell') ?? []
+  for (const cell of cells) {
+    if (cell.dataset.id === id)
+      return cell.querySelector('.tx-attachment-tray__thumb')
+  }
+  return null
+}
+
+function openLabel(image: ImageAttachment): string {
+  const name = image.name ?? image.id
+  return props.openLabelFormatter ? props.openLabelFormatter(name) : `${props.previewTitle}: ${name}`
+}
 
 function openViewer(index: number): void {
   viewerIndex.value = index
@@ -53,7 +72,7 @@ function openViewer(index: number): void {
 </script>
 
 <template>
-  <div class="tx-attachment-tray">
+  <div ref="rootRef" class="tx-attachment-tray">
     <div v-if="images.length > 0" class="tx-attachment-tray__grid">
       <AttachmentThumb
         v-for="(image, index) in images"
@@ -61,7 +80,7 @@ function openViewer(index: number): void {
         :attachment="image"
         :removable="removable"
         :broken="failedUrls.has(image.url)"
-        :open-label="`${previewTitle}: ${image.name ?? image.id}`"
+        :open-label="openLabel(image)"
         :remove-label="removeLabel"
         :cancel-label="cancelLabel"
         @open="openViewer(index)"
@@ -86,18 +105,23 @@ function openViewer(index: number): void {
       />
     </div>
 
-    <ImageGalleryViewer
+    <TxImagePreview
+      v-bind="previewProps"
       v-model:open="viewerOpen"
       v-model:index="viewerIndex"
-      :items="images"
+      :images="images"
       :failed="failedUrls"
-      :preview-title="previewTitle"
+      :origin="thumbOf"
+      :label="previewTitle"
       :previous-label="previousLabel"
       :next-label="nextLabel"
-      :previous-text="previousText"
-      :next-text="nextText"
       :close-label="closeLabel"
+      :zoom-in-label="zoomInLabel"
+      :zoom-out-label="zoomOutLabel"
+      :reset-label="resetLabel"
+      :failed-text="failedText"
       @error="markFailed"
+      @action="emit('action', $event)"
     />
   </div>
 </template>

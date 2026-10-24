@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MarkdownEditorHighlightColor, MarkdownEditorLabels, MarkdownEditorMode, MarkdownEditorToolbarActionKey } from './types'
-import { computed, onMounted, onUpdated, ref, watch } from 'vue'
+import { hasDocument } from '@talex-touch/utils/env'
+import { computed, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
 import { TxBaseAnchor } from '../../base-anchor'
 import { TxIcon } from '../../icon'
 import MarkdownEditorEmojiPicker from './MarkdownEditorEmojiPicker.vue'
@@ -163,6 +164,36 @@ function pickHighlight(color: MarkdownEditorHighlightColor | null): void {
   highlightOpen.value = false
   emit('highlight', color)
 }
+
+// TxBaseAnchor closes either menu on Escape from a bubbling listener on the
+// document, which hears the key after every ancestor of the editor and leaves
+// it unclaimed: an overlay around the editor that closes on Escape would close
+// along with the menu. While one is open, claim the key first, in the
+// document's capture phase. Not from the menu itself: a highlight menu opened
+// with the mouse leaves focus in the text.
+function claimEscape(event: KeyboardEvent): void {
+  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing)
+    return
+  if (!emojiOpen.value && !highlightOpen.value)
+    return
+  event.preventDefault()
+  emojiOpen.value = false
+  highlightOpen.value = false
+}
+
+watch(() => emojiOpen.value || highlightOpen.value, (open) => {
+  if (!hasDocument())
+    return
+  if (open)
+    document.addEventListener('keydown', claimEscape, true)
+  else
+    document.removeEventListener('keydown', claimEscape, true)
+})
+
+onBeforeUnmount(() => {
+  if (hasDocument())
+    document.removeEventListener('keydown', claimEscape, true)
+})
 
 const layerClass = computed(() => ['tx-markdown-editor-layer', `tx-markdown-editor-layer--${props.theme}`])
 

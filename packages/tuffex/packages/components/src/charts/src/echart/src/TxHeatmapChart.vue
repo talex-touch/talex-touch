@@ -8,7 +8,7 @@ import type { ECharts } from 'echarts/core'
 import type { HeatmapChartEmits, HeatmapChartProps, HeatmapSelection } from './options/heatmap'
 import { computed, onBeforeUnmount, shallowRef, useId, watch } from 'vue'
 import TxEChart from './TxEChart.vue'
-import { buildHeatmapChartOption, HEATMAP_DEFAULT_LABELS, heatmapSelection } from './options/heatmap'
+import { buildHeatmapChartOption, HEATMAP_DEFAULT_LABELS, heatmapCell, heatmapCellText, heatmapSelection } from './options/heatmap'
 import { mergeChartOption } from './core/shared'
 
 defineOptions({ name: 'TxHeatmapChart' })
@@ -20,6 +20,7 @@ const props = withDefaults(defineProps<HeatmapChartProps>(), {
   min: undefined,
   max: undefined,
   showLabel: false,
+  cellLabel: undefined,
   unit: undefined,
   selectable: true,
   labels: undefined,
@@ -31,6 +32,13 @@ const props = withDefaults(defineProps<HeatmapChartProps>(), {
 })
 
 const emit = defineEmits<HeatmapChartEmits>()
+
+/**
+ * The selected block, for `v-model:selection`; `null` while none is. A value
+ * written here moves the box without an announcement or a `select`: the host
+ * made that change itself.
+ */
+const selection = defineModel<HeatmapSelection | null>('selection', { default: null })
 
 const chartOption = computed(() => mergeChartOption(buildHeatmapChartOption(props), props.option))
 const text = computed(() => ({ ...HEATMAP_DEFAULT_LABELS, ...props.labels }))
@@ -68,7 +76,6 @@ let press: Press | null = null
 /** The click a drag ends with belongs to the drag, not to the cell under it. */
 let suppressClick = false
 
-const selection = shallowRef<HeatmapSelection | null>(null)
 const box = shallowRef<Box | null>(null)
 const announcement = shallowRef('')
 
@@ -180,12 +187,30 @@ function updateBox(): void {
   box.value = Object.values(next).every(Number.isFinite) ? next : null
 }
 
+/** Fills `{name}` placeholders in one pass, so text that a placeholder brings in stays as it is. */
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (placeholder, name: string) => values[name] ?? placeholder)
+}
+
+/** A cell as `labels.cell` names it. */
+function cellName(row: number, column: number): string {
+  const cell = heatmapCell(props, row, column)
+  return fill(text.value.cell, {
+    column: props.columns[column] ?? '',
+    row: props.rows[row] ?? '',
+    value: cell ? heatmapCellText(props, cell) : '',
+  })
+}
+
 function commit(next: HeatmapSelection): void {
   selection.value = next
   updateBox()
-  announcement.value = text.value.selected
-    .replace('{count}', String(next.cells.length))
-    .replace('{total}', String(totalCells.value))
+  announcement.value = fill(text.value.selected, {
+    count: String(next.cells.length),
+    total: String(totalCells.value),
+    first: cellName(next.rows[0], next.columns[0]),
+    last: cellName(next.rows[1], next.columns[1]),
+  })
   emit('select', next)
 }
 
@@ -205,6 +230,15 @@ function cancelDrag(): void {
     return
   press.cancelled = true
   updateBox()
+}
+
+/**
+ * Clears the selection from outside the chart, as a click on the plot would:
+ * announced, and emitted through `select`. A drag in progress is given up.
+ */
+function clearSelection(): void {
+  cancelDrag()
+  clear(true)
 }
 
 function onPointerDown(event: PointerEvent): void {
@@ -323,6 +357,11 @@ watch(() => props.selectable, (selectable) => {
   cancelDrag()
   clear(false)
 })
+
+// A selection the host writes back, or writes itself, moves the box.
+watch(selection, updateBox)
+
+defineExpose({ clearSelection })
 
 onBeforeUnmount(() => {
   chart?.off('finished', updateBox)
